@@ -4,7 +4,7 @@
 #   ./update.sh          # nur wenn es Neues gibt
 #   ./update.sh --force  # immer neu bauen
 #
-# Zugriff auf das private Repo über den Deploy-Key (nur lesen), siehe README.
+# Zugriff über den Deploy-Key (nur lesen), siehe BETRIEB.md.
 # Lokale Änderungen an versionierten Dateien brechen das Update bewusst ab
 # (--ff-only), statt sie still zu überschreiben.
 set -euo pipefail
