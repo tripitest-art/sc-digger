@@ -130,8 +130,10 @@ Rechteverwaltung durch, sondern der Check `acceptance-guard` (läuft immer mit d
 
 ## Betrieb
 
-- **Server:** Proxmox `proxmox1`, LXC 107 `sc-digger` (Debian), `192.168.0.110`, Repo in
-  `/root/sc-digger`, Docker Compose. SSH-Benutzer `claude` (Schlüssel je Sitzung, nie im Repo).
+- **Server:** Debian-Container im Heimnetz, Repo in `/root/sc-digger`, Docker Compose.
+  Host, IP und SSH-Benutzer stehen bewusst **nicht** im (öffentlichen) Repo, sondern in
+  `BETRIEB.local.md` (von Git ignoriert, Vorlage: `BETRIEB.example.md`) und im claude.ai-Projekt
+  „sc-digger“. Fehlt beides: Stephan fragen, nicht raten. SSH-Schlüssel je Sitzung, nie im Repo.
 - **Mounts:** `/music/Schranz` (Sammlung, **ro**), `/music/inbox` (Downloads), beide NFS vom NAS.
 - **Zeitplan:** täglich 07:30 `discover` per Cron im Container; Bot läuft dauerhaft.
 - **Zugangsdaten** in `/root/sc-digger/.env`, nur über `./set-secret.sh NAME` setzen:
