@@ -79,6 +79,13 @@ SoundCloud gibt Original-Dateien nur eingeloggt heraus. Ohne `SOUNDCLOUD_AUTH_TO
 `.env` werden native Downloads nur verlinkt („Original manuell laden“). Stream-Rips werden
 nie geladen (`scdl --only-original`).
 
+## Zugangsdaten setzen
+Nie per Hand in die `.env` tippen, sondern auf dem Server:
+```bash
+cd /root/sc-digger && ./set-secret.sh SOUNDCLOUD_AUTH_TOKEN   # oder TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID
+```
+Verdeckte Eingabe, Formatprüfung, ersetzt die alte Zeile, startet neu und testet die Verbindung.
+
 ## Update auf dem Server
 ```bash
 cd /root/sc-digger && git pull && docker compose up -d --build
