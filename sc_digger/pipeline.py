@@ -61,6 +61,38 @@ def filter_bpm(tracks: list[Track], cfg: Config) -> list[Track]:
     return out
 
 
+# ---------------------------------------------------------------- DJ-Sets
+def is_dj_set(t: Track, max_minutes: float) -> bool:
+    """True genau dann, wenn t.duration_ms > max_minutes * 60_000 (strikt größer).
+    Unbekannte Dauer (0 oder None) -> False. Titelwörter („mix“, „set“, „session“ …)
+    werden NICHT ausgewertet."""
+    if not t.duration_ms or t.duration_ms <= 0:
+        return False
+    return t.duration_ms > max_minutes * 60_000
+
+
+def filter_sets(tracks: list[Track], cfg: Config) -> list[Track]:
+    """Nur für discover: neue Liste ohne DJ-Sets, Reihenfolge bleibt.
+    Grenze: cfg["search"].get("max_duration_min", 12).
+    Wurde mindestens einer entfernt: log.info("DJ-Sets aussortiert: %d (länger als %s min)", anzahl, grenze)"""
+    limit = cfg["search"].get("max_duration_min", 12)
+    kept = [t for t in tracks if not is_dj_set(t, limit)]
+    removed = len(tracks) - len(kept)
+    if removed > 0:
+        log.info("DJ-Sets aussortiert: %d (länger als %s min)", removed, limit)
+    return kept
+
+
+def mark_sets(tracks: list[Track], cfg: Config) -> list[Track]:
+    """Für alle Modi: entfernt nichts. Für jedes DJ-Set t.set_minutes = round(t.duration_ms / 60_000),
+    andere Tracks bleiben unverändert. Gibt dieselbe Liste zurück."""
+    limit = cfg["search"].get("max_duration_min", 12)
+    for t in tracks:
+        if is_dj_set(t, limit):
+            t.set_minutes = round(t.duration_ms / 60_000)
+    return tracks
+
+
 # ---------------------------------------------------------------- Genre-Relevanz
 def genre_relevant(t: Track, keywords: list[str]) -> bool:
     """Prüft Titel/Genre/Tags auf eines der Suchwörter.

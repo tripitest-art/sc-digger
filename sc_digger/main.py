@@ -25,8 +25,8 @@ from .organize import organize, write_tags
 from .redact import install_redacting_logging
 from .output import (State, build_digest, build_export_txt, download_native, finalize_quality,
                      send_telegram, send_telegram_document)
-from .pipeline import (classify_download, dedupe, estimate_bpm, filter_bpm, genre_relevant,
-                       score_tracks)
+from .pipeline import (classify_download, dedupe, estimate_bpm, filter_bpm, filter_sets,
+                       genre_relevant, mark_sets, score_tracks)
 from .soundcloud import SoundCloudClient, SoundCloudError
 
 log = logging.getLogger("sc_digger")
@@ -39,6 +39,7 @@ def process(tracks: list[Track], cfg: Config, *, dry_run: bool,
 
     Gibt (neue Tracks, Duplikate) zurück.
     """
+    mark_sets(tracks, cfg)
     coll = Collection(cfg["download"]["collection_dir"])
     coll.mark_duplicates(tracks)
     dupes = [t for t in tracks if t.duplicate_of]
@@ -197,7 +198,7 @@ def _discover(cfg: Config, dry_run: bool, no_telegram: bool) -> int:
     log.info("Discovery: %d einzigartige Tracks (davon %d von Referenz-Accounts)",
              raw_found, len(reference_ids))
 
-    tracks = score_tracks(filter_bpm(tracks, cfg), cfg)
+    tracks = score_tracks(filter_bpm(filter_sets(tracks, cfg), cfg), cfg)
     log.info("Nach Filter/Scoring: %d Tracks", len(tracks))
     with State(cfg["state"]["db_path"]) as state:
         tracks = [t for t in tracks if not state.is_seen(t.id)]

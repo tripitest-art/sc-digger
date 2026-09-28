@@ -221,3 +221,37 @@ def test_process_audio_refines_existing_text_bpm(tmp_path, monkeypatch):
     fresh, _ = m.process([t], cfg, dry_run=False)
     assert fresh[0].bpm == 157.8
     assert not any("BPM korrigiert" in n for n in fresh[0].notes)
+
+
+def test_mark_sets_is_idempotent():
+    from sc_digger.pipeline import mark_sets
+    cfg = Config({"search": {"max_duration_min": 12}})
+    tracks = [mk(1, duration=58 * 60_000), mk(2, duration=5 * 60_000)]
+    out = mark_sets(tracks, cfg)
+    assert out[0].set_minutes == 58
+    assert out[1].set_minutes is None
+    # Zweiter Aufruf ändert nichts
+    out2 = mark_sets(tracks, cfg)
+    assert out2[0].set_minutes == 58
+    assert out2[1].set_minutes is None
+    assert out2 == out
+
+
+def test_run_link_does_not_filter_sets(tmp_path, capsys):
+    cfg = Config(dict(CFG.raw))
+    cfg.raw["download"] = {**CFG["download"], "collection_dir": str(tmp_path)}
+    url = "https://soundcloud.com/u/sets/p"
+    routes = {
+        url: {
+            "kind": "playlist",
+            "title": "Podcast Playlist",
+            "tracks": [raw_track(1, duration=58 * 60_000), raw_track(2, duration=5 * 60_000)],
+        },
+    }
+    sc = FakeSC(routes)
+    source, fresh, dupes = m.run_link(cfg, url, dry_run=True, no_telegram=True, sc=sc)
+    assert fresh == 2
+    assert dupes == 0
+    out = capsys.readouterr().out
+    assert "🎛️ Set, 58 min" in out
+
