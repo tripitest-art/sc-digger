@@ -255,7 +255,7 @@ def test_bot_logs_foreign_chat_id_and_warns_on_non_numeric_chat(monkeypatch, cap
 # ---------------- Zugangsdaten nie in Logs / Health / Fehlern ----------------
 from sc_digger.redact import redact
 
-TG_TOKEN = "8991706275:AAHB2paTESTTESTTESTTESTTESTTESTxyz"
+TG_TOKEN = "1234567890:AAFakeTokenFakeTokenFakeTokenFake0"
 
 
 def test_redact_telegram_url_and_env_secrets(monkeypatch):
