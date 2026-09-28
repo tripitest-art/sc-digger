@@ -183,6 +183,8 @@ def _fmt_track(t: Track) -> str:
         line += f" · {t.bpm:.0f} BPM"
     if t.key_camelot:
         line += f" · 🔑 {t.key_camelot}"
+    if t.set_minutes:
+        line += f" · 🎛️ Set, {t.set_minutes} min"
     if t.quality_report:
         q = t.quality_report
         mark = "✅" if q["ok"] else "⚠️"
