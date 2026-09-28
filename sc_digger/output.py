@@ -16,6 +16,8 @@ from zoneinfo import ZoneInfo
 
 import requests
 
+from .db import TrackDB
+from .fingerprint import compute_fingerprint, find_same_recording
 from .models import Config, DownloadKind, Track
 from .quality import check_file
 from .redact import redact
@@ -137,6 +139,37 @@ def download_native(t: Track, inbox: Path, auth_token: str | None = None) -> Pat
     return new[0]
 
 
+def reject_if_duplicate(t: Track, path: Path, inbox: Path, cfg: Config) -> Path | None:
+    """cfg.raw.get("fingerprint", {}).get("check_downloads", True) falsch -> path (ohne fpcalc).
+    fp = compute_fingerprint(path); None -> path.
+    with TrackDB(cfg["state"]["track_db_path"]) as db: rec = find_same_recording(fp, db)
+    Kein Treffer -> path.
+    Treffer -> Datei nach inbox/"_rejected"/"duplicate"/<gleicher Dateiname> verschieben
+    (Ordner anlegen), t.duplicate_of = rec.path, Rückgabe None.
+    Jede Exception: log.warning mit "Duplikat" im Text, Rückgabe path (im Zweifel behalten, nie werfen)."""
+    if not (cfg.raw.get("fingerprint") or {}).get("check_downloads", True):
+        return path
+    try:
+        fp = compute_fingerprint(path)
+        if fp is None:
+            return path
+        with TrackDB(cfg["state"]["track_db_path"]) as db:
+            rec = find_same_recording(fp, db)
+        if rec is None:
+            return path
+        target = inbox / "_rejected" / "duplicate"
+        target.mkdir(parents=True, exist_ok=True)
+        dest = target / path.name
+        if dest.exists():
+            dest.unlink()
+        shutil.move(str(path), str(dest))
+        t.duplicate_of = rec.path
+        return None
+    except Exception as e:
+        log.warning("Duplikat-Prüfung fehlgeschlagen: %s", e)
+        return path
+
+
 def finalize_quality(t: Track, path: Path, inbox: Path, cfg: Config) -> Path | None:
     """Prüft eine geladene Datei und räumt sie ggf. weg. Von main.py und bot.py geteilt.
 
@@ -156,7 +189,7 @@ def finalize_quality(t: Track, path: Path, inbox: Path, cfg: Config) -> Path | N
     elif t.quality_report.get("clipped"):
         target = inbox / "_rejected" / "clipped"
     else:
-        return path
+        return reject_if_duplicate(t, path, inbox, cfg)
     target.mkdir(parents=True, exist_ok=True)
     shutil.move(str(path), str(target / path.name))
     return None
@@ -206,6 +239,8 @@ def _fmt_track(t: Track) -> str:
         line += f'\n  🔗 <a href="{html.escape(t.download_link)}">{t.download_kind.value}</a>'
     if t.download_error:
         line += f"\n  ⚠️ {_esc(t.download_error)}"
+    if t.duplicate_of:
+        line += f"\n  ♻️ Schon in der Sammlung: {_esc(Path(t.duplicate_of).name)}"
     return line
 
 
