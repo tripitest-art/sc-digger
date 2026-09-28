@@ -332,3 +332,34 @@ class SoundCloudClient:
             purchase_url=getattr(o, "purchase_url", None),
             purchase_title=getattr(o, "purchase_title", None),
         )
+
+    # ---------- Curator-Mining ----------
+    def _fetch_users(self, path: str, max_results: int) -> list[dict]:
+        if max_results <= 0:
+            return []
+        out: list[dict] = []
+        try:
+            for item in self._paginate(path, {}, max_results):
+                u = item.get("user") if isinstance(item, dict) and "user" in item else item
+                if isinstance(u, dict) and "id" in u:
+                    out.append({
+                        "id": u["id"],
+                        "permalink": u.get("permalink", ""),
+                        "username": u.get("username", ""),
+                    })
+                if len(out) >= max_results:
+                    break
+        except Exception as e:
+            log.warning("Fehler beim Abruf von %s: %s", path, e)
+            return []
+        return out
+
+    def get_likers(self, track_id: int, max_results: int = 50) -> list[dict]:
+        """Gibt Liste von User-Dicts zurück (keys: 'id', 'permalink', 'username').
+        Paginiert bis max_results; bei API-Fehler leere Liste, kein raise."""
+        return self._fetch_users(f"/tracks/{track_id}/likers", max_results)
+
+    def get_reposters(self, track_id: int, max_results: int = 50) -> list[dict]:
+        """Wie get_likers, Endpunkt /tracks/{id}/reposters."""
+        return self._fetch_users(f"/tracks/{track_id}/reposters", max_results)
+

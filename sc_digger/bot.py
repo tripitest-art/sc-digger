@@ -15,6 +15,9 @@ from __future__ import annotations
 import logging
 import re
 import time
+from pathlib import Path
+
+import yaml
 
 from .db import TrackDB
 from .main import run_link
@@ -104,7 +107,46 @@ def mark_choice(keyboard: dict, sc_id: int, value: str) -> dict:
     return res
 
 
-def handle_callback(cfg: Config, cq: dict) -> None:
+def handle_curator_add(permalink: str, config_path: str | Path = "config.yaml") -> bool:
+    """Schreibt Permalink in config.yaml unter search.reference_accounts (append, idempotent).
+    Gibt True zurück, wenn hinzugefügt, False wenn bereits vorhanden."""
+    path = Path(config_path)
+    if not path.exists():
+        raw: dict = {}
+    else:
+        with open(path, "r", encoding="utf-8") as f:
+            raw = yaml.safe_load(f) or {}
+
+    search = raw.setdefault("search", {})
+    ref_accounts = search.setdefault("reference_accounts", [])
+    if ref_accounts is None:
+        ref_accounts = []
+        search["reference_accounts"] = ref_accounts
+
+    # Idempotenz-Prüfung: permalink exakt oder als URL-Endung
+    existing = set()
+    for acc in ref_accounts:
+        if isinstance(acc, str):
+            clean = acc.strip()
+            if "soundcloud.com/" in clean:
+                clean = clean.split("soundcloud.com/")[-1]
+            existing.add(clean.strip("/").lower())
+
+    p_clean = permalink.strip()
+    if "soundcloud.com/" in p_clean:
+        p_clean = p_clean.split("soundcloud.com/")[-1]
+    p_clean = p_clean.strip("/").lower()
+
+    if permalink in ref_accounts or p_clean in existing:
+        return False
+
+    ref_accounts.append(permalink)
+    with open(path, "w", encoding="utf-8") as f:
+        yaml.dump(raw, f, allow_unicode=True, sort_keys=False)
+    return True
+
+
+def handle_callback(cfg: Config, cq: dict, config_path: str | Path = "config.yaml") -> None:
     """Ein callback_query-Objekt von Telegram. Wirft nie.
     1. cq["message"]["chat"]["id"] != TELEGRAM_CHAT_ID -> log.warning, KEIN Telegram-Aufruf, nichts speichern.
     2. parse_feedback_callback(cq["data"]) ist None -> answerCallbackQuery(callback_query_id, text="Unbekannte Aktion"), nichts speichern.
@@ -123,7 +165,39 @@ def handle_callback(cfg: Config, cq: dict) -> None:
             return
 
         cq_id = cq.get("id")
-        parsed = parse_feedback_callback(cq.get("data"))
+        cq_data = cq.get("data") or ""
+        if cq_data.startswith("curator_add:"):
+            permalink = cq_data.removeprefix("curator_add:")
+            try:
+                handle_curator_add(permalink, config_path)
+            except Exception as e:
+                log.warning("Fehler beim Hinzufügen von %s zu reference_accounts: %s", permalink, e)
+                if cq_id:
+                    try:
+                        telegram_call(
+                            cfg.telegram_token,
+                            "answerCallbackQuery",
+                            json={"callback_query_id": cq_id, "text": "Fehler beim Hinzufügen"},
+                        )
+                    except Exception as te:
+                        log.warning("Telegram-Fehler bei answerCallbackQuery: %s", te)
+                return
+
+            if cq_id:
+                try:
+                    telegram_call(
+                        cfg.telegram_token,
+                        "answerCallbackQuery",
+                        json={
+                            "callback_query_id": cq_id,
+                            "text": f"✅ {permalink} zu reference_accounts hinzugefügt.",
+                        },
+                    )
+                except Exception as e:
+                    log.warning("Telegram-Fehler bei answerCallbackQuery: %s", e)
+            return
+
+        parsed = parse_feedback_callback(cq_data)
         if parsed is None:
             if cq_id:
                 try:
@@ -243,8 +317,12 @@ def listen(cfg: Config) -> None:
 
 
 def cli() -> None:
+    import argparse
+    parser = argparse.ArgumentParser(description="sc-digger Telegram Bot")
+    parser.add_argument("--config", default="config.yaml", help="Pfad zu config.yaml")
+    args = parser.parse_args()
     install_redacting_logging(logging.INFO)
-    listen(Config.load("config.yaml"))
+    listen(Config.load(args.config), config_path=args.config)
 
 
 if __name__ == "__main__":

@@ -442,6 +442,11 @@ class TrackDB:
         row = self.db.execute("SELECT value FROM sc_feedback WHERE sc_id = ?", (sc_id,)).fetchone()
         return row["value"] if row else None
 
+    def get_liked_sc_ids(self) -> list[int]:
+        """Gibt alle sc_ids zurück, die in sc_feedback mit value='like' stehen."""
+        rows = self.db.execute("SELECT sc_id FROM sc_feedback WHERE value = 'like'").fetchall()
+        return [r["sc_id"] for r in rows]
+
     def count_tracks(
         self,
         status: TrackStatus | str | None = None,

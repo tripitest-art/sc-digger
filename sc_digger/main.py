@@ -14,6 +14,7 @@ import argparse
 import logging
 import re
 import sys
+from collections import Counter
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -22,12 +23,13 @@ from .analysis import analyze_track, resolve_bpm
 from .audit import run_audit
 from .cloud import download_cloud
 from .collection import Collection
+from .db import TrackDB
 from .health import Health
 from .models import Config, DownloadKind, Track
 from .organize import organize, write_tags
 from .redact import install_redacting_logging
 from .output import (State, build_digest, build_digest_messages, build_export_txt, download_native, finalize_quality,
-                     send_digest, send_telegram, send_telegram_document)
+                     send_digest, send_telegram, send_telegram_document, telegram_call)
 from .pipeline import (classify_download, dedupe, estimate_bpm, filter_bpm, filter_sets,
                        genre_relevant, mark_sets, score_tracks)
 from .rekordbox import write_rekordbox_xml
@@ -301,6 +303,110 @@ def run_similar(cfg: Config, url: str, use_station: bool, apply_filter: bool,
             export_name=f"{kind}: {seed.artist} - {seed.title}")
 
 
+# ------------------------------------------------------------------ Modus: curator-mining
+def _make_sc() -> SoundCloudClient:
+    return SoundCloudClient()
+
+
+def run_curator_mining(cfg: Config, dry_run: bool = False, no_telegram: bool = False) -> list[tuple[dict, int]]:
+    """Curator-Mining: Wer 👍-Tracks repostet oder liked, kuratiert meist den eigenen Stil."""
+    with TrackDB(cfg["state"]["track_db_path"]) as db:
+        sc_ids = db.get_liked_sc_ids()
+
+    if not sc_ids:
+        log.info("Keine 👍-Tracks in der Datenbank gefunden.")
+        if dry_run or no_telegram:
+            print("Keine 👍-Tracks in der Datenbank gefunden.")
+        return []
+
+    sc = _make_sc()
+    cm_cfg = cfg.raw.get("curator_mining", {})
+    cfg_min = cm_cfg.get("min_appearances", 2)
+    min_appearances = max(1, min(cfg_min, len(sc_ids)))
+    max_likers = cm_cfg.get("max_likers_per_track", 50)
+
+    # 1. Sammeln und Aggregieren über alle gelikten Tracks
+    counts: Counter[str] = Counter()
+    user_info: dict[str, dict] = {}
+
+    for sc_id in sc_ids:
+        likers = sc.get_likers(sc_id, max_results=max_likers) or []
+        reposters = sc.get_reposters(sc_id, max_results=max_likers) or []
+
+        seen_on_track: dict[str, dict] = {}
+        for u in likers + reposters:
+            p = u.get("permalink")
+            if p:
+                p_norm = p.strip("/").lower()
+                if p_norm and p_norm not in seen_on_track:
+                    seen_on_track[p_norm] = u
+
+        for p_norm, u in seen_on_track.items():
+            counts[p_norm] += 1
+            if p_norm not in user_info:
+                user_info[p_norm] = u
+
+    # 2. Bestehende Profile filtern
+    existing: set[str] = set()
+    search_cfg = cfg.raw.get("search", {})
+    for acc in (search_cfg.get("reference_accounts", []) or []) + (search_cfg.get("followed_users", []) or []):
+        if not acc:
+            continue
+        acc_str = str(acc).strip()
+        if "soundcloud.com/" in acc_str:
+            acc_str = acc_str.split("soundcloud.com/")[-1]
+        existing.add(acc_str.strip("/").lower())
+
+    # 3. Kandidaten filtern und sortieren
+    candidates: list[tuple[dict, int]] = []
+    for p_norm, count in counts.items():
+        if p_norm in existing:
+            continue
+        if count >= min_appearances:
+            candidates.append((user_info[p_norm], count))
+
+    candidates.sort(key=lambda item: (-item[1], (item[0].get("username") or "").lower()))
+
+    # 4. Melden
+    for u, count in candidates:
+        permalink = u.get("permalink") or ""
+        username = u.get("username") or permalink
+        text = f"🔍 {username} ({count}× gesehen): soundcloud.com/{permalink}"
+
+        if dry_run or no_telegram:
+            print(text)
+        else:
+            token = cfg.telegram_token
+            chat_id = cfg.telegram_chat_id
+            if token and chat_id:
+                try:
+                    telegram_call(
+                        token,
+                        "sendMessage",
+                        json={
+                            "chat_id": chat_id,
+                            "text": text,
+                            "reply_markup": {
+                                "inline_keyboard": [
+                                    [
+                                        {
+                                            "text": "✅ Zu reference_accounts",
+                                            "callback_data": f"curator_add:{permalink}",
+                                        }
+                                    ]
+                                ]
+                            },
+                            "disable_web_page_preview": True,
+                        },
+                    )
+                except Exception as e:
+                    log.warning("Telegram-Fehler beim Melden von Kurator %s: %s", permalink, e)
+            else:
+                log.warning("TELEGRAM_BOT_TOKEN/CHAT_ID fehlen – Kandidat wird nur geloggt: %s", text)
+
+    return candidates
+
+
 # ------------------------------------------------------------------ CLI
 def cli() -> None:
     common = argparse.ArgumentParser(add_help=False)
@@ -337,6 +443,7 @@ def cli() -> None:
                      help="Alle Dateien neu analysieren (inkrementellen Cache ignorieren)")
 
     sub.add_parser("rekordbox", parents=[common], help="Rekordbox-XML der Inbox neu schreiben")
+    sub.add_parser("curator-mining", parents=[common], help="Profile aus 👍-Tracks vorschlagen")
 
     a = ap.parse_args()
     install_redacting_logging(logging.DEBUG if a.verbose else logging.INFO)
@@ -359,6 +466,8 @@ def cli() -> None:
             )
         elif a.mode == "rekordbox":
             write_rekordbox_xml(cfg)
+        elif a.mode == "curator-mining":
+            run_curator_mining(cfg, dry_run=a.dry_run, no_telegram=a.no_telegram)
         else:
             run_discover(cfg, a.dry_run, a.no_telegram)
     except Exception:
