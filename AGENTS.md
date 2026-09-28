@@ -97,6 +97,16 @@ roter `github-advanced-security` ist kein Mangel.
    Vorschlag. Nie deshalb Tests abschwächen oder weitere Dateien anfassen. Alle Korrekturen
    in **einem** Push.
 
+### Nächste Aufgabe selbst wählen
+
+1. `gh issue list --state open --label worker-task --label bereit --search "sort:created-asc -label:blockiert"`
+2. Das erste nehmen. Ausnahme Regel 8: Hat es `berührt-main.py` und ist ein anderes offenes
+   Issue mit `in-arbeit` und `berührt-main.py` vorhanden, das nächste nehmen.
+3. Bleibt keins übrig: sagen und aufhören, nichts anderes anfangen.
+4. Genau **ein** Issue bearbeiten (Worker 1–7). Fertig, wenn der PR offen ist und `tests` und
+   `acceptance-guard` grün sind (`gh pr checks`). Abbrechen statt weitermachen bei Worker 5/6
+   oder wenn eine Datei außerhalb des Issues nötig wäre.
+
 ### Reviewer
 
 1. `gh pr view <PR> --comments`, `gh pr diff <PR>`, `gh pr checks <PR>`. Sind `tests`,
@@ -122,6 +132,7 @@ roter `github-advanced-security` ist kein Mangel.
 |---|---|
 | Planer | „Erstelle aus unserem Gespräch ein Issue in tripitest-art/sc-digger nach dem Formular `worker-task` (AGENTS.md, Worker-Aufgaben → Planer).“ |
 | Worker | „Bearbeite Issue #N nach AGENTS.md, Abschnitt Worker-Aufgaben → Worker.“ |
+| Worker (autonom) | „/goal Bearbeite die nächste Aufgabe nach AGENTS.md, Worker-Aufgaben → Nächste Aufgabe selbst wählen.“ |
 | Reviewer | „Prüfe PR #M nach AGENTS.md, Abschnitt Worker-Aufgaben → Reviewer.“ |
 | Worker (Nacharbeit) | „Arbeite das Review in PR #M ab (AGENTS.md, Worker → Schritt 8).“ |
 
@@ -147,16 +158,8 @@ roter `github-advanced-security` ist kein Mangel.
 
 ## Betrieb
 
-- **Server:** Debian-Container im Heimnetz, Repo in `/root/sc-digger`, Docker Compose.
-  Host, IP und SSH-Benutzer stehen bewusst **nicht** im (öffentlichen) Repo, sondern in
-  `BETRIEB.local.md` (von Git ignoriert, Vorlage: `BETRIEB.example.md`) und im claude.ai-Projekt
-  „sc-digger“. Fehlt beides: Stephan fragen, nicht raten. SSH-Schlüssel je Sitzung, nie im Repo.
-- **Mounts:** `/music/Schranz` (Sammlung, **ro**), `/music/inbox` (Downloads), beide NFS vom NAS.
-- **Zeitplan:** täglich 07:30 `discover` per Cron im Container; Bot läuft dauerhaft.
-- **Zugangsdaten** in `/root/sc-digger/.env`, nur über `./set-secret.sh NAME` setzen:
-  `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `SOUNDCLOUD_AUTH_TOKEN`.
-- **Logs:** `docker compose logs --tail 50` · **Health:** Tabelle `runs` in `/data/seen.sqlite`.
-- **Testlauf ohne Nebenwirkungen:** `docker compose exec sc-digger python -m sc_digger.main --dry-run --no-telegram -v`
+Server, Mounts, Zeitplan, Zugangsdaten, Logs: `BETRIEB.md`. Host/IP/SSH nur in
+`BETRIEB.local.md` (ignoriert) oder beim Menschen erfragen, nie raten.
 
 ## Entwickeln
 
