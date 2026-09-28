@@ -46,8 +46,67 @@ Track-Stations auf Zuruf. Details und Ausbaustufen: `ROADMAP.md`.
 5. Pull Request öffnen und die Vorlage ausfüllen. Kann das Werkzeug keinen PR öffnen:
    Branch pushen und dem Menschen den Link `https://github.com/tripitest-art/sc-digger/pull/new/<branch>` geben.
 6. Review durch einen Agenten, der den Code nicht geschrieben hat, oder durch Stephan.
-   Merge nur bei grünem Testlauf (GitHub Actions) und abgeschlossenem Review.
+   Merge nur bei grünen Checks `tests` und `acceptance-guard` und abgeschlossenem Review.
 7. Deploy: `cd /root/sc-digger && ./update.sh` auf dem Server (nur nach Merge in `main`).
+
+## Worker-Aufgaben (Issues mit Label `worker-task`)
+
+Drei Rollen: **Planer** schreibt das Issue, **Worker** setzt es um, **Reviewer** prüft und
+merged. Worker und Reviewer sind nie derselbe Agent. Das Issue ist der Vertrag: Was dort
+nicht steht, wird nicht gebaut.
+
+Alle Agenten arbeiten mit Stephans GitHub-Konto. Die Regeln unten setzt deshalb nicht die
+Rechteverwaltung durch, sondern der Check `acceptance-guard` (läuft immer mit dem Stand aus
+`main`) und das Review.
+
+### Planer
+
+- Issue über das Formular „Aufgabe für einen Agenten“: exakte Signaturen, was ausdrücklich
+  nicht dazugehört, Merge-Modus.
+- Akzeptanztests als pytest-Code ins Issue. Sie laufen ohne Netzwerk (Fakes, synthetisches
+  Audio per ffmpeg wie in `tests/test_analysis_organize.py`) und sind vor der Umsetzung rot.
+- Labels: `worker-task`, `bereit`, `phase-N`, bei Bedarf `berührt-main.py`.
+
+### Worker
+
+1. `gh issue view <N>` und diese Datei lesen. Übernehmen:
+   `gh issue edit <N> --add-label in-arbeit --remove-label bereit`
+2. `git checkout main && git pull && git checkout -b feature/issue-<N>-<kurz>`
+3. Den Akzeptanztest-Block **zeichengenau** nach `tests/acceptance/test_issue_<N>.py`
+   kopieren und als eigenen Commit sichern, **bevor** du etwas umsetzt.
+4. Umsetzen, nur in den Dateien aus dem Issue. Eigene Tests ergänzen.
+   `python -m pytest -q`, bis alles grün ist.
+5. **Verboten:** Akzeptanztests ändern; neue `skip`/`xfail`/`importorskip`; Änderungen an
+   `.github/`, `conftest.py` oder pytest-Konfiguration; das Label `freigabe-geschützt` setzen.
+   Hältst du einen Akzeptanztest für falsch: aufhören und im Issue begründen. Nie den Test
+   passend machen.
+6. Nach drei erfolglosen Anläufen am selben Fehler: aufhören, Branch pushen, Draft-PR
+   (`--draft`) mit genauer Beschreibung des Problems. Kein Umbau quer durchs Projekt.
+7. PR mit ausgefüllter Vorlage öffnen. `--fill` reicht nicht, weil `Closes #<N>` fehlen würde:
+   `gh pr create --title "<Issue-Titel>" --body-file <ausgefüllte Vorlage>`
+   Der Body muss `Closes #<N>` enthalten, sonst prüft `acceptance-guard` nichts gegen das Issue.
+
+### Reviewer
+
+1. `gh pr view <PR>`, `gh pr diff <PR>`, `gh pr checks <PR>`. Sind `tests` oder
+   `acceptance-guard` nicht grün: nicht mergen, Befund als Review schreiben.
+2. Gegen das Issue prüfen: nur genannte Dateien geändert, Signaturen exakt, „Fertig, wenn“
+   vollständig, Goldene Regeln eingehalten (besonders 4–7). Eigene Tests des Workers auf
+   Aussagekraft prüfen (`assert True`, zu schwache Vergleiche, gemockter Prüfling).
+3. Mängel: `gh pr review <PR> --request-changes --body "<konkrete Punkte>"`. Der Worker
+   arbeitet auf demselben Branch nach.
+4. Sauber, Merge-Modus „automatisch“: `gh pr merge <PR> --squash --delete-branch`.
+   Merge-Modus „manuell“: `gh pr review <PR> --approve` und Stephan Bescheid geben.
+5. Trägt ein PR das Label `freigabe-geschützt`, stand die Änderung an geschützten Dateien
+   zur Entscheidung. Im Review ausdrücklich bestätigen, dass sie begründet ist.
+
+### Standard-Aufträge
+
+| Rolle | Auftrag |
+|---|---|
+| Planer | „Erstelle aus unserem Gespräch ein Issue in tripitest-art/sc-digger nach dem Formular `worker-task` (AGENTS.md, Worker-Aufgaben → Planer).“ |
+| Worker | „Bearbeite Issue #N nach AGENTS.md, Abschnitt Worker-Aufgaben → Worker.“ |
+| Reviewer | „Prüfe PR #M nach AGENTS.md, Abschnitt Worker-Aufgaben → Reviewer.“ |
 
 ## Architektur
 
@@ -66,6 +125,7 @@ Track-Stations auf Zuruf. Details und Ausbaustufen: `ROADMAP.md`.
 | `sc_digger/redact.py` | Zugangsdaten aus Texten und Logs entfernen |
 | `config.yaml` | Einzige Konfiguration (Tags, Referenz-Accounts, Schwellwerte). Ist die Produktivkonfiguration. |
 | `entrypoint.sh` | Schreibt `cron.env` (Cron hat sonst weder PATH noch Secrets), startet cron und Bot |
+| `.github/scripts/acceptance_guard.py` | CI-Check `acceptance-guard`: Akzeptanztests = Issue, keine neuen skips, CI/Test-Konfiguration geschützt |
 | `set-secret.sh` / `update.sh` | Zugangsdaten setzen / Update ausrollen (auf dem Server) |
 
 ## Betrieb
