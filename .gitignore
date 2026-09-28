@@ -4,3 +4,6 @@ __pycache__/
 .venv/
 data/
 .env
+
+# Lokale Betriebsdetails (Server, IP), siehe BETRIEB.example.md
+*.local.md
