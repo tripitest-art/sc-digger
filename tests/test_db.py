@@ -186,18 +186,24 @@ def test_update_job_preserves_result(db: TrackDB):
 
 
 def test_from_row_resilient_to_unknown_columns(db: TrackDB):
-    """Review-Punkt 5: Unbekannte Spalten (z.B. nach Rollback) führen nicht zu TypeError."""
-    # Tabelle mit zusätzlicher Spalte 'future_column'
-    db.db.execute("ALTER TABLE tracks ADD COLUMN future_column TEXT;")
-    db.db.execute("UPDATE tracks SET future_column = 'abc' WHERE id = 1;")
+    """Review-Punkt 5: Unbekannte Spalten (z. B. nach Rollback) führen nicht zu TypeError.
+
+    Wichtig: Es muss eine Zeile existieren, sonst prüft der Test nichts.
+    """
+    t = db.upsert_track(TrackRecord(path="/music/Schranz/x.wav", mtime=1.0, size=1, bpm=155.0))
+    job = db.enqueue_job(t.id, JobType.EMBEDDING, payload={"model": "clap"})
+    db.db.execute("ALTER TABLE tracks ADD COLUMN future_column TEXT")
+    db.db.execute("ALTER TABLE jobs ADD COLUMN future_column TEXT")
+    db.db.execute("UPDATE tracks SET future_column = 'abc'")
+    db.db.execute("UPDATE jobs SET future_column = 'abc'")
     db.db.commit()
 
-    row = db.db.execute("SELECT * FROM tracks LIMIT 1;").fetchone()
-    if row:
-        # Darf keinen TypeError werfen
-        record = TrackRecord.from_row(row)
-        assert record is not None
-
+    record = db.get_track_by_path("/music/Schranz/x.wav")
+    assert record is not None and record.bpm == 155.0
+    loaded_job = db.get_job_by_id(job.id)
+    assert loaded_job is not None and loaded_job.payload == {"model": "clap"}
+    # Upsert gibt die Zeile per RETURNING * zurück, also inklusive der fremden Spalte
+    assert db.upsert_track(TrackRecord(path="/music/Schranz/x.wav", mtime=2.0, size=1)).mtime == 2.0
 
 def test_needs_audit(db: TrackDB):
     """Testet die inkrementelle Prüfung für den Audit-Lauf."""
@@ -286,3 +292,45 @@ def test_feedback_and_filtering(db: TrackDB):
     fakes = db.list_tracks(quality_status=QualityStatus.FAKE_TRANSCODE)
     assert len(fakes) == 1
     assert fakes[0].id == t2.id
+
+
+def test_jobs_queue_and_cascade(db: TrackDB):
+    """Testet Einreihen mit Payload, Abfragen, Aktualisieren und Cascade-Delete.
+
+    Wiederhergestellt: sichert u. a. PRAGMA foreign_keys=ON ab.
+    """
+    track = db.upsert_track(TrackRecord(path="/music/track.wav", mtime=1.0, size=1))
+
+    # Job enqueuen
+    job = db.enqueue_job(
+        track_id=track.id,
+        job_type=JobType.EMBEDDING,
+        payload={"model": "clap", "duration": 30},
+    )
+    assert job.id is not None
+    assert job.status == JobStatus.PENDING.value
+    assert job.payload == {"model": "clap", "duration": 30}
+
+    # Ausstehende Jobs abfragen
+    pending = db.get_pending_jobs(job_type=JobType.EMBEDDING)
+    assert len(pending) == 1
+    assert pending[0].id == job.id
+
+    # Job updaten
+    db.update_job(
+        job_id=job.id,
+        status=JobStatus.COMPLETED,
+        result={"vector_dim": 512, "embedding_id": "vec_01"},
+    )
+    updated = db.get_job_by_id(job.id)
+    assert updated is not None
+    assert updated.status == JobStatus.COMPLETED.value
+    assert updated.result == {"vector_dim": 512, "embedding_id": "vec_01"}
+
+    # Keine weiteren pending Jobs
+    assert len(db.get_pending_jobs(job_type=JobType.EMBEDDING)) == 0
+
+    # Foreign Key Cascade: Wird der Track gelöscht, wird auch der Job gelöscht
+    db.db.execute("DELETE FROM tracks WHERE id = ?", (track.id,))
+    db.db.commit()
+    assert db.get_job_by_id(job.id) is None
