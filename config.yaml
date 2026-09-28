@@ -17,21 +17,62 @@ search:
   # Pro Tag maximal so viele Treffer abrufen
   limit_per_tag: 100
   # Zusätzliche Quellen: Uploads von Künstlern/Labels, denen du folgst
-  followed_users:
-    - https://soundcloud.com/beispiel-artist
-    - https://soundcloud.com/beispiel-label
+  # (leer lassen, bis konkrete Profile feststehen)
+  followed_users: []
+  # Reposts & Likes von Referenz-DJs/Accounts, deren Geschmack du vertraust.
+  # Bessere Signalqualität als reine Tag-Suche, weil Tags oft mit Promo-Spam
+  # verwässert sind. Treffer von hier bekommen einen Scoring-Bonus (reference_boost).
+  reference_accounts:
+    # Modern & Neo-Schranz (155-165+ BPM, R-Label/Outworld/Unreal-Umfeld)
+    - https://soundcloud.com/kobosil
+    - https://soundcloud.com/xnikolina
+    - https://soundcloud.com/noisesbyneongraveyard
+    - https://soundcloud.com/klangkuenstler
+    - https://soundcloud.com/inverruf
+    - https://soundcloud.com/kukomusic
+    - https://soundcloud.com/somewhen-1
+    - https://soundcloud.com/bentechy
+    - https://soundcloud.com/triptykh
+    - https://soundcloud.com/rikhter
+    - https://soundcloud.com/wndrlstt
+    # Schranz-Puristen & Brückenbauer (Loop- & Hard-Schranz)
+    - https://soundcloud.com/svetec
+    - https://soundcloud.com/obihardtechno
+    - https://soundcloud.com/claudi-17
+    - https://soundcloud.com/viperxxl
+    - https://soundcloud.com/sepromatiq
+    - https://soundcloud.com/jasonlittleofficial
+    - https://soundcloud.com/danielahaverbeck
+    # Classic Schranz (2000er Original-Sound)
+    - https://soundcloud.com/svenwittekind
+    - https://soundcloud.com/robertnatus
+    - https://soundcloud.com/frank-kvitta
+    - https://soundcloud.com/boris-s
+    - https://soundcloud.com/arkus-p
+    - https://soundcloud.com/marioranieri
+    - https://soundcloud.com/felix-kroecher
+    # Labels & Plattformen
+    - https://soundcloud.com/outworld
+    - https://soundcloud.com/technogermany
+    - https://soundcloud.com/gotec76
+    # R-Label Group bewusst weggelassen (Handle nicht auffindbar, Kobosil deckt
+    # als eigener Referenz-Account einen Teil davon ab)
+  reference_limit: 50
 
 scoring:
   # Genre-relative Bewertung: Perzentil innerhalb der aktuellen Kandidatenmenge.
   # Absolute Schwellen sind bei Underground-Genres unzuverlässig.
   min_plays: 300
   min_like_ratio: 0.01        # harte Untergrenze, damit Spam rausfliegt
-  min_percentile: 60          # Score muss im oberen 40 % der Kandidaten liegen
+  min_percentile: 40          # Score muss im oberen 60 % der Kandidaten liegen
   weights:
     like_ratio: 0.45
     repost_ratio: 0.35
     comment_ratio: 0.10
     recency: 0.10
+  # Bonus auf den Score (Punkte auf der 0-100-Perzentil-Skala), wenn ein Track
+  # von einem reference_accounts-Profil gerepostet/geliked wurde.
+  reference_boost: 15
 
 download:
   # Ordner mit deiner bestehenden Sammlung (für Duplikat-Check)
@@ -42,11 +83,11 @@ download:
   auto_download_native_only: true
 
 organize:
-  # Heruntergeladene Tracks automatisch nach BPM/Key sortieren?
+  # Heruntergeladene Tracks in der Inbox nach BPM/Key sortieren (nie im Archiv)
   enabled: true
   # BPM-Bucket-Größe für Ordnerstruktur (z.B. 5 -> 150-155, 155-160)
   bpm_bucket_size: 5
-  # Standard-Genre für ID3-Tags
+  # Standard-Genre für Tags
   default_genre: Schranz
   # Audio-Analyse: BPM und Key via librosa erkennen
   detect_bpm: true
@@ -55,7 +96,7 @@ organize:
   # geholt, sonst in diesen Genre-Bereich. Eine Uploader-Angabe im Text hat Vorrang.
   bpm_plausible_min: 120
   bpm_plausible_max: 200
-  # ID3/Vorbis-Tags automatisch schreiben (Artist, Title, BPM, Key, Genre)
+  # ID3/Vorbis-Tags automatisch schreiben (Artist, Title, BPM, Key, Genre, URL)
   write_tags: true
 
 quality:
@@ -64,6 +105,15 @@ quality:
   # Fake-Check: Spektrum-Cutoff. Echte 320er reichen bis ~20 kHz.
   min_cutoff_hz_for_320: 19000
   min_cutoff_hz_for_lossless: 19500
+  # Lautheits-/Clipping-Check (EBU R128): sehr viele Hard-Techno-Free-DLs sind
+  # brickwall-gemastert. Landet bei Überschreitung in _rejected/clipped/, nicht
+  # im normalen _rejected/ (das ist für Fake-Bitrate reserviert).
+  # Kalibriert an Stephans eigener Sammlung (2026-09-19): dort liegen akzeptierte
+  # Tracks bei LRA 3.4-10 LU und True Peak 0 bis +2 dBFS (Inter-Sample-Peaks über
+  # 0 dBFS sind im Genre normal). LUFS allein ist deshalb kein brauchbares Kriterium,
+  # LRA (Dynamikumfang) ist das zuverlässigere Brickwall-Signal.
+  min_loudness_range_lu: 2.5
+  max_true_peak_dbfs: 3.0
 
 state:
   db_path: /data/seen.sqlite

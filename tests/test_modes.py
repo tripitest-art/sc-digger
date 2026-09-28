@@ -182,9 +182,10 @@ def _stub_pipeline(monkeypatch, tmp_path, audio_bpm):
     f = tmp_path / "inbox" / "x.wav"
     f.parent.mkdir(parents=True)
     f.write_bytes(b"x")
-    monkeypatch.setattr(m, "download_native", lambda t, inbox: f)
-    monkeypatch.setattr(m, "check_file", lambda p, cfg: {"ok": True, "ext": "wav",
-                                                           "bitrate_kbps": 1411, "reason": "ok"})
+    monkeypatch.setattr(m, "download_native", lambda t, inbox, token=None: f)
+    import sc_digger.output as out
+    monkeypatch.setattr(out, "check_file", lambda p, cfg: {"ok": True, "ext": "wav",
+                                                             "bitrate_kbps": 1411, "reason": "ok"})
     monkeypatch.setattr(m, "analyze_track", lambda p: {"bpm": audio_bpm, "key_camelot": "5A",
                                                         "key_name": "Cm"})
     monkeypatch.setattr(m, "write_tags", lambda *a, **k: True)

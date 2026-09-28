@@ -1,17 +1,21 @@
-"""Downloader (nur native Downloads), State-DB und Telegram-Digest."""
+"""Downloader (nur Original-Dateien), Qualitäts-Abschluss, State-DB, Telegram-Digest und Export-Datei."""
 from __future__ import annotations
 
 import html
 import logging
 import re
+import shutil
 import sqlite3
 import subprocess
 from collections import defaultdict
+from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import requests
 
 from .models import Config, DownloadKind, Track
+from .quality import check_file
 
 log = logging.getLogger(__name__)
 
@@ -63,37 +67,88 @@ _AUDIO_EXTS = {".wav", ".aiff", ".aif", ".flac", ".mp3", ".m4a"}
 
 
 def _audio_files(root: Path) -> set[Path]:
-    """Alle Audio-Dateien unterhalb von *root* (rekursiv)."""
+    """Alle Audio-Dateien unterhalb von *root* (rekursiv, Inbox hat BPM/Key-Unterordner)."""
     return {p for p in root.rglob("*") if p.is_file() and p.suffix.lower() in _AUDIO_EXTS}
 
 
-def download_native(t: Track, inbox: Path) -> Path | None:
-    """Lädt den vom Uploader freigegebenen Original-Download über scdl.
+def download_native(t: Track, inbox: Path, auth_token: str | None = None) -> Path | None:
+    """Lädt die vom Uploader freigegebene Original-Datei über scdl.
 
-    Es werden ausschließlich Tracks mit downloadable=true geladen. Kein Gate-Handling.
+    --only-original verhindert, dass scdl still auf den Stream (AAC/MP3, 128-160 kbps)
+    ausweicht. Originale liefert SoundCloud nur mit Login, deshalb der auth_token
+    (OAuth-Token des eigenen Accounts, SOUNDCLOUD_AUTH_TOKEN in der .env).
+    Ohne Token wird gar nicht erst versucht; der Digest verlinkt dann zum manuellen Laden.
+
+    Achtung: scdl beendet sich auch bei "format not available" mit Exit-Code 0.
+    Erfolg wird deshalb daran gemessen, ob eine neue Datei entstanden ist.
     """
+    if not auth_token:
+        t.notes.append("Original nur mit SoundCloud-Login (SOUNDCLOUD_AUTH_TOKEN fehlt)")
+        return None
     inbox.mkdir(parents=True, exist_ok=True)
     before = _audio_files(inbox)
-    # Kein --onlymp3: das würde die Original-Datei ausschließen.
     r = subprocess.run(
-        ["scdl", "-l", t.url, "--path", str(inbox), "--original-art"],
+        ["scdl", "-l", t.url, "--path", str(inbox), "--only-original", "--original-art",
+         "--auth-token", auth_token],
         capture_output=True, text=True, timeout=300,
     )
-    if r.returncode != 0:
-        log.warning("scdl fehlgeschlagen für %s: %s", t.url, r.stderr[-300:])
-        return None
     new = sorted(_audio_files(inbox) - before, key=lambda p: p.stat().st_mtime, reverse=True)
-    return new[0] if new else None
+    if not new:
+        tail = (r.stderr or r.stdout or "")[-300:].replace(auth_token, "***")
+        log.warning("Kein Original geladen für %s: %s", t.url, tail)
+        t.notes.append("Original-Download fehlgeschlagen")
+        return None
+    return new[0]
 
 
-# ---------------------------------------------------------------- Telegram
+def finalize_quality(t: Track, path: Path, inbox: Path, cfg: Config) -> Path | None:
+    """Prüft eine geladene Datei und räumt sie ggf. weg. Von main.py und bot.py geteilt.
+
+    Zwei getrennte Ablehnungsgründe, zwei getrennte Ordner: _rejected/ für Fake-Bitrate
+    (Codec/Spektrum stimmt nicht), _rejected/clipped/ für Brickwall-Mastering (Datei ist
+    technisch echt, aber vom Pegel her unbrauchbar).
+
+    Gibt den Pfad zurück, wenn die Datei in der Inbox bleibt, sonst None.
+    """
+    try:
+        t.quality_report = check_file(path, cfg)
+    except Exception as e:
+        t.notes.append(f"Qualitätsprüfung fehlgeschlagen: {e}")
+        return None
+    if not t.quality_report["ok"]:
+        target = inbox / "_rejected"
+    elif t.quality_report.get("clipped"):
+        target = inbox / "_rejected" / "clipped"
+    else:
+        return path
+    target.mkdir(parents=True, exist_ok=True)
+    shutil.move(str(path), str(target / path.name))
+    return None
+
+
+# ---------------------------------------------------------------- Telegram-Chat (HTML, kompakt)
+_BUCKET_LABEL = {
+    DownloadKind.NATIVE: "✅ Direkt geladen / ladbar",
+    DownloadKind.HYPEDDIT: "🚪 Gate – manuell durchklicken",
+    DownloadKind.DROPLOUD: "🚪 Gate – manuell durchklicken",
+    DownloadKind.TONEDEN: "🚪 Gate – manuell durchklicken",
+    DownloadKind.ARTIST_UNION: "🚪 Gate – manuell durchklicken",
+    DownloadKind.STORE: "🛒 Store / Cloud-Link",
+    DownloadKind.CLOUD: "🛒 Store / Cloud-Link",
+    DownloadKind.NONE: "🎧 Nur Stream",
+}
+_ORDER = ["✅ Direkt geladen / ladbar", "🚪 Gate – manuell durchklicken",
+          "🛒 Store / Cloud-Link", "🎧 Nur Stream"]
+
+
 def _esc(s: str) -> str:
     return html.escape(s, quote=False)
 
 
 def _fmt_track(t: Track) -> str:
+    prefix = "⭐ " if t.reference_hit else ""
     line = (
-        f'<a href="{html.escape(t.url)}">{_esc(t.artist)} – {_esc(t.title)}</a>\n'
+        f'{prefix}<a href="{html.escape(t.url)}">{_esc(t.artist)} – {_esc(t.title)}</a>\n'
         f"  ▶ {t.plays:,} · ♥ {t.likes:,} ({t.like_ratio * 100:.1f} %) · 🔁 {t.reposts:,}"
     )
     if t.bpm:
@@ -104,6 +159,11 @@ def _fmt_track(t: Track) -> str:
         q = t.quality_report
         mark = "✅" if q["ok"] else "⚠️"
         line += f"\n  {mark} {q['ext'].upper()} {q['bitrate_kbps']} kbps – {_esc(q['reason'])}"
+        if q.get("clipped"):
+            line += (f"\n  🧱 Brickwall/Clipping (LRA: {q.get('loudness_range_lu')} LU, "
+                     f"Peak: {q.get('true_peak_dbfs')} dBFS)")
+    elif t.download_kind == DownloadKind.NATIVE:
+        line += f'\n  ⬇️ <a href="{html.escape(t.url)}">Original manuell laden</a>'
     if t.download_link and t.download_kind not in (DownloadKind.NATIVE, DownloadKind.NONE):
         line += f'\n  🔗 <a href="{html.escape(t.download_link)}">{t.download_kind.value}</a>'
     return line
@@ -113,29 +173,19 @@ def build_digest(tracks: list[Track], max_items: int | None, header: str | None 
     """Baut Telegram-Nachrichten (max. 4096 Zeichen je Nachricht).
 
     max_items=None zeigt alle Tracks (für Playlist-Prüfungen, wo nichts verschwinden darf).
+    Umbrochen wird pro Track, damit keine einzelne Nachricht das Telegram-Limit sprengt.
     """
     shown = tracks if max_items is None else tracks[:max_items]
     groups: dict[str, list[Track]] = defaultdict(list)
     for t in shown:
-        k = t.download_kind
-        if k == DownloadKind.NATIVE:
-            groups["✅ Direkt geladen / ladbar"].append(t)
-        elif k in (DownloadKind.HYPEDDIT, DownloadKind.DROPLOUD, DownloadKind.TONEDEN, DownloadKind.ARTIST_UNION):
-            groups["🚪 Gate – manuell durchklicken"].append(t)
-        elif k in (DownloadKind.STORE, DownloadKind.CLOUD):
-            groups["🛒 Store / Cloud-Link"].append(t)
-        else:
-            groups["🎧 Nur Stream"].append(t)
+        groups[_BUCKET_LABEL[t.download_kind]].append(t)
 
-    order = ["✅ Direkt geladen / ladbar", "🚪 Gate – manuell durchklicken",
-             "🛒 Store / Cloud-Link", "🎧 Nur Stream"]
     messages: list[str] = []
     cur = f"<b>{_esc(header or f'sc-digger – {len(tracks)} neue Treffer')}</b>\n"
-    for title in order:
+    for title in _ORDER:
         if title not in groups:
             continue
         group_head = f"\n<b>{title}</b>\n"
-        # Wenn schon der Gruppen-Header die Nachricht sprengen würde → neue Nachricht
         if len(cur) + len(group_head) > 3900 and cur.strip():
             messages.append(cur)
             cur = ""
@@ -157,8 +207,8 @@ def build_digest(tracks: list[Track], max_items: int | None, header: str | None 
     return messages
 
 
-def send_telegram(cfg: Config, messages: list[str]) -> None:
-    token, chat = cfg.telegram_token, cfg.telegram_chat_id
+def send_telegram(cfg: Config, messages: list[str], chat_id: str | None = None) -> None:
+    token, chat = cfg.telegram_token, chat_id or cfg.telegram_chat_id
     if not token or not chat:
         log.warning("TELEGRAM_BOT_TOKEN/CHAT_ID fehlen – Digest wird nur geloggt")
         for m in messages:
@@ -172,3 +222,82 @@ def send_telegram(cfg: Config, messages: list[str]) -> None:
             timeout=20,
         )
         r.raise_for_status()
+
+
+# ---------------------------------------------------------------- Export-Datei (Box-Stil, für Download-Tool)
+_WIDTH = 81
+_BAR = "═" * _WIDTH
+
+
+def _center(text: str) -> str:
+    return text.center(_WIDTH)
+
+
+def _now_str() -> str:
+    d = datetime.now(ZoneInfo("Europe/Berlin"))
+    return f"{d.day}.{d.month}.{d.year}, {d:%H:%M:%S}"
+
+
+def _fmt_track_txt(t: Track) -> str:
+    """Ein Feld pro Track im Format [Genre]  |  Artist - Titel  |  URL (kompatibel zu Extension-Exports)."""
+    tag = t.genre.strip() if t.genre and t.genre.strip() else "Unknown Genre"
+    if t.reference_hit:
+        tag = f"REF: {tag}"
+    if t.quality_report and t.quality_report.get("clipped"):
+        tag = f"CLIPPED: {tag}"
+    link = t.download_link if (t.download_link and t.download_kind not in (DownloadKind.NATIVE, DownloadKind.NONE)) else t.url
+    return f"[{tag}]  |  {t.artist} - {t.title}  |  {link}"
+
+
+def build_export_txt(tracks: list[Track], folder_name: str = "sc-digger") -> str:
+    """Baut die Export-Datei im Stil bekannter SoundCloud-Extension-Exporte, als Anhang zum Download-Tool."""
+    groups: dict[str, list[Track]] = defaultdict(list)
+    for t in tracks:
+        groups[_BUCKET_LABEL[t.download_kind]].append(t)
+
+    lines = [
+        _BAR,
+        _center("SOUNDCLOUD EXTENSION - SC-DIGGER EXPORT"),
+        _BAR,
+        "",
+        "🎵 Generated by: sc-digger",
+        f"📅 Export Date: {_now_str()}",
+        f"📁 Folder Name: {folder_name}",
+        "🌐 Website: https://soundcloud.com",
+        "",
+    ]
+    for label in _ORDER:
+        group = groups.get(label)
+        if not group:
+            continue
+        lines += [_BAR, _center(f"FOLDER: {label.split(' ', 1)[1].upper()}"), _BAR, ""]
+        lines += [_fmt_track_txt(t) for t in group]
+        lines.append("")
+
+    lines += [
+        _BAR,
+        _center("EXPORT SUMMARY"),
+        _BAR,
+        "",
+        f"📊 Total Tracks Exported: {len(tracks)}",
+        f"📁 Folder Name: {folder_name}",
+        "🎵 Generated by: sc-digger",
+        "",
+        _BAR,
+    ]
+    return "\n".join(lines)
+
+
+def send_telegram_document(cfg: Config, filename: str, content: str, chat_id: str | None = None) -> None:
+    """Schickt die Export-Datei als herunterladbaren Anhang im Chat."""
+    token, chat = cfg.telegram_token, chat_id or cfg.telegram_chat_id
+    if not token or not chat:
+        log.warning("TELEGRAM_BOT_TOKEN/CHAT_ID fehlen – Export-Datei wird nicht verschickt")
+        return
+    r = requests.post(
+        f"https://api.telegram.org/bot{token}/sendDocument",
+        data={"chat_id": chat},
+        files={"document": (filename, content.encode("utf-8"), "text/plain")},
+        timeout=30,
+    )
+    r.raise_for_status()

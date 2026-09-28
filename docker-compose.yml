@@ -2,12 +2,12 @@ services:
   sc-digger:
     build: .
     restart: unless-stopped
+    init: true                     # räumt Zombie-Prozesse der Cron-Jobs ab
+    env_file: .env                 # TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, SOUNDCLOUD_AUTH_TOKEN
     environment:
-      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
-      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID}
       TZ: Europe/Berlin
     volumes:
       - ./config.yaml:/app/config.yaml:ro
-      - /pfad/zu/deiner/Schranz:/music/Schranz:ro   # Sammlung, nur lesend
-      - /pfad/zu/inbox:/music/inbox                 # geprüfte Downloads
-      - ./data:/data                                # State-DB
+      - /music/Schranz:/music/Schranz:ro             # Sammlung, nur lesend (NFS-Mount des LXC)
+      - /music/inbox:/music/inbox                    # geprüfte Downloads (NFS-Mount des LXC)
+      - ./data:/data                                 # State-DB

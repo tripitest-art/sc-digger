@@ -52,6 +52,7 @@ class Track:
     key_camelot: str | None = None
     key_name: str | None = None
     notes: list[str] = field(default_factory=list)
+    reference_hit: bool = False  # von einem reference_accounts-Profil gerepostet/geliked
 
     @property
     def like_ratio(self) -> float:
@@ -85,3 +86,8 @@ class Config:
     @property
     def telegram_chat_id(self) -> str | None:
         return os.environ.get("TELEGRAM_CHAT_ID")
+
+    @property
+    def soundcloud_auth_token(self) -> str | None:
+        """OAuth-Token des eigenen SoundCloud-Accounts; nötig für Original-Downloads."""
+        return os.environ.get("SOUNDCLOUD_AUTH_TOKEN") or None

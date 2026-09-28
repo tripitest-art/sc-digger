@@ -3,6 +3,7 @@
   python -m sc_digger.main                                   # discover (Standard)
   python -m sc_digger.main playlist <url> [--likes]          # Playlist prüfen
   python -m sc_digger.main similar <track-url> [--filter]    # Algorithmus-Empfehlungen zu einem Track
+  python -m sc_digger.main check <url>                       # wie der Telegram-Bot: Playlist oder Station
 
 Alle Modi: --dry-run (nichts laden/senden), -v, --config, --no-telegram
 """
@@ -10,18 +11,21 @@ from __future__ import annotations
 
 import argparse
 import logging
-import shutil
+import re
+from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from .analysis import analyze_track, resolve_bpm
 from .collection import Collection
 from .health import Health
 from .models import Config, DownloadKind, Track
 from .organize import organize, write_tags
-from .output import State, build_digest, download_native, send_telegram
-from .pipeline import classify_download, dedupe, estimate_bpm, filter_bpm, score_tracks
-from .quality import check_file
-from .soundcloud import SoundCloudClient
+from .output import (State, build_digest, build_export_txt, download_native, finalize_quality,
+                     send_telegram, send_telegram_document)
+from .pipeline import (classify_download, dedupe, estimate_bpm, filter_bpm, genre_relevant,
+                       score_tracks)
+from .soundcloud import SoundCloudClient, SoundCloudError
 
 log = logging.getLogger("sc_digger")
 
@@ -46,22 +50,18 @@ def process(tracks: list[Track], cfg: Config, *, dry_run: bool,
 
     inbox = Path(cfg["download"]["inbox_dir"])
     org = cfg.raw.get("organize", {})
+    token = cfg.soundcloud_auth_token
+    if not token and any(t.download_kind == DownloadKind.NATIVE for t in fresh):
+        log.info("SOUNDCLOUD_AUTH_TOKEN fehlt: native Downloads werden nur verlinkt, nicht geladen")
     for t in fresh:
         if t.download_kind != DownloadKind.NATIVE:
             continue
-        path = download_native(t, inbox)
+        path = download_native(t, inbox, token)
         if not path:
-            t.notes.append("Download fehlgeschlagen")
             continue
-        try:
-            t.quality_report = check_file(path, cfg)
-        except Exception as e:
-            t.notes.append(f"Qualitätsprüfung fehlgeschlagen: {e}")
-            continue
-        if not t.quality_report["ok"]:
-            rejected = inbox / "_rejected"
-            rejected.mkdir(exist_ok=True)
-            shutil.move(str(path), str(rejected / path.name))
+        # Fakes -> _rejected/, Brickwall -> _rejected/clipped/; nur Echtes läuft weiter
+        path = finalize_quality(t, path, inbox, cfg)
+        if not path:
             continue
 
         # Audio-Analyse: BPM + Key aus dem Audiomaterial erkennen
@@ -113,17 +113,25 @@ def process(tracks: list[Track], cfg: Config, *, dry_run: bool,
 
 
 def deliver(header: str, fresh: list[Track], dupes: list[Track], cfg: Config,
-            *, dry_run: bool, no_telegram: bool, show_all: bool = False) -> None:
+            *, dry_run: bool, no_telegram: bool, show_all: bool = False,
+            export_name: str = "sc-digger", chat_id: str | None = None) -> None:
+    """Digest als Chat-Nachrichten + Export-Datei (Anhang) für das Download-Tool."""
     max_items = None if show_all else cfg["telegram"]["max_items_per_digest"]
     messages = build_digest(fresh, max_items, header=header)
     if dupes:
         messages[-1] += f"\n<i>{len(dupes)} bereits in deiner Sammlung (übersprungen)</i>"
     if dry_run or no_telegram:
-        import re
         for m in messages:
             print(re.sub(r"<[^>]+>", "", m))
-    else:
-        send_telegram(cfg, messages)
+        if fresh:
+            print(f"(Export-Datei mit {len(fresh)} Tracks würde als Anhang gesendet)")
+        return
+    send_telegram(cfg, messages, chat_id=chat_id)
+    if fresh:
+        ts = datetime.now(ZoneInfo("Europe/Berlin"))
+        slug = re.sub(r"[^a-z0-9]+", "-", export_name.lower()).strip("-")[:40] or "export"
+        send_telegram_document(cfg, f"sc-digger-{slug}-{ts:%Y-%m-%d_%H%M}.txt",
+                               build_export_txt(fresh, folder_name=export_name), chat_id=chat_id)
 
 
 # ------------------------------------------------------------------ Modus: discover
@@ -168,17 +176,33 @@ def _discover(cfg: Config, dry_run: bool, no_telegram: bool) -> int:
             tracks += sc.user_uploads(profile, s["max_age_days"])
         except Exception as e:
             log.warning("Profil %s übersprungen: %s", profile, e)
+    # Reposts/Likes von Referenz-Accounts: bestes Signal, bekommt Score-Bonus
+    reference_ids: set[int] = set()
+    for profile in s.get("reference_accounts", []):
+        try:
+            ref = sc.reference_activity(profile, s["max_age_days"], s.get("reference_limit", 50))
+        except Exception as e:
+            log.warning("Referenz-Account %s übersprungen: %s", profile, e)
+            continue
+        ref = [t for t in ref if genre_relevant(t, s["tags"])]
+        reference_ids.update(t.id for t in ref)
+        tracks += ref
     tracks = dedupe(tracks)
+    for t in tracks:
+        t.reference_hit = t.id in reference_ids
     raw_found = len(tracks)
-    log.info("Discovery: %d einzigartige Tracks", raw_found)
+    log.info("Discovery: %d einzigartige Tracks (davon %d von Referenz-Accounts)",
+             raw_found, len(reference_ids))
 
     tracks = score_tracks(filter_bpm(tracks, cfg), cfg)
+    log.info("Nach Filter/Scoring: %d Tracks", len(tracks))
     with State(cfg["state"]["db_path"]) as state:
         tracks = [t for t in tracks if not state.is_seen(t.id)]
         fresh, dupes = process(tracks, cfg, dry_run=dry_run)
+        log.info("Neu: %d (Duplikate in Sammlung: %d)", len(fresh), len(dupes))
 
         deliver(f"sc-digger – {len(fresh)} neue Treffer", fresh, dupes, cfg,
-                dry_run=dry_run, no_telegram=no_telegram)
+                dry_run=dry_run, no_telegram=no_telegram, export_name="Täglicher Digest")
         if not dry_run:
             # Erst nach erfolgreichem Versand markieren: bei Fehler in send_telegram
             # werden Tracks beim nächsten Lauf erneut gemeldet statt verloren zu gehen.
@@ -199,7 +223,42 @@ def run_playlist(cfg: Config, url: str, likes: bool, dry_run: bool, no_telegram:
     log.info("%s: %d Tracks", title, len(tracks))
     fresh, dupes = process(dedupe(tracks), cfg, dry_run=dry_run)
     deliver(f"Playlist „{title}“: {len(fresh)} fehlen, {len(dupes)} vorhanden",
-            fresh, dupes, cfg, dry_run=dry_run, no_telegram=no_telegram, show_all=True)
+            fresh, dupes, cfg, dry_run=dry_run, no_telegram=no_telegram, show_all=True,
+            export_name=f"Playlist: {title}")
+
+
+# ------------------------------------------------------------------ Modus: check (Link, auch vom Bot)
+def run_link(cfg: Config, url: str, *, dry_run: bool = False, no_telegram: bool = False,
+             chat_id: str | None = None, sc: SoundCloudClient | None = None) -> tuple[str, int, int]:
+    """On-Demand-Check eines beliebigen Links: Playlist -> alle Tracks, Track -> Station.
+
+    Kein Perzentil-Filter (selbst gewählte Quelle: volle Liste), aber Score-Sortierung.
+    Tracks werden als gesehen markiert, damit sie nicht nochmal im täglichen Digest landen.
+    Gibt (Quellenbeschreibung, neu, vorhanden) zurück.
+    """
+    sc = sc or SoundCloudClient()
+    kind = sc.resolve_kind(url)
+    if kind == "playlist":
+        label, tracks = sc.playlist_tracks(url, limit=200)
+        source = f"Playlist: {label}"
+    elif kind == "track":
+        label, tracks = sc.track_station(url, limit=50)
+        source = f"Station zu: {label}"
+    else:
+        raise SoundCloudError("Das ist weder ein Track- noch ein Playlist-Link.")
+
+    tracks = dedupe(tracks)
+    for t in tracks:
+        t.bpm = estimate_bpm(t)
+    tracks = score_tracks(tracks, cfg, apply_filter=False)
+    fresh, dupes = process(tracks, cfg, dry_run=dry_run)
+    deliver(f"{source}\n{len(fresh)} Tracks ({len(dupes)} schon in deiner Sammlung)",
+            fresh, dupes, cfg, dry_run=dry_run, no_telegram=no_telegram, show_all=True,
+            export_name=source, chat_id=chat_id)
+    if not dry_run:
+        with State(cfg["state"]["db_path"]) as state:
+            state.mark(tracks)
+    return source, len(fresh), len(dupes)
 
 
 # ------------------------------------------------------------------ Modus: similar
@@ -224,7 +283,8 @@ def run_similar(cfg: Config, url: str, use_station: bool, apply_filter: bool,
     fresh, dupes = process(tracks, cfg, dry_run=dry_run)
     kind = "Track-Radio" if use_station else "Related"
     deliver(f"{kind} zu „{seed.artist} – {seed.title}“: {len(fresh)} neu",
-            fresh, dupes, cfg, dry_run=dry_run, no_telegram=no_telegram)
+            fresh, dupes, cfg, dry_run=dry_run, no_telegram=no_telegram,
+            export_name=f"{kind}: {seed.artist} - {seed.title}")
 
 
 # ------------------------------------------------------------------ CLI
@@ -251,6 +311,10 @@ def cli() -> None:
     s.add_argument("--filter", action="store_true", help="BPM-Fenster + Scoring anwenden")
     s.add_argument("--limit", type=int, default=50)
 
+    c = sub.add_parser("check", parents=[common],
+                       help="Beliebigen Link prüfen wie der Telegram-Bot (Playlist oder Track-Station)")
+    c.add_argument("url")
+
     a = ap.parse_args()
     logging.basicConfig(
         level=logging.DEBUG if a.verbose else logging.INFO,
@@ -261,6 +325,8 @@ def cli() -> None:
         run_playlist(cfg, a.url, a.likes, a.dry_run, a.no_telegram)
     elif a.mode == "similar":
         run_similar(cfg, a.url, a.radio, a.filter, a.limit, a.dry_run, a.no_telegram)
+    elif a.mode == "check":
+        run_link(cfg, a.url, dry_run=a.dry_run, no_telegram=a.no_telegram)
     else:
         run_discover(cfg, a.dry_run, a.no_telegram)
 

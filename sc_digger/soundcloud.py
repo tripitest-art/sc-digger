@@ -37,6 +37,15 @@ class SoundCloudClient:
         self.s.headers["User-Agent"] = UA
         self.client_id: str | None = None
         self.delay = request_delay
+        self._lib = None  # soundcloud-v2-Lib, nur für Reposts/Likes der Referenz-Accounts
+
+    @property
+    def lib(self):
+        """Lazy-init der soundcloud-v2-Lib (kommt mit scdl, steht aber explizit in requirements)."""
+        if self._lib is None:
+            import soundcloud as sc_lib
+            self._lib = sc_lib.SoundCloud()
+        return self._lib
 
     # ---------- client_id ----------
     def _fetch_client_id(self) -> str:
@@ -173,14 +182,19 @@ class SoundCloudClient:
             full += data if isinstance(data, list) else data.get("collection", [])
         return full
 
-    def playlist_tracks(self, playlist_url: str) -> tuple[str, list[Track]]:
-        """Alle Tracks einer Playlist (in Playlist-Reihenfolge). Gibt (Titel, Tracks) zurück."""
+    def playlist_tracks(self, playlist_url: str, limit: int | None = None) -> tuple[str, list[Track]]:
+        """Alle Tracks einer Playlist (in Playlist-Reihenfolge). Gibt (Titel, Tracks) zurück.
+
+        SoundCloud liefert nur die ersten Tracks vollständig, der Rest sind Stubs (nur id).
+        Die werden nachgeladen, sonst fehlen bei langen Playlists die meisten Tracks.
+        """
+        playlist_url = self._unshorten(playlist_url)
         info = self._get("/resolve", {"url": playlist_url})
         kind = info.get("kind")
         if kind not in ("playlist", "system-playlist"):
             raise SoundCloudError(f"Keine Playlist-URL (kind={kind!r}): {playlist_url}")
         title = info.get("title", "Playlist")
-        raw = info.get("tracks", [])
+        raw = info.get("tracks", [])[:limit] if limit else info.get("tracks", [])
         by_id = {r["id"]: r for r in self._hydrate_stubs(raw)}
         ordered = [by_id[r["id"]] for r in raw if r.get("id") in by_id]
         tracks = [t for t in (self._to_track(r) for r in ordered) if t]
@@ -201,7 +215,7 @@ class SoundCloudClient:
 
     # ---------- Empfehlungen zu einem Track ----------
     def resolve_track(self, track_url: str) -> Track:
-        info = self._get("/resolve", {"url": track_url})
+        info = self._get("/resolve", {"url": self._unshorten(track_url)})
         t = self._to_track(info)
         if not t:
             raise SoundCloudError(f"Kein Track: {track_url}")
@@ -228,3 +242,93 @@ class SoundCloudClient:
         except Exception as e:
             log.info("Station nicht verfügbar (%s) -> related()", e)
         return self.related(track_id, limit)
+
+    # ---------- Links auflösen (Bot) ----------
+    def _unshorten(self, url: str) -> str:
+        """Löst on.soundcloud.com-Share-Links (App 'Teilen'-Button) zur echten URL auf.
+
+        Der api-v2 /resolve-Endpunkt kennt nur soundcloud.com-URLs, keine Kurzlinks.
+        """
+        if "on.soundcloud.com" not in url.lower():
+            return url
+        try:
+            return self.s.get(url, allow_redirects=True, timeout=15).url
+        except requests.RequestException:
+            log.warning("Konnte Kurzlink nicht auflösen, versuche Original-URL: %s", url)
+            return url
+
+    def resolve_kind(self, url: str) -> str | None:
+        """'track' | 'playlist' | 'user' | None für eine beliebige SoundCloud-URL."""
+        info = self._get("/resolve", {"url": self._unshorten(url)})
+        kind = info.get("kind")
+        return "playlist" if kind == "system-playlist" else kind
+
+    def track_station(self, url: str, limit: int = 50) -> tuple[str, list[Track]]:
+        """Station (Algorithmus-Radio) zu einem Track-Link. Gibt (Label, Tracks) zurück."""
+        seed = self.resolve_track(url)
+        tracks = [t for t in self.station(seed.id, limit) if t.id != seed.id]
+        label = f"{seed.artist} – {seed.title}".strip(" –")
+        return label, tracks
+
+    # ---------- Referenz-Accounts ----------
+    def reference_activity(self, profile_url: str, max_age_days: int, limit: int = 50) -> list[Track]:
+        """Reposts + Likes eines Referenz-Accounts (bessere Signalqualität als Tag-Suche).
+
+        Nur einzelne Tracks zählen, Playlist-Reposts/-Likes werden übersprungen. Beide Feeds
+        sind absteigend nach Datum sortiert, deshalb bricht die Schleife beim ersten zu alten
+        Item ab, statt die volle Historie zu holen.
+        """
+        if self.resolve_kind(profile_url) != "user":
+            raise SoundCloudError(f"Kein User-Profil: {profile_url}")
+        user_id = self._get("/resolve", {"url": self._unshorten(profile_url)})["id"]
+
+        since = datetime.now(timezone.utc) - timedelta(days=max_age_days)
+        out: list[Track] = []
+        for source in (self.lib.get_user_reposts(user_id), self.lib.get_user_likes(user_id)):
+            n = 0
+            for item in source:
+                item_created = getattr(item, "created_at", None)
+                if item_created is not None and item_created < since:
+                    break
+                track_obj = getattr(item, "track", None)
+                if track_obj is None:
+                    continue
+                t = self._from_lib_track(track_obj)
+                if t:
+                    out.append(t)
+                n += 1
+                if n >= limit:
+                    break
+        return out
+
+    @staticmethod
+    def _from_lib_track(o) -> Track | None:
+        """Mapping für Objekte der soundcloud-v2-Lib (Referenz-Feeds)."""
+        if getattr(o, "kind", "track") != "track" or not getattr(o, "title", None):
+            return None
+        user = getattr(o, "user", None)
+        tag_list = getattr(o, "tag_list", "") or ""
+        tags = [a or b for a, b in re.findall(r'"([^"]+)"|(\S+)', tag_list)]
+        created = getattr(o, "created_at", None)
+        created_iso = created.isoformat() if hasattr(created, "isoformat") else (created or "")
+        return Track(
+            id=o.id,
+            title=o.title,
+            url=getattr(o, "permalink_url", "") or "",
+            artist=getattr(user, "username", "") if user else "",
+            artist_url=getattr(user, "permalink_url", "") if user else "",
+            created_at=created_iso,
+            duration_ms=getattr(o, "full_duration", None) or getattr(o, "duration", 0) or 0,
+            genre=getattr(o, "genre", "") or "",
+            tags=tags,
+            description=getattr(o, "description", "") or "",
+            bpm=None,
+            plays=getattr(o, "playback_count", 0) or 0,
+            likes=getattr(o, "likes_count", 0) or 0,
+            reposts=getattr(o, "reposts_count", 0) or 0,
+            comments=getattr(o, "comment_count", 0) or 0,
+            downloadable=bool(getattr(o, "downloadable", False)),
+            has_downloads_left=bool(getattr(o, "has_downloads_left", True)),
+            purchase_url=getattr(o, "purchase_url", None),
+            purchase_title=getattr(o, "purchase_title", None),
+        )

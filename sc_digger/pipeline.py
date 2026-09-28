@@ -61,6 +61,18 @@ def filter_bpm(tracks: list[Track], cfg: Config) -> list[Track]:
     return out
 
 
+# ---------------------------------------------------------------- Genre-Relevanz
+def genre_relevant(t: Track, keywords: list[str]) -> bool:
+    """Prüft Titel/Genre/Tags auf eines der Suchwörter.
+
+    Für reference_activity() nötig: Reposts/Likes von Referenz-Accounts sind sonst
+    ungefiltert deren gesamte Aktivität (Trance, House, Boiler-Room-Sets, ...), nicht
+    nur der Schranz/Hard-Techno-Ausschnitt, an dem die Reference-Boost-Logik interessiert ist.
+    """
+    hay = " ".join([t.title, t.genre, " ".join(t.tags)]).lower()
+    return any(k.lower() in hay for k in keywords)
+
+
 # ---------------------------------------------------------------- Dedup
 def dedupe(tracks: list[Track]) -> list[Track]:
     seen: dict[int, Track] = {}
@@ -78,14 +90,18 @@ def _percentile_rank(value: float, sorted_vals: list[float]) -> float:
     return 100.0 * bisect.bisect_right(sorted_vals, value) / len(sorted_vals)
 
 
-def score_tracks(tracks: list[Track], cfg: Config) -> list[Track]:
+def score_tracks(tracks: list[Track], cfg: Config, apply_filter: bool = True) -> list[Track]:
     """Bewertet relativ zur aktuellen Kandidatenmenge (Genre-Baseline).
 
     Absolute Schwellen wie 'Like-Ratio > 5 %' filtern bei Schranz/Hard Techno fast
     alles weg, weil Plays durch Autoplay aufgebläht sind. Perzentile sind robuster.
+
+    apply_filter=False: nur bewerten und nach Score sortieren, nichts aussortieren.
+    Für On-Demand-Checks (Playlist/Station) will man die volle Liste sehen, nicht
+    nur das obere Perzentil des täglichen Digests.
     """
     sc = cfg["scoring"]
-    pool = [t for t in tracks if t.plays >= sc["min_plays"]]
+    pool = [t for t in tracks if t.plays >= sc["min_plays"]] if apply_filter else list(tracks)
     if len(pool) < 10:
         log.warning("Nur %d Kandidaten über min_plays -> Perzentile wenig aussagekräftig", len(pool))
 
@@ -97,7 +113,10 @@ def score_tracks(tracks: list[Track], cfg: Config) -> list[Track]:
     max_age = cfg["search"]["max_age_days"]
 
     for t in pool:
-        age_days = (now - datetime.fromisoformat(t.created_at.replace("Z", "+00:00"))).days
+        try:
+            age_days = (now - datetime.fromisoformat(t.created_at.replace("Z", "+00:00"))).days
+        except (ValueError, TypeError):
+            age_days = max_age
         recency = max(0.0, 1.0 - age_days / max_age)
         # log-Dämpfung: sehr viele Plays sollen nicht automatisch gewinnen
         t.score = (
@@ -106,16 +125,19 @@ def score_tracks(tracks: list[Track], cfg: Config) -> list[Track]:
             + w["comment_ratio"] * _percentile_rank(t.comment_ratio, com_sorted)
             + w["recency"] * 100.0 * recency
         )
+        if t.reference_hit:
+            t.score += sc.get("reference_boost", 0)
     scores = sorted(t.score for t in pool)
     for t in pool:
         t.percentile = _percentile_rank(t.score, scores)
 
-    keep = [
-        t for t in pool
-        if t.like_ratio >= sc["min_like_ratio"] and t.percentile >= sc["min_percentile"]
-    ]
-    keep.sort(key=lambda t: t.score, reverse=True)
-    return keep
+    if apply_filter:
+        pool = [
+            t for t in pool
+            if t.like_ratio >= sc["min_like_ratio"] and t.percentile >= sc["min_percentile"]
+        ]
+    pool.sort(key=lambda t: t.score, reverse=True)
+    return pool
 
 
 # ---------------------------------------------------------------- Download-Klassifizierung

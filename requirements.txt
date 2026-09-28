@@ -1,6 +1,7 @@
 requests>=2.31
 PyYAML>=6.0
 numpy>=1.26
-scdl>=2.10
+scdl>=3.0
+soundcloud-v2>=1.7
 librosa>=0.10
 mutagen>=1.47

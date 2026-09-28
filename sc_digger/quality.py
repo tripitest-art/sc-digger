@@ -1,12 +1,18 @@
-"""Audio-Qualitätsprüfung: Container/Bitrate per ffprobe, Fake-Erkennung per Spektrum.
+"""Audio-Qualitätsprüfung: Container/Bitrate per ffprobe, Fake-Erkennung per Spektrum,
+Lautheit/Clipping per EBU R128.
 
 Bitrate allein täuscht: Ein 128-kbps-MP3, das nach 320 kbps oder WAV konvertiert wurde,
 hat trotzdem eine harte Frequenzgrenze bei ~16 kHz. Das lässt sich im Spektrum sehen.
+
+Separat davon: viele Hard-Techno-Free-DLs sind brickwall-gemastert (kein Headroom mehr,
+Dauer-Clipping). Das ist ein Mastering-Problem, kein Fake-Problem, deshalb ein eigenes
+Flag ("clipped") statt es mit "ok" zu vermischen.
 """
 from __future__ import annotations
 
 import json
 import logging
+import re
 import subprocess
 from pathlib import Path
 
@@ -15,6 +21,10 @@ import numpy as np
 from .models import Config
 
 log = logging.getLogger(__name__)
+
+_LUFS_RE = re.compile(r"^\s*I:\s*(-?\d+\.?\d*)\s*LUFS", re.M)
+_PEAK_RE = re.compile(r"^\s*Peak:\s*(-?\d+\.?\d*)\s*dBFS", re.M)
+_LRA_RE = re.compile(r"^\s*LRA:\s*(-?\d+\.?\d*)\s*LU\b", re.M)
 
 
 def _run(cmd: list[str], timeout: int = 120) -> subprocess.CompletedProcess:
@@ -71,6 +81,32 @@ def spectral_cutoff_hz(path: Path, seconds: int = 30, offset: int = 60) -> float
     return float(freqs[active[-1]]) if active.size else 0.0
 
 
+def loudness_report(path: Path) -> dict:
+    """Integrierte Lautheit (LUFS), Loudness Range (LRA) und True Peak per ffmpeg-ebur128.
+
+    Kalibrierung anhand einer Stichprobe aus Stephans eigener Sammlung (2026-09-19):
+    Hard-Techno/Schranz-Master liegen dort routinemäßig bei -3.9 bis -6.8 LUFS integriert
+    und 0 bis +2.0 dBFS True Peak (Inter-Sample-Peaks über 0 dBFS sind im Genre normal,
+    kein Fake- oder Fehlersignal). LUFS und True Peak allein taugen deshalb nicht als
+    Clipping-Filter. LRA (Loudness Range) dagegen war in derselben Stichprobe durchgehend
+    ≥ 3.4 LU bei akzeptierten Tracks -> ein wirklich brickwall-gemastertes "Dauer-Clipping"
+    ohne jede Dynamik zeigt sich zuverlässiger als sehr niedrige LRA, nicht als hohe Lautheit.
+    """
+    r = _run([
+        "ffmpeg", "-v", "info", "-i", str(path),
+        "-filter:a", "ebur128=peak=true", "-f", "null", "-",
+    ], timeout=180)
+    stderr = r.stderr.decode(errors="replace")
+    i_matches = _LUFS_RE.findall(stderr)
+    p_matches = _PEAK_RE.findall(stderr)
+    lra_matches = _LRA_RE.findall(stderr)
+    return {
+        "integrated_lufs": float(i_matches[-1]) if i_matches else None,
+        "true_peak_dbfs": float(p_matches[-1]) if p_matches else None,
+        "loudness_range_lu": float(lra_matches[-1]) if lra_matches else None,
+    }
+
+
 def check_file(path: Path, cfg: Config) -> dict:
     """Gibt einen Report zurück: {ok, format, bitrate_kbps, cutoff_hz, reason}."""
     q = cfg["quality"]
@@ -111,4 +147,15 @@ def check_file(path: Path, cfg: Config) -> dict:
 
     report["ok"] = True
     report["reason"] = "echte Qualität"
+
+    loud = loudness_report(path)
+    report["integrated_lufs"] = loud["integrated_lufs"]
+    report["true_peak_dbfs"] = loud["true_peak_dbfs"]
+    report["loudness_range_lu"] = loud["loudness_range_lu"]
+    min_lra = q.get("min_loudness_range_lu", 2.5)
+    max_tp = q.get("max_true_peak_dbfs", 3.0)
+    report["clipped"] = bool(
+        (loud["loudness_range_lu"] is not None and loud["loudness_range_lu"] < min_lra)
+        or (loud["true_peak_dbfs"] is not None and loud["true_peak_dbfs"] >= max_tp)
+    )
     return report

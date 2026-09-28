@@ -30,7 +30,10 @@ python -m sc_digger.main
 python -m sc_digger.main playlist https://soundcloud.com/user/sets/name
 python -m sc_digger.main playlist https://soundcloud.com/user --likes     # Likes eines Profils
 
-# 3) similar: Was schlägt der SoundCloud-Algorithmus zu einem Track vor?
+# 3) check: wie der Telegram-Bot – Playlist-Link -> alle Tracks, Track-Link -> Station
+python -m sc_digger.main check https://soundcloud.com/artist/track
+
+# 4) similar: Was schlägt der SoundCloud-Algorithmus zu einem Track vor?
 python -m sc_digger.main similar https://soundcloud.com/artist/track            # Related Tracks
 python -m sc_digger.main similar https://soundcloud.com/artist/track --radio    # Track-Radio
 python -m sc_digger.main similar https://soundcloud.com/artist/track --filter   # + BPM/Scoring
@@ -62,6 +65,23 @@ docker compose up -d        # täglich 07:30 per cron
 ## Tests
 ```bash
 pip install -r requirements.txt pytest && pytest tests -q
+```
+
+## Telegram-Bot
+Der Container startet einen Bot-Listener: Schick ihm einen SoundCloud-Link (auch
+`on.soundcloud.com`-Kurzlinks aus der App) und du bekommst die komplette Playlist bzw. die
+Station dazu, inkl. Sammlungsabgleich, Download-Einordnung und Export-Datei. Er reagiert nur
+auf `TELEGRAM_CHAT_ID`. Fehlen die Telegram-Daten, pausiert der Bot, der tägliche Lauf
+läuft trotzdem.
+
+## Original-Downloads (SOUNDCLOUD_AUTH_TOKEN)
+SoundCloud gibt Original-Dateien nur eingeloggt heraus. Ohne `SOUNDCLOUD_AUTH_TOKEN` in der
+`.env` werden native Downloads nur verlinkt („Original manuell laden“). Stream-Rips werden
+nie geladen (`scdl --only-original`).
+
+## Update auf dem Server
+```bash
+cd /root/sc-digger && git pull && docker compose up -d --build
 ```
 
 ## Health-Alarm

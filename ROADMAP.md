@@ -100,7 +100,11 @@ flowchart TD
 - [x] **Native Download & Quality Check:** `scdl`, ffprobe + FFT-Spektrum-Cutoff gegen Transcodes.
 - [x] **BPM- und Camelot-Key-Erkennung** aus dem Audio (`librosa`, Krumhansl-Kessler).
 - [x] **Auto-Tagging** (MP3, FLAC, AIFF, M4A) und **Inbox-Organize** nach `inbox/<BPM>/<Key>/`.
-- [x] **Telegram-Digest**, gruppiert nach Download-Weg; State-DB gegen Doppelmeldungen.
+- [x] **Telegram-Digest**, gruppiert nach Download-Weg; State-DB gegen Doppelmeldungen; Export-Datei als Anhang.
+- [x] **Telegram-Bot:** Playlist- oder Track-Link schicken → volle Liste bzw. Station mit Sammlungsabgleich.
+- [x] **Referenz-Accounts:** Reposts/Likes von 28 Schranz-DJs/Labels mit Score-Bonus (Vorstufe zu Curator-Mining).
+- [x] **Lautheits-/Clipping-Check** (EBU R128, LRA): Brickwall-Master landen in `_rejected/clipped/`.
+- [x] **Nur Original-Downloads** (`--only-original`), mit `SOUNDCLOUD_AUTH_TOKEN` automatisch, sonst verlinkt.
 
 ## ✅ Phase 1.5: Robustheit (Abgeschlossen)
 
@@ -164,6 +168,7 @@ Copilot, Recommender und Dashboard.
   und bricht bei jeder Frontend-Änderung.
 
 ### 3.4 Curator-Mining
+* Basis vorhanden: feste Liste `reference_accounts`. Ausbau: Liste automatisch aus 👍-Tracks erweitern.
 * Wer deine 👍-Tracks repostet oder liked, kuratiert meist deinen Stil.
 * Wöchentliche Vorschläge für `followed_users` aus diesen Profilen, bestätigt per Telegram-Button.
 
