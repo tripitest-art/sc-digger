@@ -230,7 +230,7 @@ def test_bot_logs_foreign_chat_id_and_warns_on_non_numeric_chat(monkeypatch, cap
         status_code = 200
         def __init__(self, result): self._r = result
         def raise_for_status(self): pass
-        def json(self): return {"result": self._r}
+        def json(self): return {"ok": True, "result": self._r}
 
     calls = iter([
         Resp([]),                                                        # Backlog beim Start
@@ -243,10 +243,85 @@ def test_bot_logs_foreign_chat_id_and_warns_on_non_numeric_chat(monkeypatch, cap
             return next(calls)
         except StopIteration:
             raise KeyboardInterrupt                                      # Loop beenden
-    monkeypatch.setattr(bot.requests, "get", fake_get)
+    monkeypatch.setattr(out.requests, "get", fake_get)
     with pytest.raises(KeyboardInterrupt):
         bot.listen(Config.load(ROOT / "config.yaml"))
     assert "keine Zahl" in caplog.text
     assert "id=4242" in caplog.text and "Stephan" in caplog.text
     assert "GEHEIMTEXT" not in caplog.text                               # kein Nachrichtentext
     assert handled == []
+
+
+# ---------------- Zugangsdaten nie in Logs / Health / Fehlern ----------------
+from sc_digger.redact import redact
+
+TG_TOKEN = "8991706275:AAHB2paTESTTESTTESTTESTTESTTESTxyz"
+
+
+def test_redact_telegram_url_and_env_secrets(monkeypatch):
+    monkeypatch.setenv("SOUNDCLOUD_AUTH_TOKEN", "2-123456-9999-SECRETsecret")
+    text = (f"400 Client Error for url: https://api.telegram.org/bot{TG_TOKEN}/sendMessage "
+            f"cmd: scdl --auth-token 2-123456-9999-SECRETsecret")
+    r = redact(text)
+    assert TG_TOKEN not in r and "SECRETsecret" not in r
+    assert "bot***" in r and "--auth-token ***" in r
+
+
+def test_telegram_error_has_description_not_token(monkeypatch):
+    class R:
+        status_code = 400
+        def json(self): return {"ok": False, "description": "Bad Request: chat not found"}
+    monkeypatch.setattr(out.requests, "post", lambda url, **kw: R())
+    with pytest.raises(out.TelegramError) as ei:
+        out.telegram_call(TG_TOKEN, "sendMessage", json={})
+    assert "chat not found" in str(ei.value) and TG_TOKEN not in str(ei.value)
+    assert ei.value.__cause__ is None                       # kein angehängter HTTPError mit URL
+
+
+def test_telegram_network_error_is_redacted(monkeypatch):
+    import requests as rq
+
+    def boom(url, **kw):
+        raise rq.ConnectionError(f"Max retries exceeded with url: {url}")
+    monkeypatch.setattr(out.requests, "post", boom)
+    with pytest.raises(out.TelegramError) as ei:
+        out.telegram_call(TG_TOKEN, "sendMessage", json={})
+    assert TG_TOKEN not in str(ei.value)
+
+
+def test_health_record_redacts(tmp_path):
+    from sc_digger.health import Health
+    with Health(tmp_path / "h.sqlite") as h:
+        h.record("discover", ok=False, found=0, error=f"HTTPError url: .../bot{TG_TOKEN}/sendMessage")
+        stored = h.db.execute("select error from runs").fetchone()[0]
+    assert TG_TOKEN not in stored and "bot***" in stored
+
+
+def test_scdl_timeout_does_not_leak_token(tmp_path, monkeypatch, caplog):
+    def slow(cmd, **kw):
+        raise subprocess.TimeoutExpired(cmd, 300)
+    monkeypatch.setattr(out.subprocess, "run", slow)
+    t = mk(1)
+    assert out.download_native(t, tmp_path, "2-SECRET-TOKEN-xyz") is None
+    assert "2-SECRET-TOKEN-xyz" not in caplog.text and "Timeout" in t.notes[-1]
+
+
+def test_cli_failure_goes_through_redacting_log(tmp_path, monkeypatch, capsys):
+    """Uncaught Tracebacks (cron!) würden an der Bereinigung vorbeigehen -> cli fängt und loggt."""
+    import logging
+    monkeypatch.setattr("sys.argv", ["sc-digger", "--config", str(ROOT / "config.yaml")])
+
+    def boom(*a, **k):
+        raise RuntimeError(f"failed url https://api.telegram.org/bot{TG_TOKEN}/sendMessage")
+    monkeypatch.setattr(m, "run_discover", boom)
+    root = logging.getLogger()
+    old = root.handlers[:]
+    root.handlers = [logging.StreamHandler()]                # frischer Handler -> stderr
+    try:
+        with pytest.raises(SystemExit) as ei:
+            m.cli()
+    finally:
+        root.handlers = old
+    err = capsys.readouterr().err
+    assert ei.value.code == 1
+    assert "Lauf fehlgeschlagen" in err and TG_TOKEN not in err and "bot***" in err

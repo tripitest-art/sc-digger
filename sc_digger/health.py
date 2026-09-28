@@ -13,6 +13,8 @@ import logging
 import sqlite3
 from pathlib import Path
 
+from .redact import redact
+
 log = logging.getLogger(__name__)
 
 
@@ -42,7 +44,7 @@ class Health:
     def record(self, mode: str, *, ok: bool, found: int, error: str | None = None) -> None:
         self.db.execute(
             "INSERT INTO runs (mode, ok, found, error) VALUES (?,?,?,?)",
-            (mode, int(ok), found, error),
+            (mode, int(ok), found, redact(error) if error else None),
         )
         self.db.commit()
 

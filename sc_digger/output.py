@@ -16,8 +16,30 @@ import requests
 
 from .models import Config, DownloadKind, Track
 from .quality import check_file
+from .redact import redact
 
 log = logging.getLogger(__name__)
+
+
+class TelegramError(RuntimeError):
+    """Telegram-Fehler ohne Token in der Meldung (anders als requests.HTTPError)."""
+
+
+def telegram_call(token: str, method: str, *, http: str = "post", timeout: int = 20, **kwargs) -> dict:
+    """Ruft die Telegram-API auf. Fehler kommen als TelegramError mit Telegrams Beschreibung,
+    nie mit der URL, weil die den Bot-Token enthält."""
+    url = f"https://api.telegram.org/bot{token}/{method}"
+    try:
+        r = getattr(requests, http)(url, timeout=timeout, **kwargs)
+    except requests.RequestException as e:
+        raise TelegramError(redact(f"{method}: {type(e).__name__}: {e}")) from None
+    try:
+        body = r.json()
+    except ValueError:
+        body = {}
+    if r.status_code >= 400 or not body.get("ok", False):
+        raise TelegramError(f"{method}: Telegram {r.status_code}: {body.get('description', 'unbekannter Fehler')}")
+    return body
 
 
 # ---------------------------------------------------------------- State
@@ -87,11 +109,17 @@ def download_native(t: Track, inbox: Path, auth_token: str | None = None) -> Pat
         return None
     inbox.mkdir(parents=True, exist_ok=True)
     before = _audio_files(inbox)
-    r = subprocess.run(
-        ["scdl", "-l", t.url, "--path", str(inbox), "--only-original", "--original-art",
-         "--auth-token", auth_token],
-        capture_output=True, text=True, timeout=300,
-    )
+    try:
+        r = subprocess.run(
+            ["scdl", "-l", t.url, "--path", str(inbox), "--only-original", "--original-art",
+             "--auth-token", auth_token],
+            capture_output=True, text=True, timeout=300,
+        )
+    except subprocess.TimeoutExpired:
+        # Die Exception-Meldung enthält die Kommandozeile samt Token -> nicht weiterreichen
+        log.warning("scdl-Timeout für %s", t.url)
+        t.notes.append("Original-Download fehlgeschlagen (Timeout)")
+        return None
     new = sorted(_audio_files(inbox) - before, key=lambda p: p.stat().st_mtime, reverse=True)
     if not new:
         tail = (r.stderr or r.stdout or "")[-300:].replace(auth_token, "***")
@@ -215,13 +243,8 @@ def send_telegram(cfg: Config, messages: list[str], chat_id: str | None = None) 
             print(re.sub(r"<[^>]+>", "", m))
         return
     for m in messages:
-        r = requests.post(
-            f"https://api.telegram.org/bot{token}/sendMessage",
-            json={"chat_id": chat, "text": m, "parse_mode": "HTML",
-                  "disable_web_page_preview": True},
-            timeout=20,
-        )
-        r.raise_for_status()
+        telegram_call(token, "sendMessage", json={"chat_id": chat, "text": m, "parse_mode": "HTML",
+                                                  "disable_web_page_preview": True})
 
 
 # ---------------------------------------------------------------- Export-Datei (Box-Stil, für Download-Tool)
@@ -294,10 +317,5 @@ def send_telegram_document(cfg: Config, filename: str, content: str, chat_id: st
     if not token or not chat:
         log.warning("TELEGRAM_BOT_TOKEN/CHAT_ID fehlen – Export-Datei wird nicht verschickt")
         return
-    r = requests.post(
-        f"https://api.telegram.org/bot{token}/sendDocument",
-        data={"chat_id": chat},
-        files={"document": (filename, content.encode("utf-8"), "text/plain")},
-        timeout=30,
-    )
-    r.raise_for_status()
+    telegram_call(token, "sendDocument", timeout=30, data={"chat_id": chat},
+                  files={"document": (filename, content.encode("utf-8"), "text/plain")})

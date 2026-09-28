@@ -16,10 +16,10 @@ import logging
 import re
 import time
 
-import requests
-
 from .main import run_link
 from .models import Config
+from .output import TelegramError, telegram_call
+from .redact import install_redacting_logging
 from .soundcloud import SoundCloudClient, SoundCloudError
 
 log = logging.getLogger("sc_digger.bot")
@@ -37,12 +37,9 @@ HELP_TEXT = (
 
 
 def _send_text(cfg: Config, chat_id: str, text: str) -> None:
-    requests.post(
-        f"https://api.telegram.org/bot{cfg.telegram_token}/sendMessage",
-        json={"chat_id": chat_id, "text": text, "parse_mode": "HTML",
-              "disable_web_page_preview": True},
-        timeout=20,
-    ).raise_for_status()
+    telegram_call(cfg.telegram_token, "sendMessage",
+                  json={"chat_id": chat_id, "text": text, "parse_mode": "HTML",
+                        "disable_web_page_preview": True})
 
 
 def handle_message(cfg: Config, sc: SoundCloudClient, chat_id: str, text: str) -> None:
@@ -91,27 +88,21 @@ def listen(cfg: Config) -> None:
     # Bei Netzproblemen wiederholen statt abzustürzen.
     while True:
         try:
-            r = requests.get(f"https://api.telegram.org/bot{token}/getUpdates",
-                             params={"timeout": 0}, timeout=20)
-            if r.status_code == 401:
-                _idle_forever("Telegram lehnt den Bot-Token ab (401)")
-            r.raise_for_status()
-            results = r.json().get("result", [])
+            results = telegram_call(token, "getUpdates", http="get", params={"timeout": 0})["result"]
             offset = (results[-1]["update_id"] + 1) if results else 0
             break
-        except requests.RequestException:
-            log.warning("Telegram nicht erreichbar, neuer Versuch in 30 s", exc_info=True)
+        except TelegramError as e:
+            if "Telegram 401" in str(e):
+                _idle_forever("Telegram lehnt den Bot-Token ab (401)")
+            log.warning("Telegram nicht erreichbar (%s), neuer Versuch in 30 s", e)
             time.sleep(30)
 
     log.info("Bot-Listener gestartet, warte auf Nachrichten (Chat %s)...", chat_id)
     while True:
         try:
-            r = requests.get(
-                f"https://api.telegram.org/bot{token}/getUpdates",
-                params={"offset": offset, "timeout": 30}, timeout=40,
-            )
-            r.raise_for_status()
-            for upd in r.json().get("result", []):
+            updates = telegram_call(token, "getUpdates", http="get", timeout=40,
+                                    params={"offset": offset, "timeout": 30})["result"]
+            for upd in updates:
                 offset = upd["update_id"] + 1
                 msg = upd.get("message") or {}
                 chat = msg.get("chat", {})
@@ -123,8 +114,8 @@ def listen(cfg: Config) -> None:
                     continue
                 if msg.get("text"):
                     handle_message(cfg, sc, chat_id, msg["text"])
-        except requests.RequestException:
-            log.warning("Telegram-Polling-Fehler, versuche erneut", exc_info=True)
+        except TelegramError as e:
+            log.warning("Telegram-Polling-Fehler (%s), versuche erneut", e)
             time.sleep(5)
         except Exception:
             log.exception("Unerwarteter Fehler im Bot-Loop")
@@ -132,10 +123,7 @@ def listen(cfg: Config) -> None:
 
 
 def cli() -> None:
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-    )
+    install_redacting_logging(logging.INFO)
     listen(Config.load("config.yaml"))
 
 

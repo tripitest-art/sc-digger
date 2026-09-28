@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import logging
 import re
+import sys
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -21,6 +22,7 @@ from .collection import Collection
 from .health import Health
 from .models import Config, DownloadKind, Track
 from .organize import organize, write_tags
+from .redact import install_redacting_logging
 from .output import (State, build_digest, build_export_txt, download_native, finalize_quality,
                      send_telegram, send_telegram_document)
 from .pipeline import (classify_download, dedupe, estimate_bpm, filter_bpm, genre_relevant,
@@ -316,19 +318,21 @@ def cli() -> None:
     c.add_argument("url")
 
     a = ap.parse_args()
-    logging.basicConfig(
-        level=logging.DEBUG if a.verbose else logging.INFO,
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-    )
+    install_redacting_logging(logging.DEBUG if a.verbose else logging.INFO)
     cfg = Config.load(a.config)
-    if a.mode == "playlist":
-        run_playlist(cfg, a.url, a.likes, a.dry_run, a.no_telegram)
-    elif a.mode == "similar":
-        run_similar(cfg, a.url, a.radio, a.filter, a.limit, a.dry_run, a.no_telegram)
-    elif a.mode == "check":
-        run_link(cfg, a.url, dry_run=a.dry_run, no_telegram=a.no_telegram)
-    else:
-        run_discover(cfg, a.dry_run, a.no_telegram)
+    try:
+        if a.mode == "playlist":
+            run_playlist(cfg, a.url, a.likes, a.dry_run, a.no_telegram)
+        elif a.mode == "similar":
+            run_similar(cfg, a.url, a.radio, a.filter, a.limit, a.dry_run, a.no_telegram)
+        elif a.mode == "check":
+            run_link(cfg, a.url, dry_run=a.dry_run, no_telegram=a.no_telegram)
+        else:
+            run_discover(cfg, a.dry_run, a.no_telegram)
+    except Exception:
+        # Über logging statt Python-Standard-Traceback: nur so greift die Token-Bereinigung
+        log.exception("Lauf fehlgeschlagen")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
