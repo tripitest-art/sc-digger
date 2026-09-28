@@ -334,8 +334,11 @@ def write_riff_info(path: Path, fields: dict[str, str | None]) -> bool:
                 chunk_size = struct.unpack("<I", src.read(4))[0]
                 pad = chunk_size & 1
                 if pos + 8 + chunk_size + pad > file_size:
-                    log.warning("WAV-Datei beschädigt (Block %r reicht über Dateiende): %s", cid, path)
-                    return False
+                    if pad == 1 and pos + 8 + chunk_size == file_size:
+                        pad = 0
+                    else:
+                        log.warning("WAV-Datei beschädigt (Block %r reicht über Dateiende): %s", cid, path)
+                        return False
 
                 is_info = False
                 if cid == b"LIST" and chunk_size >= 4:

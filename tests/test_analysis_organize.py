@@ -290,3 +290,62 @@ def test_write_riff_info_odd_data_length_keeps_audio_and_validity(tmp_path):
         pos += 8 + n + (n & 1)
     assert found_data is True
     assert pos == len(d)
+
+
+def test_write_riff_info_missing_pad_with_prior_info_chunk(tmp_path):
+    """Datei mit fehlendem Füllbyte am data-Block und Uploader-INFO vor den Audiodaten."""
+    import struct
+    import wave
+    from sc_digger.organize import write_riff_info
+
+    fmt_data = struct.pack("<HHIIHH", 1, 1, 8000, 8000, 1, 8)
+    fmt_chunk = b"fmt " + struct.pack("<I", len(fmt_data)) + fmt_data
+
+    # Altes Uploader-INFO vor den Audiodaten
+    old_info_body = b"INFOINAM" + struct.pack("<I", 10) + b"Alter Tit\x00"  # 10 Bytes
+    old_info_chunk = b"LIST" + struct.pack("<I", len(old_info_body)) + old_info_body
+
+    audio_samples = bytes(range(256)) * 31 + bytes(63)  # 7999 Bytes (ungerade)
+    # data-Chunk OHNE Füllbyte am Dateiende
+    data_chunk = b"data" + struct.pack("<I", len(audio_samples)) + audio_samples
+
+    riff_body = b"WAVE" + fmt_chunk + old_info_chunk + data_chunk
+    wav_bytes = b"RIFF" + struct.pack("<I", len(riff_body)) + riff_body
+
+    p = tmp_path / "uploader_info_missing_pad.wav"
+    p.write_bytes(wav_bytes)
+
+    fields = {"INAM": "Neuer Titel", "IART": "Neuer Artist"}
+    assert write_riff_info(p, fields) is True
+
+    # Audio bitgenau identisch
+    with wave.open(str(p), "rb") as w:
+        assert w.getnframes() == len(audio_samples)
+        assert w.readframes(w.getnframes()) == audio_samples
+
+    # Chunks und Padding prüfen
+    d = p.read_bytes()
+    riff_size = struct.unpack("<I", d[4:8])[0]
+    assert riff_size == len(d) - 8
+
+    pos = 12
+    found_chunks = []
+    data_content = None
+    info_content = None
+    while pos < len(d):
+        cid, n = d[pos:pos + 4], struct.unpack("<I", d[pos + 4:pos + 8])[0]
+        content = d[pos + 8:pos + 8 + n]
+        found_chunks.append(cid)
+        if cid == b"data":
+            data_content = content
+        elif cid == b"LIST" and content.startswith(b"INFO"):
+            info_content = content
+        pos += 8 + n + (n & 1)
+
+    assert pos == len(d)
+    assert data_content == audio_samples
+    assert found_chunks.count(b"LIST") == 1  # Altes INFO entfernt, nur neues LIST
+    assert info_content is not None
+    assert b"Neuer Titel" in info_content
+    assert b"Alter Tit" not in info_content
+
