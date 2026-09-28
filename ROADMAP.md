@@ -85,10 +85,10 @@ flowchart TD
 |---|---|---|---|
 | **Phase 1** | Basis & DJ-Ready Pipeline | ✅ **Abgeschlossen** | Native Downloads, FFT-Fake-Check, BPM/Key, Tagging, Inbox-Organize, Modi discover/playlist/similar |
 | **Phase 1.5** | Robustheit | ✅ **Abgeschlossen** | BPM-Oktav-Korrektur, Health-Alarm |
-| **Phase 2** | Track-DB & Library Audit | 🟡 **Nächster Schritt** | Zentrale DB, `audit` read-only, Fingerprint-Duplikate, LUFS als Tag |
-| **Phase 3** | Feedback & Smart Ingestion | 🔵 Geplant | 👍/👎 im Digest, Cloud-Link-Downloader, Gate-Assistent, Curator-Mining |
+| **Phase 2** | Track-DB & Library Audit | 🟡 **Fast fertig** | Zentrale DB ✅, `audit` ✅, Fingerprint-Duplikate (Issue #40 offen), LUFS-Tags ✅ |
+| **Phase 3** | Feedback & Smart Ingestion | 🟡 **Laufend** | 👍/👎 ✅, Cloud-Downloads ✅, DJ-Sets ✅, Rekordbox-XML ✅, Curator-Mining 🔵, Kaufliste 🔵, Cloud-Quellen 🔵 |
 | **Phase 4** | Geschmacksmodell & KI-Copilot | 🔵 Geplant | Audio-Embeddings, persönlicher Taste-Score, Qwen-Copilot via Tool-Calling |
-| **Phase 5** | DJ-Performance & Set-Tools | 🟣 Vision | Rekordbox-XML (Playlists, Cues), Next-Track-Recommender, Web-Dashboard |
+| **Phase 5** | DJ-Performance & Set-Tools | 🟣 Vision | Rekordbox-Cues, Next-Track-Recommender, Web-Dashboard, Stem-Extraktion |
 
 ---
 
@@ -149,29 +149,37 @@ Copilot, Recommender und Dashboard.
 
 ## 🔵 Phase 3: Feedback & Smart Ingestion
 
-### 3.1 Feedback im Telegram-Digest
-* Inline-Buttons pro Track: 👍 / 👎 / ⬇️ „Gate später erledigen“.
-* Bewertungen landen in der Track-DB und trainieren Scoring-Gewichte und (Phase 4) das Geschmacksmodell.
+### 3.1 Feedback im Telegram-Digest (✅ Implementiert)
+* ~~Inline-Buttons pro Track: 👍 / 👎 / ⏳ „Gate später erledigen".~~
+* ~~Bewertungen landen in der Track-DB (`sc_feedback`).~~
 
-### 3.2 Cloud-Link-Downloader
-* Direkter Download öffentlich verlinkter Dateien aus Track-Beschreibungen:
-  Dropbox (`?dl=1`), Google Drive, Mega. Danach dieselbe Qualitätspipeline wie native Downloads.
+### 3.2 Cloud-Link-Downloader (✅ Implementiert)
+* ~~Direkter Download öffentlich verlinkter Dateien: Dropbox (`?dl=1`), Google Drive.~~
+* ~~ZIP-Archive werden streamend entpackt. Danach dieselbe Qualitätspipeline.~~
 
-### 3.3 Gate-Assistent (statt Bypass)
-* Öffnet das Gate im Browser mit deinem echten Account, trägt Kommentar/Formular vor;
-  die letzten Aktionen (Follow, OAuth) bestätigst du selbst.
-* E-Mail-Gates mit einer echten Promo-Adresse, die gelesen wird.
-* Bewusst **nicht** geplant: Wegwerf-Adressen, Link-Leaks aus dem Seiten-State, Burner-Accounts.
-  Gates sind für kleine Producer oft der einzige Weg zu Followern; Umgehung verstößt gegen die ToS
-  und bricht bei jeder Frontend-Änderung.
+### 3.3 DJ-Sets erkennen (✅ Implementiert)
+* ~~In `discover` werden DJ-Sets automatisch aussortiert; in anderen Modi im Digest markiert.~~
 
-### 3.4 Curator-Mining
-* Basis vorhanden: feste Liste `reference_accounts`. Ausbau: Liste automatisch aus 👍-Tracks erweitern.
-* Wer deine 👍-Tracks repostet oder liked, kuratiert meist deinen Stil.
-* Wöchentliche Vorschläge für `followed_users` aus diesen Profilen, bestätigt per Telegram-Button.
+### 3.4 Rekordbox-XML Wochen-Playlists (✅ Implementiert)
+* ~~Nach jedem `discover`-Lauf: `sc-digger.xml` mit Playlist pro Kalenderwoche (`KW xx/yyyy`).~~
 
-### 3.5 Kaufliste
-* Wöchentliche Liste der 👍-Tracks, die nur im Store (Bandcamp, Beatport) verfügbar sind.
+### 3.5 Curator-Mining (🔵 Geplant – Issue #45)
+* Bot-Befehl `/curator-mining`: aggregiert Liker/Reposter aller 👍-Tracks, filtert bekannte
+  Accounts, meldet Kandidaten als einfache Telegram-Textliste.
+* `soundcloud.py`: `get_likers(track_id)` und `get_reposters(track_id)` über api-v2.
+* `config.yaml` → `curator_mining.min_appearances` (default: 2), `max_likers_per_track` (50).
+* Bewusst einfachste Lösung: kein Cron, keine Inline-Buttons, kein Schreiben in `config.yaml`.
+  Ausbau in späteren Issues.
+
+### 3.6 Kaufliste (🔵 Geplant – Issue #47)
+* Store-Tracks (Bandcamp, Beatport) werden beim Digest in eine `store_items`-Tabelle eingetragen.
+* Wöchentliche Zusammenfassung per Telegram (Sonntag Abend) **und** Bot-Befehl `/kaufliste`.
+
+### 3.7 Cloud-Quellen erweitern (🔵 Geplant – Issue #46)
+* **WeTransfer:** im Digest als „⏳ WeTransfer (läuft ab)" markiert; kein automatischer Download.
+* **Mega:** im Digest als „🔒 Mega (manuell)" verlinkt; kein automatischer Download.
+* **Bandcamp:** als `STORE` klassifiziert (Kaufempfehlung).
+* Bewusst kein Gate-Bypass (Goldene Regel 6).
 
 ---
 
@@ -213,9 +221,12 @@ Copilot, Recommender und Dashboard.
 ## 📋 Reihenfolge
 
 1. ~~Phase 1.5: BPM-Oktav-Korrektur, Health-Alarm~~ ✅
-2. Phase 2.1–2.2: Track-DB, `audit` read-only
-3. Phase 2.3–2.4: Fingerprint-Duplikate, LUFS als Tag
-4. Phase 3.1: Feedback-Buttons
-5. Phase 3.2–3.5: Cloud-Links, Gate-Assistent, Curator-Mining, Kaufliste
-6. Phase 4: Embeddings → Taste-Score → Copilot
-7. Phase 5: Rekordbox-XML, Recommender, Dashboard, Stems
+2. ~~Phase 2.1–2.2: Track-DB, `audit` read-only~~ ✅
+3. ~~Phase 2.3–2.4: Fingerprint-Duplikate (DB + Audit), LUFS-Tags~~ ✅
+4. ~~Phase 3.1–3.4: Feedback-Buttons, Cloud-Downloads, DJ-Sets, Rekordbox-XML~~ ✅
+5. **Phase 2.3 Teil 2:** Fingerprint-Abgleich beim Download (Issue #40, in-arbeit)
+6. **Phase 3.5:** Curator-Mining per Bot-Befehl (Issue #45, parallel zu #40)
+7. **Phase 3.7:** Cloud-Quellen: WeTransfer/Mega erkennen (Issue #46, parallel)
+8. **Phase 3.6:** Kaufliste: wöchentlich + Bot-Befehl (Issue #47, nach 3.5)
+9. Phase 4: Embeddings → Taste-Score → Copilot
+10. Phase 5: Rekordbox-Cues, Recommender, Dashboard, Stems
