@@ -26,7 +26,7 @@ Track-Stations auf Zuruf. Details und Ausbaustufen: `ROADMAP.md`.
 5. **Zugangsdaten nie in Repo, Logs, Fehlermeldungen oder Chat.** Telegram-API immer über
    `output.telegram_call()` (nie `requests` direkt, die URL enthält den Token). Logging
    über `redact.install_redacting_logging()`. Keine `.env`-Inhalte ausgeben, auch nicht
-   „maskiert“ – Namen und Längen reichen.
+   „maskiert" – Namen und Längen reichen.
 6. **Fair zu Artists.** Gates (Hypeddit, Droploud, …) werden erkannt und verlinkt, nie
    umgangen: keine Wegwerf-Adressen, keine Link-Leaks, keine Fake-Accounts.
    Stream-Rips werden nicht geladen (`scdl --only-original`).
@@ -34,6 +34,16 @@ Track-Stations auf Zuruf. Details und Ausbaustufen: `ROADMAP.md`.
    Alarm oder im Digest sichtbar werden.
 8. **Nicht zwei Agenten in denselben Dateien.** `sc_digger/main.py` ist der Engpass (alle
    Modi laufen dort zusammen). Wer dort arbeitet, schreibt es ins Issue.
+
+### Token-Effizienz-Regeln (Pflicht)
+
+9. **Atomic PRs:** Ein Pull Request = Eine Logikänderung. Kein "Optimiere die Download-Funktion". Stattdessen: "Füge Validierung für `cloud_max_mb` in `sc_digger/output.py` hinzu."
+10. **JSON-Output:** Generiere keine Erklärungen, nur Code-Blöcke und Fehlermeldungen. System-Prompt: "Kein Chat-Output. Nur Code und Fehler."
+11. **Kontext-Minimierung:** Lese nur die Dateien, die im Issue genannt sind. Ignoriere den Rest des Repos.
+12. **Dry-Run-First:** Bevor ein Agent eine API aufruft, muss er `--dry-run` nutzen. Das spart den Token-Verbrauch für den eigentlichen Download-Vorgang.
+13. **Mocking & Fakes:** Niemals echte API-Aufrufe oder große Datei-Uploads für den Agenten-Input. Nutze `FakeSC` und synthetisches Audio.
+14. **Delta-Context:** Wenn ein Agent Code analysiert, verwende nur die Delta-Änderungen. Vermeide das "Redesign" des gesamten Projekts, wenn nur ein Bug fixen soll.
+15. **Error-Handling:** Wenn ein Fehler auftritt, analysiere nur den Fehler-Stacktrace, nicht den ganzen Code.
 
 ## Ablauf pro Aufgabe
 
@@ -60,17 +70,18 @@ Rechteverwaltung durch, sondern der Check `acceptance-guard` (läuft immer mit d
 `main`) und das Review.
 
 Auf `main` gilt die GitHub-Regel `main-schutz`: nur per Pull Request, nur Squash-Merge,
-Pflicht-Checks `tests`, `acceptance-guard` und CodeQL (blockiert ab „High“). Copilot-Review
+Pflicht-Checks `tests`, `acceptance-guard` und CodeQL (blockiert ab „High"). Copilot-Review
 und `github-advanced-security` brauchen einen bezahlten Copilot-Plan: nie darauf warten, ein
 roter `github-advanced-security` ist kein Mangel.
 
 ### Planer
 
-- Issue über das Formular „Aufgabe für einen Agenten“: exakte Signaturen, was ausdrücklich
+- Issue über das Formular „Aufgabe für einen Agenten": exakte Signaturen, was ausdrücklich
   nicht dazugehört, Merge-Modus.
 - Akzeptanztests als pytest-Code ins Issue. Sie laufen ohne Netzwerk (Fakes, synthetisches
   Audio per ffmpeg wie in `tests/test_analysis_organize.py`) und sind vor der Umsetzung rot.
 - Labels: `worker-task`, `bereit`, `phase-N`, bei Bedarf `berührt-main.py`.
+- **Token-Effizienz:** Issue-Titel muss die exakte Änderung beschreiben: "Füge X in Y hinzu", nicht "Optimiere Y".
 
 ### Worker
 
@@ -92,7 +103,7 @@ roter `github-advanced-security` ist kein Mangel.
    Der Body muss `Closes #<N>` enthalten, sonst prüft `acceptance-guard` nichts gegen das Issue.
    Unter Windows/PowerShell Texte nie inline übergeben (Backtick ist dort Escape-Zeichen,
    aus `` `t `` wird ein Tabulator), immer `--body-file`.
-8. Review-Kommentare (Reviewer, ggf. Copilot): „Muss“-Punkte und echte Fehler im Issue-Umfang
+8. Review-Kommentare (Reviewer, ggf. Copilot): „Muss"-Punkte und echte Fehler im Issue-Umfang
    beheben; alles andere im Thread kurz begründen, nicht umsetzen. Das Issue gilt, nicht der
    Vorschlag. Nie deshalb Tests abschwächen oder weitere Dateien anfassen. Alle Korrekturen
    in **einem** Push.
@@ -112,17 +123,17 @@ roter `github-advanced-security` ist kein Mangel.
 1. `gh pr view <PR> --comments`, `gh pr diff <PR>`, `gh pr checks <PR>`. Sind `tests`,
    `acceptance-guard` oder CodeQL nicht grün: nicht mergen, Befund als Review schreiben.
    Die Regel `main-schutz` erzwingt das ohnehin; der Merge würde abgelehnt.
-2. Gegen das Issue prüfen: nur genannte Dateien geändert, Signaturen exakt, „Fertig, wenn“
+2. Gegen das Issue prüfen: nur genannte Dateien geändert, Signaturen exakt, „Fertig, wenn"
    vollständig, Goldene Regeln eingehalten (besonders 4–7). Eigene Tests des Workers auf
    Aussagekraft prüfen (`assert True`, zu schwache Vergleiche, gemockter Prüfling).
    Copilot-Kommentare: umgesetzt oder begründet abgelehnt; Umsetzungen außerhalb des
    Issue-Umfangs sind ein Mangel.
 3. Ergebnis immer als `gh pr review <PR> --comment --body-file <datei>`. `--request-changes`
    und `--approve` lehnt GitHub ab (alle PRs laufen über Stephans Konto = eigener PR).
-   Erste Zeile ist das Urteil: **„Änderungen nötig“** (dann „Muss“/„Kann“-Punkte, der Worker
-   arbeitet auf demselben Branch in einem Push nach) oder **„Freigegeben“**.
-4. Freigegeben, Merge-Modus „automatisch“: `gh pr merge <PR> --squash`.
-   Merge-Modus „manuell“: Stephan Bescheid geben, er merged.
+   Erste Zeile ist das Urteil: **„Änderungen nötig"** (dann „Muss"/„Kann"-Punkte, der Worker
+   arbeitet auf demselben Branch in einem Push nach) oder **„Freigegeben"**.
+4. Freigegeben, Merge-Modus „automatisch": `gh pr merge <PR> --squash`.
+   Merge-Modus „manuell": Stephan Bescheid geben, er merged.
 5. Trägt ein PR das Label `freigabe-geschützt`, stand die Änderung an geschützten Dateien
    zur Entscheidung. Im Review ausdrücklich bestätigen, dass sie begründet ist.
 
@@ -130,11 +141,11 @@ roter `github-advanced-security` ist kein Mangel.
 
 | Rolle | Auftrag |
 |---|---|
-| Planer | „Erstelle aus unserem Gespräch ein Issue in tripitest-art/sc-digger nach dem Formular `worker-task` (AGENTS.md, Worker-Aufgaben → Planer).“ |
-| Worker | „Bearbeite Issue #N nach AGENTS.md, Abschnitt Worker-Aufgaben → Worker.“ |
-| Worker (autonom) | „/goal Bearbeite die nächste Aufgabe nach AGENTS.md, Worker-Aufgaben → Nächste Aufgabe selbst wählen.“ |
-| Reviewer | „Prüfe PR #M nach AGENTS.md, Abschnitt Worker-Aufgaben → Reviewer.“ |
-| Worker (Nacharbeit) | „Arbeite das Review in PR #M ab (AGENTS.md, Worker → Schritt 8).“ |
+| Planer | „Erstelle aus unserem Gespräch ein Issue in tripitest-art/sc-digger nach dem Formular `worker-task` (AGENTS.md, Worker-Aufgaben → Planer). **Token-Effizienz:** Issue-Titel muss die exakte Änderung beschreiben." |
+| Worker | „Bearbeite Issue #N nach AGENTS.md, Abschnitt Worker-Aufgaben → Worker. **Token-Effizienz:** Atomic PR, JSON-Output, Dry-Run-First." |
+| Worker (autonom) | „/goal Bearbeite die nächste Aufgabe nach AGENTS.md, Worker-Aufgaben → Nächste Aufgabe selbst wählen. **Token-Effizienz:** Nur Delta-Context, keine Redesigns." |
+| Reviewer | „Prüfe PR #M nach AGENTS.md, Abschnitt Worker-Aufgaben → Reviewer. **Token-Effizienz:** Nur Delta-Context, keine Erklärungen." |
+| Worker (Nacharbeit) | „Arbeite das Review in PR #M ab (AGENTS.md, Worker → Schritt 8). **Token-Effizienz:** Nur die geforderten Änderungen, keine zusätzlichen." |
 
 ## Architektur
 
@@ -169,20 +180,3 @@ Server, Mounts, Zeitplan, Zugangsdaten, Logs: `BETRIEB.md`. Host/IP/SSH nur in
 pip install -r requirements.txt pytest     # braucht ffmpeg im PATH
 python -m pytest -q                         # alle Tests, ~10 s
 python -m sc_digger.main --dry-run --no-telegram -v   # lokal, braucht Netz zu SoundCloud
-```
-
-Konventionen: Python 3.12, Typ-Hinweise, Kommentare und Log-Meldungen auf Deutsch,
-Kommentare erklären das *Warum*. Netzwerk in Tests immer durch Fakes ersetzen
-(Beispiele: `FakeSC` in `tests/test_modes.py`, `FakeLinkSC` in `tests/test_merge.py`).
-
-## Bekannte Stolperfallen (alle schon einmal passiert)
-
-- **Cron-Umgebung ist leer:** kein `/usr/local/bin`, keine `.env`. Deshalb `cron.env`.
-- **scdl meldet Fehler mit Exit-Code 0.** Erfolg nur daran messen, ob eine Datei entstand.
-- **Originale nur mit Login.** Ohne `SOUNDCLOUD_AUTH_TOKEN` gibt es sie nicht; ohne
-  `--only-original` lädt scdl still den Stream.
-- **Playlists liefern die meisten Tracks nur als Stub** (nur `id`). Nachladen, sonst fehlen sie.
-- **Telegram-Token steckt in jeder API-URL** und damit in `requests`-Fehlern.
-- **`TELEGRAM_CHAT_ID` ist eine Zahl**, nicht der Bot-Name.
-- **Windows-Zeilenenden** brechen `entrypoint.sh`; `.gitattributes` erzwingt LF.
-- **Zwei Code-Stände** (Server-Kopie und Repo) liefen schon einmal auseinander. Siehe Regel 1.
