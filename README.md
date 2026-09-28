@@ -107,6 +107,17 @@ danach das Suchfenster (`search.bpm_min/max`), danach der plausible Bereich
 (`organize.bpm_plausible_min/max`). Echte Tempi außerhalb des Fensters (z. B. 140) bleiben erhalten.
 Korrekturen erscheinen als Notiz am Track.
 
+## Lautheits-Tags (EBU R128 / ReplayGain)
+Gemessene Lautheitswerte aus der Qualitätsprüfung (`integrated_lufs`, `true_peak_dbfs`, `loudness_range_lu`)
+werden dauerhaft in Metadaten-Tags geladener Tracks geschrieben. Audio bleibt dabei bitgenau unverändert
+(Leitprinzip: messen statt normalisieren).
+- `REPLAYGAIN_TRACK_GAIN`: Pegelanpassung relativ zu -18.0 LUFS (ReplayGain 2.0, z. B. `-12.00 dB`)
+- `REPLAYGAIN_TRACK_PEAK`: Linearer True-Peak-Wert (z. B. `1.122018`)
+- `SCDIGGER_LUFS`: Integrierte Lautheit in LUFS (z. B. `-6.0`)
+- `SCDIGGER_LRA`: Loudness Range in LU (z. B. `5.3`)
+Unterstützt für MP3, AIFF, WAV (als ID3-`TXXX`-Frames), FLAC (Vorbis-Kommentare) und M4A (iTunes-Freeform).
+WAV-Dateien erhalten dabei auch Standard-ID3-Tags (Artist, Title, BPM, Key, Genre, URL).
+
 ## Bekannte Schwachstellen
 - `soundcloud.py` nutzt die inoffizielle api-v2. Wenn die client_id-Ermittlung bricht,
   ist das die einzige Datei, die angepasst werden muss.
