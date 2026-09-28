@@ -7,6 +7,7 @@ Enthält ein versioniertes Migrationssystem zur sicheren Schema-Evolution.
 """
 from __future__ import annotations
 
+import dataclasses
 import json
 import sqlite3
 from dataclasses import asdict, dataclass, field
@@ -43,6 +44,11 @@ class JobType(str, Enum):
     FINGERPRINT = "fingerprint"    # Chromaprint-Berechnung
 
 
+def _normalize_path(p: str | Path) -> str:
+    """Normalisiert Pfade plattformunabhängig mit Forward-Slashes."""
+    return Path(p).as_posix()
+
+
 @dataclass
 class TrackRecord:
     path: str
@@ -52,7 +58,9 @@ class TrackRecord:
     format: str | None = None
     bitrate_kbps: float | None = None
     cutoff_hz: int | None = None
-    quality_status: QualityStatus | str = QualityStatus.UNKNOWN
+    # Default None, damit beim INSERT der SQLite-DEFAULT ('unknown' / 'archive') greift
+    # und beim UPDATE bestehende Werte nicht überschrieben werden.
+    quality_status: QualityStatus | str | None = None
     quality_details: dict[str, Any] | None = None
     bpm: float | None = None
     bpm_source: str | None = None  # 'audio', 'tag', 'text', 'manual'
@@ -66,10 +74,13 @@ class TrackRecord:
     source_url: str | None = None
     fingerprint: str | None = None
     fingerprint_duration: float | None = None
-    status: TrackStatus | str = TrackStatus.ARCHIVE
+    status: TrackStatus | str | None = None
     feedback: str | None = None  # 'like', 'dislike', 'later'
     created_at: str | None = None
     updated_at: str | None = None
+
+    def __post_init__(self) -> None:
+        self.path = _normalize_path(self.path)
 
     def to_db_dict(self) -> dict[str, Any]:
         """Konvertiert das Datenmodell in serialisierbare SQL-Werte."""
@@ -84,7 +95,10 @@ class TrackRecord:
 
     @classmethod
     def from_row(cls, row: sqlite3.Row) -> TrackRecord:
-        """Erzeugt ein TrackRecord aus einer SQLite-Ergebniszeile."""
+        """Erzeugt ein TrackRecord aus einer SQLite-Ergebniszeile.
+
+        Resistent gegen unbekannte Spalten (z. B. nach Schema-Rollbacks).
+        """
         d = dict(row)
         q_det = d.get("quality_details")
         if q_det and isinstance(q_det, str):
@@ -92,7 +106,8 @@ class TrackRecord:
                 d["quality_details"] = json.loads(q_det)
             except Exception:
                 d["quality_details"] = None
-        return cls(**d)
+        known = {f.name for f in dataclasses.fields(cls)}
+        return cls(**{k: v for k, v in d.items() if k in known})
 
 
 @dataclass
@@ -109,6 +124,10 @@ class JobRecord:
 
     @classmethod
     def from_row(cls, row: sqlite3.Row) -> JobRecord:
+        """Erzeugt ein JobRecord aus einer SQLite-Ergebniszeile.
+
+        Resistent gegen unbekannte Spalten.
+        """
         d = dict(row)
         payload = d.get("payload")
         if payload and isinstance(payload, str):
@@ -122,7 +141,8 @@ class JobRecord:
                 d["result"] = json.loads(result)
             except Exception:
                 d["result"] = None
-        return cls(**d)
+        known = {f.name for f in dataclasses.fields(cls)}
+        return cls(**{k: v for k, v in d.items() if k in known})
 
 
 # ================================================================= Migrationen
@@ -185,7 +205,7 @@ MIGRATIONS: list[tuple[int, str, str]] = [
 
 
 def _apply_migrations(db: sqlite3.Connection) -> None:
-    """Führt unaufgeführte Schema-Migrationen versioniert und transaktional aus."""
+    """Führt unaufgeführte Schema-Migrationen versioniert und atomar transaktional aus."""
     db.execute(
         "CREATE TABLE IF NOT EXISTS schema_migrations ("
         " version INTEGER PRIMARY KEY,"
@@ -198,13 +218,16 @@ def _apply_migrations(db: sqlite3.Connection) -> None:
 
     for version, name, script in MIGRATIONS:
         if version not in applied:
-            # Transaktionale Ausführung pro Migrationsschritt
-            with db:
-                db.executescript(script)
-                db.execute(
-                    "INSERT INTO schema_migrations (version, name) VALUES (?, ?)",
-                    (version, name),
+            try:
+                db.executescript(
+                    f"BEGIN;\n{script}\n"
+                    f"INSERT INTO schema_migrations (version, name) VALUES ({int(version)}, '{name}');\n"
+                    f"COMMIT;"
                 )
+            except Exception:
+                if db.in_transaction:
+                    db.rollback()
+                raise
 
 
 # ================================================================= TrackDB
@@ -212,12 +235,12 @@ def _apply_migrations(db: sqlite3.Connection) -> None:
 class TrackDB:
     """Verwaltet den persistenten Track-Index und Hintergrund-Jobs."""
 
-    def __init__(self, db_path: str | Path):
+    def __init__(self, db_path: str | Path = "/data/tracks.sqlite"):
         self.path = Path(db_path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.db = sqlite3.connect(str(self.path))
         self.db.row_factory = sqlite3.Row
-        # WAL-Modus für sicheren gleichzeitigen Lese-/Schreibzugriff
+        # WAL-Modus für sicheren gleichzeitigen Lese-/Schreibzugriff (Achtung: nicht auf NFS!)
         self.db.execute("PRAGMA journal_mode=WAL;")
         self.db.execute("PRAGMA foreign_keys=ON;")
         _apply_migrations(self.db)
@@ -236,12 +259,15 @@ class TrackDB:
     def upsert_track(self, record: TrackRecord) -> TrackRecord:
         """Speichert oder aktualisiert einen Track-Eintrag anhand des Pfads.
 
-        Aktualisiert `updated_at`, wenn der Eintrag bereits existiert.
+        Überschreibt bestehende Felder nur, wenn sie im Record explizit gesetzt sind
+        (kein Überschreiben mit None). Feedback wird ausschließlich über set_feedback geändert.
         """
-        data = record.to_db_dict()
-        data.pop("id", None)
-        data.pop("created_at", None)
-        data.pop("updated_at", None)
+        # Nur nicht-leere Felder aktualisieren, Feedback nie überschreiben
+        data = {
+            k: v for k, v in record.to_db_dict().items()
+            if v is not None and k not in ("id", "created_at", "updated_at", "feedback")
+        }
+        data["path"] = _normalize_path(data["path"])
 
         fields = list(data.keys())
         placeholders = ", ".join(f":{f}" for f in fields)
@@ -263,8 +289,8 @@ class TrackDB:
         return TrackRecord.from_row(row)
 
     def get_track_by_path(self, path: str | Path) -> TrackRecord | None:
-        """Sucht einen Track anhand seines exakten Dateipfads."""
-        p_str = str(path)
+        """Sucht einen Track anhand seines normalisierten Dateipfads."""
+        p_str = _normalize_path(path)
         row = self.db.execute("SELECT * FROM tracks WHERE path = ?", (p_str,)).fetchone()
         return TrackRecord.from_row(row) if row else None
 
@@ -278,12 +304,13 @@ class TrackDB:
         Ermöglicht schnelles, inkrementelles Auditieren großer Sammlungen,
         ohne unveränderte Audio-Dateien erneut per Spektrumanalyse zu dekodieren.
         """
+        p_str = _normalize_path(path)
         row = self.db.execute(
-            "SELECT mtime, size FROM tracks WHERE path = ?", (str(path),)
+            "SELECT mtime, size FROM tracks WHERE path = ?", (p_str,)
         ).fetchone()
         if row is None:
             return True
-        # Toleranz von 1ms für mtime wegen möglicher Rundungen im Dateisystem
+        # Toleranz von 10ms für mtime wegen möglicher Rundungen im Dateisystem
         return abs(row["mtime"] - mtime) > 0.01 or row["size"] != size
 
     def find_by_fingerprint(self, fingerprint: str) -> list[TrackRecord]:
@@ -302,9 +329,10 @@ class TrackDB:
                 (feedback, track_id_or_path),
             )
         else:
+            p_str = _normalize_path(track_id_or_path)
             cur = self.db.execute(
                 "UPDATE tracks SET feedback = ?, updated_at = CURRENT_TIMESTAMP WHERE path = ?",
-                (feedback, str(track_id_or_path)),
+                (feedback, p_str),
             )
         self.db.commit()
         return cur.rowcount > 0
@@ -385,7 +413,7 @@ class TrackDB:
     def get_pending_jobs(
         self, job_type: JobType | str | None = None, limit: int = 10
     ) -> list[JobRecord]:
-        """Holt die nächsten ausstehenden Jobs für die asynchrone Bearbeitung."""
+        """Liest anstehende Jobs (read-only, für Monitoring/Übersichten)."""
         conds = ["status = 'pending'"]
         params: list[Any] = []
         if job_type:
@@ -403,6 +431,44 @@ class TrackDB:
         rows = self.db.execute(query, params).fetchall()
         return [JobRecord.from_row(r) for r in rows]
 
+    def claim_next_job(self, job_type: JobType | str | None = None) -> JobRecord | None:
+        """Übernimmt atomar den nächsten Job und setzt ihn auf 'running'.
+
+        Verhindert Concurrency-Kollisionen bei mehreren Workern (z.B. Server + Workstation).
+        """
+        jt = job_type.value if isinstance(job_type, Enum) else job_type
+        row = self.db.execute(
+            """
+            UPDATE jobs
+            SET status = 'running', updated_at = CURRENT_TIMESTAMP
+            WHERE id = (
+                SELECT id FROM jobs
+                WHERE status = 'pending' AND (?1 IS NULL OR job_type = ?1)
+                ORDER BY id LIMIT 1
+            ) AND status = 'pending'
+            RETURNING *;
+            """,
+            (jt,),
+        ).fetchone()
+        self.db.commit()
+        return JobRecord.from_row(row) if row else None
+
+    def requeue_stale_jobs(self, timeout_minutes: int = 30, job_type: JobType | str | None = None) -> int:
+        """Setzt hängende 'running'-Jobs nach Worker-Abstürzen zurück auf 'pending'."""
+        jt = job_type.value if isinstance(job_type, Enum) else job_type
+        cur = self.db.execute(
+            """
+            UPDATE jobs
+            SET status = 'pending', updated_at = CURRENT_TIMESTAMP
+            WHERE status = 'running'
+              AND (?1 IS NULL OR job_type = ?1)
+              AND datetime(updated_at) < datetime('now', '-' || ?2 || ' minutes');
+            """,
+            (jt, int(timeout_minutes)),
+        )
+        self.db.commit()
+        return cur.rowcount
+
     def update_job(
         self,
         job_id: int,
@@ -410,15 +476,22 @@ class TrackDB:
         result: dict[str, Any] | None = None,
         error: str | None = None,
     ) -> None:
-        """Aktualisiert den Status und das Ergebnis eines Hintergrundjobs."""
+        """Aktualisiert den Status und das Ergebnis eines Hintergrundjobs.
+
+        Vorhandene Ergebnisse oder Fehlermeldungen werden nicht überschrieben,
+        wenn die Parameter None sind.
+        """
         s_val = status.value if isinstance(status, Enum) else str(status)
-        r_json = json.dumps(result, ensure_ascii=False) if result else None
+        r_json = json.dumps(result, ensure_ascii=False) if result is not None else None
         self.db.execute(
             """
             UPDATE jobs
-            SET status = ?, result = ?, error = ?, updated_at = CURRENT_TIMESTAMP
+            SET status = ?,
+                result = CASE WHEN ? IS NOT NULL THEN ? ELSE result END,
+                error = CASE WHEN ? IS NOT NULL THEN ? ELSE error END,
+                updated_at = CURRENT_TIMESTAMP
             WHERE id = ?;
             """,
-            (s_val, r_json, error, job_id),
+            (s_val, r_json, r_json, error, error, job_id),
         )
         self.db.commit()
