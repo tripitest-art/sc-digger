@@ -135,3 +135,11 @@ telegram:
   # Inline-Buttons (👍/👎/⏳) unter jeder Digest-Nachricht zur Track-Bewertung
   feedback_buttons: true
 
+rekordbox:
+  # Rekordbox-XML-Export: schreibt eine XML mit Playlists pro Woche in die Inbox
+  xml_enabled: true
+  xml_path: /music/inbox/sc-digger.xml
+  # Pfad-Mapping: Server-Pfad -> Laptop-Pfad (aus Sicht von Rekordbox)
+  path_map:
+    /music/inbox: "Z:/Highres/_sc-digger-inbox"
+

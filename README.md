@@ -48,6 +48,7 @@ Sammlung, aber die Genres, Pfade und Schwellwerte stehen alle in `config.yaml`.
 
 ```bash
 python -m sc_digger.main                                            # discover (Standard, täglich per Cron)
+python -m sc_digger.main rekordbox                                  # Rekordbox-XML der Inbox neu schreiben
 python -m sc_digger.main playlist https://soundcloud.com/user/sets/name
 python -m sc_digger.main playlist https://soundcloud.com/user --likes    # Likes eines Profils
 python -m sc_digger.main check https://soundcloud.com/artist/track      # wie der Bot: Playlist oder Track-Station
@@ -104,6 +105,7 @@ Alles steht kommentiert in `config.yaml`. Die wichtigsten Stellschrauben:
 | `quality` | Mindest-Bitrate, Spektrum-Grenzen, Brickwall-Schwellen |
 | `organize` | Ordnerstruktur, BPM-/Key-Erkennung, Tags schreiben |
 | `health` | ab wie vielen schlechten Läufen ein Alarm kommt |
+| `rekordbox` | XML-Export für Rekordbox, Wochen-Playlists, Pfad-Mapping |
 
 ## Details
 
@@ -154,6 +156,20 @@ WAV-Dateien bekommen dabei auch die normalen Tags (Artist, Titel, BPM, Key, Genr
 Jeder `discover`-Lauf wird protokolliert. Liefern `health.alert_after_bad_runs` Läufe in Folge keine
 Rohtreffer oder brechen ab, kommt einmal ein 🚨-Alarm per Telegram und nach der Erholung eine
 ✅-Entwarnung. Ein Tag ohne *neue* Tracks ist kein Alarm.
+
+### Rekordbox
+
+sc-digger schreibt nach jedem `discover`-Lauf automatisch eine Rekordbox-XML (`sc-digger.xml`) in die Inbox. Darin sind alle geprüften Tracks mit Titel, Artist, Genre, BPM, Tonart und Kommentar enthalten, geordnet in einem Ordner **„sc-digger“** mit **einer Playlist pro Kalenderwoche** (z. B. `KW 40/2026`, neueste Woche zuerst).
+
+**Einrichtung in Rekordbox:**
+1. Unter **Einstellungen → Erweitert → Datenbank → rekordbox xml** den Pfad zur XML-Datei angeben (aus Sicht des DJ-Laptops, z. B. `Z:\Highres\_sc-digger-inbox\sc-digger.xml`).
+2. Die Ansicht **„rekordbox xml“** im Menü bzw. der Seitenleiste einblenden.
+3. Unter „rekordbox xml → Importierte Bibliothek“ erscheinen der Ordner `sc-digger` und die Wochen-Playlists direkt spielbereit.
+
+Per CLI kann die XML jederzeit manuell neu geschrieben werden:
+```bash
+python -m sc_digger.main rekordbox
+```
 
 ## Grenzen
 

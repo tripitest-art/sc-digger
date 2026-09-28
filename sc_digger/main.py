@@ -30,6 +30,7 @@ from .output import (State, build_digest, build_digest_messages, build_export_tx
                      send_digest, send_telegram, send_telegram_document)
 from .pipeline import (classify_download, dedupe, estimate_bpm, filter_bpm, filter_sets,
                        genre_relevant, mark_sets, score_tracks)
+from .rekordbox import write_rekordbox_xml
 from .soundcloud import SoundCloudClient, SoundCloudError
 
 log = logging.getLogger("sc_digger")
@@ -219,6 +220,8 @@ def _discover(cfg: Config, dry_run: bool, no_telegram: bool) -> int:
             # werden Tracks beim nächsten Lauf erneut gemeldet statt verloren zu gehen.
             for t in fresh:
                 state.mark_one(t)
+    if not dry_run:
+        write_rekordbox_xml(cfg)
     return raw_found
 
 
@@ -333,6 +336,8 @@ def cli() -> None:
     aud.add_argument("--force", action="store_true",
                      help="Alle Dateien neu analysieren (inkrementellen Cache ignorieren)")
 
+    sub.add_parser("rekordbox", parents=[common], help="Rekordbox-XML der Inbox neu schreiben")
+
     a = ap.parse_args()
     install_redacting_logging(logging.DEBUG if a.verbose else logging.INFO)
     cfg = Config.load(a.config)
@@ -352,6 +357,8 @@ def cli() -> None:
                 dry_run=a.dry_run,
                 no_telegram=a.no_telegram,
             )
+        elif a.mode == "rekordbox":
+            write_rekordbox_xml(cfg)
         else:
             run_discover(cfg, a.dry_run, a.no_telegram)
     except Exception:
