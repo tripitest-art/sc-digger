@@ -128,13 +128,12 @@ Copilot, Recommender und Dashboard.
 - [x] Tabelle `jobs`: asynchrone Aufgaben für die Workstation (Embeddings, Beschreibungen).
 - [x] Migrationen versioniert, damit die DB über Updates hinweg erhalten bleibt (`schema_migrations`).
 
-### 2.2 `audit`-Befehl (read-only)
-* **Kommando:** `python -m sc_digger.main audit --path /music/Schranz [--report report.html]`
-* **Full-Library Fake-Check:** meldet Transcodes/Upscales in einem Report. Nichts wird verschoben.
-* **Index-Aufbau:** füllt die Track-DB mit allen Messwerten.
-* **Tag-Backfill (opt-in, `--backfill-tags`):** ergänzt nur leere Felder (BPM, Key), überschreibt
-  keine vorhandenen Werte (z. B. aus Mixed In Key oder Rekordbox).
-* Inkrementell: bereits erfasste, unveränderte Dateien (mtime + Größe) werden übersprungen.
+### 2.2 `audit`-Befehl (read-only) (✅ Implementiert)
+- [x] **Kommando:** `python -m sc_digger.main audit --path /music/Schranz [--report report.html] [--backfill-tags] [--force]`
+- [x] **Full-Library Fake-Check:** meldet Transcodes/Upscales in einem interaktiven HTML- und Konsolen-Report. Nichts wird verschoben oder gelöscht.
+- [x] **Index-Aufbau:** füllt die Track-DB mit allen Messwerten (BPM, Key, Cutoff, Bitrate, LUFS, True Peak, LRA).
+- [x] **Tag-Backfill (opt-in, `--backfill-tags`):** ergänzt nur leere Felder (BPM, Key), überschreibt keine vorhandenen Werte (z. B. aus Mixed In Key oder Rekordbox).
+- [x] **Inkrementell:** bereits erfasste, unveränderte Dateien (mtime + Größe) werden blitzschnell aus dem Cache übernommen.
 
 ### 2.3 Duplikate per Audio-Fingerprint
 * Chromaprint (`fpcalc`) ergänzt den Fuzzy-Match auf Dateinamen: findet umbenannte Duplikate und
