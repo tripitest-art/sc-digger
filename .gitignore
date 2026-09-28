@@ -7,3 +7,6 @@ data/
 
 # Lokale Betriebsdetails (Server, IP), siehe BETRIEB.example.md
 *.local.md
+
+# Zuletzt erfolgreich gebauter Stand (update.sh)
+.last-build
