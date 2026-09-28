@@ -61,8 +61,8 @@ Rechteverwaltung durch, sondern der Check `acceptance-guard` (läuft immer mit d
 
 Auf `main` gilt die GitHub-Regel `main-schutz`: nur per Pull Request, nur Squash-Merge,
 Pflicht-Checks `tests`, `acceptance-guard` und CodeQL (blockiert ab „High“). Copilot-Review
-ist in der Regel eingeschaltet, greift aber nur mit einem bezahlten Copilot-Plan; mit
-Copilot Free kommt kein Review. Darauf also nie warten.
+und `github-advanced-security` brauchen einen bezahlten Copilot-Plan: nie darauf warten, ein
+roter `github-advanced-security` ist kein Mangel.
 
 ### Planer
 
@@ -90,15 +90,12 @@ Copilot Free kommt kein Review. Darauf also nie warten.
 7. PR mit ausgefüllter Vorlage öffnen. `--fill` reicht nicht, weil `Closes #<N>` fehlen würde:
    `gh pr create --title "<Issue-Titel>" --body-file <ausgefüllte Vorlage>`
    Der Body muss `Closes #<N>` enthalten, sonst prüft `acceptance-guard` nichts gegen das Issue.
-8. **Nur falls** Copilot innerhalb weniger Minuten ein Review hinterlässt (`gh pr view <PR> --comments`),
-   jeden Kommentar einzeln entscheiden. Kommt keins, ist der PR fertig, nicht warten.
-   - Echter Fehler **innerhalb des Issue-Umfangs** → beheben.
-   - Außerhalb des Umfangs, Geschmacksfrage oder falsch → im Thread kurz begründen, nicht umsetzen.
-     Copilot kennt das Issue nicht; das Issue gilt, nicht der Vorschlag.
-   - Nie auf Copilots Anregung Tests abschwächen oder weitere Dateien anfassen.
-
-   Alle Korrekturen **in einem Push**: Jeder Push kann ein neues Copilot-Review auslösen und
-   Kontingent verbrauchen.
+   Unter Windows/PowerShell Texte nie inline übergeben (Backtick ist dort Escape-Zeichen,
+   aus `` `t `` wird ein Tabulator), immer `--body-file`.
+8. Review-Kommentare (Reviewer, ggf. Copilot): „Muss“-Punkte und echte Fehler im Issue-Umfang
+   beheben; alles andere im Thread kurz begründen, nicht umsetzen. Das Issue gilt, nicht der
+   Vorschlag. Nie deshalb Tests abschwächen oder weitere Dateien anfassen. Alle Korrekturen
+   in **einem** Push.
 
 ### Reviewer
 
@@ -108,12 +105,14 @@ Copilot Free kommt kein Review. Darauf also nie warten.
 2. Gegen das Issue prüfen: nur genannte Dateien geändert, Signaturen exakt, „Fertig, wenn“
    vollständig, Goldene Regeln eingehalten (besonders 4–7). Eigene Tests des Workers auf
    Aussagekraft prüfen (`assert True`, zu schwache Vergleiche, gemockter Prüfling).
-   Falls Copilot kommentiert hat: jeder Kommentar ist umgesetzt oder begründet abgelehnt.
-   Umgesetzte Vorschläge außerhalb des Issue-Umfangs sind ein Mangel.
-3. Mängel: `gh pr review <PR> --request-changes --body "<konkrete Punkte>"`. Der Worker
-   arbeitet auf demselben Branch nach.
-4. Sauber, Merge-Modus „automatisch“: `gh pr merge <PR> --squash --delete-branch`.
-   Merge-Modus „manuell“: `gh pr review <PR> --approve` und Stephan Bescheid geben.
+   Copilot-Kommentare: umgesetzt oder begründet abgelehnt; Umsetzungen außerhalb des
+   Issue-Umfangs sind ein Mangel.
+3. Ergebnis immer als `gh pr review <PR> --comment --body-file <datei>`. `--request-changes`
+   und `--approve` lehnt GitHub ab (alle PRs laufen über Stephans Konto = eigener PR).
+   Erste Zeile ist das Urteil: **„Änderungen nötig“** (dann „Muss“/„Kann“-Punkte, der Worker
+   arbeitet auf demselben Branch in einem Push nach) oder **„Freigegeben“**.
+4. Freigegeben, Merge-Modus „automatisch“: `gh pr merge <PR> --squash`.
+   Merge-Modus „manuell“: Stephan Bescheid geben, er merged.
 5. Trägt ein PR das Label `freigabe-geschützt`, stand die Änderung an geschützten Dateien
    zur Entscheidung. Im Review ausdrücklich bestätigen, dass sie begründet ist.
 
@@ -124,6 +123,7 @@ Copilot Free kommt kein Review. Darauf also nie warten.
 | Planer | „Erstelle aus unserem Gespräch ein Issue in tripitest-art/sc-digger nach dem Formular `worker-task` (AGENTS.md, Worker-Aufgaben → Planer).“ |
 | Worker | „Bearbeite Issue #N nach AGENTS.md, Abschnitt Worker-Aufgaben → Worker.“ |
 | Reviewer | „Prüfe PR #M nach AGENTS.md, Abschnitt Worker-Aufgaben → Reviewer.“ |
+| Worker (Nacharbeit) | „Arbeite das Review in PR #M ab (AGENTS.md, Worker → Schritt 8).“ |
 
 ## Architektur
 
