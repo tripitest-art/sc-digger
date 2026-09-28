@@ -88,8 +88,12 @@ Verdeckte Eingabe, Formatprüfung, ersetzt die alte Zeile, startet neu und teste
 
 ## Update auf dem Server
 ```bash
-cd /root/sc-digger && git pull && docker compose up -d --build
+cd /root/sc-digger && ./update.sh
 ```
+Holt den neuen Stand von GitHub (Deploy-Key, nur lesen), baut neu und startet.
+Der Schlüssel liegt unter `/home/claude/.ssh/sc_digger_deploy` und ist per
+`core.sshCommand` in der Repo-Konfiguration hinterlegt; eingetragen ist er auf GitHub
+unter *Settings → Deploy keys* (ohne Schreibrecht).
 
 ## Health-Alarm
 Jeder `discover`-Lauf wird in der State-DB protokolliert (Rohtreffer vor Filtern, Fehler).
