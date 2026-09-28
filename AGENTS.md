@@ -46,8 +46,84 @@ Track-Stations auf Zuruf. Details und Ausbaustufen: `ROADMAP.md`.
 5. Pull Request öffnen und die Vorlage ausfüllen. Kann das Werkzeug keinen PR öffnen:
    Branch pushen und dem Menschen den Link `https://github.com/tripitest-art/sc-digger/pull/new/<branch>` geben.
 6. Review durch einen Agenten, der den Code nicht geschrieben hat, oder durch Stephan.
-   Merge nur bei grünem Testlauf (GitHub Actions) und abgeschlossenem Review.
+   Merge nur bei grünen Checks `tests` und `acceptance-guard` und abgeschlossenem Review.
 7. Deploy: `cd /root/sc-digger && ./update.sh` auf dem Server (nur nach Merge in `main`).
+
+## Worker-Aufgaben (Issues mit Label `worker-task`)
+
+Drei Rollen: **Planer** schreibt das Issue, **Worker** setzt es um, **Reviewer** prüft und
+merged. Worker und Reviewer sind nie derselbe Agent. Das Issue ist der Vertrag: Was dort
+nicht steht, wird nicht gebaut.
+
+Alle Agenten arbeiten mit Stephans GitHub-Konto. Die Regeln unten setzt deshalb nicht die
+Rechteverwaltung durch, sondern der Check `acceptance-guard` (läuft immer mit dem Stand aus
+`main`) und das Review.
+
+Auf `main` gilt die GitHub-Regel `main-schutz`: nur per Pull Request, nur Squash-Merge,
+Pflicht-Checks `tests`, `acceptance-guard` und CodeQL (blockiert ab „High“). Copilot-Review
+und `github-advanced-security` brauchen einen bezahlten Copilot-Plan: nie darauf warten, ein
+roter `github-advanced-security` ist kein Mangel.
+
+### Planer
+
+- Issue über das Formular „Aufgabe für einen Agenten“: exakte Signaturen, was ausdrücklich
+  nicht dazugehört, Merge-Modus.
+- Akzeptanztests als pytest-Code ins Issue. Sie laufen ohne Netzwerk (Fakes, synthetisches
+  Audio per ffmpeg wie in `tests/test_analysis_organize.py`) und sind vor der Umsetzung rot.
+- Labels: `worker-task`, `bereit`, `phase-N`, bei Bedarf `berührt-main.py`.
+
+### Worker
+
+1. `gh issue view <N>` und diese Datei lesen. Übernehmen:
+   `gh issue edit <N> --add-label in-arbeit --remove-label bereit`
+2. `git checkout main && git pull && git checkout -b feature/issue-<N>-<kurz>`
+3. Den Akzeptanztest-Block **zeichengenau** nach `tests/acceptance/test_issue_<N>.py`
+   kopieren und als eigenen Commit sichern, **bevor** du etwas umsetzt.
+4. Umsetzen, nur in den Dateien aus dem Issue. Eigene Tests ergänzen.
+   `python -m pytest -q`, bis alles grün ist.
+5. **Verboten:** Akzeptanztests ändern; neue `skip`/`xfail`/`importorskip`; Änderungen an
+   `.github/`, `conftest.py` oder pytest-Konfiguration; das Label `freigabe-geschützt` setzen.
+   Hältst du einen Akzeptanztest für falsch: aufhören und im Issue begründen. Nie den Test
+   passend machen.
+6. Nach drei erfolglosen Anläufen am selben Fehler: aufhören, Branch pushen, Draft-PR
+   (`--draft`) mit genauer Beschreibung des Problems. Kein Umbau quer durchs Projekt.
+7. PR mit ausgefüllter Vorlage öffnen. `--fill` reicht nicht, weil `Closes #<N>` fehlen würde:
+   `gh pr create --title "<Issue-Titel>" --body-file <ausgefüllte Vorlage>`
+   Der Body muss `Closes #<N>` enthalten, sonst prüft `acceptance-guard` nichts gegen das Issue.
+   Unter Windows/PowerShell Texte nie inline übergeben (Backtick ist dort Escape-Zeichen,
+   aus `` `t `` wird ein Tabulator), immer `--body-file`.
+8. Review-Kommentare (Reviewer, ggf. Copilot): „Muss“-Punkte und echte Fehler im Issue-Umfang
+   beheben; alles andere im Thread kurz begründen, nicht umsetzen. Das Issue gilt, nicht der
+   Vorschlag. Nie deshalb Tests abschwächen oder weitere Dateien anfassen. Alle Korrekturen
+   in **einem** Push.
+
+### Reviewer
+
+1. `gh pr view <PR> --comments`, `gh pr diff <PR>`, `gh pr checks <PR>`. Sind `tests`,
+   `acceptance-guard` oder CodeQL nicht grün: nicht mergen, Befund als Review schreiben.
+   Die Regel `main-schutz` erzwingt das ohnehin; der Merge würde abgelehnt.
+2. Gegen das Issue prüfen: nur genannte Dateien geändert, Signaturen exakt, „Fertig, wenn“
+   vollständig, Goldene Regeln eingehalten (besonders 4–7). Eigene Tests des Workers auf
+   Aussagekraft prüfen (`assert True`, zu schwache Vergleiche, gemockter Prüfling).
+   Copilot-Kommentare: umgesetzt oder begründet abgelehnt; Umsetzungen außerhalb des
+   Issue-Umfangs sind ein Mangel.
+3. Ergebnis immer als `gh pr review <PR> --comment --body-file <datei>`. `--request-changes`
+   und `--approve` lehnt GitHub ab (alle PRs laufen über Stephans Konto = eigener PR).
+   Erste Zeile ist das Urteil: **„Änderungen nötig“** (dann „Muss“/„Kann“-Punkte, der Worker
+   arbeitet auf demselben Branch in einem Push nach) oder **„Freigegeben“**.
+4. Freigegeben, Merge-Modus „automatisch“: `gh pr merge <PR> --squash`.
+   Merge-Modus „manuell“: Stephan Bescheid geben, er merged.
+5. Trägt ein PR das Label `freigabe-geschützt`, stand die Änderung an geschützten Dateien
+   zur Entscheidung. Im Review ausdrücklich bestätigen, dass sie begründet ist.
+
+### Standard-Aufträge
+
+| Rolle | Auftrag |
+|---|---|
+| Planer | „Erstelle aus unserem Gespräch ein Issue in tripitest-art/sc-digger nach dem Formular `worker-task` (AGENTS.md, Worker-Aufgaben → Planer).“ |
+| Worker | „Bearbeite Issue #N nach AGENTS.md, Abschnitt Worker-Aufgaben → Worker.“ |
+| Reviewer | „Prüfe PR #M nach AGENTS.md, Abschnitt Worker-Aufgaben → Reviewer.“ |
+| Worker (Nacharbeit) | „Arbeite das Review in PR #M ab (AGENTS.md, Worker → Schritt 8).“ |
 
 ## Architektur
 
@@ -67,12 +143,15 @@ Track-Stations auf Zuruf. Details und Ausbaustufen: `ROADMAP.md`.
 | `sc_digger/redact.py` | Zugangsdaten aus Texten und Logs entfernen |
 | `config.yaml` | Einzige Konfiguration (Tags, Referenz-Accounts, Schwellwerte). Ist die Produktivkonfiguration. |
 | `entrypoint.sh` | Schreibt `cron.env` (Cron hat sonst weder PATH noch Secrets), startet cron und Bot |
+| `.github/scripts/acceptance_guard.py` | CI-Check `acceptance-guard`: Akzeptanztests = Issue, keine neuen skips, CI/Test-Konfiguration geschützt |
 | `set-secret.sh` / `update.sh` | Zugangsdaten setzen / Update ausrollen (auf dem Server) |
 
 ## Betrieb
 
-- **Server:** Proxmox `proxmox1`, LXC 107 `sc-digger` (Debian), `192.168.0.110`, Repo in
-  `/root/sc-digger`, Docker Compose. SSH-Benutzer `claude` (Schlüssel je Sitzung, nie im Repo).
+- **Server:** Debian-Container im Heimnetz, Repo in `/root/sc-digger`, Docker Compose.
+  Host, IP und SSH-Benutzer stehen bewusst **nicht** im (öffentlichen) Repo, sondern in
+  `BETRIEB.local.md` (von Git ignoriert, Vorlage: `BETRIEB.example.md`) und im claude.ai-Projekt
+  „sc-digger“. Fehlt beides: Stephan fragen, nicht raten. SSH-Schlüssel je Sitzung, nie im Repo.
 - **Mounts:** `/music/Schranz` (Sammlung, **ro**), `/music/inbox` (Downloads), beide NFS vom NAS.
 - **Zeitplan:** täglich 07:30 `discover` per Cron im Container; Bot läuft dauerhaft.
 - **Zugangsdaten** in `/root/sc-digger/.env`, nur über `./set-secret.sh NAME` setzen:
