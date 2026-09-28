@@ -14,4 +14,23 @@ statt in `AGENTS.md`, weil Antigravity Regeldateien bei 12.000 Zeichen abschneid
 - **Logs:** `docker compose logs --tail 50` · **Health:** Tabelle `runs` in `/data/seen.sqlite`.
 - **Testlauf ohne Nebenwirkungen:** `docker compose exec sc-digger python -m sc_digger.main --dry-run --no-telegram -v`
 
-Deploy nach einem Merge in `main`: `cd /root/sc-digger && ./update.sh` auf dem Server.
+## Zugangsdaten setzen
+
+Nie per Hand in die `.env` tippen, sondern auf dem Server:
+
+```bash
+cd /root/sc-digger && ./set-secret.sh SOUNDCLOUD_AUTH_TOKEN   # oder TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID
+```
+
+Verdeckte Eingabe, Formatprüfung, ersetzt die alte Zeile, startet neu und testet die Verbindung.
+
+## Update nach einem Merge in `main`
+
+```bash
+cd /root/sc-digger && ./update.sh
+```
+
+Holt den neuen Stand von GitHub über einen Deploy-Key (nur lesen), baut neu und startet. Der
+Schlüssel liegt auf dem Server unter `/home/claude/.ssh/sc_digger_deploy` und ist per
+`core.sshCommand` in der Repo-Konfiguration hinterlegt; eingetragen ist er auf GitHub unter
+*Settings → Deploy keys* (ohne Schreibrecht).
