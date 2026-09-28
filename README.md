@@ -135,6 +135,20 @@ Die gemessenen Werte werden in die Datei geschrieben, das Audio bleibt unveränd
 MP3, AIFF und WAV als ID3-`TXXX`-Frames, FLAC als Vorbis-Kommentar, M4A als iTunes-Freeform-Atom.
 WAV-Dateien bekommen dabei auch die normalen Tags (Artist, Titel, BPM, Key, Genre, URL).
 
+### Cloud-Downloads
+
+Öffentlich verlinkte Downloads aus Track-Beschreibungen (Dropbox, Google Drive) können automatisch geladen und durch dieselbe Qualitätsprüfung und Inbox-Sortierung geschickt werden wie native Downloads.
+
+- **Was geladen wird:** Einzeldateien und ZIP-Archive von `dropbox.com` und `drive.google.com`. Aus ZIPs wird genau eine Datei gewählt (bevorzugt verlustfrei vor M4A vor MP3, dann die größte).
+- **Was nicht geladen wird:** Download-Gates (Hypeddit, Droploud usw. bleiben als Gate verlinkt, Goldene Regel 6), Ordner-Links, clientseitig verschlüsselte Links (Mega) oder zeitlich ablaufende Links (WeTransfer). Diese werden im Digest zum manuellen Download markiert.
+- **Sicherheit:** Strikte Beschränkung auf erlaubte Download-Hosts (auch nach HTTP-Umleitungen), Dateinamen und entpackte ZIP-Inhalte können nie aus der Inbox ausbrechen, konfigurierbare Maximalgröße (`cloud_max_mb`).
+- **Einschalten:** In `config.yaml` unter `download`:
+  ```yaml
+  download:
+    auto_download_native_only: false   # false schaltet Cloud-Downloads ein (Standard: true)
+    cloud_max_mb: 500                  # Maximalgröße in MB (Standard: 500)
+  ```
+
 ### Health-Alarm
 
 Jeder `discover`-Lauf wird protokolliert. Liefern `health.alert_after_bad_runs` Läufe in Folge keine

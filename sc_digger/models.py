@@ -45,6 +45,7 @@ class Track:
     # Werden in der Pipeline gefüllt
     download_kind: DownloadKind = DownloadKind.NONE
     download_link: str | None = None
+    download_error: str | None = None   # Grund, warum ein Download scheiterte (im Digest sichtbar)
     score: float = 0.0
     percentile: float = 0.0
     duplicate_of: str | None = None

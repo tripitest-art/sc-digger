@@ -20,6 +20,7 @@ from zoneinfo import ZoneInfo
 
 from .analysis import analyze_track, resolve_bpm
 from .audit import run_audit
+from .cloud import download_cloud
 from .collection import Collection
 from .health import Health
 from .models import Config, DownloadKind, Track
@@ -59,9 +60,12 @@ def process(tracks: list[Track], cfg: Config, *, dry_run: bool,
     if not token and any(t.download_kind == DownloadKind.NATIVE for t in fresh):
         log.info("SOUNDCLOUD_AUTH_TOKEN fehlt: native Downloads werden nur verlinkt, nicht geladen")
     for t in fresh:
-        if t.download_kind != DownloadKind.NATIVE:
+        if t.download_kind == DownloadKind.NATIVE:
+            path = download_native(t, inbox, token)
+        elif t.download_kind == DownloadKind.CLOUD and not cfg["download"].get("auto_download_native_only", True):
+            path = download_cloud(t, inbox, max_mb=cfg["download"].get("cloud_max_mb", 500))
+        else:
             continue
-        path = download_native(t, inbox, token)
         if not path:
             continue
         # Fakes -> _rejected/, Brickwall -> _rejected/clipped/; nur Echtes läuft weiter
