@@ -81,6 +81,10 @@ def listen(cfg: Config) -> None:
     if not token or not chat_id:
         _idle_forever("TELEGRAM_BOT_TOKEN/CHAT_ID fehlen")
 
+    if not str(chat_id).lstrip("-").isdigit():
+        log.warning("TELEGRAM_CHAT_ID %r ist keine Zahl (Bot-Name statt Chat-ID?). Schreib dem Bot "
+                    "eine Nachricht, die richtige ID erscheint dann hier im Log.", chat_id)
+
     sc = SoundCloudClient()
 
     # Beim Start: Backlog verwerfen, nicht beim Hochfahren alte Nachrichten abarbeiten.
@@ -110,7 +114,12 @@ def listen(cfg: Config) -> None:
             for upd in r.json().get("result", []):
                 offset = upd["update_id"] + 1
                 msg = upd.get("message") or {}
-                if str(msg.get("chat", {}).get("id", "")) != str(chat_id):
+                chat = msg.get("chat", {})
+                if str(chat.get("id", "")) != str(chat_id):
+                    # Nur ID/Typ/Vorname loggen, keinen Nachrichtentext: hilft beim Einrichten
+                    log.warning("Nachricht aus fremdem Chat ignoriert: id=%s typ=%s name=%s",
+                                chat.get("id"), chat.get("type"),
+                                chat.get("first_name") or chat.get("title"))
                     continue
                 if msg.get("text"):
                     handle_message(cfg, sc, chat_id, msg["text"])

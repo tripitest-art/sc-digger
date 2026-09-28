@@ -216,3 +216,37 @@ def test_bot_routes_links_and_errors(monkeypatch):
     monkeypatch.setattr(bot, "run_link", boom)
     bot.handle_message(CFG, None, "1", "https://soundcloud.com/x/y")
     assert sent[-1] == "Fehler: Kein Track"
+
+
+def test_bot_logs_foreign_chat_id_and_warns_on_non_numeric_chat(monkeypatch, caplog):
+    """Server-Befund: TELEGRAM_CHAT_ID enthielt den Bot-Namen -> alle Nachrichten still ignoriert."""
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:abc")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "Curationscbot.")
+    monkeypatch.setattr(bot, "SoundCloudClient", lambda: None)
+    handled = []
+    monkeypatch.setattr(bot, "handle_message", lambda *a: handled.append(a))
+
+    class Resp:
+        status_code = 200
+        def __init__(self, result): self._r = result
+        def raise_for_status(self): pass
+        def json(self): return {"result": self._r}
+
+    calls = iter([
+        Resp([]),                                                        # Backlog beim Start
+        Resp([{"update_id": 5, "message": {"chat": {"id": 4242, "type": "private",
+                                                     "first_name": "Stephan"}, "text": "GEHEIMTEXT-123"}}]),
+    ])
+
+    def fake_get(*a, **k):
+        try:
+            return next(calls)
+        except StopIteration:
+            raise KeyboardInterrupt                                      # Loop beenden
+    monkeypatch.setattr(bot.requests, "get", fake_get)
+    with pytest.raises(KeyboardInterrupt):
+        bot.listen(Config.load(ROOT / "config.yaml"))
+    assert "keine Zahl" in caplog.text
+    assert "id=4242" in caplog.text and "Stephan" in caplog.text
+    assert "GEHEIMTEXT" not in caplog.text                               # kein Nachrichtentext
+    assert handled == []
