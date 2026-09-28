@@ -1,0 +1,38 @@
+name: tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: System-Pakete (ffmpeg für Qualitäts- und Analyse-Tests)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg libsndfile1
+
+      - name: Python-Pakete
+        run: pip install -r requirements.txt pytest
+
+      - name: Tests
+        run: python -m pytest -q
+
+      - name: Keine Zugangsdaten im Repo
+        run: |
+          if git grep -n -E 'bot[0-9]{6,}:[A-Za-z0-9_-]{30,}|(TELEGRAM_BOT_TOKEN|SOUNDCLOUD_AUTH_TOKEN)=[^[:space:]]+' -- . ':!AGENTS.md' ':!.env.example'; then
+            echo "::error::Möglicher Token im Repo gefunden (siehe oben)."
+            exit 1
+          fi
