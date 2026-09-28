@@ -107,6 +107,37 @@ def loudness_report(path: Path) -> dict:
     }
 
 
+def is_vbr_mp3(path: Path) -> bool:
+    """True, wenn im ersten MP3-Frame ein Xing- oder VBRI-Kopf steht.
+
+    Beginnt die Datei mit "ID3": Tag überspringen (Größe syncsafe aus Byte 6–9, plus 10 Byte Kopf,
+    plus 10 Byte Footer, wenn Flag 0x10 in Byte 5 gesetzt). Ab dort 4096 Byte lesen und
+    nach b"Xing" oder b"VBRI" suchen. Jeder Fehler (Datei fehlt, zu kurz, …) -> False, wirft nie.
+    """
+    try:
+        path = Path(path)
+        with open(path, "rb") as f:
+            header = f.read(10)
+            if len(header) < 10:
+                return False
+            offset = 0
+            if header[:3] == b"ID3":
+                flags = header[5]
+                has_footer = bool(flags & 0x10)
+                tag_size = (
+                    ((header[6] & 0x7F) << 21)
+                    | ((header[7] & 0x7F) << 14)
+                    | ((header[8] & 0x7F) << 7)
+                    | (header[9] & 0x7F)
+                )
+                offset = 10 + tag_size + (10 if has_footer else 0)
+            f.seek(offset)
+            chunk = f.read(4096)
+            return (b"Xing" in chunk) or (b"VBRI" in chunk)
+    except Exception:
+        return False
+
+
 def check_file(path: Path, cfg: Config) -> dict:
     """Gibt einen Report zurück: {ok, format, bitrate_kbps, cutoff_hz, reason}."""
     q = cfg["quality"]
@@ -126,8 +157,9 @@ def check_file(path: Path, cfg: Config) -> dict:
 
     is_lossless = ext in q["accepted_lossless"] or codec in ("flac", "pcm_s16le", "pcm_s24le", "alac")
     is_mp3 = codec == "mp3"
+    is_vbr = is_mp3 and is_vbr_mp3(path)
 
-    if is_mp3 and bitrate < q["min_mp3_bitrate_kbps"]:
+    if is_mp3 and not is_vbr and bitrate < q["min_mp3_bitrate_kbps"]:
         report["reason"] = f"MP3 mit nur {bitrate} kbps"
         return report
     if not is_lossless and not is_mp3:
@@ -138,7 +170,12 @@ def check_file(path: Path, cfg: Config) -> dict:
     report["cutoff_hz"] = round(cutoff)
     limit = q["min_cutoff_hz_for_lossless"] if is_lossless else q["min_cutoff_hz_for_320"]
     if cutoff and cutoff < limit:
-        kind = "Lossless-Container" if is_lossless else "320er MP3"
+        if is_lossless:
+            kind = "Lossless-Container"
+        elif is_vbr:
+            kind = "VBR-MP3"
+        else:
+            kind = "320er MP3"
         report["reason"] = (
             f"{kind}, aber Spektrum endet bei {cutoff / 1000:.1f} kHz "
             f"(vermutlich hochkonvertierte Lossy-Quelle)"
