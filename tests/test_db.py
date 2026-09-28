@@ -334,3 +334,33 @@ def test_jobs_queue_and_cascade(db: TrackDB):
     db.db.execute("DELETE FROM tracks WHERE id = ?", (track.id,))
     db.db.commit()
     assert db.get_job_by_id(job.id) is None
+
+
+def test_requeue_stale_jobs_filters_by_job_type(db: TrackDB):
+    """requeue_stale_jobs mit job_type setzt nur diesen Typ zurück und lässt andere unberührt."""
+    t = db.upsert_track(TrackRecord(path="/music/inbox/test.wav", mtime=1.0, size=1))
+    j_cap = db.enqueue_job(t.id, JobType.CAPTION)
+    j_emb = db.enqueue_job(t.id, JobType.EMBEDDING)
+    db.claim_next_job(job_type=JobType.CAPTION)
+    db.claim_next_job(job_type=JobType.EMBEDDING)
+
+    # Beide Jobs künstlich altern lassen (60 Minuten)
+    db.db.execute(
+        "UPDATE jobs SET updated_at = datetime('now', '-60 minutes') WHERE id IN (?, ?)",
+        (j_cap.id, j_emb.id),
+    )
+    db.db.commit()
+
+    # Requeue nur für CAPTION
+    assert db.requeue_stale_jobs(timeout_minutes=30, job_type=JobType.CAPTION) == 1
+    assert db.get_job_by_id(j_cap.id).status == "pending"
+    assert db.get_job_by_id(j_emb.id).status == "running"
+
+
+def test_normalize_path_with_path_object():
+    """_normalize_path funktioniert mit Path-Objekten und normalisiert Forward-Slashes."""
+    from sc_digger.db import _normalize_path
+    p = Path("/music/Schranz/sub/../track.wav")
+    assert _normalize_path(p) == "/music/Schranz/track.wav"
+    assert _normalize_path(Path("inbox/sub/./track.wav")) == "inbox/sub/track.wav"
+

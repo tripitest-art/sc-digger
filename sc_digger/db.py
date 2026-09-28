@@ -9,11 +9,14 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import posixpath
 import sqlite3
 from dataclasses import asdict, dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Any, Sequence
+
+STALE_TIMEOUT_MINUTES: dict[str, int] = {"embedding": 120, "caption": 30, "tag_backfill": 30, "fingerprint": 30}
 
 
 class TrackStatus(str, Enum):
@@ -45,8 +48,13 @@ class JobType(str, Enum):
 
 
 def _normalize_path(p: str | Path) -> str:
-    """Normalisiert Pfade plattformunabhängig mit Forward-Slashes."""
-    return Path(p).as_posix()
+    """Reine Zeichenkettenoperation, kein Dateisystemzugriff:
+    posixpath.normpath(str(p).replace("\\", "/")).
+    Löst "." und ".." auf, doppelte und abschließende "/" verschwinden, Backslashes werden "/".
+    Relative Pfade bleiben relativ (bewusst kein abspath: das Ergebnis hinge vom
+    Arbeitsverzeichnis ab), Symlinks werden nicht aufgelöst (NFS).
+    """
+    return posixpath.normpath(str(p).replace("\\", "/"))
 
 
 @dataclass
@@ -235,7 +243,7 @@ def _apply_migrations(db: sqlite3.Connection) -> None:
 class TrackDB:
     """Verwaltet den persistenten Track-Index und Hintergrund-Jobs."""
 
-    def __init__(self, db_path: str | Path = "/data/tracks.sqlite"):
+    def __init__(self, db_path: str | Path):
         self.path = Path(db_path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.db = sqlite3.connect(str(self.path))
@@ -453,19 +461,57 @@ class TrackDB:
         self.db.commit()
         return JobRecord.from_row(row) if row else None
 
-    def requeue_stale_jobs(self, timeout_minutes: int = 30, job_type: JobType | str | None = None) -> int:
-        """Setzt hängende 'running'-Jobs nach Worker-Abstürzen zurück auf 'pending'."""
-        jt = job_type.value if isinstance(job_type, Enum) else job_type
+    def touch_job(self, job_id: int) -> bool:
+        """Lebenszeichen eines Workers: setzt updated_at auf jetzt, aber NUR wenn der Job
+        'running' ist. True, wenn genau ein Job aktualisiert wurde, sonst False.
+        """
         cur = self.db.execute(
             """
             UPDATE jobs
-            SET status = 'pending', updated_at = CURRENT_TIMESTAMP
-            WHERE status = 'running'
-              AND (?1 IS NULL OR job_type = ?1)
-              AND datetime(updated_at) < datetime('now', '-' || ?2 || ' minutes');
+            SET updated_at = CURRENT_TIMESTAMP
+            WHERE id = ? AND status = 'running';
             """,
-            (jt, int(timeout_minutes)),
+            (job_id,),
         )
+        self.db.commit()
+        return cur.rowcount == 1
+
+    def requeue_stale_jobs(
+        self, timeout_minutes: int | None = None, job_type: JobType | str | None = None
+    ) -> int:
+        """Setzt 'running'-Jobs, deren updated_at älter als das Timeout ist, auf 'pending'.
+
+        timeout_minutes=None: je Job-Typ STALE_TIMEOUT_MINUTES (Fallback 30).
+        timeout_minutes=int: dieser Wert für alle Typen (bisheriges Verhalten).
+        job_type wie bisher als Filter. Rückgabe: Anzahl zurückgesetzter Jobs.
+        """
+        jt = job_type.value if isinstance(job_type, Enum) else (str(job_type) if job_type else None)
+        if timeout_minutes is not None:
+            cur = self.db.execute(
+                """
+                UPDATE jobs
+                SET status = 'pending', updated_at = CURRENT_TIMESTAMP
+                WHERE status = 'running'
+                  AND (?1 IS NULL OR job_type = ?1)
+                  AND datetime(updated_at) < datetime('now', '-' || ?2 || ' minutes');
+                """,
+                (jt, int(timeout_minutes)),
+            )
+        else:
+            when_clauses = " ".join(
+                f"WHEN '{k}' THEN {int(v)}" for k, v in STALE_TIMEOUT_MINUTES.items()
+            )
+            case_sql = f"CASE job_type {when_clauses} ELSE 30 END"
+            cur = self.db.execute(
+                f"""
+                UPDATE jobs
+                SET status = 'pending', updated_at = CURRENT_TIMESTAMP
+                WHERE status = 'running'
+                  AND (?1 IS NULL OR job_type = ?1)
+                  AND datetime(updated_at) < datetime('now', '-' || ({case_sql}) || ' minutes');
+                """,
+                (jt,),
+            )
         self.db.commit()
         return cur.rowcount
 
