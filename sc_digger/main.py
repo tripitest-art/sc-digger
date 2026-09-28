@@ -308,6 +308,14 @@ def _make_sc() -> SoundCloudClient:
     return SoundCloudClient()
 
 
+def _safe_print(text: str) -> None:
+    try:
+        print(text)
+    except UnicodeEncodeError:
+        encoding = getattr(sys.stdout, "encoding", None) or "utf-8"
+        print(text.encode(encoding, errors="replace").decode(encoding, errors="replace"))
+
+
 def run_curator_mining(cfg: Config, dry_run: bool = False, no_telegram: bool = False) -> list[tuple[dict, int]]:
     """Curator-Mining: Wer 👍-Tracks repostet oder liked, kuratiert meist den eigenen Stil."""
     with TrackDB(cfg["state"]["track_db_path"]) as db:
@@ -316,7 +324,7 @@ def run_curator_mining(cfg: Config, dry_run: bool = False, no_telegram: bool = F
     if not sc_ids:
         log.info("Keine 👍-Tracks in der Datenbank gefunden.")
         if dry_run or no_telegram:
-            print("Keine 👍-Tracks in der Datenbank gefunden.")
+            _safe_print("Keine 👍-Tracks in der Datenbank gefunden.")
         return []
 
     sc = _make_sc()
@@ -374,7 +382,7 @@ def run_curator_mining(cfg: Config, dry_run: bool = False, no_telegram: bool = F
         text = f"🔍 {username} ({count}× gesehen): soundcloud.com/{permalink}"
 
         if dry_run or no_telegram:
-            print(text)
+            _safe_print(text)
         else:
             token = cfg.telegram_token
             chat_id = cfg.telegram_chat_id
