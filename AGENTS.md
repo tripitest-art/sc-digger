@@ -60,8 +60,9 @@ Rechteverwaltung durch, sondern der Check `acceptance-guard` (läuft immer mit d
 `main`) und das Review.
 
 Auf `main` gilt die GitHub-Regel `main-schutz`: nur per Pull Request, nur Squash-Merge,
-Pflicht-Checks `tests`, `acceptance-guard` und CodeQL (blockiert ab „High“). Copilot
-reviewt neue PRs und jeden weiteren Push automatisch, Drafts nicht.
+Pflicht-Checks `tests`, `acceptance-guard` und CodeQL (blockiert ab „High“). Copilot-Review
+ist in der Regel eingeschaltet, greift aber nur mit einem bezahlten Copilot-Plan; mit
+Copilot Free kommt kein Review. Darauf also nie warten.
 
 ### Planer
 
@@ -89,15 +90,15 @@ reviewt neue PRs und jeden weiteren Push automatisch, Drafts nicht.
 7. PR mit ausgefüllter Vorlage öffnen. `--fill` reicht nicht, weil `Closes #<N>` fehlen würde:
    `gh pr create --title "<Issue-Titel>" --body-file <ausgefüllte Vorlage>`
    Der Body muss `Closes #<N>` enthalten, sonst prüft `acceptance-guard` nichts gegen das Issue.
-8. Copilot reviewt jeden PR automatisch. Warten, bis sein Review da ist, dann jeden Kommentar
-   einzeln entscheiden:
+8. **Nur falls** Copilot innerhalb weniger Minuten ein Review hinterlässt (`gh pr view <PR> --comments`),
+   jeden Kommentar einzeln entscheiden. Kommt keins, ist der PR fertig, nicht warten.
    - Echter Fehler **innerhalb des Issue-Umfangs** → beheben.
    - Außerhalb des Umfangs, Geschmacksfrage oder falsch → im Thread kurz begründen, nicht umsetzen.
      Copilot kennt das Issue nicht; das Issue gilt, nicht der Vorschlag.
    - Nie auf Copilots Anregung Tests abschwächen oder weitere Dateien anfassen.
 
-   Alle Korrekturen **in einem Push**: Jeder Push löst ein neues Copilot-Review aus und
-   verbraucht Stephans Kontingent.
+   Alle Korrekturen **in einem Push**: Jeder Push kann ein neues Copilot-Review auslösen und
+   Kontingent verbrauchen.
 
 ### Reviewer
 
@@ -107,8 +108,8 @@ reviewt neue PRs und jeden weiteren Push automatisch, Drafts nicht.
 2. Gegen das Issue prüfen: nur genannte Dateien geändert, Signaturen exakt, „Fertig, wenn“
    vollständig, Goldene Regeln eingehalten (besonders 4–7). Eigene Tests des Workers auf
    Aussagekraft prüfen (`assert True`, zu schwache Vergleiche, gemockter Prüfling).
-   Copilot-Kommentare: jeder ist umgesetzt oder begründet abgelehnt. Umgesetzte Vorschläge
-   außerhalb des Issue-Umfangs sind ein Mangel.
+   Falls Copilot kommentiert hat: jeder Kommentar ist umgesetzt oder begründet abgelehnt.
+   Umgesetzte Vorschläge außerhalb des Issue-Umfangs sind ein Mangel.
 3. Mängel: `gh pr review <PR> --request-changes --body "<konkrete Punkte>"`. Der Worker
    arbeitet auf demselben Branch nach.
 4. Sauber, Merge-Modus „automatisch“: `gh pr merge <PR> --squash --delete-branch`.
