@@ -34,6 +34,10 @@ def test_dockerfile_cron_job_sources_env_file():
     assert "export -p > /app/cron.env" in (ROOT / "entrypoint.sh").read_text()
 
 
+@pytest.mark.skipif(
+    shutil.which("sh") is None or shutil.which("env") is None,
+    reason="Benötigt POSIX sh und env (Cron-Umgebungstest auf Server/CI)",
+)
 def test_exported_env_restores_path_and_secrets_in_clean_cron_env(tmp_path):
     """Nachstellung: entrypoint schreibt export -p, cron startet mit env -i und lädt die Datei."""
     envfile = tmp_path / "cron.env"
