@@ -122,11 +122,11 @@ flowchart TD
 Ziel: Ein Index über alle Tracks – neue und bestehende – als Fundament für Duplikaterkennung,
 Copilot, Recommender und Dashboard.
 
-### 2.1 Zentrale Track-Datenbank
-* Tabelle `tracks`: Pfad, Audio-Fingerprint, Format/Bitrate, Qualitätsurteil, BPM, Key, LUFS,
+### 2.1 Zentrale Track-Datenbank (✅ Implementiert)
+- [x] Tabelle `tracks`: Pfad, Audio-Fingerprint, Format/Bitrate, Qualitätsurteil, BPM, Key, LUFS,
   True Peak, Quelle (SoundCloud-URL), Status (inbox/archive/rejected), Feedback.
-* Tabelle `jobs`: asynchrone Aufgaben für die Workstation (Embeddings, Beschreibungen).
-* Migrationen versioniert, damit die DB über Updates hinweg erhalten bleibt.
+- [x] Tabelle `jobs`: asynchrone Aufgaben für die Workstation (Embeddings, Beschreibungen).
+- [x] Migrationen versioniert, damit die DB über Updates hinweg erhalten bleibt (`schema_migrations`).
 
 ### 2.2 `audit`-Befehl (read-only)
 * **Kommando:** `python -m sc_digger.main audit --path /music/Schranz [--report report.html]`

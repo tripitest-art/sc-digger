@@ -117,6 +117,7 @@ quality:
 
 state:
   db_path: /data/seen.sqlite
+  track_db_path: /data/tracks.sqlite  # Lokale SQLite-DB (nie auf NFS, da WAL-Modus)
 
 health:
   # Alarm per Telegram, wenn so viele discover-Läufe in Folge scheitern oder 0 Rohtreffer
