@@ -189,4 +189,7 @@ Cloud-Downloads, ein persönliches Geschmacksmodell aus Audio-Embeddings, Rekord
 
 ## Lizenz
 
-Noch keine Lizenz festgelegt. Bis dahin gilt: alle Rechte vorbehalten.
+sc-digger steht unter der **GNU General Public License v3.0 oder später** (`GPL-3.0-or-later`),
+siehe [`LICENSE`](LICENSE). Du darfst den Code nutzen, ändern und weitergeben; wer eine veränderte
+Fassung weitergibt, muss sie unter derselben Lizenz offenlegen. Das passt zu den Abhängigkeiten:
+`mutagen` steht unter GPL-2.0-or-later.
