@@ -279,8 +279,11 @@ def download_cloud(t: Track, inbox: Path, *, max_mb: int = 500,
                     if len(candidates) > 1:
                         t.notes.append(f"ZIP enthielt {len(candidates)} Audiodateien, '{chosen_member_name}' gewählt")
 
+                    extracted_file = temp_dir / "extracted.tmp"
+                    with zf.open(best) as src, open(extracted_file, "wb") as dst:
+                        shutil.copyfileobj(src, dst, 1 << 20)
                     target_path = _resolve_inbox_path(inbox, chosen_member_name)
-                    target_path.write_bytes(zf.read(best))
+                    shutil.move(str(extracted_file), str(target_path))
                     log.info("Cloud-Download (ZIP) erfolgreich: %s -> %s", t.title, target_path.name)
                     return target_path
 

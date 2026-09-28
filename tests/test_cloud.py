@@ -126,3 +126,18 @@ def test_direct_url_invalid_or_empty():
     assert direct_url("ftp://dropbox.com/file.wav") is None
     assert direct_url("not a url") is None
     assert direct_url("https://") is None
+
+
+def test_zip_with_wav_and_mp3_prefers_wav_byte_identical(tmp_path):
+    """ZIP mit WAV und MP3 liefert die verlustfreie WAV, byte-identisch."""
+    wav_data = b"RIFF" + bytes(range(256)) * 8
+    mp3_data = b"ID3" + b"\x00" * 5000
+    body = zipped({"EP/Track.mp3": mp3_data, "EP/Track.wav": wav_data})
+    t = mk(DBX)
+    sess = FakeSession({DBX_DL: FakeResponse(body, headers=attach("EP.zip"))})
+    p = download_cloud(t, tmp_path, session=sess)
+    assert p == tmp_path / "Track.wav"
+    assert p.read_bytes() == wav_data
+    assert any("Track.wav" in n for n in t.notes)
+    assert t.download_error is None
+
