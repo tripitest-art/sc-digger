@@ -148,6 +148,53 @@ def test_write_tags_missing_mutagen_returns_false(tmp_path, monkeypatch):
     assert write_tags(p, artist="A", title="T") is False
 
 
+def test_process_passes_loudness_report_to_write_tags(tmp_path, monkeypatch):
+    """process() reicht quality_report als loudness an write_tags durch."""
+    from sc_digger import main as m
+    from sc_digger.models import Config, Track
+    import sc_digger.output as out
+
+    f = tmp_path / "inbox" / "x.wav"
+    f.parent.mkdir(parents=True)
+    f.write_bytes(b"x")
+
+    dummy_report = {"integrated_lufs": -6.0, "true_peak_dbfs": 1.0, "loudness_range_lu": 5.3, "ok": True}
+    captured_kwargs: list[dict] = []
+
+    monkeypatch.setattr(m, "download_native", lambda t, inbox, token=None: f)
+    monkeypatch.setattr(out, "check_file", lambda p, cfg: dict(dummy_report))
+    monkeypatch.setattr(m, "analyze_track", lambda p: {"bpm": 150.0, "key_camelot": "5A", "key_name": "Cm"})
+    monkeypatch.setattr(m, "write_tags", lambda *a, **kw: captured_kwargs.append(kw) or True)
+    monkeypatch.setattr(m, "organize", lambda *a, **kw: f)
+
+    cfg = Config.load(Path(__file__).parent.parent / "config.yaml")
+    cfg = Config(dict(cfg.raw))
+    cfg.raw["download"] = {**cfg["download"], "collection_dir": str(tmp_path / "coll"),
+                           "inbox_dir": str(tmp_path / "inbox")}
+
+    from sc_digger.soundcloud import SoundCloudClient
+
+    t = SoundCloudClient._to_track({
+        "id": 1, "kind": "track", "title": "Track 1",
+        "permalink_url": "https://soundcloud.com/a/t1",
+        "user": {"username": "Artist 1", "permalink_url": "https://soundcloud.com/a"},
+        "created_at": "2026-01-01T00:00:00Z", "playback_count": 1000, "likes_count": 50,
+        "reposts_count": 5, "comment_count": 1, "downloadable": True, "tag_list": "", "description": "",
+    })
+
+    fresh, _ = m.process([t], cfg, dry_run=False)
+    assert len(captured_kwargs) == 1
+    assert captured_kwargs[0].get("loudness") == dummy_report
+
+
+def test_loudness_tag_values_robustness():
+    """loudness_tag_values wirft nie und behandelt fehlerhafte oder ungültige Werte."""
+    from sc_digger.organize import loudness_tag_values
+    assert loudness_tag_values("not a dict") == {}  # type: ignore[arg-type]
+    assert loudness_tag_values(123) == {}  # type: ignore[arg-type]
+    assert loudness_tag_values({"integrated_lufs": "invalid"}) == {}
+
+
 # ---------------- BPM-Oktav-Korrektur ----------------
 from sc_digger.analysis import resolve_bpm
 

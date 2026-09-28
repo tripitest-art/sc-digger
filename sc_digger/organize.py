@@ -8,6 +8,7 @@ from __future__ import annotations
 import logging
 import shutil
 from pathlib import Path
+from typing import Any
 
 log = logging.getLogger(__name__)
 
@@ -57,21 +58,72 @@ def organize(path: Path, inbox: Path, *, bpm: float | None = None,
     return target
 
 
+REPLAYGAIN_REFERENCE_LUFS = -18.0  # ReplayGain 2.0
+_LOUDNESS_TAG_KEYS = (
+    "REPLAYGAIN_TRACK_GAIN",
+    "REPLAYGAIN_TRACK_PEAK",
+    "SCDIGGER_LUFS",
+    "SCDIGGER_LRA",
+)
+
+
+def loudness_tag_values(report: dict | None) -> dict[str, str]:
+    """Formatierte Lautheits-Tags aus einem quality_report.
+
+    Liest report["integrated_lufs"], report["true_peak_dbfs"], report["loudness_range_lu"]
+    (jeweils float oder None, fehlende Schlüssel wie None behandeln).
+    Rückgabe, jeder Schlüssel nur, wenn der zugrunde liegende Messwert nicht None ist:
+      "REPLAYGAIN_TRACK_GAIN": f"{-18.0 - lufs:.2f} dB"          aus integrated_lufs
+      "REPLAYGAIN_TRACK_PEAK": f"{10 ** (true_peak_dbfs / 20):.6f}" (linear)
+      "SCDIGGER_LUFS":         f"{lufs:.1f}"                       aus integrated_lufs
+      "SCDIGGER_LRA":          f"{loudness_range_lu:.1f}"
+    report None oder ohne Messwerte -> {}. Wirft nie.
+    """
+    if not isinstance(report, dict):
+        return {}
+    out: dict[str, str] = {}
+    try:
+        lufs = report.get("integrated_lufs")
+        if lufs is not None:
+            out["REPLAYGAIN_TRACK_GAIN"] = f"{REPLAYGAIN_REFERENCE_LUFS - float(lufs):.2f} dB"
+            out["SCDIGGER_LUFS"] = f"{float(lufs):.1f}"
+
+        tp = report.get("true_peak_dbfs")
+        if tp is not None:
+            out["REPLAYGAIN_TRACK_PEAK"] = f"{10 ** (float(tp) / 20):.6f}"
+
+        lra = report.get("loudness_range_lu")
+        if lra is not None:
+            out["SCDIGGER_LRA"] = f"{float(lra):.1f}"
+    except Exception as e:
+        log.warning("Lautheits-Tags konnten nicht berechnet werden: %s", e)
+        return {}
+    return out
+
+
 def write_tags(path: Path, *, artist: str, title: str, bpm: float | None = None,
                key_name: str | None = None, genre: str = "Schranz",
-               comment: str = "", url: str = "") -> bool:
-    """Schreibt Metadaten-Tags in die Audio-Datei (ID3 für MP3, Vorbis für FLAC/OGG).
+               comment: str = "", url: str = "",
+               loudness: dict | None = None) -> bool:
+    """Schreibt Metadaten- und Lautheits-Tags in die Audio-Datei.
 
-    Unterstützt: MP3, FLAC, AIFF, M4A. WAV wird übersprungen (kein Tag-Support).
+    Unterstützt: MP3, FLAC, AIFF, M4A, WAV.
+    - loudness: quality_report; die Werte aus loudness_tag_values werden geschrieben.
+      Vorhandene Felder mit diesen vier Namen werden vorher entfernt (kein Doppel).
+    - Ablage: ID3 (MP3, AIFF, WAV) als TXXX-Frames mit desc = Schlüsselname;
+      FLAC als Vorbis-Kommentar; M4A als Freeform "----:com.apple.iTunes:<Schlüssel>" (UTF-8).
+    - WAV: bekommt jetzt dieselben ID3-Tags wie AIFF (mutagen.wave.WAVE, add_tags bei Bedarf)
+      und gibt bei Erfolg True zurück. Kaputte Dateien weiterhin False, keine Exception.
     Gibt True zurück wenn Tags geschrieben wurden.
     """
     try:
         import mutagen
         from mutagen.easyid3 import EasyID3
-        from mutagen.id3 import ID3, TBPM, TKEY, COMM, WXXX, ID3NoHeaderError
+        from mutagen.id3 import ID3, TBPM, TKEY, COMM, WXXX, TXXX, ID3NoHeaderError
         from mutagen.flac import FLAC
         from mutagen.mp4 import MP4
         from mutagen.aiff import AIFF
+        from mutagen.wave import WAVE
     except ImportError:
         log.warning("mutagen nicht installiert – Tagging übersprungen")
         return False
@@ -80,19 +132,24 @@ def write_tags(path: Path, *, artist: str, title: str, bpm: float | None = None,
     try:
         if ext == ".mp3":
             _tag_mp3(path, artist=artist, title=title, bpm=bpm,
-                     key_name=key_name, genre=genre, comment=comment, url=url)
+                     key_name=key_name, genre=genre, comment=comment, url=url,
+                     loudness=loudness)
         elif ext == ".flac":
             _tag_flac(path, artist=artist, title=title, bpm=bpm,
-                      key_name=key_name, genre=genre, comment=comment, url=url)
+                      key_name=key_name, genre=genre, comment=comment, url=url,
+                      loudness=loudness)
         elif ext in (".aif", ".aiff"):
             _tag_aiff(path, artist=artist, title=title, bpm=bpm,
-                      key_name=key_name, genre=genre, comment=comment, url=url)
+                      key_name=key_name, genre=genre, comment=comment, url=url,
+                      loudness=loudness)
         elif ext == ".m4a":
             _tag_m4a(path, artist=artist, title=title, bpm=bpm,
-                     key_name=key_name, genre=genre, comment=comment, url=url)
+                     key_name=key_name, genre=genre, comment=comment, url=url,
+                     loudness=loudness)
         elif ext == ".wav":
-            log.debug("WAV-Tagging nicht unterstützt, übersprungen: %s", path.name)
-            return False
+            _tag_wav(path, artist=artist, title=title, bpm=bpm,
+                     key_name=key_name, genre=genre, comment=comment, url=url,
+                     loudness=loudness)
         else:
             log.debug("Unbekanntes Format für Tagging: %s", ext)
             return False
@@ -101,6 +158,42 @@ def write_tags(path: Path, *, artist: str, title: str, bpm: float | None = None,
     except Exception as e:
         log.warning("Tagging fehlgeschlagen für %s: %s", path.name, e)
         return False
+
+
+def _replace_id3_loudness(tags: Any, loudness: object) -> None:
+    """Ersetzt bestehende Lautheits-Tags in einem ID3-Objekt durch berechnete TXXX-Frames."""
+    from mutagen.id3 import TXXX
+    for k in list(tags.keys()):
+        if any(k.upper() == f"TXXX:{name.upper()}" for name in _LOUDNESS_TAG_KEYS):
+            del tags[k]
+    loudness_dict = loudness_tag_values(loudness if isinstance(loudness, dict) else None)
+    for name, val in loudness_dict.items():
+        tags.add(TXXX(encoding=3, desc=name, text=[val]))
+
+
+def _fill_id3(tags: Any, kw: dict[str, object]) -> None:
+    """Schreibt alle Standard-ID3-Frames und Lautheits-Tags in ein ID3-kompatibles Objekt."""
+    from mutagen.id3 import TIT2, TPE1, TBPM, TKEY, TCON, COMM, WXXX
+    tags.delall("TIT2")
+    tags.add(TIT2(encoding=3, text=[str(kw["title"])]))
+    tags.delall("TPE1")
+    tags.add(TPE1(encoding=3, text=[str(kw["artist"])]))
+    tags.delall("TCON")
+    tags.add(TCON(encoding=3, text=[str(kw["genre"])]))
+    if kw.get("bpm") is not None:
+        tags.delall("TBPM")
+        tags.add(TBPM(encoding=3, text=[str(int(round(kw["bpm"])))]))
+    if kw.get("key_name"):
+        tags.delall("TKEY")
+        tags.add(TKEY(encoding=3, text=[str(kw["key_name"])]))
+    if kw.get("comment"):
+        tags.delall("COMM")
+        tags.add(COMM(encoding=3, lang="deu", desc="sc-digger", text=[str(kw["comment"])]))
+    if kw.get("url"):
+        tags.delall("WXXX")
+        tags.add(WXXX(encoding=3, desc="SoundCloud", url=str(kw["url"])))
+
+    _replace_id3_loudness(tags, kw.get("loudness"))
 
 
 def _tag_mp3(path: Path, **kw: object) -> None:
@@ -129,6 +222,8 @@ def _tag_mp3(path: Path, **kw: object) -> None:
         tags.delall("WXXX")
         tags.add(WXXX(encoding=3, desc="SoundCloud", url=str(kw["url"])))
 
+    _replace_id3_loudness(tags, kw.get("loudness"))
+
     tags.save(str(path))
 
 
@@ -146,40 +241,41 @@ def _tag_flac(path: Path, **kw: object) -> None:
         audio["comment"] = str(kw["comment"])
     if kw.get("url"):
         audio["url"] = str(kw["url"])
+
+    for name in _LOUDNESS_TAG_KEYS:
+        if name in audio:
+            del audio[name]
+    loudness = kw.get("loudness")
+    loudness_dict = loudness_tag_values(loudness if isinstance(loudness, dict) else None)
+    for name, val in loudness_dict.items():
+        audio[name] = val
+
     audio.save()
 
 
 def _tag_aiff(path: Path, **kw: object) -> None:
     from mutagen.aiff import AIFF
-    from mutagen.id3 import TIT2, TPE1, TBPM, TKEY, TCON, COMM, WXXX
     audio = AIFF(str(path))
     if audio.tags is None:
         audio.add_tags()
-    tags = audio.tags
-    tags.delall("TIT2")
-    tags.add(TIT2(encoding=3, text=[str(kw["title"])]))
-    tags.delall("TPE1")
-    tags.add(TPE1(encoding=3, text=[str(kw["artist"])]))
-    tags.delall("TCON")
-    tags.add(TCON(encoding=3, text=[str(kw["genre"])]))
-    if kw.get("bpm") is not None:
-        tags.delall("TBPM")
-        tags.add(TBPM(encoding=3, text=[str(int(round(kw["bpm"])))]))
-    if kw.get("key_name"):
-        tags.delall("TKEY")
-        tags.add(TKEY(encoding=3, text=[str(kw["key_name"])]))
-    if kw.get("comment"):
-        tags.delall("COMM")
-        tags.add(COMM(encoding=3, lang="deu", desc="sc-digger", text=[str(kw["comment"])]))
-    if kw.get("url"):
-        tags.delall("WXXX")
-        tags.add(WXXX(encoding=3, desc="SoundCloud", url=str(kw["url"])))
+    _fill_id3(audio.tags, kw)
+    audio.save()
+
+
+def _tag_wav(path: Path, **kw: object) -> None:
+    from mutagen.wave import WAVE
+    audio = WAVE(str(path))
+    if audio.tags is None:
+        audio.add_tags()
+    _fill_id3(audio.tags, kw)
     audio.save()
 
 
 def _tag_m4a(path: Path, **kw: object) -> None:
     from mutagen.mp4 import MP4
     audio = MP4(str(path))
+    if audio.tags is None:
+        audio.add_tags()
     audio["\xa9nam"] = [str(kw["title"])]
     audio["\xa9ART"] = [str(kw["artist"])]
     audio["\xa9gen"] = [str(kw["genre"])]
@@ -190,4 +286,14 @@ def _tag_m4a(path: Path, **kw: object) -> None:
     # M4A hat kein Standard-Key-Feld, nutzen wir ein Freitext-Feld
     if kw.get("key_name"):
         audio["\xa9cmt"] = [f"Key: {kw['key_name']} | {kw.get('comment', '')}".strip(" |")]
+
+    if audio.tags:
+        for k in list(audio.tags.keys()):
+            if any(k.upper() == f"----:COM.APPLE.ITUNES:{name.upper()}" for name in _LOUDNESS_TAG_KEYS):
+                del audio.tags[k]
+    loudness = kw.get("loudness")
+    loudness_dict = loudness_tag_values(loudness if isinstance(loudness, dict) else None)
+    for name, val in loudness_dict.items():
+        audio[f"----:com.apple.iTunes:{name}"] = [val.encode("utf-8")]
+
     audio.save()

@@ -99,6 +99,7 @@ def process(tracks: list[Track], cfg: Config, *, dry_run: bool,
                     path, artist=t.artist, title=t.title, bpm=t.bpm, key_name=t.key_name,
                     genre=t.genre or org.get("default_genre", "Schranz"),
                     comment=comment.strip(" |"), url=t.url,
+                    loudness=t.quality_report,
                 )
             except Exception as e:
                 t.notes.append(f"Tagging fehlgeschlagen: {e}")
