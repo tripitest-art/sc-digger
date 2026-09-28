@@ -255,3 +255,44 @@ def test_run_link_does_not_filter_sets(tmp_path, capsys):
     out = capsys.readouterr().out
     assert "🎛️ Set, 58 min" in out
 
+
+def test_playlist_digest_show_all_length_and_numbering(monkeypatch):
+    """Playlist-Digest mit show_all und vielen Tracks bleibt unter 4096 Zeichen je Nachricht und nummeriert fortlaufend."""
+    tracks = [mk(i, title=f"Very Long Title For Schranz Track Number {i:03d} In Extended Mix") for i in range(1, 65)]
+    msgs = []
+    monkeypatch.setattr(m, "send_digest", lambda cfg, ms, chat_id=None, *, buttons: msgs.extend(ms))
+    monkeypatch.setattr(m, "send_telegram_document", lambda *a, **k: None)
+
+    cfg = Config(dict(CFG.raw))
+    cfg.raw["telegram"] = {**CFG["telegram"], "feedback_buttons": True}
+    m.deliver("Playlist: Big Collection", tracks, [], cfg, dry_run=False, no_telegram=False, show_all=True)
+
+    assert len(msgs) > 1
+    for msg in msgs:
+        assert len(msg.text) <= 4096
+        assert len(msg.items) <= 10
+
+    all_nums = [n for msg in msgs for n, _ in msg.items]
+    assert all_nums == list(range(1, 65))
+
+
+def test_send_digest_disabled_buttons_no_reply_markup(monkeypatch):
+    """feedback_buttons: false erzeugt keinen reply_markup."""
+    calls = []
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:abc")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "42")
+    from sc_digger import output as out
+    monkeypatch.setattr(out, "telegram_call", lambda token, method, **kw: calls.append((method, kw["json"])) or {"ok": True})
+
+    tracks = [mk(1), mk(2)]
+    msgs = out.build_digest_messages(tracks, None, header="T", numbered=False)
+    cfg = Config(dict(CFG.raw))
+    cfg.raw["telegram"] = {**CFG["telegram"], "feedback_buttons": False}
+    out.send_digest(cfg, msgs, buttons=False)
+
+    assert len(calls) == 1
+    method, payload = calls[0]
+    assert method == "sendMessage"
+    assert "reply_markup" not in payload
+
+
