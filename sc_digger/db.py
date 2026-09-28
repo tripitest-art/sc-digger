@@ -344,6 +344,66 @@ class TrackDB:
         ).fetchall()
         return [TrackRecord.from_row(r) for r in rows]
 
+    def set_fingerprint(self, track_id: int, fingerprint: str, duration: float) -> bool:
+        """Setzt nur fingerprint, fingerprint_duration (und updated_at). mtime/size bleiben unverändert,
+        damit der Audit-Cache gültig bleibt. True, wenn die ID existiert, sonst False.
+        """
+        cur = self.db.execute(
+            """
+            UPDATE tracks
+            SET fingerprint = ?,
+                fingerprint_duration = ?,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (fingerprint, duration, track_id),
+        )
+        self.db.commit()
+        return cur.rowcount > 0
+
+    def tracks_missing_fingerprint(self) -> list[TrackRecord]:
+        """Tracks mit fingerprint IS NULL, sortiert nach id."""
+        rows = self.db.execute(
+            "SELECT * FROM tracks WHERE fingerprint IS NULL ORDER BY id ASC"
+        ).fetchall()
+        return [TrackRecord.from_row(r) for r in rows]
+
+    def fingerprint_candidates(self, duration: float, tolerance_s: float) -> list[TrackRecord]:
+        """Tracks mit Fingerprint (nicht NULL, nicht leer) und
+        duration - tolerance_s <= fingerprint_duration <= duration + tolerance_s (Grenzen eingeschlossen),
+        sortiert nach id. Filter in SQL, nicht in Python (später gegen die ganze Sammlung).
+        """
+        min_dur = duration - tolerance_s
+        max_dur = duration + tolerance_s
+        rows = self.db.execute(
+            """
+            SELECT * FROM tracks
+            WHERE fingerprint IS NOT NULL
+              AND fingerprint != ''
+              AND fingerprint_duration IS NOT NULL
+              AND fingerprint_duration >= ?
+              AND fingerprint_duration <= ?
+            ORDER BY id ASC
+            """,
+            (min_dur, max_dur),
+        ).fetchall()
+        return [TrackRecord.from_row(r) for r in rows]
+
+    def tracks_with_fingerprint(self) -> list[TrackRecord]:
+        """Tracks mit Fingerprint (nicht NULL, nicht leer) und fingerprint_duration,
+        sortiert nach fingerprint_duration, dann id.
+        """
+        rows = self.db.execute(
+            """
+            SELECT * FROM tracks
+            WHERE fingerprint IS NOT NULL
+              AND fingerprint != ''
+              AND fingerprint_duration IS NOT NULL
+            ORDER BY fingerprint_duration ASC, id ASC
+            """
+        ).fetchall()
+        return [TrackRecord.from_row(r) for r in rows]
+
     def set_feedback(self, track_id_or_path: int | str | Path, feedback: str) -> bool:
         """Speichert DJ-Feedback (z.B. 'like', 'dislike', 'later') für einen Track."""
         if isinstance(track_id_or_path, int):

@@ -8,6 +8,11 @@ import logging
 from pathlib import Path
 import struct
 import subprocess
+import sys
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from sc_digger.db import TrackDB, TrackRecord
 
 log = logging.getLogger(__name__)
 
@@ -146,3 +151,91 @@ def decode_fingerprint(text: str) -> list[int]:
     raw = base64.b64decode(text.encode("ascii"))
     n = len(raw) // 4
     return list(struct.unpack(f"<{n}I", raw))
+
+
+def find_same_recording(fp: Fingerprint, db: "TrackDB") -> "TrackRecord | None":
+    """Holt Kandidaten ausschließlich über db.fingerprint_candidates(fp.duration, MAX_DURATION_DIFF_S)
+    und gibt den ersten (nach id) zurück, für den same_recording(fp, <Fingerprint des Kandidaten>) gilt.
+    Sonst None. Import von TrackDB/TrackRecord nur unter TYPE_CHECKING (kein Zirkelimport).
+    """
+    candidates = db.fingerprint_candidates(fp.duration, MAX_DURATION_DIFF_S)
+    same_fn = getattr(sys.modules[__name__], "same_recording", same_recording)
+    for c in candidates:
+        if c.fingerprint and c.fingerprint_duration is not None:
+            c_fp = Fingerprint(
+                values=decode_fingerprint(c.fingerprint),
+                duration=c.fingerprint_duration,
+            )
+            if same_fn(fp, c_fp):
+                return c
+    return None
+
+
+def duplicate_groups(records: list["TrackRecord"]) -> list[list["TrackRecord"]]:
+    """Gruppen gleicher Aufnahmen (Größe >= 2). Records ohne fingerprint oder fingerprint_duration
+    werden ignoriert. Nach Dauer sortieren und nur Paare vergleichen, deren Dauer höchstens
+    MAX_DURATION_DIFF_S auseinanderliegt (Schleife abbrechen, nicht same_recording fragen).
+    Vergleich über same_recording (als Modulattribut aufrufen, Tests ersetzen es). Gruppen sind
+    transitiv (A~B und B~C -> eine Gruppe). Jede Gruppe nach path sortiert, Gruppen nach dem
+    ersten path sortiert.
+    """
+    valid: list["TrackRecord"] = [
+        r for r in records
+        if r.fingerprint and r.fingerprint_duration is not None
+    ]
+    if len(valid) < 2:
+        return []
+
+    # Nach Dauer sortieren
+    valid.sort(key=lambda r: (r.fingerprint_duration, r.id if r.id is not None else 0))
+
+    fps = [
+        Fingerprint(values=decode_fingerprint(r.fingerprint), duration=r.fingerprint_duration)
+        for r in valid
+    ]
+
+    n = len(valid)
+    parent = list(range(n))
+
+    def find(i: int) -> int:
+        path = []
+        while parent[i] != i:
+            path.append(i)
+            i = parent[i]
+        for node in path:
+            parent[node] = i
+        return i
+
+    def union(i: int, j: int) -> None:
+        root_i = find(i)
+        root_j = find(j)
+        if root_i != root_j:
+            parent[root_i] = root_j
+
+    same_fn = getattr(sys.modules[__name__], "same_recording", same_recording)
+    for i in range(n):
+        dur_i = valid[i].fingerprint_duration
+        for j in range(i + 1, n):
+            dur_j = valid[j].fingerprint_duration
+            if dur_j - dur_i > MAX_DURATION_DIFF_S:
+                break
+            if same_fn(fps[i], fps[j]):
+                union(i, j)
+
+    # Nach Wurzeln gruppieren
+    components: dict[int, list["TrackRecord"]] = {}
+    for i in range(n):
+        root = find(i)
+        components.setdefault(root, []).append(valid[i])
+
+    # Nur Gruppen der Größe >= 2
+    groups = [group for group in components.values() if len(group) >= 2]
+
+    # Jede Gruppe nach path sortieren
+    for group in groups:
+        group.sort(key=lambda r: r.path)
+
+    # Gruppen nach dem ersten path sortiert
+    groups.sort(key=lambda g: g[0].path)
+
+    return groups

@@ -14,7 +14,10 @@ import logging
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Sequence
+from typing import TYPE_CHECKING, Any, Callable, Sequence
+
+if TYPE_CHECKING:
+    from .fingerprint import Fingerprint
 
 from .analysis import analyze_track
 from .db import QualityStatus, TrackDB, TrackRecord, TrackStatus
@@ -56,6 +59,9 @@ class AuditSummary:
     corrupt: int = 0
     duration_sec: float = 0.0
     results: list[AuditResult] = field(default_factory=list)
+    fingerprints_new: int = 0
+    fingerprints_failed: int = 0
+    duplicate_groups: list[list[str]] = field(default_factory=list)  # Pfade wie in der DB
 
 
 # ================================================================= Tag-Inspektion
@@ -494,6 +500,50 @@ def generate_html_report(summary: AuditSummary, target_dir: str | Path) -> str:
 """
 
 
+def fill_fingerprints(
+    db: TrackDB,
+    *,
+    compute: Callable[[Path], Fingerprint | None] | None = None,
+) -> tuple[int, int]:
+    """Für jeden Track aus db.tracks_missing_fingerprint(), dessen Datei existiert: compute(Path(path)).
+    compute=None -> sc_digger.fingerprint.compute_fingerprint, zur Laufzeit über das Modul
+    nachgeschlagen (Tests ersetzen fingerprint.compute_fingerprint). Ergebnis per
+    db.set_fingerprint(id, encode_fingerprint(fp.values), fp.duration) speichern.
+    Nicht existierende Dateien: überspringen, nicht zählen. None oder Exception: zählt als
+    fehlgeschlagen, log.warning, nie werfen. Rückgabe (neu, fehlgeschlagen).
+    """
+    from . import fingerprint as fpm
+
+    missing = db.tracks_missing_fingerprint()
+    new_count = 0
+    failed_count = 0
+
+    for track in missing:
+        p = Path(track.path)
+        if not p.is_file():
+            continue
+
+        calc_fn = compute if compute is not None else getattr(fpm, "compute_fingerprint")
+        try:
+            fp = calc_fn(p)
+            if fp is None or not getattr(fp, "values", None) or getattr(fp, "duration", None) is None:
+                log.warning("Fingerprint-Berechnung lieferte kein Ergebnis für %s", p)
+                failed_count += 1
+                continue
+
+            encoded = fpm.encode_fingerprint(fp.values)
+            ok = db.set_fingerprint(track.id, encoded, fp.duration)
+            if ok:
+                new_count += 1
+            else:
+                failed_count += 1
+        except Exception as e:
+            log.warning("Fehler bei Fingerprint-Berechnung für %s: %s", p, e)
+            failed_count += 1
+
+    return new_count, failed_count
+
+
 def run_audit(
     cfg: Config,
     path: str | Path | None = None,
@@ -534,6 +584,13 @@ def run_audit(
             db,
             force=force,
         )
+        from .fingerprint import duplicate_groups
+
+        summary.fingerprints_new, summary.fingerprints_failed = fill_fingerprints(db)
+        summary.duplicate_groups = [
+            [r.path for r in g]
+            for g in duplicate_groups(db.tracks_with_fingerprint())
+        ]
 
     # Terminal-Ausgabe
     print("\n" + "=" * 60)
@@ -545,6 +602,7 @@ def run_audit(
     print(f"⚠️  Brickwall/Clip: {summary.clipped}")
     print(f"❌ Defekt/Corrupt: {summary.corrupt}")
     print(f"⚡ Aus Cache:      {summary.cached} ({summary.scanned} neu analysiert)")
+    print(f"🎵 Fingerprints:   {summary.fingerprints_new} neu ({summary.fingerprints_failed} fehlgeschlagen)")
     print(f"⏱️  Dauer:          {summary.duration_sec:.1f} s")
     print("=" * 60)
 
@@ -561,6 +619,14 @@ def run_audit(
             cutoff_khz = f.cutoff_hz / 1000 if f.cutoff_hz else 0
             print(f" - {f.path.name} ({f.format} {f.bitrate_kbps:.0f}k, Cutoff {cutoff_khz:.1f} kHz)")
             print(f"   Grund: {f.reason}")
+
+    # Doppelte Aufnahmen
+    if summary.duplicate_groups:
+        print("\n👥 DOPPELTE AUFNAHMEN:")
+        for idx, group in enumerate(summary.duplicate_groups, start=1):
+            print(f" Gruppe {idx} ({len(group)} Dateien):")
+            for p in group:
+                print(f"  - {p}")
 
     # HTML-Report speichern, falls Pfad angegeben
     if report_path:
