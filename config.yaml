@@ -132,3 +132,6 @@ health:
 telegram:
   # Werte kommen aus Umgebungsvariablen TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID
   max_items_per_digest: 25
+  # Inline-Buttons (👍/👎/⏳) unter jeder Digest-Nachricht zur Track-Bewertung
+  feedback_buttons: true
+

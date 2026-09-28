@@ -145,6 +145,9 @@ class JobRecord:
         return cls(**{k: v for k, v in d.items() if k in known})
 
 
+FEEDBACK_VALUES: tuple[str, ...] = ("like", "dislike", "later")
+
+
 # ================================================================= Migrationen
 
 MIGRATIONS: list[tuple[int, str, str]] = [
@@ -199,6 +202,18 @@ MIGRATIONS: list[tuple[int, str, str]] = [
 
         CREATE INDEX IF NOT EXISTS idx_jobs_status_type ON jobs(status, job_type);
         CREATE INDEX IF NOT EXISTS idx_jobs_track_id ON jobs(track_id);
+        """,
+    ),
+    (
+        2,
+        "0002_sc_feedback",
+        """
+        CREATE TABLE IF NOT EXISTS sc_feedback (
+            sc_id INTEGER PRIMARY KEY,
+            url TEXT,
+            value TEXT NOT NULL CHECK (value IN ('like', 'dislike', 'later')),
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        );
         """,
     ),
 ]
@@ -336,6 +351,28 @@ class TrackDB:
             )
         self.db.commit()
         return cur.rowcount > 0
+
+    def set_sc_feedback(self, sc_id: int, value: str, url: str | None = None) -> None:
+        """Upsert je SoundCloud-ID, letzte Wahl gewinnt, updated_at = jetzt.
+        url=None überschreibt eine vorhandene url nicht. value nicht in FEEDBACK_VALUES -> ValueError."""
+        if value not in FEEDBACK_VALUES:
+            raise ValueError(f"Ungültiger Feedback-Wert: {value!r}. Erlaubt: {FEEDBACK_VALUES}")
+        self.db.execute(
+            """
+            INSERT INTO sc_feedback (sc_id, url, value, updated_at)
+            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(sc_id) DO UPDATE SET
+                value = excluded.value,
+                url = COALESCE(excluded.url, sc_feedback.url),
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (sc_id, url, value),
+        )
+        self.db.commit()
+
+    def get_sc_feedback(self, sc_id: int) -> str | None:
+        row = self.db.execute("SELECT value FROM sc_feedback WHERE sc_id = ?", (sc_id,)).fetchone()
+        return row["value"] if row else None
 
     def count_tracks(
         self,

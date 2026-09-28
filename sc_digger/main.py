@@ -26,8 +26,8 @@ from .health import Health
 from .models import Config, DownloadKind, Track
 from .organize import organize, write_tags
 from .redact import install_redacting_logging
-from .output import (State, build_digest, build_export_txt, download_native, finalize_quality,
-                     send_telegram, send_telegram_document)
+from .output import (State, build_digest, build_digest_messages, build_export_txt, download_native, finalize_quality,
+                     send_digest, send_telegram, send_telegram_document)
 from .pipeline import (classify_download, dedupe, estimate_bpm, filter_bpm, filter_sets,
                        genre_relevant, mark_sets, score_tracks)
 from .soundcloud import SoundCloudClient, SoundCloudError
@@ -127,16 +127,17 @@ def deliver(header: str, fresh: list[Track], dupes: list[Track], cfg: Config,
             export_name: str = "sc-digger", chat_id: str | None = None) -> None:
     """Digest als Chat-Nachrichten + Export-Datei (Anhang) für das Download-Tool."""
     max_items = None if show_all else cfg["telegram"]["max_items_per_digest"]
-    messages = build_digest(fresh, max_items, header=header)
-    if dupes:
-        messages[-1] += f"\n<i>{len(dupes)} bereits in deiner Sammlung (übersprungen)</i>"
+    buttons = bool(cfg["telegram"].get("feedback_buttons", True))
+    messages = build_digest_messages(fresh, max_items, header=header, numbered=buttons)
+    if dupes and messages:
+        messages[-1].text += f"\n<i>{len(dupes)} bereits in deiner Sammlung (übersprungen)</i>"
     if dry_run or no_telegram:
         for m in messages:
-            print(re.sub(r"<[^>]+>", "", m))
+            print(re.sub(r"<[^>]+>", "", m.text))
         if fresh:
             print(f"(Export-Datei mit {len(fresh)} Tracks würde als Anhang gesendet)")
         return
-    send_telegram(cfg, messages, chat_id=chat_id)
+    send_digest(cfg, messages, chat_id=chat_id, buttons=buttons)
     if fresh:
         ts = datetime.now(ZoneInfo("Europe/Berlin"))
         slug = re.sub(r"[^a-z0-9]+", "-", export_name.lower()).strip("-")[:40] or "export"

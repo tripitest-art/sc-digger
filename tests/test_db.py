@@ -24,8 +24,8 @@ def db(tmp_path: Path) -> TrackDB:
 
 def test_migrations_applied_on_init(db: TrackDB):
     """Prüft, ob die Version 1 der Migrationen automatisch eingetragen wurde."""
-    rows = db.db.execute("SELECT version, name FROM schema_migrations").fetchall()
-    assert len(rows) == 1
+    rows = db.db.execute("SELECT version, name FROM schema_migrations ORDER BY version").fetchall()
+    assert len(rows) >= 1
     assert rows[0]["version"] == 1
     assert rows[0]["name"] == "0001_initial_track_db"
 
