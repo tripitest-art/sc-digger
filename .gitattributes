@@ -1,0 +1,7 @@
+# Shell-Skripte und Docker-Dateien immer mit LF, auch in Windows-Checkouts.
+# Mit CRLF bricht "#!/bin/sh" im Container ab ("/bin/sh^M: not found").
+*.sh        text eol=lf
+Dockerfile  text eol=lf
+*.yml       text eol=lf
+*.yaml      text eol=lf
+*.py        text eol=lf
