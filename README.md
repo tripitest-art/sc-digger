@@ -168,7 +168,7 @@ Rohtreffer oder brechen ab, kommt einmal ein 🚨-Alarm per Telegram und nach de
 ## Mitentwickeln
 
 ```bash
-pip install -r requirements.txt pytest     # braucht ffmpeg im PATH
+pip install -r requirements.txt pytest     # braucht ffmpeg im PATH (fpcalc/Chromaprint optional, Tests kommen ohne aus)
 python -m pytest -q
 ```
 
