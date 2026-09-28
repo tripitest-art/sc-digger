@@ -245,3 +245,48 @@ def test_implausible_value_is_left_unchanged():
     # 45 -> 90 / 22.5: keiner im Fenster oder plausiblen Bereich
     bpm, reason = resolve_bpm(45.0, None, window=W)
     assert bpm == 45.0 and "unkorrigiert" in reason
+
+
+def test_write_riff_info_odd_data_length_keeps_audio_and_validity(tmp_path):
+    """WAV mit ungerader data-Länge (z. B. 8 bit mono, ungerade Samplezahl) bleibt gültig und das Audio identisch."""
+    import struct
+    import wave
+    from sc_digger.organize import write_riff_info
+
+    # 8-Bit Mono, 5 Samples -> ungerade data-Länge (5 Bytes)
+    fmt_data = struct.pack("<HHIIHH", 1, 1, 8000, 8000, 1, 8)
+    audio_samples = b"\x80\x85\x90\x7f\x81"
+    fmt_chunk = b"fmt " + struct.pack("<I", len(fmt_data)) + fmt_data
+    # RIFF verlangt Pad-Byte bei ungerader Chunk-Länge
+    data_chunk = b"data" + struct.pack("<I", len(audio_samples)) + audio_samples + b"\x00"
+    riff_body = b"WAVE" + fmt_chunk + data_chunk
+    wav_bytes = b"RIFF" + struct.pack("<I", len(riff_body)) + riff_body
+
+    p = tmp_path / "odd_sample.wav"
+    p.write_bytes(wav_bytes)
+
+    fields = {"INAM": "Odd Track", "IART": "Test Artist"}
+    assert write_riff_info(p, fields) is True
+
+    # Audio bitgenau identisch auslesen
+    with wave.open(str(p), "rb") as w:
+        assert w.getnframes() == len(audio_samples)
+        assert w.getnchannels() == 1
+        assert w.getsampwidth() == 1
+        assert w.readframes(w.getnframes()) == audio_samples
+
+    # Chunk-Kette und Padding prüfen
+    d = p.read_bytes()
+    riff_size = struct.unpack("<I", d[4:8])[0]
+    assert riff_size == len(d) - 8
+    pos = 12
+    found_data = False
+    while pos < len(d):
+        cid, n = d[pos:pos + 4], struct.unpack("<I", d[pos + 4:pos + 8])[0]
+        chunk_content = d[pos + 8:pos + 8 + n]
+        if cid == b"data":
+            assert chunk_content == audio_samples
+            found_data = True
+        pos += 8 + n + (n & 1)
+    assert found_data is True
+    assert pos == len(d)
