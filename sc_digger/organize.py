@@ -6,9 +6,13 @@ vollständigen Metadaten getaggt, sodass sie in DJ-Software sofort nutzbar sind.
 from __future__ import annotations
 
 import logging
+import os
+import re
 import shutil
+import struct
+import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO
 
 log = logging.getLogger(__name__)
 
@@ -262,6 +266,157 @@ def _tag_aiff(path: Path, **kw: object) -> None:
     audio.save()
 
 
+_INFO_CHUNK_ID_RE = re.compile(r"^[A-Z0-9]{4}$")
+_STREAM_BUFFER_SIZE = 64 * 1024
+
+
+def _copy_stream(src: BinaryIO, dst: BinaryIO, length: int) -> None:
+    remaining = length
+    while remaining > 0:
+        chunk = src.read(min(remaining, _STREAM_BUFFER_SIZE))
+        if not chunk:
+            raise IOError("Unerwartetes Dateiende beim Lesen des Audio-Blocks")
+        dst.write(chunk)
+        remaining -= len(chunk)
+
+
+def write_riff_info(path: Path, fields: dict[str, str | None]) -> bool:
+    """Schreibt den LIST/INFO-Block einer WAV-Datei neu. Keys sind INFO-Chunk-IDs aus genau vier
+    Zeichen A-Z/0-9 (z. B. INAM Titel, IART Artist, IGNR Genre, ICMT Kommentar); ein anderer
+    Key -> ValueError (Programmierfehler, vor jedem Dateizugriff).
+
+    - Leere Werte ("" oder None) werden weggelassen. Werte UTF-8 mit abschließendem NUL-Byte,
+      jeder Unterblock auf gerade Länge mit einem NUL-Byte aufgefüllt (RIFF-Regel).
+    - Alle vorhandenen LIST-Blöcke vom Typ INFO werden entfernt (z. B. vom Uploader). Alle anderen
+      Blöcke (fmt, data, id3, LIST adtl, cue, bext, …) bleiben byte-identisch in ihrer Reihenfolge.
+      Der neue INFO-Block kommt ans Ende. Die RIFF-Größe im Kopf wird neu berechnet.
+    - Streamend arbeiten (Blöcke in Stücken kopieren, nie die ganze Datei oder den data-Block in
+      den Speicher laden: Originale können mehrere hundert MB haben, der Server hat 1 GB RAM).
+    - Atomar: in eine Temp-Datei IM SELBEN ORDNER schreiben (tempfile.mkstemp(dir=path.parent)),
+      dann os.replace auf das Original. Bei jedem Fehler: Temp-Datei löschen, Original unverändert.
+    - Keine gültige RIFF/WAVE-Datei (Kopf nicht "RIFF....WAVE", Block reicht über das Dateiende,
+      abgeschnittener Blockkopf) -> False, Datei unverändert, keine Temp-Datei.
+    - Rückgabe True bei Erfolg. Wirft außer dem ValueError nie; Fehler -> log.warning und False.
+    """
+    for k in fields:
+        if not isinstance(k, str) or not _INFO_CHUNK_ID_RE.match(k):
+            raise ValueError(f"Ungültige INFO-Chunk-ID: {k!r} (erwartet: genau 4 Zeichen A-Z/0-9)")
+
+    path = Path(path)
+    tmp_path: Path | None = None
+    try:
+        if not path.is_file():
+            log.warning("WAV-Datei existiert nicht: %s", path)
+            return False
+
+        file_size = path.stat().st_size
+        if file_size < 12:
+            log.warning("WAV-Datei ist zu kurz für RIFF-Header (< 12 Bytes): %s", path)
+            return False
+
+        with open(path, "rb") as src:
+            header = src.read(12)
+            if len(header) < 12:
+                return False
+            riff_id, riff_size, wave_id = struct.unpack("<4sI4s", header)
+            if riff_id != b"RIFF" or wave_id != b"WAVE":
+                log.warning("Keine gültige RIFF/WAVE-Datei (Kopf %r/%r): %s", riff_id, wave_id, path)
+                return False
+
+            chunks: list[tuple[bytes, int, int, bool]] = []
+            pos = 12
+            while pos < file_size:
+                if pos + 8 > file_size:
+                    log.warning("WAV-Datei beschädigt (abgeschnittener Blockkopf bei Offset %d): %s", pos, path)
+                    return False
+                src.seek(pos)
+                cid = src.read(4)
+                chunk_size = struct.unpack("<I", src.read(4))[0]
+                pad = chunk_size & 1
+                if pos + 8 + chunk_size + pad > file_size:
+                    log.warning("WAV-Datei beschädigt (Block %r reicht über Dateiende): %s", cid, path)
+                    return False
+
+                is_info = False
+                if cid == b"LIST" and chunk_size >= 4:
+                    list_type = src.read(4)
+                    if list_type == b"INFO":
+                        is_info = True
+
+                chunks.append((cid, pos, chunk_size, is_info))
+                pos += 8 + chunk_size + pad
+
+            if pos != file_size:
+                log.warning("WAV-Datei beschädigt (Chunk-Kette endet nicht am Dateiende): %s", path)
+                return False
+
+            # Neuer LIST/INFO-Block
+            info_body = bytearray(b"INFO")
+            for k, v in fields.items():
+                if v is None or v == "":
+                    continue
+                val_bytes = str(v).encode("utf-8") + b"\x00"
+                n = len(val_bytes)
+                info_body.extend(k.encode("ascii"))
+                info_body.extend(struct.pack("<I", n))
+                info_body.extend(val_bytes)
+                if n & 1:
+                    info_body.append(0)
+
+            new_info = b"LIST" + struct.pack("<I", len(info_body)) + bytes(info_body)
+
+            # Temp-Datei im selben Ordner erzeugen
+            fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=".sc_digger_riff_", suffix=".tmp")
+            tmp_path = Path(tmp_name)
+
+            try:
+                dst = open(fd, "wb")
+            except Exception:
+                os.close(fd)
+                raise
+
+            try:
+                # RIFF-Header mit Platzhalter-Größe
+                dst.write(b"RIFF\x00\x00\x00\x00WAVE")
+
+                # Alle Nicht-INFO-Blöcke streamend kopieren
+                for cid, chunk_pos, chunk_size, is_info in chunks:
+                    if is_info:
+                        continue
+                    dst.write(cid)
+                    dst.write(struct.pack("<I", chunk_size))
+                    src.seek(chunk_pos + 8)
+                    _copy_stream(src, dst, chunk_size)
+                    if chunk_size & 1:
+                        pad_byte = src.read(1)
+                        dst.write(pad_byte if pad_byte else b"\x00")
+
+                # Neuen INFO-Block ans Ende schreiben
+                dst.write(new_info)
+
+                # RIFF-Größe im Kopf berechnen und schreiben
+                out_size = dst.tell()
+                dst.seek(4)
+                dst.write(struct.pack("<I", out_size - 8))
+                dst.flush()
+                os.fsync(dst.fileno())
+            finally:
+                dst.close()
+
+        # src und dst sind jetzt geschlossen -> atomar ersetzen
+        os.replace(tmp_path, path)
+        return True
+    except Exception as e:
+        log.warning("Fehler beim Schreiben von RIFF-INFO für %s: %s", path.name, e)
+        if tmp_path is not None:
+            try:
+                if tmp_path.exists():
+                    tmp_path.unlink()
+            except OSError:
+                pass
+        return False
+
+
 def _tag_wav(path: Path, **kw: object) -> None:
     from mutagen.wave import WAVE
     audio = WAVE(str(path))
@@ -269,6 +424,20 @@ def _tag_wav(path: Path, **kw: object) -> None:
         audio.add_tags()
     _fill_id3(audio.tags, kw)
     audio.save()
+
+    title = kw.get("title")
+    artist = kw.get("artist")
+    genre = kw.get("genre")
+    comment = kw.get("comment")
+    fields = {
+        "INAM": str(title) if title is not None else None,
+        "IART": str(artist) if artist is not None else None,
+        "IGNR": str(genre) if genre is not None else None,
+        "ICMT": str(comment) if comment is not None else None,
+    }
+    ok = write_riff_info(path, fields)
+    if not ok:
+        raise RuntimeError("RIFF-INFO konnte nicht geschrieben werden")
 
 
 def _tag_m4a(path: Path, **kw: object) -> None:

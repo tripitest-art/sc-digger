@@ -133,7 +133,7 @@ Die gemessenen Werte werden in die Datei geschrieben, das Audio bleibt unveränd
 | `SCDIGGER_LRA` | Loudness Range in LU | `5.3` |
 
 MP3, AIFF und WAV als ID3-`TXXX`-Frames, FLAC als Vorbis-Kommentar, M4A als iTunes-Freeform-Atom.
-WAV-Dateien bekommen dabei auch die normalen Tags (Artist, Titel, BPM, Key, Genre, URL).
+WAV-Dateien bekommen dabei auch die normalen Tags (Artist, Titel, BPM, Key, Genre, URL) und zusätzlich einen RIFF-INFO-Block (Titel, Artist, Genre, Kommentar), da Rekordbox bei WAV ausschließlich RIFF-INFO auswertet.
 
 ### Cloud-Downloads
 
