@@ -4,6 +4,7 @@
   python -m sc_digger.main playlist <url> [--likes]          # Playlist prüfen
   python -m sc_digger.main similar <track-url> [--filter]    # Algorithmus-Empfehlungen zu einem Track
   python -m sc_digger.main check <url>                       # wie der Telegram-Bot: Playlist oder Station
+  python -m sc_digger.main audit [--path ...] [--report ...] # Library-Audit (read-only)
 
 Alle Modi: --dry-run (nichts laden/senden), -v, --config, --no-telegram
 """
@@ -18,6 +19,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from .analysis import analyze_track, resolve_bpm
+from .audit import run_audit
 from .collection import Collection
 from .health import Health
 from .models import Config, DownloadKind, Track
@@ -319,6 +321,13 @@ def cli() -> None:
                        help="Beliebigen Link prüfen wie der Telegram-Bot (Playlist oder Track-Station)")
     c.add_argument("url")
 
+    aud = sub.add_parser("audit", parents=[common],
+                         help="Bestehende Sammlung auf Fakes/BPM/Key prüfen (read-only)")
+    aud.add_argument("--path", help="Pfad zur Sammlung (Standard: aus config.yaml)")
+    aud.add_argument("--report", help="Dateipfad für den HTML-Report (z.B. report.html)")
+    aud.add_argument("--force", action="store_true",
+                     help="Alle Dateien neu analysieren (inkrementellen Cache ignorieren)")
+
     a = ap.parse_args()
     install_redacting_logging(logging.DEBUG if a.verbose else logging.INFO)
     cfg = Config.load(a.config)
@@ -329,6 +338,15 @@ def cli() -> None:
             run_similar(cfg, a.url, a.radio, a.filter, a.limit, a.dry_run, a.no_telegram)
         elif a.mode == "check":
             run_link(cfg, a.url, dry_run=a.dry_run, no_telegram=a.no_telegram)
+        elif a.mode == "audit":
+            run_audit(
+                cfg,
+                path=a.path,
+                report_path=a.report,
+                force=a.force,
+                dry_run=a.dry_run,
+                no_telegram=a.no_telegram,
+            )
         else:
             run_discover(cfg, a.dry_run, a.no_telegram)
     except Exception:
