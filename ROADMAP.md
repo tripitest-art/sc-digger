@@ -84,8 +84,8 @@ flowchart TD
 | Phase | Fokus | Status | Kernfeatures |
 |---|---|---|---|
 | **Phase 1** | Basis & DJ-Ready Pipeline | ✅ **Abgeschlossen** | Native Downloads, FFT-Fake-Check, BPM/Key, Tagging, Inbox-Organize, Modi discover/playlist/similar |
-| **Phase 1.5** | Robustheit | 🟡 **In Arbeit** | BPM-Oktav-Korrektur, Health-Alarm |
-| **Phase 2** | Track-DB & Library Audit | 🔵 Nächster Schritt | Zentrale DB, `audit` read-only, Fingerprint-Duplikate, LUFS als Tag |
+| **Phase 1.5** | Robustheit | ✅ **Abgeschlossen** | BPM-Oktav-Korrektur, Health-Alarm |
+| **Phase 2** | Track-DB & Library Audit | 🟡 **Nächster Schritt** | Zentrale DB, `audit` read-only, Fingerprint-Duplikate, LUFS als Tag |
 | **Phase 3** | Feedback & Smart Ingestion | 🔵 Geplant | 👍/👎 im Digest, Cloud-Link-Downloader, Gate-Assistent, Curator-Mining |
 | **Phase 4** | Geschmacksmodell & KI-Copilot | 🔵 Geplant | Audio-Embeddings, persönlicher Taste-Score, Qwen-Copilot via Tool-Calling |
 | **Phase 5** | DJ-Performance & Set-Tools | 🟣 Vision | Rekordbox-XML (Playlists, Cues), Next-Track-Recommender, Web-Dashboard |
@@ -102,12 +102,12 @@ flowchart TD
 - [x] **Auto-Tagging** (MP3, FLAC, AIFF, M4A) und **Inbox-Organize** nach `inbox/<BPM>/<Key>/`.
 - [x] **Telegram-Digest**, gruppiert nach Download-Weg; State-DB gegen Doppelmeldungen.
 
-## 🟡 Phase 1.5: Robustheit (In Arbeit)
+## ✅ Phase 1.5: Robustheit (Abgeschlossen)
 
-- [ ] **BPM-Oktav-Korrektur:** Onset-basierte Erkennung springt bei manchem Material auf halbes/doppeltes
+- [x] **BPM-Oktav-Korrektur:** Onset-basierte Erkennung springt bei manchem Material auf halbes/doppeltes
   Tempo. Audio-BPM wird per ×2/÷2 ins konfigurierte Fenster geklemmt; Text-BPM des Uploaders dient
   als Plausibilitätsanker.
-- [ ] **Health-Alarm:** Jeder Lauf wird mit Trefferzahl und Fehlerstatus protokolliert. Telegram-Alarm,
+- [x] **Health-Alarm:** Jeder Lauf wird mit Trefferzahl und Fehlerstatus protokolliert. Telegram-Alarm,
   wenn N Läufe in Folge 0 Treffer liefern oder fehlschlagen (z. B. `client_id` nicht ermittelbar),
   plus Entwarnung, sobald es wieder läuft.
 
@@ -209,7 +209,7 @@ Copilot, Recommender und Dashboard.
 
 ## 📋 Reihenfolge
 
-1. Phase 1.5: BPM-Oktav-Korrektur, Health-Alarm
+1. ~~Phase 1.5: BPM-Oktav-Korrektur, Health-Alarm~~ ✅
 2. Phase 2.1–2.2: Track-DB, `audit` read-only
 3. Phase 2.3–2.4: Fingerprint-Duplikate, LUFS als Tag
 4. Phase 3.1: Feedback-Buttons

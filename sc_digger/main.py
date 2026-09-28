@@ -13,12 +13,13 @@ import logging
 import shutil
 from pathlib import Path
 
-from .analysis import analyze_track
+from .analysis import analyze_track, resolve_bpm
 from .collection import Collection
+from .health import Health
 from .models import Config, DownloadKind, Track
 from .organize import organize, write_tags
 from .output import State, build_digest, download_native, send_telegram
-from .pipeline import classify_download, dedupe, filter_bpm, score_tracks
+from .pipeline import classify_download, dedupe, estimate_bpm, filter_bpm, score_tracks
 from .quality import check_file
 from .soundcloud import SoundCloudClient
 
@@ -68,10 +69,18 @@ def process(tracks: list[Track], cfg: Config, *, dry_run: bool,
             try:
                 analysis = analyze_track(path)
                 if org.get("detect_bpm", True):
-                    if analysis["bpm"] and not t.bpm:
-                        t.bpm = analysis["bpm"]
-                    elif analysis["bpm"] and t.bpm:
-                        log.debug("BPM Text=%.0f, Audio=%.1f für %s", t.bpm, analysis["bpm"], t.title)
+                    # Text-BPM als Anker: in playlist/similar lief filter_bpm nicht
+                    text_bpm = t.bpm or estimate_bpm(t)
+                    s = cfg["search"]
+                    t.bpm, reason = resolve_bpm(
+                        analysis["bpm"], text_bpm,
+                        window=(s["bpm_min"], s["bpm_max"]),
+                        plausible=(org.get("bpm_plausible_min", 120), org.get("bpm_plausible_max", 200)),
+                    )
+                    log.debug("BPM %s für %s: %s", t.bpm, t.title, reason)
+                    audio_bpm = analysis["bpm"]
+                    if audio_bpm and t.bpm and abs(t.bpm - audio_bpm) > 1.0:
+                        t.notes.append(f"BPM korrigiert: {reason}")
                 if org.get("detect_key", True):
                     t.key_camelot = analysis["key_camelot"]
                     t.key_name = analysis["key_name"]
@@ -119,6 +128,37 @@ def deliver(header: str, fresh: list[Track], dupes: list[Track], cfg: Config,
 
 # ------------------------------------------------------------------ Modus: discover
 def run_discover(cfg: Config, dry_run: bool, no_telegram: bool) -> None:
+    """Discovery mit Health-Protokoll. Dry-Runs werden nicht protokolliert."""
+    if dry_run:
+        _discover(cfg, dry_run, no_telegram)
+        return
+
+    threshold = cfg.raw.get("health", {}).get("alert_after_bad_runs", 2)
+    with Health(cfg["state"]["db_path"]) as health:
+        try:
+            found = _discover(cfg, dry_run, no_telegram)
+        except Exception as e:
+            health.record("discover", ok=False, found=0, error=f"{type(e).__name__}: {e}")
+            _notify_health(cfg, health.evaluate("discover", threshold), no_telegram)
+            raise
+        health.record("discover", ok=True, found=found)
+        _notify_health(cfg, health.evaluate("discover", threshold), no_telegram)
+
+
+def _notify_health(cfg: Config, message: str | None, no_telegram: bool) -> None:
+    if not message:
+        return
+    log.warning("Health: %s", message.replace("\n", " | "))
+    if no_telegram:
+        return
+    try:
+        send_telegram(cfg, [message])
+    except Exception as e:  # Alarm darf den ursprünglichen Fehler nicht überdecken
+        log.error("Health-Alarm konnte nicht gesendet werden: %s", e)
+
+
+def _discover(cfg: Config, dry_run: bool, no_telegram: bool) -> int:
+    """Führt die Discovery aus und gibt die Zahl der Rohtreffer (vor Filtern) zurück."""
     sc, s = SoundCloudClient(), cfg["search"]
     tracks: list[Track] = []
     for tag in s["tags"]:
@@ -129,7 +169,8 @@ def run_discover(cfg: Config, dry_run: bool, no_telegram: bool) -> None:
         except Exception as e:
             log.warning("Profil %s übersprungen: %s", profile, e)
     tracks = dedupe(tracks)
-    log.info("Discovery: %d einzigartige Tracks", len(tracks))
+    raw_found = len(tracks)
+    log.info("Discovery: %d einzigartige Tracks", raw_found)
 
     tracks = score_tracks(filter_bpm(tracks, cfg), cfg)
     with State(cfg["state"]["db_path"]) as state:
@@ -143,6 +184,7 @@ def run_discover(cfg: Config, dry_run: bool, no_telegram: bool) -> None:
             # werden Tracks beim nächsten Lauf erneut gemeldet statt verloren zu gehen.
             for t in fresh:
                 state.mark_one(t)
+    return raw_found
 
 
 # ------------------------------------------------------------------ Modus: playlist

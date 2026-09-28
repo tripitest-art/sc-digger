@@ -64,10 +64,22 @@ docker compose up -d        # täglich 07:30 per cron
 pip install -r requirements.txt pytest && pytest tests -q
 ```
 
+## Health-Alarm
+Jeder `discover`-Lauf wird in der State-DB protokolliert (Rohtreffer vor Filtern, Fehler).
+Liefern `health.alert_after_bad_runs` Läufe in Folge 0 Rohtreffer oder brechen ab, kommt
+einmalig ein 🚨-Alarm per Telegram, sobald es wieder läuft eine ✅-Entwarnung. Ein Tag ohne
+*neue* Tracks löst keinen Alarm aus.
+
+## BPM-Oktav-Korrektur
+Die Audio-BPM wird per ×2/÷2 korrigiert: Vorrang hat eine BPM-Angabe des Uploaders im Text,
+danach das Suchfenster (`search.bpm_min/max`), danach der plausible Bereich
+(`organize.bpm_plausible_min/max`). Echte Tempi außerhalb des Fensters (z. B. 140) bleiben erhalten.
+Korrekturen erscheinen als Notiz am Track.
+
 ## Bekannte Schwachstellen
 - `soundcloud.py` nutzt die inoffizielle api-v2. Wenn die client_id-Ermittlung bricht,
   ist das die einzige Datei, die angepasst werden muss.
-- SoundCloud hat kein BPM-Feld; die Schätzung aus Freitext greift nur, wenn der
-  Uploader die BPM nennt. Deshalb Policy `bpm_unknown_policy: keep`.
+- SoundCloud hat kein BPM-Feld; der Vorfilter in `discover` nutzt nur BPM-Angaben aus dem
+  Freitext (daher `bpm_unknown_policy: keep`). Audio-BPM gibt es erst nach dem Download.
 - Score-Perzentile brauchen genug Kandidaten (>= ~30); bei wenigen Treffern
   `max_age_days` oder `limit_per_tag` erhöhen.

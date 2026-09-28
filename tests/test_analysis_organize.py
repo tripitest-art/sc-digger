@@ -146,3 +146,55 @@ def test_write_tags_missing_mutagen_returns_false(tmp_path, monkeypatch):
         return real_import(name, *args, **kwargs)
     monkeypatch.setattr("builtins.__import__", fake_import)
     assert write_tags(p, artist="A", title="T") is False
+
+
+# ---------------- BPM-Oktav-Korrektur ----------------
+from sc_digger.analysis import resolve_bpm
+
+W = (150, 165)
+
+
+@pytest.mark.parametrize("audio, expected", [
+    (78.3, 156.6),    # Halftime erkannt -> verdoppeln
+    (156.6, 156.6),   # korrekt -> unverändert
+    (313.2, 156.6),   # Doppelt erkannt -> halbieren
+])
+def test_octave_error_is_pulled_into_window(audio, expected):
+    bpm, _ = resolve_bpm(audio, None, window=W)
+    assert bpm == pytest.approx(expected, abs=0.1)
+
+
+def test_real_tempo_outside_window_is_kept_not_forced():
+    # Ein echter 140er Hard-Techno-Track darf nicht auf 70 oder 280 verbogen werden
+    bpm, _ = resolve_bpm(140.0, None, window=W)
+    assert bpm == 140.0
+
+
+def test_outside_window_halftime_goes_to_plausible_range():
+    # 72 -> 144 liegt nicht im Fenster, aber im plausiblen Bereich; 72 selbst nicht
+    bpm, _ = resolve_bpm(72.0, None, window=W)
+    assert bpm == 144.0
+
+
+def test_text_bpm_anchors_octave_choice():
+    # Uploader sagt 145; Audio erkennt 72.4 -> ×2 = 144.8 liegt nahe am Text
+    bpm, reason = resolve_bpm(72.4, 145, window=W)
+    assert bpm == pytest.approx(144.8, abs=0.1)
+    assert "bestätigt" in reason
+
+
+def test_text_bpm_wins_when_audio_has_no_octave_relation():
+    bpm, reason = resolve_bpm(132.0, 158, window=W)
+    assert bpm == 158.0
+    assert "statt Audio" in reason
+
+
+def test_no_audio_falls_back_to_text_or_none():
+    assert resolve_bpm(None, 155, window=W)[0] == 155
+    assert resolve_bpm(None, None, window=W)[0] is None
+
+
+def test_implausible_value_is_left_unchanged():
+    # 45 -> 90 / 22.5: keiner im Fenster oder plausiblen Bereich
+    bpm, reason = resolve_bpm(45.0, None, window=W)
+    assert bpm == 45.0 and "unkorrigiert" in reason

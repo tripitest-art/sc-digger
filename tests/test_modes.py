@@ -175,3 +175,48 @@ def test_dry_run_never_touches_disk_or_organize(tmp_path, monkeypatch):
     assert not called["download"]
     assert not (tmp_path / "inbox").exists()
     assert fresh == [t]
+
+
+def _stub_pipeline(monkeypatch, tmp_path, audio_bpm):
+    """process() ohne Netzwerk/Audio: Download, Qualität, Analyse, Tagging, Organize gefaked."""
+    f = tmp_path / "inbox" / "x.wav"
+    f.parent.mkdir(parents=True)
+    f.write_bytes(b"x")
+    monkeypatch.setattr(m, "download_native", lambda t, inbox: f)
+    monkeypatch.setattr(m, "check_file", lambda p, cfg: {"ok": True, "ext": "wav",
+                                                           "bitrate_kbps": 1411, "reason": "ok"})
+    monkeypatch.setattr(m, "analyze_track", lambda p: {"bpm": audio_bpm, "key_camelot": "5A",
+                                                        "key_name": "Cm"})
+    monkeypatch.setattr(m, "write_tags", lambda *a, **k: True)
+    monkeypatch.setattr(m, "organize", lambda *a, **k: f)
+    cfg = Config(dict(CFG.raw))
+    cfg.raw["download"] = {**CFG["download"], "collection_dir": str(tmp_path / "coll"),
+                           "inbox_dir": str(tmp_path / "inbox")}
+    return cfg
+
+
+def test_process_corrects_halftime_bpm_and_notes_it(tmp_path, monkeypatch):
+    cfg = _stub_pipeline(monkeypatch, tmp_path, audio_bpm=78.0)
+    t = mk(1, downloadable=True)
+    fresh, _ = m.process([t], cfg, dry_run=False)
+    assert fresh[0].bpm == 156.0
+    assert any("BPM korrigiert" in n for n in fresh[0].notes)
+
+
+def test_process_uses_text_bpm_as_anchor_in_playlist_mode(tmp_path, monkeypatch):
+    # Playlist-Modus: filter_bpm lief nicht, t.bpm ist None; Titel nennt 145 BPM
+    cfg = _stub_pipeline(monkeypatch, tmp_path, audio_bpm=72.5)
+    t = mk(1, downloadable=True, title="Tool 145 BPM")
+    assert t.bpm is None
+    fresh, _ = m.process([t], cfg, dry_run=False)
+    assert fresh[0].bpm == 145.0
+
+
+def test_process_audio_refines_existing_text_bpm(tmp_path, monkeypatch):
+    # Früher wurde Audio-BPM ignoriert, sobald Text-BPM existierte
+    cfg = _stub_pipeline(monkeypatch, tmp_path, audio_bpm=157.8)
+    t = mk(1, downloadable=True)
+    t.bpm = 158.0
+    fresh, _ = m.process([t], cfg, dry_run=False)
+    assert fresh[0].bpm == 157.8
+    assert not any("BPM korrigiert" in n for n in fresh[0].notes)

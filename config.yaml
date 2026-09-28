@@ -51,6 +51,10 @@ organize:
   # Audio-Analyse: BPM und Key via librosa erkennen
   detect_bpm: true
   detect_key: true
+  # Oktav-Korrektur: Audio-BPM wird per ×2/÷2 bevorzugt ins Suchfenster (search.bpm_min/max)
+  # geholt, sonst in diesen Genre-Bereich. Eine Uploader-Angabe im Text hat Vorrang.
+  bpm_plausible_min: 120
+  bpm_plausible_max: 200
   # ID3/Vorbis-Tags automatisch schreiben (Artist, Title, BPM, Key, Genre)
   write_tags: true
 
@@ -63,6 +67,11 @@ quality:
 
 state:
   db_path: /data/seen.sqlite
+
+health:
+  # Alarm per Telegram, wenn so viele discover-Läufe in Folge scheitern oder 0 Rohtreffer
+  # (vor Filtern) liefern. Bei täglichem Cron: 2 = Alarm am zweiten stillen Tag.
+  alert_after_bad_runs: 2
 
 telegram:
   # Werte kommen aus Umgebungsvariablen TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID

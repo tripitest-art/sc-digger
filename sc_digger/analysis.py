@@ -107,6 +107,55 @@ def detect_bpm(path: Path) -> float | None:
         return None
 
 
+def resolve_bpm(audio_bpm: float | None, text_bpm: float | None, *,
+                window: tuple[float, float], plausible: tuple[float, float] = (120.0, 200.0),
+                text_tolerance: float = 3.0) -> tuple[float | None, str]:
+    """Korrigiert Oktavfehler der Audio-BPM (halbes/doppeltes Tempo).
+
+    Onset-basierte Tempoerkennung rastet bei Halftime-Passagen oder starken Offbeats
+    gern auf x/2 oder 2x ein. Aus den Kandidaten {x/2, x, 2x} wird gewählt:
+
+    1. Nennt der Uploader eine BPM (text_bpm), gewinnt der Kandidat nahe daran.
+       Liegt keiner innerhalb text_tolerance, wird der Textwert übernommen
+       (Uploader-Angaben sind bei Techno meist korrekt, Audio-Erkennung irrt eher).
+    2. Sonst gewinnt der Kandidat im Suchfenster (z. B. 150–165).
+    3. Sonst der Kandidat im plausiblen Genre-Bereich, der dem Fenster am nächsten liegt.
+    4. Sonst bleibt der Audiowert unverändert.
+
+    Gibt (bpm, grund) zurück; grund ist für Logs/Notizen gedacht.
+    """
+    if audio_bpm is None or audio_bpm <= 0:
+        return (text_bpm, "nur Text-BPM") if text_bpm else (None, "keine BPM")
+
+    candidates = [audio_bpm / 2, audio_bpm, audio_bpm * 2]
+
+    def label(c: float) -> str:
+        if c == audio_bpm:
+            return "Audio"
+        return "Audio ×2" if c > audio_bpm else "Audio ÷2"
+
+    if text_bpm:
+        best = min(candidates, key=lambda c: abs(c - text_bpm))
+        if abs(best - text_bpm) <= text_tolerance:
+            return round(best, 1), f"{label(best)}, bestätigt durch Text-BPM {text_bpm:.0f}"
+        return float(text_bpm), f"Text-BPM {text_bpm:.0f} statt Audio {audio_bpm:.1f} (kein Oktavbezug)"
+
+    lo, hi = window
+    in_window = [c for c in candidates if lo <= c <= hi]
+    if in_window:
+        c = in_window[0]
+        return round(c, 1), label(c) + " (im Suchfenster)"
+
+    p_lo, p_hi = plausible
+    center = (lo + hi) / 2
+    in_range = [c for c in candidates if p_lo <= c <= p_hi]
+    if in_range:
+        c = min(in_range, key=lambda c: abs(c - center))
+        return round(c, 1), label(c) + " (plausibler Bereich)"
+
+    return round(audio_bpm, 1), "Audio (unkorrigiert, außerhalb plausibler Bereiche)"
+
+
 def detect_key(path: Path) -> tuple[str, str] | None:
     """Erkennt die musikalische Tonart eines Audio-Files.
 
