@@ -120,6 +120,10 @@ quality:
   min_loudness_range_lu: 2.5
   max_true_peak_dbfs: 3.0
 
+fingerprint:
+  # Neue Downloads am Klang (Chromaprint) mit der Sammlung abgleichen; Treffer -> _rejected/duplicate/
+  check_downloads: true
+
 state:
   db_path: /data/seen.sqlite
   track_db_path: /data/tracks.sqlite  # Lokale SQLite-DB (nie auf NFS, da WAL-Modus)
