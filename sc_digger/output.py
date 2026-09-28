@@ -196,6 +196,8 @@ def _fmt_track(t: Track) -> str:
         line += f'\n  ⬇️ <a href="{html.escape(t.url)}">Original manuell laden</a>'
     if t.download_link and t.download_kind not in (DownloadKind.NATIVE, DownloadKind.NONE):
         line += f'\n  🔗 <a href="{html.escape(t.download_link)}">{t.download_kind.value}</a>'
+    if t.download_error:
+        line += f"\n  ⚠️ {_esc(t.download_error)}"
     return line
 
 

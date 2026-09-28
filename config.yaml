@@ -81,8 +81,11 @@ download:
   collection_dir: /music/Schranz
   # Zielordner für automatisch geladene, geprüfte Tracks
   inbox_dir: /music/inbox
-  # Gates werden NUR erkannt und gemeldet, nie automatisch durchlaufen
+  # Gates werden NUR erkannt und gemeldet, nie automatisch durchlaufen.
+  # true: nur native SoundCloud-Originale laden; false schaltet Cloud-Downloads ein
   auto_download_native_only: true
+  # Maximale Dateigröße für Cloud-Downloads (MB)
+  cloud_max_mb: 500
 
 organize:
   # Heruntergeladene Tracks in der Inbox nach BPM/Key sortieren (nie im Archiv)
