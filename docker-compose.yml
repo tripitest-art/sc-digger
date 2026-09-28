@@ -1,0 +1,13 @@
+services:
+  sc-digger:
+    build: .
+    restart: unless-stopped
+    environment:
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID}
+      TZ: Europe/Berlin
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+      - /pfad/zu/deiner/Schranz:/music/Schranz:ro   # Sammlung, nur lesend
+      - /pfad/zu/inbox:/music/inbox                 # geprüfte Downloads
+      - ./data:/data                                # State-DB

@@ -1,0 +1,69 @@
+# sc-digger Konfiguration
+
+search:
+  # Genre-Tags, die pro Lauf durchsucht werden
+  tags:
+    - schranz
+    - hardtechno
+    - industrial techno
+    - hard techno
+  # BPM-Fenster (SoundCloud liefert bpm nur, wenn der Uploader es setzt;
+  # fehlende BPM werden NICHT aussortiert, sondern per Titel/Tag geschätzt)
+  bpm_min: 150
+  bpm_max: 165
+  bpm_unknown_policy: keep   # keep | drop
+  # Nur Tracks der letzten N Tage
+  max_age_days: 14
+  # Pro Tag maximal so viele Treffer abrufen
+  limit_per_tag: 100
+  # Zusätzliche Quellen: Uploads von Künstlern/Labels, denen du folgst
+  followed_users:
+    - https://soundcloud.com/beispiel-artist
+    - https://soundcloud.com/beispiel-label
+
+scoring:
+  # Genre-relative Bewertung: Perzentil innerhalb der aktuellen Kandidatenmenge.
+  # Absolute Schwellen sind bei Underground-Genres unzuverlässig.
+  min_plays: 300
+  min_like_ratio: 0.01        # harte Untergrenze, damit Spam rausfliegt
+  min_percentile: 60          # Score muss im oberen 40 % der Kandidaten liegen
+  weights:
+    like_ratio: 0.45
+    repost_ratio: 0.35
+    comment_ratio: 0.10
+    recency: 0.10
+
+download:
+  # Ordner mit deiner bestehenden Sammlung (für Duplikat-Check)
+  collection_dir: /music/Schranz
+  # Zielordner für automatisch geladene, geprüfte Tracks
+  inbox_dir: /music/inbox
+  # Gates werden NUR erkannt und gemeldet, nie automatisch durchlaufen
+  auto_download_native_only: true
+
+organize:
+  # Heruntergeladene Tracks automatisch nach BPM/Key sortieren?
+  enabled: true
+  # BPM-Bucket-Größe für Ordnerstruktur (z.B. 5 -> 150-155, 155-160)
+  bpm_bucket_size: 5
+  # Standard-Genre für ID3-Tags
+  default_genre: Schranz
+  # Audio-Analyse: BPM und Key via librosa erkennen
+  detect_bpm: true
+  detect_key: true
+  # ID3/Vorbis-Tags automatisch schreiben (Artist, Title, BPM, Key, Genre)
+  write_tags: true
+
+quality:
+  accepted_lossless: [wav, aiff, aif, flac]
+  min_mp3_bitrate_kbps: 320
+  # Fake-Check: Spektrum-Cutoff. Echte 320er reichen bis ~20 kHz.
+  min_cutoff_hz_for_320: 19000
+  min_cutoff_hz_for_lossless: 19500
+
+state:
+  db_path: /data/seen.sqlite
+
+telegram:
+  # Werte kommen aus Umgebungsvariablen TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID
+  max_items_per_digest: 25
