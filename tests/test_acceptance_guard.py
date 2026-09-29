@@ -166,3 +166,123 @@ def test_ordinary_code_and_test_changes_pass():
         _file("README.md"),
     ]
     assert g.evaluate(files, set(), {}, _reader({})).ok
+
+
+# ---------------- Umfang („Betroffene Dateien“) ----------------
+# Aufbau wie Issue #45: Backticks, Erläuterungen mit weiteren Backtick-Wörtern,
+# Fortsetzungszeilen mit API-Pfaden, Platzhalter <N>.
+SCOPE_BODY = f"""## Aufgabe
+
+Curator-Mining.
+
+## Betroffene Dateien
+
+- `sc_digger/soundcloud.py`: neue Methoden `get_likers(track_id, max_results) → list[dict]` und
+  `get_reposters(track_id, max_results)` (api-v2 Endpunkte `/tracks/{{id}}/likers`,
+  `/tracks/{{id}}/reposters`, paginiert)
+- `sc_digger/bot.py`: Handler für Bot-Befehl `/curator-mining`
+- `config.yaml`: neues Feld `digest.kaufliste_max_items` (default: 30)
+- `tests/acceptance/test_issue_<N>.py`: Akzeptanztests unten, zeichengenau
+
+## Nicht Teil dieser Aufgabe
+
+- Neuer CLI-Modus in `sc_digger/main.py`
+
+## Akzeptanztests
+
+```python
+{ACCEPT}
+```
+"""
+
+
+def _scope_eval(names, labels=frozenset(), issues=None):
+    files = [_file(n) for n in names] + [_file("tests/acceptance/test_issue_45.py", "added")]
+    return g.evaluate(files, set(labels), issues or {45: SCOPE_BODY},
+                      _reader({"tests/acceptance/test_issue_45.py": ACCEPT}))
+
+
+def test_extract_allowed_files_like_real_issue():
+    assert g.extract_allowed_files(SCOPE_BODY, 45) == [
+        "sc_digger/soundcloud.py",
+        "sc_digger/bot.py",
+        "config.yaml",
+        "tests/acceptance/test_issue_45.py",
+    ]
+
+
+@pytest.mark.parametrize("item, expected", [
+    ("- sc_digger/organize.py (write_tags)", ["sc_digger/organize.py"]),       # Formular-Platzhalter
+    ("- `tests/test_merge.py` oder neue `tests/test_bot.py`", ["tests/test_merge.py", "tests/test_bot.py"]),
+    ("- `sc_digger/fingerprint.py` (neu)", ["sc_digger/fingerprint.py"]),
+    ("- [ ] `entrypoint.sh`: Cron-Eintrag", ["entrypoint.sh"]),
+    ("- `docs/`", ["docs/"]),
+    ("- nur Tests anpassen", []),                                              # kein Pfad
+])
+def test_extract_allowed_files_item_forms(item, expected):
+    assert g.extract_allowed_files(f"### Betroffene Dateien\n\n{item}\n", 7) == expected
+
+
+def test_extract_allowed_files_missing_section_is_none():
+    assert g.extract_allowed_files(FORM_BODY, 8) is None
+
+
+@pytest.mark.parametrize("path, ok", [
+    ("sc_digger/db.py", True),
+    ("sc_digger/main.py", False),
+    ("docs/agents/worker.md", True),       # Ordner
+    ("sc_digger/cloud.py", True),          # Muster
+    ("tests/test_neu.py", True),           # Tests immer
+])
+def test_path_allowed(path, ok):
+    assert g.path_allowed(path, ["sc_digger/db.py", "docs/", "sc_digger/c*.py"]) is ok
+
+
+def test_scope_clean_pr_passes():
+    res = _scope_eval(["sc_digger/soundcloud.py", "sc_digger/bot.py", "config.yaml", "tests/test_curator_mining.py"])
+    assert res.ok, res.violations
+    assert any("passen zu" in n for n in res.notes)
+
+
+def test_scope_file_outside_issue_fails():
+    """Der Fall aus PR #48: main.py geändert, obwohl das Issue es ausschließt."""
+    res = _scope_eval(["sc_digger/bot.py", "sc_digger/main.py"])
+    assert not res.ok
+    assert len(res.violations) == 1
+    assert "`sc_digger/main.py`" in res.violations[0] and "#45" in res.violations[0]
+    assert any("Laut Issue erlaubt" in n and "`sc_digger/bot.py`" in n for n in res.notes)
+
+
+def test_scope_rename_checks_old_path_too():
+    files = [_file("sc_digger/bot.py", "renamed", old="sc_digger/main.py"),
+             _file("tests/acceptance/test_issue_45.py", "added")]
+    res = g.evaluate(files, set(), {45: SCOPE_BODY}, _reader({"tests/acceptance/test_issue_45.py": ACCEPT}))
+    assert not res.ok and "sc_digger/main.py" in res.violations[0]
+
+
+def test_scope_violation_allowed_by_override_label():
+    res = _scope_eval(["sc_digger/main.py"], labels={g.OVERRIDE_LABEL})
+    assert res.ok
+    assert any("Erlaubt" in n and "sc_digger/main.py" in n for n in res.notes)
+
+
+def test_scope_docs_outside_issue_are_only_a_note():
+    res = _scope_eval(["sc_digger/bot.py", "README.md", "ROADMAP.md"])
+    assert res.ok, res.violations
+    assert sum("im Review prüfen" in n for n in res.notes) == 2
+
+
+def test_scope_agents_md_is_not_a_free_doc_file():
+    assert not _scope_eval(["AGENTS.md"]).ok
+
+
+def test_scope_union_over_linked_issues():
+    other = "### Betroffene Dateien\n\n- `sc_digger/main.py`\n"
+    res = _scope_eval(["sc_digger/bot.py", "sc_digger/main.py"], issues={45: SCOPE_BODY, 46: other})
+    assert res.ok, res.violations
+
+
+def test_scope_unchecked_without_section():
+    res = g.evaluate([_file("sc_digger/anything.py")], set(), {5: "### Ziel\n\nx"}, _reader({}))
+    assert res.ok
+    assert any("Umfang ungeprüft" in n for n in res.notes)

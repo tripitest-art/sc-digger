@@ -8,8 +8,10 @@ machen, indem er sie abschwächt. Dieser Check ist der unabhängige Schiedsricht
    tests/acceptance/test_issue_N.py genau diesem Block entsprechen.
 3. Keine neuen skip/xfail-Markierungen in Tests.
 4. CI- und Test-Infrastruktur (.github/, conftest.py, pytest-Konfiguration) bleibt unberührt.
+5. Hat das verlinkte Issue einen Abschnitt „Betroffene Dateien“, ändert der PR nur diese
+   Dateien (plus Dateien unter tests/). Sonst stimmt entweder der PR nicht oder das Issue.
 
-Verstöße gegen 1, 3 und 4 kann Stephan bewusst mit dem Label `freigabe-geschützt` erlauben.
+Verstöße gegen 1, 3, 4 und 5 kann Stephan bewusst mit dem Label `freigabe-geschützt` erlauben.
 Regel 2 kennt keine Ausnahme: Stimmt der Test nicht, wird das Issue korrigiert.
 
 Läuft als pull_request_target mit dem Stand aus `main` und liest den PR nur über die
@@ -19,6 +21,7 @@ GitHub-API. Nur Standardbibliothek, damit der Job ohne pip auskommt.
 from __future__ import annotations
 
 import difflib
+import fnmatch
 import json
 import os
 import re
@@ -39,6 +42,19 @@ PROTECTED_PREFIXES = (".github/",)
 _LINK_RE = re.compile(r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s*:?\s+#(\d+)\b", re.I)
 _HEADING_RE = re.compile(r"^(#{1,6})\s*(.*?)\s*#*\s*$")
 _FENCE_RE = re.compile(r"^(`{3,}|~{3,})[^\n]*\n(.*?)\n?^\1[ \t]*$", re.M | re.S)
+# Pfad in „Betroffene Dateien“: `sc_digger/db.py`, `config.yaml`, `docs/`,
+# `tests/acceptance/test_issue_<N>.py`. Kein führender Slash (API-Endpunkte wie `/tracks/{id}`),
+# keine Klammern oder Leerzeichen (Signaturen wie `get_likers(track_id)`).
+_PATH_RE = re.compile(r"^(?!/)[\w.*<>-]+(?:/[\w.*<>-]*)*$")
+_PLACEHOLDER_RE = re.compile(r"<[^<>/]*>")
+_BULLET_RE = re.compile(r"^ {0,3}[-*+]\s+(?:\[[ xX]\]\s+)?(.*)$")
+_TICKED_RE = re.compile(r"`([^`\n]+)`")
+# Tests darf der Worker immer ergänzen (Issue-Formular: „plus die Testdateien“).
+# conftest.py und bestehende Akzeptanztests fangen die Regeln 1 und 4 ab.
+ALWAYS_ALLOWED_PREFIXES = ("tests/",)
+# Doku-Nachträge (PR-Vorlage: „Doku angepasst“) blockieren nicht, erscheinen aber als Hinweis
+# fürs Review. AGENTS.md gehört bewusst nicht dazu: Regeln ändert nur ein eigener PR.
+DOC_FILES = {"README.md", "ROADMAP.md"}
 _SKIP_RE = re.compile(
     r"pytest\.mark\.(?:skip|skipif|xfail)\b|pytest\.(?:skip|xfail|importorskip)\s*\("
 )
@@ -65,18 +81,18 @@ def linked_issues(pr_body: str | None) -> list[int]:
     return seen
 
 
-def extract_acceptance_block(issue_body: str | None) -> str | None:
-    """Code-Block unter der Überschrift „Akzeptanztests“ oder None.
+def _section(issue_body: str | None, title: str) -> str | None:
+    """Text unter der ersten Überschrift, die mit `title` beginnt, bis zur nächsten gleich
+    hohen oder höheren Überschrift; None, wenn es die Überschrift nicht gibt.
 
-    Issue-Formulare rendern das Feld als „### Akzeptanztests“ + ```python-Block,
-    ein leeres Feld als „_No response_“. Handgeschriebene Issues dürfen jede
-    Überschriften-Ebene nutzen.
+    Issue-Formulare rendern Felder als „### <Label>“, handgeschriebene Issues dürfen jede
+    Überschriften-Ebene nutzen. Überschriften in Code-Blöcken beenden den Abschnitt nicht.
     """
     lines = (issue_body or "").replace("\r\n", "\n").split("\n")
     start = level = None
     for i, line in enumerate(lines):
         m = _HEADING_RE.match(line)
-        if m and m.group(2).lower().startswith("akzeptanztests"):
+        if m and m.group(2).lower().startswith(title):
             start, level = i + 1, len(m.group(1))
             break
     if start is None:
@@ -90,12 +106,66 @@ def extract_acceptance_block(issue_body: str | None) -> str | None:
         if m and len(m.group(1)) <= level:
             end = i
             break
-    section = "\n".join(lines[start:end])
-    fence = _FENCE_RE.search(section)
+    return "\n".join(lines[start:end])
+
+
+def extract_acceptance_block(issue_body: str | None) -> str | None:
+    """Code-Block unter der Überschrift „Akzeptanztests“ oder None.
+
+    Ein leeres Formularfeld rendert GitHub als „_No response_“, also ohne Code-Block.
+    """
+    fence = _FENCE_RE.search(_section(issue_body, "akzeptanztests") or "")
     if not fence:
         return None
     code = normalize(fence.group(2))
     return code or None
+
+
+def extract_allowed_files(issue_body: str | None, issue_number: int) -> list[str] | None:
+    """Pfade aus dem Abschnitt „Betroffene Dateien“ oder None, wenn es ihn nicht gibt.
+
+    Gezählt werden nur Listenpunkte, keine Fortsetzungszeilen. Pro Punkt gilt der erste
+    Pfad (mit oder ohne Backticks), dazu weitere Pfade in Backticks mit Schrägstrich
+    („`tests/test_a.py` oder neue `tests/test_b.py`“). Andere Backtick-Wörter sind
+    Erläuterung, keine Datei (`config.yaml`: neues Feld `digest.max_items`).
+    Platzhalter wie <N> werden durch die Issue-Nummer ersetzt.
+    """
+    section = _section(issue_body, "betroffene dateien")
+    if section is None:
+        return None
+    found: list[str] = []
+    in_fence = False
+    for line in section.split("\n"):
+        if re.match(r"^\s*(`{3,}|~{3,})", line):
+            in_fence = not in_fence
+            continue
+        m = None if in_fence else _BULLET_RE.match(line)
+        if not m:
+            continue
+        item = m.group(1).strip()
+        ticked = _TICKED_RE.findall(item)
+        if item.startswith("`"):
+            candidates = ticked[:1] + [t for t in ticked[1:] if "/" in t]
+        else:
+            words = item.split()
+            candidates = ([words[0].rstrip(":,;")] if words else []) + [t for t in ticked if "/" in t]
+        for c in candidates:
+            c = c.strip()
+            if _PATH_RE.match(c) and ("." in c or "/" in c):
+                path = _PLACEHOLDER_RE.sub(str(issue_number), c)
+                if path not in found:
+                    found.append(path)
+    return found
+
+
+def path_allowed(path: str, allowed: list[str]) -> bool:
+    """Exakter Pfad, Ordner („docs/“) oder Muster („sc_digger/*.py“) aus dem Issue."""
+    if path.startswith(ALWAYS_ALLOWED_PREFIXES):
+        return True
+    return any(
+        path == a or (a.endswith("/") and path.startswith(a)) or fnmatch.fnmatchcase(path, a)
+        for a in allowed
+    )
 
 
 def normalize(code: str) -> str:
@@ -159,6 +229,32 @@ def evaluate(
         for p in {name, old} - {None}:
             if is_protected_infra(p):
                 protected(f"CI-/Test-Infrastruktur geändert: `{p}`")
+
+    # 5. Nur Dateien aus „Betroffene Dateien“ (bei mehreren verlinkten Issues: Vereinigung).
+    allowed: list[str] = []
+    listed_in: list[int] = []
+    for number, body in issues.items():
+        paths = extract_allowed_files(body, number)
+        if paths is None:
+            res.notes.append(f"Issue #{number} hat keinen Abschnitt „Betroffene Dateien“; Umfang ungeprüft.")
+            continue
+        listed_in.append(number)
+        allowed += [p for p in paths if p not in allowed]
+    if listed_in:
+        refs = ", ".join(f"#{n}" for n in listed_in)
+        touched = {p for f in files for p in (f["filename"], f.get("previous_filename")) if p}
+        outside = sorted(p for p in touched if not path_allowed(p, allowed))
+        for p in [p for p in outside if p in DOC_FILES]:
+            res.notes.append(f"Doku `{p}` geändert, steht nicht im Issue: im Review prüfen.")
+        outside = [p for p in outside if p not in DOC_FILES]
+        for p in outside:
+            protected(f"`{p}` steht nicht unter „Betroffene Dateien“ in Issue {refs}. "
+                      "Änderung zurücknehmen oder das Issue ergänzen lassen.")
+        if outside:
+            listed = ", ".join(f"`{a}`" for a in allowed) or "keine"
+            res.notes.append(f"Laut Issue erlaubt: {listed}, dazu alles unter `tests/`.")
+        else:
+            res.notes.append(f"Geänderte Dateien passen zu „Betroffene Dateien“ in Issue {refs}.")
 
     # 2. Akzeptanztest muss exakt dem Issue entsprechen (keine Ausnahme per Label).
     for number, body in issues.items():

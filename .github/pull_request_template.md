@@ -19,7 +19,7 @@ Closes #
 - [ ] Sammlung (`/music/Schranz`) wird nicht verändert
 - [ ] Keine Zugangsdaten in Code, Logs oder Fehlermeldungen (Telegram nur über `telegram_call`)
 - [ ] `config.yaml`: neue Optionen haben einen Standardwert und einen Kommentar
-- [ ] Doku angepasst (README / AGENTS.md / ROADMAP), falls sich Verhalten oder Betrieb ändert
+- [ ] Doku angepasst, soweit im Issue genannt (README / ROADMAP), falls sich Verhalten oder Betrieb ändert
 
 ## Offene Punkte / Abweichungen vom Issue
 

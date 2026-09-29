@@ -68,6 +68,10 @@ roter `github-advanced-security` ist kein Mangel.
 
 - Issue über das Formular „Aufgabe für einen Agenten“: exakte Signaturen, was ausdrücklich
   nicht dazugehört, Merge-Modus.
+- „Betroffene Dateien“ vollständig: ein Pfad pro Listenpunkt, am Anfang des Punkts
+  (`` `sc_digger/db.py`: neue Methode … ``). `acceptance-guard` lässt nur diese Dateien zu,
+  dazu `tests/` sowie `README.md` und `ROADMAP.md` (nur als Hinweis). Fehlt eine Datei,
+  das Issue ergänzen und den Check neu starten.
 - Akzeptanztests als pytest-Code ins Issue. Sie laufen ohne Netzwerk (Fakes, synthetisches
   Audio per ffmpeg wie in `tests/test_analysis_organize.py`) und sind vor der Umsetzung rot.
 - Labels: `worker-task`, `bereit`, `phase-N`, bei Bedarf `berührt-main.py`.
@@ -79,7 +83,8 @@ roter `github-advanced-security` ist kein Mangel.
 2. `git checkout main && git pull && git checkout -b feature/issue-<N>-<kurz>`
 3. Den Akzeptanztest-Block **zeichengenau** nach `tests/acceptance/test_issue_<N>.py`
    kopieren und als eigenen Commit sichern, **bevor** du etwas umsetzt.
-4. Umsetzen, nur in den Dateien aus dem Issue. Eigene Tests ergänzen.
+4. Umsetzen, nur in den Dateien aus „Betroffene Dateien“ (prüft `acceptance-guard`).
+   Eigene Tests ergänzen.
    `python -m pytest -q`, bis alles grün ist.
 5. **Verboten:** Akzeptanztests ändern; neue `skip`/`xfail`/`importorskip`; Änderungen an
    `.github/`, `conftest.py` oder pytest-Konfiguration; das Label `freigabe-geschützt` setzen.
@@ -155,7 +160,7 @@ roter `github-advanced-security` ist kein Mangel.
 | `sc_digger/redact.py` | Zugangsdaten aus Texten und Logs entfernen |
 | `config.yaml` | Einzige Konfiguration (Tags, Referenz-Accounts, Schwellwerte). Ist die Produktivkonfiguration. |
 | `entrypoint.sh` | Schreibt `cron.env` (Cron hat sonst weder PATH noch Secrets), startet cron und Bot |
-| `.github/scripts/acceptance_guard.py` | CI-Check `acceptance-guard`: Akzeptanztests = Issue, keine neuen skips, CI/Test-Konfiguration geschützt |
+| `.github/scripts/acceptance_guard.py` | CI-Check `acceptance-guard`: Akzeptanztests = Issue, nur Dateien aus „Betroffene Dateien“, keine neuen skips, CI/Test-Konfiguration geschützt |
 | `set-secret.sh` / `update.sh` | Zugangsdaten setzen / Update ausrollen (auf dem Server) |
 
 ## Betrieb

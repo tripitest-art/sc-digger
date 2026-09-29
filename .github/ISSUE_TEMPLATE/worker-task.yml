@@ -21,10 +21,12 @@ body:
     id: dateien
     attributes:
       label: Betroffene Dateien
-      description: Nur diese Dateien dürfen geändert werden (plus die Testdateien).
+      description: |
+        Nur diese Dateien dürfen geändert werden (plus alles unter tests/). Ein Pfad pro
+        Listenpunkt, am Anfang des Punkts. Der CI-Check `acceptance-guard` prüft das.
       placeholder: |
-        - sc_digger/organize.py (write_tags)
-        - tests/test_analysis_organize.py
+        - `sc_digger/organize.py`: write_tags
+        - `tests/test_analysis_organize.py`: eigene Tests
     validations:
       required: true
 
