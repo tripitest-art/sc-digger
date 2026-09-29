@@ -1,5 +1,7 @@
 # sc-digger
 
+<img width="1024" height="559" alt="image" src="https://github.com/user-attachments/assets/ef5fa4ec-e35d-4617-96e8-b50e5fd006c3" />
+
 [![tests](https://github.com/tripitest-art/sc-digger/actions/workflows/tests.yml/badge.svg)](https://github.com/tripitest-art/sc-digger/actions/workflows/tests.yml)
 
 **Crate-Digging-Assistent für Schranz und Hard Techno.** sc-digger durchsucht SoundCloud täglich
