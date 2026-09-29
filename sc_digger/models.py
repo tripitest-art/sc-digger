@@ -17,7 +17,9 @@ class DownloadKind(str, Enum):
     TONEDEN = "toneden"      # Gate, wird nur gemeldet
     ARTIST_UNION = "artistunion"
     STORE = "store"          # Bandcamp/Beatport etc. -> Kaufempfehlung
-    CLOUD = "cloud"          # Drive/Dropbox/Mega im Beschreibungstext
+    CLOUD = "cloud"          # Drive/Dropbox im Beschreibungstext
+    WETRANSFER = "wetransfer"   # ablaufend (7 Tage), manuell laden
+    MEGA = "mega"               # clientseitig verschlüsselt, manuell laden
     NONE = "none"            # nur Stream
 
 

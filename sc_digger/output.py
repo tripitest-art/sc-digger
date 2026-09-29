@@ -204,6 +204,8 @@ _BUCKET_LABEL = {
     DownloadKind.ARTIST_UNION: "🚪 Gate – manuell durchklicken",
     DownloadKind.STORE: "🛒 Store / Cloud-Link",
     DownloadKind.CLOUD: "🛒 Store / Cloud-Link",
+    DownloadKind.WETRANSFER: "🛒 Store / Cloud-Link",
+    DownloadKind.MEGA: "🛒 Store / Cloud-Link",
     DownloadKind.NONE: "🎧 Nur Stream",
 }
 _ORDER = ["✅ Direkt geladen / ladbar", "🚪 Gate – manuell durchklicken",
@@ -236,7 +238,12 @@ def _fmt_track(t: Track) -> str:
     elif t.download_kind == DownloadKind.NATIVE:
         line += f'\n  ⬇️ <a href="{html.escape(t.url)}">Original manuell laden</a>'
     if t.download_link and t.download_kind not in (DownloadKind.NATIVE, DownloadKind.NONE):
-        line += f'\n  🔗 <a href="{html.escape(t.download_link)}">{t.download_kind.value}</a>'
+        if t.download_kind == DownloadKind.WETRANSFER:
+            line += f'\n  ⏳ <a href="{html.escape(t.download_link)}">WeTransfer (läuft ab)</a>'
+        elif t.download_kind == DownloadKind.MEGA:
+            line += f'\n  🔒 <a href="{html.escape(t.download_link)}">Mega (manuell)</a>'
+        else:
+            line += f'\n  🔗 <a href="{html.escape(t.download_link)}">{t.download_kind.value}</a>'
     if t.download_error:
         line += f"\n  ⚠️ {_esc(t.download_error)}"
     if t.duplicate_of:
