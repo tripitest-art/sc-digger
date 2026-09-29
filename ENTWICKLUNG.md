@@ -61,6 +61,10 @@ Der Planer schreibt Issues, keinen Code: keine Branches, keine Commits, keine PR
    Offene Fachfragen (Schwellwerte, Verhalten im Fehlerfall) Stephan stellen, nicht raten.
 2. **Stand prüfen.** Offene Issues und PRs nach Dubletten und nach denselben Dateien
    durchsuchen (Regel 8). Überschneidung → `blockiert` und `Wartet auf: #X` (siehe `AGENTS.md`).
+   Bestehende Akzeptanztests suchen, die die geänderten Funktionen prüfen
+   (`git grep <funktion> tests/acceptance`). Worker dürfen sie nicht ändern; die Aufgabe muss
+   so geschnitten sein, dass sie grün bleiben (bei #102 hätte `test_issue_76.py` die neue
+   Ausgabe von `format_mix_list` abgelehnt).
 3. **Code lesen.** Jede Datei, die das Issue nennt, auf dem Stand von `main`. Bestehende
    Helfer und Fakes (`mk`/`FakeSC` in `tests/test_modes.py`, `FakeLinkSC` in
    `tests/test_merge.py`) wiederverwenden, statt dem Worker neue vorzuschreiben.
@@ -71,6 +75,8 @@ Der Planer schreibt Issues, keinen Code: keine Branches, keine Commits, keine PR
    genauen Optionstext. Vorbild: #95.
    - **Betroffene Dateien:** vollständig, mit Funktion und Stelle. Was fehlt, darf der Worker
      nicht anfassen. Immer dabei: `tests/acceptance/test_issue_<N>.py` und eigene Testdatei.
+     Bestehende Tests, deren Erwartung sich ändert, mit Datei und Stelle nennen; sonst darf
+     der Worker sie nicht anpassen.
    - **Schnittstellen:** exakte Signaturen mit Typen, Rückgabe, Verhalten bei leer/`None`/
      Fehler, Log-Meldungen im Wortlaut, wenn Tests sie prüfen. In einem ```` ```python ````-Block.
    - **Nicht Teil dieser Aufgabe:** das naheliegende „gleich mit aufräumen“ ausschließen.
@@ -82,7 +88,8 @@ Der Planer schreibt Issues, keinen Code: keine Branches, keine Commits, keine PR
    - importieren nur aus `sc_digger` und vorhandenen Test-Helfern;
    - schreiben nur in `tmp_path`, nie nach `/music` oder in die echte `config.yaml`.
 6. **Akzeptanztests prüfen (mit Shell).** Datei lokal anlegen und laufen lassen: auf `main`
-   rot (meist `ImportError`), gegen eine Probe-Umsetzung grün, restliche Suite grün. Die
+   rot (meist `ImportError`), gegen eine Probe-Umsetzung grün, und die restliche Suite
+   **mit** der Probe-Umsetzung grün (so fallen die Fälle aus Schritt 2 und 4 auf). Die
    Probe-Umsetzung wird weder committet noch gepusht. Ergebnis mit Commit-Hash von `main` in
    den Kontext („ohne Umsetzung rot, mit Umsetzung 12 grün“).
    **Ohne Shell** geht das nicht: Label `entwurf` statt `bereit`, im Kontext „Akzeptanztests
@@ -90,8 +97,8 @@ Der Planer schreibt Issues, keinen Code: keine Branches, keine Commits, keine PR
    ersetzt `entwurf` durch `bereit`.
 7. **Entwurf zeigen.** Titel, Text und Labels Stephan im Chat vorlegen; erst nach seinem OK
    anlegen (außer er hat ausdrücklich „direkt anlegen“ gesagt).
-8. **Anlegen** mit Labels `worker-task`, `phase-N`, `bereit` (ohne Shell `entwurf`), bei Bedarf
-   `blockiert` und
+8. **Anlegen** mit Labels `worker-task`, `phase-N`, `bereit` (ohne Shell `entwurf`), genau
+   einem `agent-<familie>` (Abschnitt „Agenten-Labels“), bei Bedarf `blockiert` und
    `berührt-main.py`. Danach Nummer und Link melden. Im Issue-Text `test_issue_<N>` stehen
    lassen; die Nummer kennt der Worker.
 

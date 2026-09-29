@@ -68,8 +68,7 @@ warten; ein roter `github-advanced-security` ist kein Mangel.
 
 - Issue über das Formular „Aufgabe für einen Agenten“: exakte Signaturen, was ausdrücklich
   nicht dazugehört, Merge-Modus.
-- Ablauf Schritt für Schritt: `ENTWICKLUNG.md`, „Planer-Ablauf“. Der Planer schreibt keinen
-  Code. Ohne Shell (Tests ungeprüft) `entwurf` statt `bereit`; Stephan gibt frei.
+- Ablauf: `ENTWICKLUNG.md`, „Planer-Ablauf“. Ohne Shell `entwurf` statt `bereit`.
 - Akzeptanztests als pytest-Code ins Issue. Sie laufen ohne Netzwerk (Fakes, synthetisches
   Audio per ffmpeg wie in `tests/test_analysis_organize.py`) und sind vor der Umsetzung rot.
 - Labels: `worker-task`, `bereit`, `phase-N`, ein `agent-<familie>` (`ENTWICKLUNG.md`,
