@@ -20,6 +20,7 @@ from .db import TrackDB
 from .main import run_link
 from .models import Config
 from .output import TelegramError, parse_feedback_callback, telegram_call
+from . import output
 from .redact import install_redacting_logging
 from .soundcloud import SoundCloudClient, SoundCloudError
 
@@ -32,7 +33,8 @@ HELP_TEXT = (
     "Schick mir einen SoundCloud-Link:\n"
     "• Playlist/Set-Link -> ich zeige dir alle Tracks der Playlist\n"
     "• einzelner Track-Link -> ich zeige dir die 'Station' dazu "
-    "(das, was der SoundCloud-Algorithmus als Radio vorschlägt)\n\n"
+    "(das, was der SoundCloud-Algorithmus als Radio vorschlägt)\n"
+    "• /kaufliste -> zeigt die aktuelle Kaufliste offener Store-Tracks\n\n"
     "Kein täglicher Filter, du bekommst die volle Liste mit Stats und Download-Einordnung."
 )
 
@@ -43,10 +45,22 @@ def _send_text(cfg: Config, chat_id: str, text: str) -> None:
                         "disable_web_page_preview": True})
 
 
+def handle_kaufliste_command(cfg: Config, chat_id: str | None = None) -> None:
+    """Bearbeitet den /kaufliste-Befehl und sendet die aktuelle Kaufliste."""
+    if chat_id is not None:
+        output.send_kaufliste(cfg, chat_id=chat_id)
+    else:
+        output.send_kaufliste(cfg)
+
+
 def handle_message(cfg: Config, sc: SoundCloudClient, chat_id: str, text: str) -> None:
     text = text.strip()
     if text in ("/start", "/help"):
         _send_text(cfg, chat_id, HELP_TEXT)
+        return
+
+    if text == "/kaufliste":
+        handle_kaufliste_command(cfg, chat_id=chat_id)
         return
 
     m = URL_RE.search(text)

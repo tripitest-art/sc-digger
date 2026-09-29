@@ -224,6 +224,24 @@ MIGRATIONS: list[tuple[int, str, str]] = [
         );
         """,
     ),
+    (
+        3,
+        "0003_store_items",
+        """
+        CREATE TABLE IF NOT EXISTS store_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sc_id INTEGER UNIQUE NOT NULL,
+            title TEXT NOT NULL,
+            artist TEXT NOT NULL,
+            purchase_url TEXT NOT NULL,
+            purchase_title TEXT,
+            first_seen TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            last_seen TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_store_items_last_seen ON store_items(last_seen);
+        """,
+    ),
 ]
 
 
@@ -441,6 +459,57 @@ class TrackDB:
     def get_sc_feedback(self, sc_id: int) -> str | None:
         row = self.db.execute("SELECT value FROM sc_feedback WHERE sc_id = ?", (sc_id,)).fetchone()
         return row["value"] if row else None
+
+    def upsert_store_item(
+        self,
+        sc_id: int,
+        title: str,
+        artist: str,
+        purchase_url: str,
+        purchase_title: str | None = None,
+    ) -> None:
+        """INSERT OR REPLACE mit UPDATE von last_seen."""
+        self.db.execute(
+            """
+            INSERT INTO store_items (sc_id, title, artist, purchase_url, purchase_title, first_seen, last_seen)
+            VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            ON CONFLICT(sc_id) DO UPDATE SET
+                title = excluded.title,
+                artist = excluded.artist,
+                purchase_url = excluded.purchase_url,
+                purchase_title = COALESCE(excluded.purchase_title, store_items.purchase_title),
+                last_seen = CURRENT_TIMESTAMP
+            """,
+            (sc_id, title, artist, purchase_url, purchase_title),
+        )
+        self.db.commit()
+
+    def get_store_items(
+        self, only_liked: bool = False, since_days: int | None = None
+    ) -> list[dict[str, Any]]:
+        """Gibt alle store_items zurück.
+        only_liked=True: JOIN mit sc_feedback WHERE value='like'.
+        since_days: filtert nach last_seen >= NOW - since_days Tage.
+        """
+        conds: list[str] = []
+        params: list[Any] = []
+        join_clause = ""
+        if only_liked:
+            join_clause = "JOIN sc_feedback ON sc_feedback.sc_id = store_items.sc_id"
+            conds.append("sc_feedback.value = 'like'")
+        if since_days is not None:
+            conds.append("datetime(store_items.last_seen) >= datetime('now', '-' || ? || ' days')")
+            params.append(int(since_days))
+
+        where_clause = f"WHERE {' AND '.join(conds)}" if conds else ""
+        query = f"""
+            SELECT store_items.* FROM store_items
+            {join_clause}
+            {where_clause}
+            ORDER BY store_items.last_seen DESC, store_items.id DESC
+        """
+        rows = self.db.execute(query, params).fetchall()
+        return [dict(r) for r in rows]
 
     def count_tracks(
         self,

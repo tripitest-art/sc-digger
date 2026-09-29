@@ -147,3 +147,6 @@ rekordbox:
   path_map:
     /music/inbox: "Z:/Highres/_sc-digger-inbox"
 
+digest:
+  kaufliste_max_items: 30   # Maximale Einträge in der wöchentlichen Kaufliste
+
