@@ -19,6 +19,7 @@ Repo immer `owner: tripitest-art`, `repo: sc-digger`.
 | `git checkout -b <branch>` | `create_branch` (`from_branch: main`) |
 | `git commit` + `git push` | `push_files` (mehrere Dateien, ein Commit) |
 | `gh pr create` | `create_pull_request` (`base: main`, Body nach `.github/pull_request_template.md`, mit `Closes #<N>`) |
+| `gh pr edit` (PR-Text, Titel) | `update_pull_request` |
 | `gh pr view --comments` | `pull_request_read` (`get`, `get_comments`, `get_review_comments`) |
 | `gh pr diff` | `pull_request_read` (`get_diff`, bei großen PRs `get_files`) |
 | `gh pr checks` | `pull_request_read` (`get_check_runs`) |
@@ -97,7 +98,7 @@ mcpServers:
     headers:
       Authorization: "Bearer ${GITHUB_MCP_PAT}"
       X-MCP-Lockdown: "true"
-      X-MCP-Tools: "get_file_contents,search_issues,issue_read,issue_write,add_issue_comment,create_branch,push_files,create_or_update_file,create_pull_request,pull_request_read,add_reply_to_pull_request_comment,get_job_logs"
+      X-MCP-Tools: "get_file_contents,search_issues,issue_read,issue_write,add_issue_comment,create_branch,push_files,create_or_update_file,create_pull_request,update_pull_request,pull_request_read,add_reply_to_pull_request_comment,get_job_logs"
 ```
 
 - `requiresOAuth: false` ist Pflicht. LibreChat prüft beim Start ohne die Header, ob ein
@@ -134,6 +135,14 @@ auf diese Systeme. Instructions: Inhalt von `QWEN.md`.
 - **Maximale Antwortlänge mindestens 16k Token** (LibreChat „Max Output Tokens“ und Backend,
   z. B. Ollama `num_predict`). `push_files` schreibt ganze Dateien; die größten Module haben
   rund 9k Token. Ist die Grenze kleiner, endet die Datei mitten im Code und der Rest ist weg.
+- **Agenten ohne Denkphase.** Qwen 3.5 schreibt Werkzeugaufrufe sonst oft nur in seine
+  Gedanken; der Zug endet dann ohne Aktion. Für die Agenten einen Ollama-Endpunkt mit
+  `addParams: { reasoning_effort: "none" }` wählen (Ollamas OpenAI-Schnittstelle schaltet damit
+  das Denken ab).
+- **Schrittgrenze anheben:** in `librechat.yaml` unter `endpoints:` → `agents:`
+  `recursionLimit: 50` und `maxRecursionLimit: 100`. Standard sind 25 Schritte, ein Worker-Lauf
+  braucht mehr. (Der Abschnitt `interface: agents:` regelt nur die Berechtigung.)
+- **Jeder Auftrag in einem neuen Chat.** Der Verlauf früherer Aufträge füllt sonst den Kontext.
 
 **Probe:** Agent fragen „Welche GitHub-Werkzeuge hast du? Nur die Namen.“ Es müssen genau die
 aus `X-MCP-Tools` sein. Dann: „Lies `AGENTS.md` aus `tripitest-art/sc-digger` und nenne die
