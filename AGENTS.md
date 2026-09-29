@@ -71,6 +71,10 @@ roter `github-advanced-security` ist kein Mangel.
 - Akzeptanztests als pytest-Code ins Issue. Sie laufen ohne Netzwerk (Fakes, synthetisches
   Audio per ffmpeg wie in `tests/test_analysis_organize.py`) und sind vor der Umsetzung rot.
 - Labels: `worker-task`, `bereit`, `phase-N`, bei Bedarf `berührt-main.py`.
+- Muss das Issue auf andere warten (gleiche Dateien, Regel 8, oder es baut darauf auf): Label
+  `blockiert` statt `bereit` und im Kontext eine Zeile `Wartet auf: #X, #Y` (PRs oder Issues).
+  Daran gibt der Reviewer das Issue nach dem Merge frei (Reviewer → Nächsten Review selbst
+  wählen, Schritt 5).
 
 ### Worker
 
@@ -92,6 +96,8 @@ roter `github-advanced-security` ist kein Mangel.
    Der Body muss `Closes #<N>` enthalten, sonst prüft `acceptance-guard` nichts gegen das Issue.
    Unter Windows/PowerShell Texte nie inline übergeben (Backtick ist dort Escape-Zeichen,
    aus `` `t `` wird ein Tabulator), immer `--body-file`.
+   Im Abschnitt „Umgesetzt von / Review durch“ dein Modell als Worker eintragen
+   (z. B. `Worker: Gemini Flash`). Daran erkennt ein Reviewer, ob er den PR prüfen darf.
 8. Review-Kommentare (Reviewer, ggf. Copilot): „Muss“-Punkte und echte Fehler im Issue-Umfang
    beheben; alles andere im Thread kurz begründen, nicht umsetzen. Das Issue gilt, nicht der
    Vorschlag. Nie deshalb Tests abschwächen oder weitere Dateien anfassen. Alle Korrekturen
@@ -126,6 +132,26 @@ roter `github-advanced-security` ist kein Mangel.
 5. Trägt ein PR das Label `freigabe-geschützt`, stand die Änderung an geschützten Dateien
    zur Entscheidung. Im Review ausdrücklich bestätigen, dass sie begründet ist.
 
+### Nächsten Review selbst wählen
+
+1. `gh pr list --state open --search "draft:false sort:created-asc"`
+2. Den ersten PR nehmen, der alle Bedingungen erfüllt, sonst den nächsten:
+   - Der Body enthält `Closes #<N>` und Issue #N trägt `worker-task`
+     (Doku-PRs ohne Worker-Issue prüft Stephan).
+   - Alle Checks sind abgeschlossen (`gh pr checks <PR>`). Laufen noch welche: nächster PR.
+     Rote Checks sind kein Grund zum Überspringen, sondern ein Befund (Reviewer, Schritt 1).
+   - Seit dem letzten Review gibt es einen neuen Commit
+     (`gh pr view <PR> --json reviews,commits`). Sonst wartet der PR auf die Nacharbeit
+     des Workers.
+   - Der Abschnitt „Umgesetzt von / Review durch“ nennt nicht dein eigenes Modell als Worker.
+     Fehlt die Angabe: nächster PR und Stephan Bescheid geben.
+3. Bleibt keiner übrig: sagen und aufhören, nichts anderes anfangen.
+4. Genau **einen** PR prüfen (Reviewer 1–5).
+5. Nach einem Merge: offene Issues mit `blockiert` durchgehen
+   (`gh issue list --state open --label blockiert`). Nennt die Zeile `Wartet auf:` nur noch
+   gemergte PRs und geschlossene Issues:
+   `gh issue edit <N> --add-label bereit --remove-label blockiert`
+
 ### Standard-Aufträge
 
 | Rolle | Auftrag |
@@ -134,6 +160,7 @@ roter `github-advanced-security` ist kein Mangel.
 | Worker | „Bearbeite Issue #N nach AGENTS.md, Abschnitt Worker-Aufgaben → Worker.“ |
 | Worker (autonom) | „/goal Bearbeite die nächste Aufgabe nach AGENTS.md, Worker-Aufgaben → Nächste Aufgabe selbst wählen.“ |
 | Reviewer | „Prüfe PR #M nach AGENTS.md, Abschnitt Worker-Aufgaben → Reviewer.“ |
+| Reviewer (autonom) | „/goal Prüfe den nächsten PR nach AGENTS.md, Worker-Aufgaben → Nächsten Review selbst wählen.“ |
 | Worker (Nacharbeit) | „Arbeite das Review in PR #M ab (AGENTS.md, Worker → Schritt 8).“ |
 
 ## Architektur
