@@ -30,7 +30,7 @@ Modul anlegt, trägt es in die Tabelle ein.
 | `sc_digger/redact.py` | Zugangsdaten aus Texten und Logs entfernen |
 | `config.yaml` | Einzige Konfiguration (Tags, Referenz-Accounts, Schwellwerte). Ist die Produktivkonfiguration. |
 | `entrypoint.sh` | Schreibt `cron.env` (Cron hat sonst weder PATH noch Secrets), startet cron und Bot |
-| `skills/*/SKILL.md` | Abläufe für Qwen in LibreChat (Review, Worker), per GitHub Skill Sync gespiegelt; Regeln bleiben in `AGENTS.md` |
+| `skills/*/SKILL.md` | Abläufe für lokale Modelle in LibreChat (Review, Worker, Planer), per GitHub Skill Sync gespiegelt; Regeln bleiben in `AGENTS.md` |
 | `.github/scripts/acceptance_guard.py` | CI-Check `acceptance-guard`: Akzeptanztests = Issue, keine neuen skips, CI/Test-Konfiguration geschützt |
 | `set-secret.sh` / `update.sh` | Zugangsdaten setzen / Update ausrollen (auf dem Server) |
 
@@ -63,6 +63,7 @@ Für Stephan: Mit diesen Sätzen startet man einen Agenten.
 | Qwen Reviewer (LibreChat) | „Repo tripitest-art/sc-digger. Prüfe PR #M nach dem Skill sc-digger-review.“ |
 | Qwen Worker (LibreChat) | „Repo tripitest-art/sc-digger. Bearbeite Issue #N nach dem Skill sc-digger-worker.“ |
 | Qwen Worker (Nacharbeit) | „Repo tripitest-art/sc-digger. Arbeite das Review in PR #M ab, Skill sc-digger-worker, Teil B.“ |
+| Planer (LibreChat) | „Repo tripitest-art/sc-digger. Plane nach dem Skill sc-digger-planner: <Aufgabe in ein paar Sätzen>.“ Legt das Issue mit `entwurf` an; freigeben erst nach Prüfung der Akzeptanztests. |
 
 Die Qwen-Aufträge nennen Repo und Skill ausdrücklich: Mit der Kurzform suchte Qwen nach einem
 anderen Repo und hielt AGENTS.md für den Prüfgegenstand. Die Skills liegen unter `skills/`
