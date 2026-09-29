@@ -143,6 +143,10 @@ auf diese Systeme. Instructions: Inhalt von `QWEN.md`.
   `recursionLimit: 50` und `maxRecursionLimit: 100`. Standard sind 25 Schritte, ein Worker-Lauf
   braucht mehr. (Der Abschnitt `interface: agents:` regelt nur die Berechtigung.)
 - **Jeder Auftrag in einem neuen Chat.** Der Verlauf früherer Aufträge füllt sonst den Kontext.
+- **Sampling der Agenten:** `temperature` 0.6, `top_p` 0.95, `presence_penalty` 0 (im
+  Agenten-Editor unter den Modell-Parametern). Eine `presence_penalty` wie im Chat-Profil (1.5)
+  bestraft Wiederholungen; Code wiederholt aber ständig Namen und Einrückungen, und Qwen weicht
+  dann auf falsche Varianten aus.
 
 **Probe:** Agent fragen „Welche GitHub-Werkzeuge hast du? Nur die Namen.“ Es müssen genau die
 aus `X-MCP-Tools` sein. Dann: „Lies `AGENTS.md` aus `tripitest-art/sc-digger` und nenne die
