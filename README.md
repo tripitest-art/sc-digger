@@ -39,10 +39,11 @@ Sammlung, aber die Genres, Pfade und Schwellwerte stehen alle in `config.yaml`.
 5. **Download-Weg bestimmen:** nativ, Gate, Store, Cloud-Link oder nur Stream
 6. **Laden und prüfen:** Original über `scdl --only-original`, dann ffprobe, Spektrum-Check gegen
    hochkonvertierte Fakes und EBU-R128-Messung gegen Brickwall-Master (siehe unten)
-7. **Analysieren:** BPM per Beat-Tracking mit Oktav-Korrektur, Tonart als Camelot-Key
-8. **Taggen:** Artist, Titel, BPM, Key, Genre, SoundCloud-URL und Lautheit (ReplayGain)
-9. **Sortieren:** in `inbox/<BPM-Bereich>/<Camelot-Key>/`
-10. **Melden:** Telegram-Digest nach Download-Weg gruppiert, dazu eine Export-Datei
+7. **Pegel auf -8.5 LUFS (nur Inbox):** verlustfrei und samplegenau angleichen, Headroom ohne Limiter schützen
+8. **Analysieren:** BPM per Beat-Tracking mit Oktav-Korrektur, Tonart als Camelot-Key
+9. **Taggen:** Artist, Titel, BPM, Key, Genre, SoundCloud-URL und Lautheit (ReplayGain)
+10. **Sortieren:** in `inbox/<BPM-Bereich>/<Camelot-Key>/`
+11. **Melden:** Telegram-Digest nach Download-Weg gruppiert, dazu eine Export-Datei
 
 ## Modi
 
