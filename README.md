@@ -138,7 +138,7 @@ Alles steht kommentiert in `config.yaml`:
 | Abschnitt | Wofür |
 |---|---|
 | `search` | Genre-Tags, BPM-Fenster, Zeitraum, maximale Track-Dauer, gefolgte Artists, Referenz-Accounts |
-| `scoring` | Mindest-Plays, Perzentil-Schwelle, Gewichte, Bonus für Referenz-Accounts, Abzug und Phrasen für Promo-Verdacht |
+| `scoring` | Mindest-Plays, Perzentil-Schwelle, Gewichte, Bonus für Referenz-Accounts, Abzug und Phrasen für Promo-Verdacht, Sperrliste |
 | `download` | Sammlungs- und Inbox-Ordner, Cloud-Downloads ein/aus, Maximalgröße |
 | `organize` | Ordnerstruktur, BPM-/Key-Erkennung, Tags schreiben |
 | `quality` | Mindest-Bitrate, Spektrum-Grenzen, Brickwall-Schwellen |
