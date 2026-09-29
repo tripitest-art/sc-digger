@@ -127,6 +127,36 @@ von Logs Zeilen mit `Authorization` und geheimen URL-Pfaden vorher herausfiltern
 selben Agenten: Er liest Texte aus GitHub; eine untergeschobene Anweisung hätte sonst Zugriff
 auf diese Systeme. Instructions: Inhalt von `QWEN.md`.
 
+**Skills:** Die Abläufe liegen als LibreChat-Skills im Repo (`skills/sc-digger-review/`,
+`skills/sc-digger-worker/`). Sie legen die Abfolge der Werkzeugaufrufe fest; die Regeln
+bleiben in `AGENTS.md`. LibreChat spiegelt sie per GitHub Skill Sync aus `main`, damit es
+keine Kopie gibt, die von Hand gepflegt werden muss (Regel 1). In `librechat.yaml`:
+
+```yaml
+skillSync:
+  github:
+    enabled: true
+    intervalMinutes: 60
+    runOnStartup: true
+    sources:
+      - id: sc-digger
+        owner: tripitest-art
+        repo: sc-digger
+        ref: main
+        paths:
+          - skills
+        skillDiscoveryDepth: 2
+        token: '${GITHUB_MCP_PAT}'
+```
+
+- Der Token wird nur vom LibreChat-Server zum Lesen benutzt, nie vom Modell. Wer es strenger
+  will, legt einen eigenen Token nur mit „Contents: Read“ an (`GITHUB_SKILLS_TOKEN`).
+- Im Agenten-Editor „Enable skills“ an, „Use all skills“ aus. Beim Reviewer nur
+  `sc-digger-review`, beim Worker nur `sc-digger-worker` auswählen. Beide sind `always-apply`
+  und stehen damit in jedem Zug vollständig im Kontext.
+- Änderungen an einem Skill laufen wie Code über PR und Review. Nach dem Merge übernimmt
+  LibreChat sie beim nächsten Sync (spätestens nach 60 Minuten oder beim Neustart).
+
 **Modell:**
 
 - Kontextfenster mindestens 32k Token. Maßgeblich ist der kleinste Wert aus Backend
