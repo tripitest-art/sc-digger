@@ -67,7 +67,8 @@ Regeln für die Akzeptanztests:
 ## Schritt 6: Issue anlegen
 
 `issue_write` mit `method: create`, `title:` kurz und sachlich, `body:` der Text aus Schritt 5
-und `labels: ["worker-task", "entwurf", "phase-N"]`, dazu bei Bedarf `berührt-main.py` und
+und `labels: ["worker-task", "entwurf", "phase-N", "agent-<familie>"]` (Tabelle „Agenten-Labels“ in
+`ENTWICKLUNG.md`), dazu bei Bedarf `berührt-main.py` und
 `blockiert`.
 
 Danach Stephan melden: „Issue #N angelegt (Label `entwurf`). Bitte die Akzeptanztests

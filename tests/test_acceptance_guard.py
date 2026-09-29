@@ -242,3 +242,68 @@ def test_never_claimed_issue_can_be_allowed_by_override():
                      issue_meta={8: (None, None)})
     assert res.ok
     assert any("#8" in n and g.OVERRIDE_LABEL in n for n in res.notes)
+
+
+# ---------------- Regel 6: PR-Text ----------------
+TEMPLATE = (Path(__file__).resolve().parents[1] / ".github" / "pull_request_template.md").read_text(
+    encoding="utf-8")
+
+FILLED = """## Was und warum
+
+Closes #100
+
+## Umgesetzt von / Review durch
+
+Worker: Qwen3-Coder 30B
+"""
+
+
+def test_unfilled_template_on_worker_branch_fails():
+    # So kam PR #103: Vorlage unverändert, der Check lief trotzdem grün.
+    found = g.pr_text_violations("feature/issue-100-camelot-distance", TEMPLATE)
+    assert len(found) == 3
+    assert any("ohne Issue-Nummer" in v for v in found)
+    assert any("Closes #100" in v for v in found)
+    assert any("Worker" in v for v in found)
+
+
+def test_filled_worker_pr_passes():
+    assert g.pr_text_violations("feature/issue-100-camelot-distance", FILLED) == []
+
+
+def test_worker_branch_must_link_its_own_issue():
+    body = FILLED.replace("Closes #100", "Closes #99")
+    found = g.pr_text_violations("feature/issue-100-x", body)
+    assert found == ["Worker-Branch `feature/issue-100-x`, aber der PR-Text enthält kein „Closes #100“."]
+
+
+@pytest.mark.parametrize("line", [
+    "Worker: Gemini Flash",
+    "- Worker: Qwen 3.5",
+    "**Worker:** Claude Opus",
+    "worker: gpt-oss 20b",
+])
+def test_worker_line_variants(line):
+    body = f"Closes #7\n\n{line}\n"
+    assert g.pr_text_violations("feature/issue-7-kurz", body) == []
+
+
+def test_worker_line_only_in_template_comment_does_not_count():
+    body = 'Closes #7\n\n<!-- z. B. "Worker: Gemini Flash" -->\n'
+    found = g.pr_text_violations("feature/issue-7-kurz", body)
+    assert found == ["PR-Text nennt keinen Worker („Worker: <Familie> <Modell>“, AGENTS.md Worker 7)."]
+
+
+def test_bare_closes_fails_on_any_branch():
+    found = g.pr_text_violations("docs/irgendwas", "Closes #\n\nDoku.")
+    assert found == ["PR-Text enthält „Closes #“ ohne Issue-Nummer (Vorlage nicht ausgefüllt)."]
+
+
+def test_non_worker_branch_needs_no_issue_or_worker():
+    assert g.pr_text_violations("docs/planer", "Doku-PR ohne Worker-Issue, prüft Stephan.") == []
+    assert g.pr_text_violations(None, None) == []
+
+
+def test_template_comment_mentioning_closes_is_ignored():
+    body = '<!-- Pflicht: "Closes #<Issue>" -->\nDoku.'
+    assert g.pr_text_violations("docs/x", body) == []
