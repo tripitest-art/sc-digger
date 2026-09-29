@@ -191,6 +191,38 @@ def spam_signals(t: Track, phrases: list[str]) -> list[str]:
     return reasons
 
 
+def account_slug(url_or_slug: str | None) -> str:
+    """Kurzname eines SoundCloud-Profils in Kleinbuchstaben: letztes Pfadsegment einer URL
+    (Query-String und abschließendes "/" entfernt) oder der Kurzname selbst, Leerzeichen am Rand
+    entfernt. None oder leer -> "". Wirft nicht."""
+    if not url_or_slug:
+        return ""
+    try:
+        s = str(url_or_slug).strip()
+        if not s:
+            return ""
+        parsed = urlparse(s)
+        path = parsed.path if (parsed.scheme or "/" in s) else s
+        segments = [seg for seg in path.split("/") if seg]
+        slug = segments[-1] if segments else ""
+        return slug.lower()
+    except Exception:
+        return ""
+
+
+def is_blocked(t: Track, blocked: list[str]) -> bool:
+    """True, wenn account_slug(t.artist_url) nicht leer ist und einem account_slug(b) für b in blocked
+    entspricht. Leere Einträge in blocked werden ignoriert."""
+    if not t or not blocked:
+        return False
+    artist_slug = account_slug(getattr(t, "artist_url", None))
+    if not artist_slug:
+        return False
+    blocked_slugs = {account_slug(b) for b in blocked}
+    blocked_slugs.discard("")
+    return artist_slug in blocked_slugs
+
+
 def _percentile_rank(value: float, sorted_vals: list[float]) -> float:
     """Anteil der Werte, die <= value sind (0-100)."""
     if not sorted_vals:
@@ -210,6 +242,14 @@ def score_tracks(tracks: list[Track], cfg: Config, apply_filter: bool = True) ->
     nur das obere Perzentil des täglichen Digests.
     """
     sc = cfg["scoring"]
+    blocked = sc.get("blocked_accounts")
+    if apply_filter and blocked:
+        kept = [t for t in tracks if not is_blocked(t, blocked)]
+        removed = len(tracks) - len(kept)
+        if removed > 0:
+            log.info("Gesperrte Accounts aussortiert: %d", removed)
+        tracks = kept
+
     pool = [t for t in tracks if t.plays >= sc["min_plays"]] if apply_filter else list(tracks)
     if len(pool) < 10:
         log.warning("Nur %d Kandidaten über min_plays -> Perzentile wenig aussagekräftig", len(pool))

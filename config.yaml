@@ -93,6 +93,9 @@ scoring:
     - send your tracks
     - send me your tracks
     - promo service
+  # Sperrliste: Uploads dieser Accounts (Profil-URL oder Kurzname) fliegen in discover raus
+  blocked_accounts: []
+
 
 download:
   # Ordner mit deiner bestehenden Sammlung (für Duplikat-Check)
