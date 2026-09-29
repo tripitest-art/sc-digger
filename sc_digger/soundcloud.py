@@ -330,10 +330,16 @@ class SoundCloudClient:
         Nur einzelne Tracks zählen, Playlist-Reposts/-Likes werden übersprungen. Beide Feeds
         sind absteigend nach Datum sortiert, deshalb bricht die Schleife beim ersten zu alten
         Item ab, statt die volle Historie zu holen.
+
+        Genau EIN /resolve-Aufruf pro Profil: prüft auf user-Profile und extrahiert id einmalig.
         """
-        if self.resolve_kind(profile_url) != "user":
+        url = self._unshorten(profile_url)
+        info = self._get("/resolve", {"url": url})  # Einmaliger Aufruf für kind + id
+
+        if info.get("kind") != "user":
             raise SoundCloudError(f"Kein User-Profil: {profile_url}")
-        user_id = self._get("/resolve", {"url": self._unshorten(profile_url)})["id"]
+
+        user_id = info["id"]
 
         since = datetime.now(timezone.utc) - timedelta(days=max_age_days)
         out: list[Track] = []
