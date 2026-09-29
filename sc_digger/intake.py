@@ -62,22 +62,48 @@ def find_ready_files(intake_dir: str | Path, min_age_s: float = 120,
     return result
 
 
-def track_from_file(path: Path) -> Track:
-    """Erzeugt einen minimalen Track aus einer lokalen Datei.
-
-    Artist und Title werden aus dem Dateinamen gelesen (Schema „Artist - Title.ext").
-    Fehlt der Bindestrich, ist artist leer und title der Dateiname ohne Endung.
-    Es wird KEIN mutagen-Lesen versucht: die Tags werden nach Analyse + Prüfung ohnehin
-    überschrieben, und manche Gate-Downloads haben irreführende Tags.
-    """
-    stem = path.stem
+def _from_filename(stem: str) -> tuple[str, str]:
     if " - " in stem:
         artist, title = stem.split(" - ", 1)
-        artist = artist.strip()
-        title = title.strip()
-    else:
-        artist = ""
-        title = stem
+        return artist.strip(), title.strip()
+    return "", stem
+
+
+def track_from_file(path: Path) -> Track:
+    """Track für eine manuell geladene Datei. artist/title aus den Tags (mutagen, easy=True),
+    sonst aus dem Dateinamen "<Artist> - <Titel>" (am ersten " - " getrennt), sonst
+    artist "" und title = Dateiname ohne Endung. id=0, url="", bpm=None, restliche Felder leer/0.
+    Nicht lesbare Tags -> Dateiname, nie eine Exception.
+    """
+    path = Path(path)
+    artist = ""
+    title = ""
+
+    try:
+        from mutagen import File
+        audio = File(path, easy=True)
+        if audio:
+            artists = audio.get("artist") or audio.get("TPE1") or []
+            titles = audio.get("title") or audio.get("TIT2") or []
+            if hasattr(artists, "text"):
+                artists = artists.text
+            if hasattr(titles, "text"):
+                titles = titles.text
+            if isinstance(artists, (list, tuple)) and artists:
+                artist = str(artists[0]).strip()
+            elif artists:
+                artist = str(artists).strip()
+            if isinstance(titles, (list, tuple)) and titles:
+                title = str(titles[0]).strip()
+            elif titles:
+                title = str(titles).strip()
+    except Exception:
+        pass
+
+    if not artist and not title:
+        artist, title = _from_filename(path.stem)
+    elif not title:
+        title = path.stem
 
     return Track(
         id=0,

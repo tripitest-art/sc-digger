@@ -85,56 +85,7 @@ def process(tracks: list[Track], cfg: Config, *, dry_run: bool,
                 continue
             if not path:
                 continue
-            # Fakes -> _rejected/, Brickwall -> _rejected/clipped/; nur Echtes läuft weiter
-            path = finalize_quality(t, path, inbox, cfg)
-            if not path:
-                continue
-
-            # Audio-Analyse: BPM + Key aus dem Audiomaterial erkennen
-            if org.get("detect_bpm", True) or org.get("detect_key", True):
-                try:
-                    analysis = analyze_track(path)
-                    if org.get("detect_bpm", True):
-                        # Text-BPM als Anker: in playlist/similar lief filter_bpm nicht
-                        text_bpm = t.bpm or estimate_bpm(t)
-                        s = cfg["search"]
-                        t.bpm, reason = resolve_bpm(
-                            analysis["bpm"], text_bpm,
-                            window=(s["bpm_min"], s["bpm_max"]),
-                            plausible=(org.get("bpm_plausible_min", 120), org.get("bpm_plausible_max", 200)),
-                        )
-                        log.debug("BPM %s für %s: %s", t.bpm, t.title, reason)
-                        audio_bpm = analysis["bpm"]
-                        if audio_bpm and t.bpm and abs(t.bpm - audio_bpm) > 1.0:
-                            t.notes.append(f"BPM korrigiert: {reason}")
-                    if org.get("detect_key", True):
-                        t.key_camelot = analysis["key_camelot"]
-                        t.key_name = analysis["key_name"]
-                except Exception as e:
-                    t.notes.append(f"Audio-Analyse fehlgeschlagen: {e}")
-
-            # ID3-Tags schreiben
-            if org.get("write_tags", True):
-                comment = f"Score: {t.percentile:.0f}p" if t.percentile else ""
-                if t.key_camelot:
-                    comment += f" | Key: {t.key_camelot}"
-                try:
-                    write_tags(
-                        path, artist=t.artist, title=t.title, bpm=t.bpm, key_name=t.key_name,
-                        genre=t.genre or org.get("default_genre", "Schranz"),
-                        comment=comment.strip(" |"), url=t.url,
-                        loudness=t.quality_report,
-                    )
-                except Exception as e:
-                    t.notes.append(f"Tagging fehlgeschlagen: {e}")
-
-            # Auto-Organize: nach BPM/Key-Ordner verschieben
-            if org.get("enabled", True):
-                try:
-                    organize(path, inbox, bpm=t.bpm, key_camelot=t.key_camelot,
-                             bucket_size=org.get("bpm_bucket_size", 5))
-                except Exception as e:
-                    t.notes.append(f"Organize fehlgeschlagen: {e}")
+            finish_file(t, path, inbox, cfg)
     finally:
         if retry_q:
             retry_q.close()
@@ -142,107 +93,159 @@ def process(tracks: list[Track], cfg: Config, *, dry_run: bool,
     return fresh, dupes
 
 
+def finish_file(t: Track, path: Path, inbox: Path, cfg: Config) -> Path | None:
+    """Der bisherige Teil von process() NACH dem Download, unverändert herausgelöst:
+    finalize_quality -> analyze_track/resolve_bpm -> write_tags -> organize.
+    Rückgabe: neuer Pfad der Datei oder None, wenn finalize_quality sie aussortiert hat.
+    process() ruft finish_file für jeden geladenen Track auf; sein Verhalten ändert sich nicht.
+    """
+    org = cfg.raw.get("organize", {})
+
+    # Fakes -> _rejected/, Brickwall -> _rejected/clipped/; nur Echtes läuft weiter
+    path = finalize_quality(t, path, inbox, cfg)
+    if not path:
+        return None
+
+    # Audio-Analyse: BPM + Key aus dem Audiomaterial erkennen
+    if org.get("detect_bpm", True) or org.get("detect_key", True):
+        try:
+            analysis = analyze_track(path)
+            if org.get("detect_bpm", True):
+                # Text-BPM als Anker: in playlist/similar lief filter_bpm nicht
+                text_bpm = t.bpm or estimate_bpm(t)
+                s = cfg["search"]
+                t.bpm, reason = resolve_bpm(
+                    analysis["bpm"], text_bpm,
+                    window=(s["bpm_min"], s["bpm_max"]),
+                    plausible=(org.get("bpm_plausible_min", 120), org.get("bpm_plausible_max", 200)),
+                )
+                log.debug("BPM %s für %s: %s", t.bpm, t.title, reason)
+                audio_bpm = analysis["bpm"]
+                if audio_bpm and t.bpm and abs(t.bpm - audio_bpm) > 1.0:
+                    t.notes.append(f"BPM korrigiert: {reason}")
+            if org.get("detect_key", True):
+                t.key_camelot = analysis["key_camelot"]
+                t.key_name = analysis["key_name"]
+        except Exception as e:
+            t.notes.append(f"Audio-Analyse fehlgeschlagen: {e}")
+
+    # ID3-Tags schreiben
+    if org.get("write_tags", True):
+        comment = f"Score: {t.percentile:.0f}p" if t.percentile else ""
+        if t.key_camelot:
+            comment += f" | Key: {t.key_camelot}"
+        try:
+            write_tags(
+                path, artist=t.artist, title=t.title, bpm=t.bpm, key_name=t.key_name,
+                genre=t.genre or org.get("default_genre", "Schranz"),
+                comment=comment.strip(" |"), url=t.url,
+                loudness=t.quality_report,
+            )
+        except Exception as e:
+            t.notes.append(f"Tagging fehlgeschlagen: {e}")
+
+    # Auto-Organize: nach BPM/Key-Ordner verschieben
+    if org.get("enabled", True):
+        try:
+            path = organize(path, inbox, bpm=t.bpm, key_camelot=t.key_camelot,
+                            bucket_size=org.get("bpm_bucket_size", 5))
+        except Exception as e:
+            t.notes.append(f"Organize fehlgeschlagen: {e}")
+
+    return path
+
+
 # ------------------------------------------------------------------ Eingangsordner (manuell geladene Tracks)
 def run_intake(cfg: Config, *, dry_run: bool = False) -> list[str]:
-    """Verarbeitet manuell in den Eingangsordner gelegte Dateien.
-
-    Ablauf pro Datei:
-    1. Qualitätsprüfung (Fake-Erkennung, Lautheitscheck)
-    2. BPM/Key-Analyse
-    3. ID3-Tags schreiben
-    4. In die BPM/Key-Ordnerstruktur der Inbox verschieben
-
-    Nicht-Audio-Dateien → _unbekannt/, Fehler → _fehler/.
-    Gibt Klartext-Zeilen für den Digest zurück (leer wenn nichts zu tun war).
+    """Verarbeitet find_ready_files(download.intake_dir, download.intake_min_age_s).
+    intake_dir fehlt/leer -> [] (abgeschaltet). Legt den Ordner an (nicht im Dry-Run), damit
+    Stephan ihn auf dem Laptop sieht. Dry-Run: nichts verschieben, nichts schreiben.
+    Pro Datei:
+      - Endung nicht in AUDIO_EXTS -> nach <intake>/_unbekannt/ verschieben
+      - sonst t = track_from_file(p); res = finish_file(t, p, inbox, cfg)
+          res gesetzt          -> "✅ <Artist> – <Titel> · <BPM> BPM · <Camelot>"
+          Datei liegt noch da  -> (Prüfung selbst scheiterte) nach <intake>/_fehler/ verschieben
+          t.duplicate_of       -> Zeile "♻️ <Dateiname>: schon in der Sammlung"
+          sonst                -> Zeile "❌ <Dateiname>: <quality_report["reason"]>"
+    Damit liegt nach einem Aufruf keine verarbeitete Datei mehr im Eingang, und jede Datei
+    wird genau einmal gemeldet.
+    Rückgabe: Digest-Zeilen (Klartext), leer wenn keine Datei bereit war; erste Zeile
+    "📥 Eingang: <n> Dateien verarbeitet", danach eine Zeile je Datei.
     """
     import shutil
 
-    intake_dir = Path(cfg["download"].get("intake_dir", ""))
-    if not intake_dir or not intake_dir.exists():
+    intake_dir_str = (cfg.raw.get("download") or {}).get("intake_dir", "")
+    if not intake_dir_str:
         return []
 
-    min_age = cfg["download"].get("intake_min_age_s", 120)
+    intake_dir = Path(intake_dir_str)
+    if not dry_run:
+        intake_dir.mkdir(parents=True, exist_ok=True)
+    elif not intake_dir.exists():
+        return []
+
+    min_age = float((cfg.raw.get("download") or {}).get("intake_min_age_s", 120))
     files = find_ready_files(intake_dir, min_age)
     if not files:
         return []
 
     if dry_run:
-        return []
+        lines: list[str] = []
+        for p in files:
+            ext = p.suffix.lower()
+            if ext not in AUDIO_EXTS:
+                lines.append(f"⚠️ {p.name}: kein Audio-Format")
+            else:
+                t = track_from_file(p)
+                display_name = f"{t.artist} – {t.title}" if t.artist else t.title
+                lines.append(f"📁 {display_name} ({p.name})")
+        header = f"📥 Eingang: {len(files)} Datei{'en' if len(files) != 1 else ''} bereit (Dry-Run)"
+        return [header] + lines
 
     inbox = Path(cfg["download"]["inbox_dir"])
-    org = cfg.raw.get("organize", {})
-    lines: list[str] = []
+    lines = []
 
-    for fpath in files:
-        fname = fpath.name
-        ext = fpath.suffix.lower()
-
-        # Nicht-Audio-Dateien in _unbekannt/ parken
+    for p in files:
+        ext = p.suffix.lower()
         if ext not in AUDIO_EXTS:
             dest = intake_dir / "_unbekannt"
             dest.mkdir(parents=True, exist_ok=True)
-            shutil.move(str(fpath), str(dest / fname))
-            lines.append(f"⚠️ {fname} – kein Audio-Format, nach _unbekannt verschoben")
+            shutil.move(str(p), str(dest / p.name))
+            lines.append(f"⚠️ {p.name}: kein Audio-Format (nach _unbekannt verschoben)")
             continue
 
-        t = track_from_file(fpath)
+        t = track_from_file(p)
         try:
-            # Qualitätsprüfung (Fake, Brickwall)
-            from . import output as _out
-            t.quality_report = _out.check_file(fpath, cfg)
-            if not t.quality_report["ok"]:
-                reason = t.quality_report.get("reason", "")
-                dest = inbox / "_rejected"
-                dest.mkdir(parents=True, exist_ok=True)
-                shutil.move(str(fpath), str(dest / fname))
-                lines.append(f"❌ {fname} – abgelehnt: {reason}")
-                continue
+            res = finish_file(t, p, inbox, cfg)
         except Exception as e:
-            log.warning("Intake-Prüfung fehlgeschlagen für %s: %s", fname, e)
-            dest = intake_dir / "_fehler"
-            dest.mkdir(parents=True, exist_ok=True)
-            shutil.move(str(fpath), str(dest / fname))
-            lines.append(f"⚠️ {fname} – Prüfung fehlgeschlagen: {e}")
-            continue
+            log.warning("finish_file fehlgeschlagen für %s: %s", p.name, e)
+            t.notes.append(f"Verarbeitung fehlgeschlagen: {e}")
+            res = None
 
-        # Audio-Analyse: BPM + Key
-        if org.get("detect_bpm", True) or org.get("detect_key", True):
-            try:
-                analysis = analyze_track(fpath)
-                if org.get("detect_bpm", True) and analysis.get("bpm"):
-                    t.bpm = analysis["bpm"]
-                if org.get("detect_key", True):
-                    t.key_camelot = analysis.get("key_camelot")
-                    t.key_name = analysis.get("key_name")
-            except Exception as e:
-                t.notes.append(f"Audio-Analyse fehlgeschlagen: {e}")
+        if res is not None:
+            bpm_str = f"{t.bpm:.0f}" if t.bpm else "?"
+            key_str = t.key_camelot or "?"
+            display_name = f"{t.artist} – {t.title}" if t.artist else t.title
+            lines.append(f"✅ {display_name} · {bpm_str} BPM · {key_str}")
+        elif p.exists():
+            err_dir = intake_dir / "_fehler"
+            err_dir.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(p), str(err_dir / p.name))
+            reason = t.notes[-1] if t.notes else "Prüfung fehlgeschlagen"
+            lines.append(f"❌ {p.name}: {reason}")
+        elif t.duplicate_of:
+            lines.append(f"♻️ {p.name}: schon in der Sammlung")
+        else:
+            if t.quality_report and t.quality_report.get("clipped"):
+                reason = "Brickwall-Master (Clipping)"
+            elif t.quality_report and t.quality_report.get("reason"):
+                reason = t.quality_report["reason"]
+            else:
+                reason = "abgelehnt"
+            lines.append(f"❌ {p.name}: {reason}")
 
-        # ID3-Tags schreiben
-        if org.get("write_tags", True):
-            try:
-                write_tags(
-                    fpath, artist=t.artist, title=t.title, bpm=t.bpm,
-                    key_name=t.key_name,
-                    genre=org.get("default_genre", "Schranz"),
-                    comment="", url="",
-                    loudness=t.quality_report,
-                )
-            except Exception as e:
-                t.notes.append(f"Tagging fehlgeschlagen: {e}")
-
-        # In BPM/Key-Ordner sortieren
-        if org.get("enabled", True):
-            try:
-                organize(fpath, inbox, bpm=t.bpm, key_camelot=t.key_camelot,
-                         bucket_size=org.get("bpm_bucket_size", 5))
-            except Exception as e:
-                t.notes.append(f"Organize fehlgeschlagen: {e}")
-
-        bpm_str = f"{t.bpm:.0f}" if t.bpm else "?"
-        key_str = t.key_camelot or "?"
-        lines.append(f"📥 {t.artist} – {t.title} | {bpm_str} BPM | {key_str}")
-
-    return lines
+    header = f"📥 Eingang: {len(files)} Datei{'en' if len(files) != 1 else ''} verarbeitet"
+    return [header] + lines
 
 
 def deliver(header: str, fresh: list[Track], dupes: list[Track], cfg: Config,
@@ -475,8 +478,6 @@ def _discover(cfg: Config, dry_run: bool, no_telegram: bool) -> int:
     if not dry_run:
         retry_lines = retry_downloads(sc, cfg)
         intake_lines = run_intake(cfg)
-        for line in intake_lines:
-            print(line)
     d = collect_sources(sc, s)
     if d.succeeded == 0 and d.first_error:
         raise d.first_error
@@ -653,10 +654,14 @@ def cli() -> None:
             write_rekordbox_xml(cfg)
         elif a.mode == "intake":
             lines = run_intake(cfg, dry_run=a.dry_run)
-            for line in lines:
-                print(line)
-            if not lines:
-                print("Keine Dateien im Eingangsordner.")
+            if lines:
+                text = "\n".join(lines)
+                if a.dry_run or a.no_telegram:
+                    print(text)
+                else:
+                    send_telegram(cfg, text)
+            if not a.dry_run:
+                write_rekordbox_xml(cfg)
         else:
             run_discover(cfg, a.dry_run, a.no_telegram)
     except Exception:

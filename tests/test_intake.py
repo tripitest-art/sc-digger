@@ -132,6 +132,36 @@ class TestTrackFromFile:
         assert t.url == ""
         assert t.bpm is None
 
+    def test_reads_mutagen_tags_with_arbitrary_filename(self, tmp_path):
+        """Tags aus einer echten Datei gelesen, wenn Dateiname kein Artist - Titel ist."""
+        p = _make_wav(tmp_path / "track_v2_final_master.wav")
+        from mutagen.wave import WAVE
+        from mutagen.id3 import TIT2, TPE1
+        w = WAVE(p)
+        w.add_tags()
+        w.tags.add(TIT2(encoding=3, text=["My Track"]))
+        w.tags.add(TPE1(encoding=3, text=["My Artist"]))
+        w.save()
+        t = track_from_file(p)
+        assert t.artist == "My Artist"
+        assert t.title == "My Track"
+
+    def test_reads_easy_tags_from_mp3(self, tmp_path):
+        """Easy-Tags aus MP3 mit beliebigem Dateinamen."""
+        p = tmp_path / "random_file_001.mp3"
+        subprocess.run(
+            ["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono", "-t", "1", str(p)],
+            check=True,
+        )
+        from mutagen import File
+        f = File(p, easy=True)
+        f["artist"] = ["Producer Z"]
+        f["title"] = ["Epic Anthem"]
+        f.save()
+        t = track_from_file(p)
+        assert t.artist == "Producer Z"
+        assert t.title == "Epic Anthem"
+
 
 class TestAudioExts:
     def test_contains_common_formats(self):
@@ -165,8 +195,9 @@ class TestRunIntake:
 
         wav = _make_wav(intake / "Test Artist - Test Track.wav")
         lines = m.run_intake(cfg)
-        assert len(lines) == 1
-        assert "Test Artist" in lines[0]
+        assert len(lines) == 2
+        assert "1 Datei verarbeitet" in lines[0]
+        assert "Test Artist" in lines[1]
         assert written
         _, kw = written[0]
         assert kw["artist"] == "Test Artist"
@@ -174,26 +205,61 @@ class TestRunIntake:
         assert kw["bpm"] == 155.0
 
     def test_duplicate_via_fingerprint_rejected(self, env, monkeypatch):
-        """Wenn check_file ok ist aber finalize_quality (über Fingerprint) ablehnt,
-        wird die Datei nicht in die Inbox sortiert.
-        Hier testen wir den Fall direkt: check_file gibt ok, aber der Report meldet
-        'schon in der Sammlung'."""
+        """Duplikat per Fingerprint → Zeile ‚schon in der Sammlung‘."""
         cfg, inbox, intake, _ = env
-        # Simuliere: check_file sagt ok, aber der Track ist ein Duplikat
-        # (in intake läuft kein Fingerprint, das passiert nur in process/finalize_quality;
-        # intake-Dateien haben keinen SC-Track und damit keinen Fingerprint-Abgleich.
-        # Der Test bestätigt, dass run_intake den Report korrekt durchreicht.)
+        cfg.raw["fingerprint"]["check_downloads"] = True
+        monkeypatch.setattr(out, "compute_fingerprint", lambda p: "fake_fp")
+        from unittest.mock import MagicMock
+        rec = MagicMock()
+        rec.path = "/coll/Known - Track.wav"
+        monkeypatch.setattr(out, "find_same_recording", lambda fp, db: rec)
         put(intake / "Known - Track.wav")
         lines = m.run_intake(cfg)
-        assert len(lines) == 1
-        assert "Known – Track" in lines[0]
+        assert (inbox / "_rejected" / "duplicate" / "Known - Track.wav").exists()
+        assert any("♻️" in l and "Known - Track.wav: schon in der Sammlung" in l for l in lines)
 
-    def test_dry_run_does_nothing(self, env):
+    def test_clipped_file_goes_to_rejected_clipped(self, env, monkeypatch):
+        """Datei mit clipped: True landet in _rejected/clipped/."""
+        cfg, inbox, intake, _ = env
+        monkeypatch.setattr(out, "check_file", lambda p, cfg: {
+            **OK, "ok": True, "clipped": True,
+            "loudness_range_lu": 1.8, "true_peak_dbfs": 3.5,
+        })
+        put(intake / "Brickwall - Master.wav")
+        lines = m.run_intake(cfg)
+        assert (inbox / "_rejected" / "clipped" / "Brickwall - Master.wav").exists()
+        assert any("❌" in l and "Brickwall - Master.wav" in l for l in lines)
+
+    def test_process_calls_finish_file(self, tmp_path, monkeypatch):
+        """process() delegiert die Nachbearbeitung nach dem Download an finish_file()."""
+        inbox = tmp_path / "inbox"
+        cfg = Config(dict(CFG.raw))
+        cfg.raw["download"] = {**CFG["download"], "inbox_dir": str(inbox)}
+        from sc_digger.models import Track
+        t = Track(
+            id=123, title="Test", url="", artist="Artist", artist_url="",
+            created_at="", duration_ms=0, genre="", tags=[], description="",
+            bpm=None, plays=0, likes=0, reposts=0, comments=0,
+            downloadable=True, has_downloads_left=True, purchase_url=None, purchase_title=None,
+        )
+        t.download_kind = out.DownloadKind.NATIVE
+        called = []
+        monkeypatch.setattr(m, "download_native", lambda trk, inb, tok: put(inbox / "dl.wav"))
+        monkeypatch.setattr(m, "finish_file", lambda trk, p, inb, c: called.append((trk, p)) or p)
+        monkeypatch.setenv("SOUNDCLOUD_AUTH_TOKEN", "dummy")
+        m.process([t], cfg, dry_run=False, skip_duplicates=False)
+        assert len(called) == 1
+        assert called[0][0].id == 123
+
+    def test_dry_run_lists_files_without_moving(self, env):
         cfg, inbox, intake, _ = env
         f = put(intake / "Artist - Track.wav")
         lines = m.run_intake(cfg, dry_run=True)
-        assert lines == []
+        assert len(lines) == 2
+        assert "Dry-Run" in lines[0]
+        assert "Artist – Track" in lines[1]
         assert f.exists()
+        assert not list(inbox.glob("*/*/Artist - Track.wav"))
 
     def test_empty_intake_returns_empty(self, env):
         cfg, inbox, intake, _ = env
@@ -205,28 +271,48 @@ class TestRunIntake:
         put(intake / "Bravo - Second.wav")
         put(intake / "Alpha - First.wav")
         lines = m.run_intake(cfg)
-        assert len(lines) == 2
+        assert len(lines) == 3
+        assert "2 Dateien verarbeitet" in lines[0]
         # Alphabetisch sortiert
-        assert "Alpha – First" in lines[0]
-        assert "Bravo – Second" in lines[1]
+        assert "Alpha – First" in lines[1]
+        assert "Bravo – Second" in lines[2]
 
     def test_mixed_audio_and_non_audio(self, env):
         cfg, inbox, intake, _ = env
         put(intake / "Track.wav")
         put(intake / "notes.txt")
         lines = m.run_intake(cfg)
-        assert len(lines) == 2
+        assert len(lines) == 3
+        assert "2 Dateien verarbeitet" in lines[0]
         # notes.txt ist kein Audio → _unbekannt
         txt_line = [l for l in lines if "notes.txt" in l]
         assert txt_line
         assert "_unbekannt" in txt_line[0]
 
     def test_cli_intake_dry_run(self, env, monkeypatch, capsys):
-        """CLI-Modus 'intake --dry-run' gibt keine Dateien aus."""
+        """CLI-Modus 'intake --dry-run' gibt Vorschau aus, schreibt keine XML."""
         cfg, inbox, intake, _ = env
         put(intake / "Test - Track.wav")
-        # Monkeypatch run_intake direkt
-        monkeypatch.setattr(m, "run_intake", lambda cfg, dry_run=False: [] if dry_run else ["📥 Test"])
-        # Simuliere CLI-Aufruf
-        lines = m.run_intake(cfg, dry_run=True)
-        assert lines == []
+        import sys
+        monkeypatch.setattr(Config, "load", lambda p: cfg)
+        xml_called = []
+        monkeypatch.setattr(m, "write_rekordbox_xml", lambda c: xml_called.append(c))
+        monkeypatch.setattr(sys, "argv", ["sc-digger", "intake", "--dry-run"])
+        m.cli()
+        out = capsys.readouterr().out
+        assert "Eingang" in out and "Test - Track.wav" in out
+        assert not xml_called
+        assert (intake / "Test - Track.wav").exists()
+
+    def test_cli_intake_runs_and_writes_xml(self, env, monkeypatch, capsys):
+        """CLI-Modus 'intake' verarbeitet Dateien und schreibt die Rekordbox-XML."""
+        cfg, inbox, intake, _ = env
+        put(intake / "Test - Track.wav")
+        import sys
+        monkeypatch.setattr(Config, "load", lambda p: cfg)
+        xml_called = []
+        monkeypatch.setattr(m, "write_rekordbox_xml", lambda c: xml_called.append(c))
+        monkeypatch.setattr(sys, "argv", ["sc-digger", "intake", "--no-telegram"])
+        m.cli()
+        assert xml_called
+        assert not (intake / "Test - Track.wav").exists()
