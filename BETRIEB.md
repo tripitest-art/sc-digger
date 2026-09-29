@@ -12,6 +12,11 @@ statt in `AGENTS.md`, weil Antigravity Regeldateien bei 12.000 Zeichen abschneid
 - **Zugangsdaten** in `/root/sc-digger/.env`, nur über `./set-secret.sh NAME` setzen:
   `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `SOUNDCLOUD_AUTH_TOKEN`.
 - **Logs:** `docker compose logs --tail 50` · **Health:** Tabelle `runs` in `/data/seen.sqlite`.
+- **Health-Status ablesen:**
+  - `docker inspect --format '{{.State.Health.Status}}' sc-digger`  → `healthy`/`unhealthy`
+  - `docker compose ps` zeigt auch den Status in der Health-Spalte
+  - Detaillierte Meldung (falls Alarm): `docker inspect --format '{{json .State.Health.Log}}' sc-digger | jq`
+  - Die JSON-Meldung wird auch an Telegram gesendet (falls Tokens gesetzt sind)
 - **Testlauf ohne Nebenwirkungen:** `docker compose exec sc-digger python -m sc_digger.main --dry-run --no-telegram -v`
 
 ## Zugangsdaten setzen
