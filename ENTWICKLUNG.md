@@ -30,7 +30,7 @@ Modul anlegt, trägt es in die Tabelle ein.
 | `sc_digger/redact.py` | Zugangsdaten aus Texten und Logs entfernen |
 | `config.yaml` | Einzige Konfiguration (Tags, Referenz-Accounts, Schwellwerte). Ist die Produktivkonfiguration. |
 | `entrypoint.sh` | Schreibt `cron.env` (Cron hat sonst weder PATH noch Secrets), startet cron und Bot |
-| `skills/*/SKILL.md` | Abläufe für Qwen in LibreChat (Review, Worker), per GitHub Skill Sync gespiegelt; Regeln bleiben in `AGENTS.md` |
+| `skills/*/SKILL.md` | Abläufe für Qwen in LibreChat (Planer, Review, Worker), per GitHub Skill Sync gespiegelt; Regeln bleiben in `AGENTS.md` |
 | `.github/scripts/acceptance_guard.py` | CI-Check `acceptance-guard`: Akzeptanztests = Issue, keine neuen skips, CI/Test-Konfiguration geschützt |
 | `set-secret.sh` / `update.sh` | Zugangsdaten setzen / Update ausrollen (auf dem Server) |
 
@@ -48,18 +48,68 @@ Modul anlegt, trägt es in die Tabelle ein.
 - **Labels per MCP:** `issue_write` ersetzt die ganze Label-Liste. So gingen bei #62 Labels
   verloren. Siehe `MCP.md`.
 
+## Planer-Ablauf
+
+Für jeden Planer, gleich welches Modell. Die Regeln stehen in `AGENTS.md` (Worker-Aufgaben →
+Planer); hier steht, wie man zu einem Issue kommt, das ein anderes Modell ohne Rückfragen
+umsetzen kann. Agenten ohne Shell folgen dem Skill `skills/sc-digger-planner/SKILL.md`.
+
+Der Planer schreibt Issues, keinen Code: keine Branches, keine Commits, keine PRs, kein Merge.
+
+1. **Auftrag klären.** Aus dem Gespräch mit Stephan oder aus `ROADMAP.md`. Ein Thema pro
+   Issue; ist es größer als ein PR, in Teile schneiden („Teil 1 von #58“, wie #77 und #95).
+   Offene Fachfragen (Schwellwerte, Verhalten im Fehlerfall) Stephan stellen, nicht raten.
+2. **Stand prüfen.** Offene Issues und PRs nach Dubletten und nach denselben Dateien
+   durchsuchen (Regel 8). Überschneidung → `blockiert` und `Wartet auf: #X` (siehe `AGENTS.md`).
+3. **Code lesen.** Jede Datei, die das Issue nennt, auf dem Stand von `main`. Bestehende
+   Helfer und Fakes (`mk`/`FakeSC` in `tests/test_modes.py`, `FakeLinkSC` in
+   `tests/test_merge.py`) wiederverwenden, statt dem Worker neue vorzuschreiben.
+4. **Issue-Text schreiben** in der Form, die das Formular erzeugt: Überschriften `### Ziel`,
+   `### Betroffene Dateien`, `### Schnittstellen`, `### Nicht Teil dieser Aufgabe`,
+   `### Akzeptanztests`, `### Fertig, wenn`, `### Berührt sc_digger/main.py`,
+   `### Merge-Modus`, `### Kontext`, in dieser Reihenfolge. Dropdowns als Klartext mit dem
+   genauen Optionstext. Vorbild: #95.
+   - **Betroffene Dateien:** vollständig, mit Funktion und Stelle. Was fehlt, darf der Worker
+     nicht anfassen. Immer dabei: `tests/acceptance/test_issue_<N>.py` und eigene Testdatei.
+   - **Schnittstellen:** exakte Signaturen mit Typen, Rückgabe, Verhalten bei leer/`None`/
+     Fehler, Log-Meldungen im Wortlaut, wenn Tests sie prüfen. In einem ```` ```python ````-Block.
+   - **Nicht Teil dieser Aufgabe:** das naheliegende „gleich mit aufräumen“ ausschließen.
+   - **Merge-Modus** „manuell“ bei Betrieb, Dateien auf dem Server, Zugangsdaten, Downloads.
+5. **Akzeptanztests** in **genau einem** ```` ```python ````-Block direkt unter
+   `### Akzeptanztests` (so liest ihn `acceptance-guard`). Sie
+   - prüfen nur die Schnittstellen aus dem Issue, keine Interna;
+   - laufen ohne Netzwerk, ohne Uhrzeit und Zufall, ohne `skip`/`xfail`;
+   - importieren nur aus `sc_digger` und vorhandenen Test-Helfern;
+   - schreiben nur in `tmp_path`, nie nach `/music` oder in die echte `config.yaml`.
+6. **Akzeptanztests prüfen (mit Shell).** Datei lokal anlegen und laufen lassen: auf `main`
+   rot (meist `ImportError`), gegen eine Probe-Umsetzung grün, restliche Suite grün. Die
+   Probe-Umsetzung wird weder committet noch gepusht. Ergebnis mit Commit-Hash von `main` in
+   den Kontext („ohne Umsetzung rot, mit Umsetzung 12 grün“).
+   **Ohne Shell** geht das nicht: im Kontext „Akzeptanztests ungeprüft (Planer ohne Shell)“
+   vermerken und `bereit` **nicht** setzen. Stephan oder ein Planer mit Shell prüft und setzt
+   dann `bereit`.
+7. **Entwurf zeigen.** Titel, Text und Labels Stephan im Chat vorlegen; erst nach seinem OK
+   anlegen (außer er hat ausdrücklich „direkt anlegen“ gesagt).
+8. **Anlegen** mit Labels `worker-task`, `phase-N`, `bereit` oder `blockiert`, bei Bedarf
+   `berührt-main.py`. Danach Nummer und Link melden. Im Issue-Text `test_issue_<N>` stehen
+   lassen; die Nummer kennt der Worker.
+
+Nachträglich ändern darf der Planer ein Issue nur, solange es nicht `in-arbeit` ist. Danach
+nur noch kommentieren (Korrektur des Akzeptanztests: `AGENTS.md`, Planer).
+
 ## Standard-Aufträge
 
 Für Stephan: Mit diesen Sätzen startet man einen Agenten.
 
 | Rolle | Auftrag |
 |---|---|
-| Planer | „Erstelle aus unserem Gespräch ein Issue in tripitest-art/sc-digger nach dem Formular `worker-task` (AGENTS.md, Worker-Aufgaben → Planer).“ |
+| Planer | „Erstelle aus unserem Gespräch ein Issue in tripitest-art/sc-digger nach dem Formular `worker-task` (AGENTS.md, Worker-Aufgaben → Planer; ENTWICKLUNG.md, Planer-Ablauf).“ |
 | Worker | „Bearbeite Issue #N nach AGENTS.md, Abschnitt Worker-Aufgaben → Worker.“ |
 | Worker (autonom) | „/goal Bearbeite die nächste Aufgabe nach AGENTS.md, Worker-Aufgaben → Nächste Aufgabe selbst wählen.“ |
 | Reviewer | „Prüfe PR #M nach AGENTS.md, Abschnitt Worker-Aufgaben → Reviewer.“ |
 | Reviewer (autonom) | „/goal Prüfe den nächsten PR nach AGENTS.md, Worker-Aufgaben → Nächsten Review selbst wählen.“ |
 | Worker (Nacharbeit) | „Arbeite das Review in PR #M ab (AGENTS.md, Worker → Schritt 8).“ |
+| Qwen Planer (LibreChat) | „Repo tripitest-art/sc-digger. Plane nach dem Skill sc-digger-planner: <Aufgabe in ein paar Sätzen>.“ |
 | Qwen Reviewer (LibreChat) | „Repo tripitest-art/sc-digger. Prüfe PR #M nach dem Skill sc-digger-review.“ |
 | Qwen Worker (LibreChat) | „Repo tripitest-art/sc-digger. Bearbeite Issue #N nach dem Skill sc-digger-worker.“ |
 | Qwen Worker (Nacharbeit) | „Repo tripitest-art/sc-digger. Arbeite das Review in PR #M ab, Skill sc-digger-worker, Teil B.“ |
