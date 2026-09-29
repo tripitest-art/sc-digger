@@ -38,8 +38,12 @@ Repo immer `owner: tripitest-art`, `repo: sc-digger`.
 - **Labels:** `issue_write` ersetzt die ganze Label-Liste (so gingen bei #62 Labels verloren).
   Erst mit `issue_read` alle Labels lesen, nur `bereit` durch `in-arbeit` ersetzen, die
   vollständige Liste zurückschreiben. Titel und Text nie mitschicken.
-- **Keine Issues mit `berührt-main.py` übernehmen.** `sc_digger/main.py` ist zu groß, um sie
-  ohne Shell sicher vollständig neu zu schreiben.
+- **Keine Issues mit `berührt-main.py` übernehmen**, bis Worker-PRs über MCP ohne abgeschnittene
+  Dateien durchgelaufen sind (Stephan gibt das frei). `sc_digger/main.py` ist der Engpass aus
+  Regel 8; eine unvollständig zurückgeschriebene Datei dort trifft alle Modi.
+- **Nach jedem `push_files` prüfen:** `pull_request_read` (`get_files`) zeigt, ob in einer Datei
+  mehr gelöscht als geändert wurde. Dann ist sie abgeschnitten: sofort mit dem vollständigen
+  Inhalt neu schreiben.
 - **Tests:** Ohne Shell zählt der CI-Check `tests`. Fertig erst, wenn `tests` und
   `acceptance-guard` grün sind.
 - **Kontext knapp?** Lieber aufhören und im Issue kommentieren als raten (Worker, Schritt 6).
@@ -69,13 +73,19 @@ Umgebungsvariable in LibreChat ablegen, nie in eine Datei im Repo.
 - `X-MCP-Tools` – nur diese Werkzeuge gibt der Server heraus. Damit die Rolle begrenzen.
 - `X-MCP-Readonly: true` – nur lesen (für reine Auswertungen).
 
-**Zwei Profile** in `librechat.yaml` (Skizze, gegen die eigene LibreChat-Version prüfen):
+**Nur über `librechat.yaml`, nicht über die Oberfläche.** Der Dialog „MCP-Server hinzufügen“
+in LibreChat kennt keine eigenen Header und sperrt `${…}`-Umgebungsvariablen. Ohne
+`X-MCP-Tools` und `X-MCP-Lockdown` hat Qwen alle Werkzeuge (auch Merge) und liest fremde
+Kommentare. Einen über die Oberfläche angelegten GitHub-Server dort wieder löschen.
+
+**Zwei Profile** in `librechat.yaml` (so im Einsatz):
 
 ```yaml
 mcpServers:
   github-reviewer:
     type: streamable-http
     url: https://api.githubcopilot.com/mcp/
+    requiresOAuth: false
     headers:
       Authorization: "Bearer ${GITHUB_MCP_PAT}"
       X-MCP-Lockdown: "true"
@@ -83,23 +93,51 @@ mcpServers:
   github-worker:
     type: streamable-http
     url: https://api.githubcopilot.com/mcp/
+    requiresOAuth: false
     headers:
       Authorization: "Bearer ${GITHUB_MCP_PAT}"
       X-MCP-Lockdown: "true"
-      X-MCP-Tools: "get_file_contents,search_issues,issue_read,issue_write,add_issue_comment,create_branch,push_files,create_pull_request,pull_request_read,add_reply_to_pull_request_comment,get_job_logs"
+      X-MCP-Tools: "get_file_contents,search_issues,issue_read,issue_write,add_issue_comment,create_branch,push_files,create_or_update_file,create_pull_request,pull_request_read,add_reply_to_pull_request_comment,get_job_logs"
 ```
 
-Beide Profile haben bewusst kein `merge_pull_request`: Qwen merged nicht, das bleibt bei
-Stephan. Der Reviewer hat kein `issue_write` und kann damit weder Labels noch Issue-Texte
-ändern.
+- `requiresOAuth: false` ist Pflicht. LibreChat prüft beim Start ohne die Header, ob ein
+  Server OAuth braucht. GitHub antwortet dann mit `401`, LibreChat hält den Server für
+  OAuth-geschützt („OAuth Required: true“, „Access token missing“) und lädt keine Werkzeuge.
+- Beide Profile haben bewusst kein `merge_pull_request`: Qwen merged nicht, das bleibt bei
+  Stephan. Der Reviewer hat kein `issue_write` und kann weder Labels noch Issue-Texte ändern.
 
-**Modell:** Kontextfenster mindestens 32k Token (bei Ollama `num_ctx`). Der Standardwert ist
-kleiner und schneidet `AGENTS.md`, Issues und Diffs still ab.
+**Token und Neustart**, je nach Installation:
 
-**Agent-Anweisungen:** Inhalt von `QWEN.md` als Anweisungen des LibreChat-Agents eintragen.
+| | Docker | ohne Docker (systemd, z. B. Proxmox-LXC) |
+|---|---|---|
+| Ordner | LibreChat-Ordner mit `docker-compose.yml` | `/opt/librechat` |
+| Token | `GITHUB_MCP_PAT=…` in `.env` | `GITHUB_MCP_PAT=…` in `.env` (per `EnvironmentFile=` geladen) |
+| `librechat.yaml` | in `docker-compose.override.yml` einbinden (`./librechat.yaml` → `/app/librechat.yaml`) | wird direkt gelesen |
+| Neustart | `docker compose up -d --force-recreate api` | `systemctl restart librechat` |
 
-**Probe:** „Lies `AGENTS.md` aus `tripitest-art/sc-digger` und nenne die Goldenen Regeln.“
-Stimmt die Antwort, funktionieren Token, Header und Kontextlänge.
+Den Token nie in der Kommandozeile tippen (Shell-History), sondern z. B. mit `read -rs` einlesen.
 
-**Einstieg:** zuerst nur das Profil `github-reviewer`. Worker-Aufgaben erst, wenn die Reviews
-brauchbar sind, und anfangs nur kleine Issues.
+**Prüfen im Log** (`journalctl -u librechat` bzw. `docker compose logs api`): Pro Server
+`OAuth Required: false` und unter `Tools:` genau die Werkzeuge aus `X-MCP-Tools`. Beim Teilen
+von Logs Zeilen mit `Authorization` und geheimen URL-Pfaden vorher herausfiltern.
+
+**Agenten:** zwei getrennte LibreChat-Agenten, „Qwen Reviewer“ nur mit `github-reviewer`,
+„Qwen Worker“ nur mit `github-worker`. Keine anderen MCP-Server (Proxmox, Home Assistant) im
+selben Agenten: Er liest Texte aus GitHub; eine untergeschobene Anweisung hätte sonst Zugriff
+auf diese Systeme. Instructions: Inhalt von `QWEN.md`.
+
+**Modell:**
+
+- Kontextfenster mindestens 32k Token. Maßgeblich ist der kleinste Wert aus Backend
+  (Ollama `num_ctx`, llama.cpp `-c`, vLLM `--max-model-len`) und „Max Context Tokens“ in
+  LibreChat. Darüber wird still abgeschnitten.
+- **Maximale Antwortlänge mindestens 16k Token** (LibreChat „Max Output Tokens“ und Backend,
+  z. B. Ollama `num_predict`). `push_files` schreibt ganze Dateien; die größten Module haben
+  rund 9k Token. Ist die Grenze kleiner, endet die Datei mitten im Code und der Rest ist weg.
+
+**Probe:** Agent fragen „Welche GitHub-Werkzeuge hast du? Nur die Namen.“ Es müssen genau die
+aus `X-MCP-Tools` sein. Dann: „Lies `AGENTS.md` aus `tripitest-art/sc-digger` und nenne die
+Goldenen Regeln.“
+
+**Einstieg:** zuerst Reviews. Worker-Aufgaben anfangs nur kleine Issues ohne `berührt-main.py`;
+nach jedem Worker-PR den Diff auf abgeschnittene Dateien und die Labels des Issues prüfen.
