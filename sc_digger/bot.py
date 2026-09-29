@@ -12,9 +12,11 @@ auch nicht bei fehlenden Zugangsdaten oder Telegram-Ausfällen.
 """
 from __future__ import annotations
 
+import html
 import logging
 import re
 import time
+from collections import Counter
 
 from .db import TrackDB
 from .main import run_link
@@ -33,8 +35,10 @@ HELP_TEXT = (
     "Schick mir einen SoundCloud-Link:\n"
     "• Playlist/Set-Link -> ich zeige dir alle Tracks der Playlist\n"
     "• einzelner Track-Link -> ich zeige dir die 'Station' dazu "
-    "(das, was der SoundCloud-Algorithmus als Radio vorschlägt)\n"
-    "• /kaufliste -> zeigt die aktuelle Kaufliste offener Store-Tracks\n\n"
+    "(das, was der SoundCloud-Algorithmus als Radio vorschlägt)\n\n"
+    "Befehle:\n"
+    "• /kaufliste -> zeigt die aktuelle Kaufliste offener Store-Tracks\n"
+    "• /curator_mining -> Profile aus 👍-Tracks vorschlagen\n\n"
     "Kein täglicher Filter, du bekommst die volle Liste mit Stats und Download-Einordnung."
 )
 
@@ -53,14 +57,95 @@ def handle_kaufliste_command(cfg: Config, chat_id: str | None = None) -> None:
         output.send_kaufliste(cfg)
 
 
+def run_curator_mining(sc, cfg: Config) -> str:
+    """Aggregiert Liker/Reposter über alle 👍-Tracks, filtert bekannte Accounts,
+    gibt formatierten Text zurück. Kein Telegram-Aufruf (macht der Bot-Handler)."""
+    track_db_path = cfg.raw.get("state", {}).get("track_db_path")
+    if not track_db_path:
+        return "Keine neuen Curator-Vorschläge."
+
+    with TrackDB(track_db_path) as db:
+        sc_ids = db.get_liked_sc_ids()
+
+    if not sc_ids:
+        return "Keine neuen Curator-Vorschläge."
+
+    cm_cfg = cfg.raw.get("curator_mining") or {}
+    min_appearances = int(cm_cfg.get("min_appearances", 2))
+    max_likers = int(cm_cfg.get("max_likers_per_track", 50))
+
+    search_cfg = cfg.raw.get("search") or {}
+    ref_accounts = search_cfg.get("reference_accounts") or []
+    followed_users = search_cfg.get("followed_users") or []
+    known = set()
+    for item in ref_accounts + followed_users:
+        if not item:
+            continue
+        slug = str(item).strip().rstrip("/").split("/")[-1].lower()
+        if slug:
+            known.add(slug)
+
+    counter: Counter[str] = Counter()
+    usernames: dict[str, str] = {}
+    original_permalinks: dict[str, str] = {}
+
+    for sc_id in sc_ids:
+        likers = sc.get_likers(sc_id, max_results=max_likers) or []
+        reposters = sc.get_reposters(sc_id, max_results=max_likers) or []
+        for u in likers + reposters:
+            permalink = u.get("permalink")
+            if not permalink:
+                continue
+            p_clean = str(permalink).strip().rstrip("/").split("/")[-1]
+            p_lower = p_clean.lower()
+            if p_lower in known:
+                continue
+            counter[p_lower] += 1
+            if p_lower not in original_permalinks:
+                original_permalinks[p_lower] = p_clean
+            if p_lower not in usernames:
+                usernames[p_lower] = u.get("username") or p_clean
+
+    candidates = [
+        (p_lower, count)
+        for p_lower, count in counter.most_common()
+        if count >= min_appearances
+    ]
+
+    if not candidates:
+        return "Keine neuen Curator-Vorschläge."
+
+    max_display = 30
+    lines = ["🔍 Curator-Vorschläge", ""]
+    for p_lower, count in candidates[:max_display]:
+        permalink = original_permalinks[p_lower]
+        username = html.escape(usernames.get(p_lower, permalink))
+        lines.append(f"• {username} (soundcloud.com/{permalink}) – {count}× gesehen")
+
+    if len(candidates) > max_display:
+        lines.append(f"… und {len(candidates) - max_display} weitere")
+
+    return "\n".join(lines)
+
+
 def handle_message(cfg: Config, sc: SoundCloudClient, chat_id: str, text: str) -> None:
     text = text.strip()
     if text in ("/start", "/help"):
         _send_text(cfg, chat_id, HELP_TEXT)
         return
 
-    if text == "/kaufliste":
+    first_word = text.split()[0].split("@")[0].lower() if text else ""
+    if first_word == "/kaufliste":
         handle_kaufliste_command(cfg, chat_id=chat_id)
+        return
+
+    if first_word in ("/curator-mining", "/curator_mining"):
+        try:
+            msg = run_curator_mining(sc, cfg)
+            _send_text(cfg, chat_id, msg)
+        except Exception:
+            log.exception("Fehler bei Curator-Mining")
+            _send_text(cfg, chat_id, "Curator-Mining fehlgeschlagen, siehe Container-Log.")
         return
 
     m = URL_RE.search(text)

@@ -243,6 +243,47 @@ class SoundCloudClient:
             log.info("Station nicht verfügbar (%s) -> related()", e)
         return self.related(track_id, limit)
 
+    def get_likers(self, track_id: int, max_results: int = 50) -> list[dict]:
+        """Gibt Liste von User-Dicts zurück (keys: 'id', 'permalink', 'username').
+        Paginiert bis max_results; bei API-Fehler leere Liste, kein raise."""
+        if max_results <= 0:
+            return []
+        try:
+            users: list[dict] = []
+            for item in self._paginate(f"/tracks/{track_id}/likers", {}, max_results):
+                user_data = item.get("user") if isinstance(item.get("user"), dict) else item
+                users.append({
+                    "id": user_data.get("id"),
+                    "permalink": user_data.get("permalink"),
+                    "username": user_data.get("username"),
+                })
+                if len(users) >= max_results:
+                    break
+            return users
+        except Exception as e:
+            log.warning("Fehler beim Abrufen der Liker für Track %s: %s", track_id, e)
+            return []
+
+    def get_reposters(self, track_id: int, max_results: int = 50) -> list[dict]:
+        """Wie get_likers, Endpunkt /tracks/{id}/reposters."""
+        if max_results <= 0:
+            return []
+        try:
+            users: list[dict] = []
+            for item in self._paginate(f"/tracks/{track_id}/reposters", {}, max_results):
+                user_data = item.get("user") if isinstance(item.get("user"), dict) else item
+                users.append({
+                    "id": user_data.get("id"),
+                    "permalink": user_data.get("permalink"),
+                    "username": user_data.get("username"),
+                })
+                if len(users) >= max_results:
+                    break
+            return users
+        except Exception as e:
+            log.warning("Fehler beim Abrufen der Reposter für Track %s: %s", track_id, e)
+            return []
+
     # ---------- Links auflösen (Bot) ----------
     def _unshorten(self, url: str) -> str:
         """Löst on.soundcloud.com-Share-Links (App 'Teilen'-Button) zur echten URL auf.

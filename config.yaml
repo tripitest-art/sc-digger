@@ -124,6 +124,12 @@ fingerprint:
   # Neue Downloads am Klang (Chromaprint) mit der Sammlung abgleichen; Treffer -> _rejected/duplicate/
   check_downloads: true
 
+curator_mining:
+  # Mindestanzahl Auftritte über alle 👍-Tracks, damit ein Profil vorgeschlagen wird
+  min_appearances: 2
+  # Wie viele Liker/Reposter pro Track maximal abgefragt werden (API-Calls)
+  max_likers_per_track: 50
+
 state:
   db_path: /data/seen.sqlite
   track_db_path: /data/tracks.sqlite  # Lokale SQLite-DB (nie auf NFS, da WAL-Modus)
@@ -132,6 +138,9 @@ health:
   # Alarm per Telegram, wenn so viele discover-Läufe in Folge scheitern oder 0 Rohtreffer
   # (vor Filtern) liefern. Bei täglichem Cron: 2 = Alarm am zweiten stillen Tag.
   alert_after_bad_runs: 2
+  # Alarm per Telegram, wenn der letzte Lauf älter als max_hours_since_run ist.
+  # Standard: 36 Stunden (1,5 Tage), damit ein fehlender Cron-Lauf erkannt wird.
+  max_hours_since_run: 36
 
 telegram:
   # Werte kommen aus Umgebungsvariablen TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID
