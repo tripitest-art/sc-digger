@@ -86,6 +86,12 @@ download:
   auto_download_native_only: true
   # Maximale Dateigröße für Cloud-Downloads (MB)
   cloud_max_mb: 500
+  # Eingangsordner für manuell geladene Tracks (z. B. aus Gates): durchläuft Prüfung,
+  # Analyse, Tags und Sortierung wie ein nativer Download. Liegt in der Inbox, wird
+  # vom Rekordbox-Scan ignoriert.
+  intake_dir: /music/inbox/_eingang
+  # Dateien erst verarbeiten, wenn sie so lange unverändert sind (Kopiervorgang abgeschlossen)
+  intake_min_age_s: 120
 
 organize:
   # Heruntergeladene Tracks in der Inbox nach BPM/Key sortieren (nie im Archiv)

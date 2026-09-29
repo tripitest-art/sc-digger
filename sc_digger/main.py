@@ -4,6 +4,7 @@
   python -m sc_digger.main playlist <url> [--likes]          # Playlist prüfen
   python -m sc_digger.main similar <track-url> [--filter]    # Algorithmus-Empfehlungen zu einem Track
   python -m sc_digger.main check <url>                       # wie der Telegram-Bot: Playlist oder Station
+  python -m sc_digger.main intake [--dry-run]                # Manuell abgelegte Tracks verarbeiten
   python -m sc_digger.main audit [--path ...] [--report ...] # Library-Audit (read-only)
 
 Alle Modi: --dry-run (nichts laden/senden), -v, --config, --no-telegram
@@ -25,6 +26,7 @@ from .audit import run_audit
 from .cloud import download_cloud
 from .collection import Collection
 from .health import Health
+from .intake import AUDIO_EXTS, find_ready_files, track_from_file
 from .models import Config, DownloadKind, Track
 from .organize import organize, write_tags
 from .redact import install_redacting_logging, redact
@@ -138,6 +140,109 @@ def process(tracks: list[Track], cfg: Config, *, dry_run: bool,
             retry_q.close()
 
     return fresh, dupes
+
+
+# ------------------------------------------------------------------ Eingangsordner (manuell geladene Tracks)
+def run_intake(cfg: Config, *, dry_run: bool = False) -> list[str]:
+    """Verarbeitet manuell in den Eingangsordner gelegte Dateien.
+
+    Ablauf pro Datei:
+    1. Qualitätsprüfung (Fake-Erkennung, Lautheitscheck)
+    2. BPM/Key-Analyse
+    3. ID3-Tags schreiben
+    4. In die BPM/Key-Ordnerstruktur der Inbox verschieben
+
+    Nicht-Audio-Dateien → _unbekannt/, Fehler → _fehler/.
+    Gibt Klartext-Zeilen für den Digest zurück (leer wenn nichts zu tun war).
+    """
+    import shutil
+
+    intake_dir = Path(cfg["download"].get("intake_dir", ""))
+    if not intake_dir or not intake_dir.exists():
+        return []
+
+    min_age = cfg["download"].get("intake_min_age_s", 120)
+    files = find_ready_files(intake_dir, min_age)
+    if not files:
+        return []
+
+    if dry_run:
+        return []
+
+    inbox = Path(cfg["download"]["inbox_dir"])
+    org = cfg.raw.get("organize", {})
+    lines: list[str] = []
+
+    for fpath in files:
+        fname = fpath.name
+        ext = fpath.suffix.lower()
+
+        # Nicht-Audio-Dateien in _unbekannt/ parken
+        if ext not in AUDIO_EXTS:
+            dest = intake_dir / "_unbekannt"
+            dest.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(fpath), str(dest / fname))
+            lines.append(f"⚠️ {fname} – kein Audio-Format, nach _unbekannt verschoben")
+            continue
+
+        t = track_from_file(fpath)
+        try:
+            # Qualitätsprüfung (Fake, Brickwall)
+            from . import output as _out
+            t.quality_report = _out.check_file(fpath, cfg)
+            if not t.quality_report["ok"]:
+                reason = t.quality_report.get("reason", "")
+                dest = inbox / "_rejected"
+                dest.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(fpath), str(dest / fname))
+                lines.append(f"❌ {fname} – abgelehnt: {reason}")
+                continue
+        except Exception as e:
+            log.warning("Intake-Prüfung fehlgeschlagen für %s: %s", fname, e)
+            dest = intake_dir / "_fehler"
+            dest.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(fpath), str(dest / fname))
+            lines.append(f"⚠️ {fname} – Prüfung fehlgeschlagen: {e}")
+            continue
+
+        # Audio-Analyse: BPM + Key
+        if org.get("detect_bpm", True) or org.get("detect_key", True):
+            try:
+                analysis = analyze_track(fpath)
+                if org.get("detect_bpm", True) and analysis.get("bpm"):
+                    t.bpm = analysis["bpm"]
+                if org.get("detect_key", True):
+                    t.key_camelot = analysis.get("key_camelot")
+                    t.key_name = analysis.get("key_name")
+            except Exception as e:
+                t.notes.append(f"Audio-Analyse fehlgeschlagen: {e}")
+
+        # ID3-Tags schreiben
+        if org.get("write_tags", True):
+            try:
+                write_tags(
+                    fpath, artist=t.artist, title=t.title, bpm=t.bpm,
+                    key_name=t.key_name,
+                    genre=org.get("default_genre", "Schranz"),
+                    comment="", url="",
+                    loudness=t.quality_report,
+                )
+            except Exception as e:
+                t.notes.append(f"Tagging fehlgeschlagen: {e}")
+
+        # In BPM/Key-Ordner sortieren
+        if org.get("enabled", True):
+            try:
+                organize(fpath, inbox, bpm=t.bpm, key_camelot=t.key_camelot,
+                         bucket_size=org.get("bpm_bucket_size", 5))
+            except Exception as e:
+                t.notes.append(f"Organize fehlgeschlagen: {e}")
+
+        bpm_str = f"{t.bpm:.0f}" if t.bpm else "?"
+        key_str = t.key_camelot or "?"
+        lines.append(f"📥 {t.artist} – {t.title} | {bpm_str} BPM | {key_str}")
+
+    return lines
 
 
 def deliver(header: str, fresh: list[Track], dupes: list[Track], cfg: Config,
@@ -366,8 +471,12 @@ def _discover(cfg: Config, dry_run: bool, no_telegram: bool) -> int:
     """Führt die Discovery aus und gibt die Zahl der Rohtreffer (vor Filtern) zurück."""
     sc, s = SoundCloudClient(), cfg["search"]
     retry_lines: list[str] = []
+    intake_lines: list[str] = []
     if not dry_run:
         retry_lines = retry_downloads(sc, cfg)
+        intake_lines = run_intake(cfg)
+        for line in intake_lines:
+            print(line)
     d = collect_sources(sc, s)
     if d.succeeded == 0 and d.first_error:
         raise d.first_error
@@ -386,7 +495,7 @@ def _discover(cfg: Config, dry_run: bool, no_telegram: bool) -> int:
         fresh, dupes = process(tracks, cfg, dry_run=dry_run)
         log.info("Neu: %d (Duplikate in Sammlung: %d)", len(fresh), len(dupes))
 
-        footer_parts = list(retry_lines)
+        footer_parts = list(retry_lines) + list(intake_lines)
         sf = source_footer(d)
         if sf:
             footer_parts.append(sf)
@@ -518,6 +627,9 @@ def cli() -> None:
 
     sub.add_parser("rekordbox", parents=[common], help="Rekordbox-XML der Inbox neu schreiben")
 
+    sub.add_parser("intake", parents=[common],
+                   help="Manuell abgelegte Tracks prüfen, analysieren und einsortieren")
+
     a = ap.parse_args()
     install_redacting_logging(logging.DEBUG if a.verbose else logging.INFO)
     cfg = Config.load(a.config)
@@ -539,6 +651,12 @@ def cli() -> None:
             )
         elif a.mode == "rekordbox":
             write_rekordbox_xml(cfg)
+        elif a.mode == "intake":
+            lines = run_intake(cfg, dry_run=a.dry_run)
+            for line in lines:
+                print(line)
+            if not lines:
+                print("Keine Dateien im Eingangsordner.")
         else:
             run_discover(cfg, a.dry_run, a.no_telegram)
     except Exception:
