@@ -41,6 +41,17 @@ Danach:
   aktuellen Stand `tests` und `acceptance-guard` als `success` zeigt. Laufen sie noch: später
   erneut abfragen. Ist `tests` rot: Log mit `get_job_logs` lesen und nachbessern.
 - Den PR-Text schreibst du nach `.github/pull_request_template.md` (mit `get_file_contents`
-  lesen) und mit `Closes #<N>`. Korrekturen am PR-Text mit `update_pull_request`.
+  lesen) und mit `Closes #<N>`. Korrekturen am PR-Text mit `update_pull_request`. Andere
+  Issues erwähnst du ohne „Closes/Fixes/Resolves“ davor, sonst verknüpft GitHub sie.
+
+Als Reviewer:
+
+- Den Teststatus nimmst du nur aus `pull_request_read` (`get_check_runs`), nie aus dem
+  PR-Text. Laufen Checks noch: später erneut abfragen, erst dann urteilen.
+- Das Ergebnis postest du immer mit `pull_request_review_write` (`method: create`,
+  `event: COMMENT`). Erste Zeile ist das Urteil: **„Änderungen nötig“** (dann „Muss“/„Kann“)
+  oder **„Freigegeben“**. Ein Review, das nur im Chat steht, zählt nicht.
+- Nichts wird automatisch gemerged, und du hast kein Merge-Werkzeug. Bei „Freigegeben“ sagst
+  du Stephan, dass er den PR per Squash mergen kann.
 - Schreib auf Deutsch, knapp. Bist du unsicher oder reicht dein Kontext nicht: aufhören und
   das Problem als Kommentar beschreiben, nicht raten.
