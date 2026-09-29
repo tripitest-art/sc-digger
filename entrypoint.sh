@@ -7,9 +7,8 @@ export -p > /app/cron.env
 chmod 600 /app/cron.env
 
 # Wöchentlicher Kaufliste-Lauf (Sonntag 20:00)
-# 0 20 * * 0 root . /app/cron.env; cd /app && python -c "from sc_digger.output import send_kaufliste; from sc_digger.models import Config; send_kaufliste(Config.load())" >> /var/log/cron.log 2>&1
-if [ -f /etc/cron.d/sc-digger ]; then
-    echo "0 20 * * 0 . /app/cron.env; cd /app && python -c 'from sc_digger.output import send_kaufliste; from sc_digger.models import Config; send_kaufliste(Config.load())' >> /proc/1/fd/1 2>&1" >> /etc/cron.d/sc-digger
+if [ -f /etc/cron.d/sc-digger ] && ! grep -q "send_kaufliste" /etc/cron.d/sc-digger; then
+    echo "0 20 * * 0 . /app/cron.env; cd /app && python -c \"from sc_digger.models import Config; from sc_digger.output import send_kaufliste; send_kaufliste(Config.load('config.yaml'))\" >> /proc/1/fd/1 2>&1" >> /etc/cron.d/sc-digger
     crontab /etc/cron.d/sc-digger 2>/dev/null || true
 fi
 

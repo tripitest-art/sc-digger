@@ -51,10 +51,16 @@ def _send_text(cfg: Config, chat_id: str, text: str) -> None:
 
 def handle_kaufliste_command(cfg: Config, chat_id: str | None = None) -> None:
     """Bearbeitet den /kaufliste-Befehl und sendet die aktuelle Kaufliste."""
-    if chat_id is not None:
-        output.send_kaufliste(cfg, chat_id=chat_id)
-    else:
-        output.send_kaufliste(cfg)
+    target_chat = chat_id or cfg.telegram_chat_id or ""
+    try:
+        if chat_id is not None:
+            output.send_kaufliste(cfg, chat_id=chat_id)
+        else:
+            output.send_kaufliste(cfg)
+    except Exception:
+        log.exception("Fehler beim Senden der Kaufliste")
+        if target_chat:
+            _send_text(cfg, target_chat, "Kaufliste fehlgeschlagen, siehe Container-Log.")
 
 
 def run_curator_mining(sc, cfg: Config) -> str:

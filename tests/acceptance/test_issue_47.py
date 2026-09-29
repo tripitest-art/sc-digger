@@ -50,7 +50,7 @@ def test_digest_upserts_store_tracks(tmp_path, monkeypatch):
     t = mk_store()
     calls = []
     monkeypatch.setattr(out, "telegram_call", lambda *a, **k: calls.append(a))
-    out.build_digest_messages([t], cfg)   # oder finalize / send – je nach Implementierung
+    out.build_digest_messages([t], None, cfg=cfg)
     with TrackDB(cfg["state"]["track_db_path"]) as db:
         items = db.get_store_items()
     assert any(i["sc_id"] == 1 for i in items)
@@ -61,7 +61,7 @@ def test_send_kaufliste_formats_correctly(tmp_path):
     with TrackDB(cfg["state"]["track_db_path"]) as db:
         db.upsert_store_item(1, "Tune", "Artist", "https://bandcamp.com/tune", "Bandcamp")
     sent = []
-    with patch.object(out, "telegram_call", side_effect=lambda *a, **k: sent.append(a)):
+    with patch.object(out, "telegram_call", side_effect=lambda *a, **k: sent.append(k.get("json", {}).get("text", ""))):
         out.send_kaufliste(cfg)
     text = "".join(str(s) for s in sent)
     assert "Artist" in text and "Tune" in text and "bandcamp.com" in text
@@ -70,7 +70,7 @@ def test_send_kaufliste_formats_correctly(tmp_path):
 def test_send_kaufliste_empty(tmp_path):
     cfg = _cfg(tmp_path)
     sent = []
-    with patch.object(out, "telegram_call", side_effect=lambda *a, **k: sent.append(a)):
+    with patch.object(out, "telegram_call", side_effect=lambda *a, **k: sent.append(k.get("json", {}).get("text", ""))):
         out.send_kaufliste(cfg)
     text = "".join(str(s) for s in sent)
     assert "leer" in text.lower() or len(sent) == 0   # leere Liste → kurze Meldung oder nichts
