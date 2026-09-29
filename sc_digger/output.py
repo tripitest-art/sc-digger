@@ -18,6 +18,7 @@ import requests
 
 from .db import TrackDB
 from .fingerprint import compute_fingerprint, find_same_recording
+from .loudness import normalize_inbox_file
 from .models import Config, DownloadKind, Track
 from .quality import check_file
 from .redact import redact
@@ -189,7 +190,10 @@ def finalize_quality(t: Track, path: Path, inbox: Path, cfg: Config) -> Path | N
     elif t.quality_report.get("clipped"):
         target = inbox / "_rejected" / "clipped"
     else:
-        return reject_if_duplicate(t, path, inbox, cfg)
+        res = reject_if_duplicate(t, path, inbox, cfg)
+        if res is not None:
+            normalize_inbox_file(res, t.quality_report, cfg)
+        return res
     target.mkdir(parents=True, exist_ok=True)
     shutil.move(str(path), str(target / path.name))
     return None

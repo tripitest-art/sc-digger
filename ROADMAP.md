@@ -85,7 +85,7 @@ flowchart TD
 |---|---|---|---|
 | **Phase 1** | Basis & DJ-Ready Pipeline | ✅ **Abgeschlossen** | Native Downloads, FFT-Fake-Check, BPM/Key, Tagging, Inbox-Organize, Modi discover/playlist/similar |
 | **Phase 1.5** | Robustheit | ✅ **Abgeschlossen** | BPM-Oktav-Korrektur, Health-Alarm |
-| **Phase 2** | Track-DB & Library Audit | 🟡 **Fast fertig** | Zentrale DB ✅, `audit` ✅, Fingerprint-Duplikate ✅, LUFS-Tags ✅, Container-Healthcheck ✅; offen: robuste Discovery (#61), Retry-Queue (#50), Inbox-Normalisierung (#74) |
+| **Phase 2** | Track-DB & Library Audit | 🟡 **Fast fertig** | Zentrale DB ✅, `audit` ✅, Fingerprint-Duplikate ✅, LUFS-Tags ✅, Container-Healthcheck ✅, Inbox-Normalisierung ✅ (#74); offen: robuste Discovery (#61), Retry-Queue (#50) |
 | **Phase 3** | Feedback & Smart Ingestion | 🟡 **Laufend** | 👍/👎 ✅, Cloud-Downloads ✅, DJ-Sets ✅, Rekordbox-Wochen-XML ✅, Curator-Mining 🟡 (Vorschläge ✅), Cloud-Quellen erweitern ✅, Kaufliste 🟡 (#47), Eingangsordner 🔵 (#70) |
 | **Phase 4** | Geschmacksmodell & KI-Copilot | 🔵 Geplant | Audio-Embeddings, persönlicher Taste-Score, Qwen-Copilot via Tool-Calling |
 | **Phase 5** | DJ-Performance & Set-Tools | 🟣 Vision | Rekordbox-Cues, Next-Track-Recommender, Web-Dashboard, Stem-Extraktion |
@@ -141,10 +141,10 @@ Copilot, Recommender und Dashboard.
 * Fingerprints der Sammlung in der Track-DB, Report doppelter Aufnahmen im Audit (#42).
 * Neue Downloads werden am Klang mit der Sammlung abgeglichen → `_rejected/duplicate/` (#44).
 
-### 2.4 Lautheit messen statt normalisieren (Messen ✅, Inbox-Normalisierung 🔵 #74)
+### 2.4 Lautheit messen statt normalisieren (Messen ✅, Inbox-Normalisierung ✅ #74)
 * LUFS (EBU R128) und True Peak messen und als Tag speichern (ReplayGain bzw. eigenes Feld).
 * Audio im Archiv bleibt unverändert; den Pegelausgleich macht Auto-Gain in Rekordbox/Traktor/Engine.
-* Geplant, nur für die Inbox (Issue #74): WAV/AIFF/FLAC samplegenau auf −8,5 LUFS bringen,
+* Umgesetzt für die Inbox (Issue #74): WAV/AIFF/FLAC samplegenau auf −8,5 LUFS bringen,
   Metadaten byte-identisch. Absenken immer; Anheben nur so weit, wie der Abstand zu −0,5 dBTP
   es ohne Limiter erlaubt. MP3-Global-Gain folgt als eigenes Issue.
 
@@ -249,7 +249,7 @@ Ursprünglicher Plan:
 7. ~~Phase 3.5 Teil 1: Curator-Mining (Vorschläge per Bot)~~ ✅
 8. ~~Phase 3.7: Cloud-Quellen erweitern: WeTransfer/Mega erkennen, Bandcamp als Store~~ ✅
 9. **Phase 2 Robustheit:** Discovery bricht bei einzelnen Quellen nicht ab (#61, PR #73) → Retry-Queue (#50)
-10. **Phase 3.6:** Kaufliste (#47, PR #71) → Inbox-Normalisierung −8,5 LUFS (#74)
+10. ~~Phase 3.6: Kaufliste (#47, PR #71)~~ ✅ → ~~Inbox-Normalisierung −8,5 LUFS (#74)~~ ✅
 11. **Phase 3.8:** Eingangsordner (#70, nach #61 und #50)
 12. Phase 4: Embeddings → Taste-Score → Copilot
 11. Phase 5: Rekordbox-Cues, Recommender, Dashboard, Stems

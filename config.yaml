@@ -75,6 +75,14 @@ scoring:
   # Bonus auf den Score (Punkte auf der 0-100-Perzentil-Skala), wenn ein Track
   # von einem reference_accounts-Profil gerepostet/geliked wurde.
   reference_boost: 15
+  # Abzug (Punkte auf der 0-100-Skala) für Tracks mit Promo-Netzwerk-Verdacht (pipeline.spam_signals)
+  spam_penalty: 20
+  # Textstellen in Titel/Beschreibung/Tags, die auf Repost-Tausch oder Promo-Dienste hindeuten
+  spam_phrases:
+    - repost exchange
+    - send your tracks
+    - send me your tracks
+    - promo service
 
 download:
   # Ordner mit deiner bestehenden Sammlung (für Duplikat-Check)
@@ -125,6 +133,14 @@ quality:
   # LRA (Dynamikumfang) ist das zuverlässigere Brickwall-Signal.
   min_loudness_range_lu: 2.5
   max_true_peak_dbfs: 3.0
+
+loudness:
+  # Pegel-Normalisierung für neue Downloads in der Inbox (nie für die Sammlung)
+  normalize_inbox: true
+  # Ziel-Lautheit nach EBU R128 in LUFS (Schranz-Referenzpegel)
+  target_lufs: -8.5
+  # Maximaler True-Peak-Pegel beim Anheben leiser Tracks (Headroom-Schutz ohne Limiter)
+  max_true_peak_dbfs: -0.5
 
 fingerprint:
   # Neue Downloads am Klang (Chromaprint) mit der Sammlung abgleichen; Treffer -> _rejected/duplicate/
