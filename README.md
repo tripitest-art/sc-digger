@@ -103,6 +103,7 @@ Geschmacksmodell), ⏳ merkt ein Gate für später vor.
 | Track-Link | die „Station“ zum Track (SoundCloud-Radio), ebenso aufbereitet |
 | `/kaufliste` | offene Store-Tracks (Bandcamp, Beatport, …) mit Kauflink |
 | `/curator_mining` | SoundCloud-Profile, die deine 👍-Tracks auffällig oft geliked oder repostet haben, als Kandidaten für `reference_accounts` |
+| `/mix <Key> <BPM> [Tol]` | harmonisch und tempomäßig passende Tracks aus der Track-DB (Sammlung) |
 
 Links aus der App (`on.soundcloud.com/…`) funktionieren auch. Die Kaufliste kommt zusätzlich jeden
 Sonntag um 20:00 von selbst. Fehlen die Telegram-Daten, pausiert der Bot; der tägliche Lauf läuft trotzdem.

@@ -19,6 +19,7 @@ import time
 from collections import Counter
 
 from .db import TrackDB
+from .harmonic import compatible_keys, find_mix_candidates, format_mix_list
 from .main import run_link
 from .models import Config
 from .output import TelegramError, parse_feedback_callback, telegram_call
@@ -30,6 +31,8 @@ log = logging.getLogger("sc_digger.bot")
 
 URL_RE = re.compile(r"https?://(?:on\.)?(?:www\.|m\.)?soundcloud\.com/\S+", re.I)
 
+MIX_USAGE = "Aufruf: /mix <Camelot-Key> <BPM> [Toleranz], z. B. /mix 5A 155 oder /mix 8B 160 2"
+
 HELP_TEXT = (
     "sc-digger Bot\n\n"
     "Schick mir einen SoundCloud-Link:\n"
@@ -38,7 +41,8 @@ HELP_TEXT = (
     "(das, was der SoundCloud-Algorithmus als Radio vorschlägt)\n\n"
     "Befehle:\n"
     "• /kaufliste -> zeigt die aktuelle Kaufliste offener Store-Tracks\n"
-    "• /curator_mining -> Profile aus 👍-Tracks vorschlagen\n\n"
+    "• /curator_mining -> Profile aus 👍-Tracks vorschlagen\n"
+    "• /mix 5A 155 -> harmonisch passende Tracks aus der Sammlung (±3 BPM)\n\n"
     "Kein täglicher Filter, du bekommst die volle Liste mit Stats und Download-Einordnung."
 )
 
@@ -134,6 +138,52 @@ def run_curator_mining(sc, cfg: Config) -> str:
     return "\n".join(lines)
 
 
+def mix_reply(cfg: Config, text: str) -> str:
+    """Antwort auf "/mix <key> <bpm> [toleranz]" (auch "/mix@botname …").
+    Wörter nach dem Befehl: genau 2 oder 3, sonst MIX_USAGE.
+    Key ungültig (compatible_keys wirft ValueError), BPM oder Toleranz keine Zahl, BPM außerhalb 60–250
+    oder Toleranz nicht in (0, 20] -> MIX_USAGE. Komma als Dezimaltrenner erlaubt ("157,5"). Toleranz Standard 3.0.
+    Sonst: TrackDB(cfg["state"]["track_db_path"]) öffnen,
+    find_mix_candidates(db, key, bpm, bpm_tolerance=tol, limit=30), Ergebnis von
+    format_mix_list(key, bpm, recs, bpm_tolerance=tol) mit html.escape(..., quote=False) zurückgeben
+    (der Bot sendet mit parse_mode HTML). Fehler beim DB-Zugriff werden NICHT hier abgefangen."""
+    parts = text.strip().split()
+    if not parts or parts[0].split("@")[0].lower() != "/mix":
+        return MIX_USAGE
+    args = parts[1:]
+    if len(args) not in (2, 3):
+        return MIX_USAGE
+
+    try:
+        compatible_keys(args[0])
+    except ValueError:
+        return MIX_USAGE
+    key = args[0]
+
+    try:
+        bpm = float(args[1].replace(",", "."))
+    except ValueError:
+        return MIX_USAGE
+    if not (60.0 <= bpm <= 250.0):
+        return MIX_USAGE
+
+    if len(args) == 3:
+        try:
+            tol = float(args[2].replace(",", "."))
+        except ValueError:
+            return MIX_USAGE
+        if not (0.0 < tol <= 20.0):
+            return MIX_USAGE
+    else:
+        tol = 3.0
+
+    track_db_path = cfg["state"]["track_db_path"]
+    with TrackDB(track_db_path) as db:
+        recs = find_mix_candidates(db, key, bpm, bpm_tolerance=tol, limit=30)
+    result = format_mix_list(key, bpm, recs, bpm_tolerance=tol)
+    return html.escape(result, quote=False)
+
+
 def handle_message(cfg: Config, sc: SoundCloudClient, chat_id: str, text: str) -> None:
     text = text.strip()
     if text in ("/start", "/help"):
@@ -152,6 +202,14 @@ def handle_message(cfg: Config, sc: SoundCloudClient, chat_id: str, text: str) -
         except Exception:
             log.exception("Fehler bei Curator-Mining")
             _send_text(cfg, chat_id, "Curator-Mining fehlgeschlagen, siehe Container-Log.")
+        return
+
+    if first_word == "/mix":
+        try:
+            _send_text(cfg, chat_id, mix_reply(cfg, text))
+        except Exception:
+            log.exception("Fehler bei Mix-Suche")
+            _send_text(cfg, chat_id, "Mix-Suche fehlgeschlagen, siehe Container-Log.")
         return
 
     m = URL_RE.search(text)
