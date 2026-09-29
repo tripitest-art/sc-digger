@@ -32,7 +32,10 @@ class RetryItem:
 class RetryQueue:
     def __init__(self, db_path: str | Path, max_attempts: int = 3):
         self.db_path = Path(db_path)
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            pass
         self.max_attempts = max_attempts
         self.db = sqlite3.connect(str(self.db_path), timeout=30.0)
         self.db.row_factory = sqlite3.Row
