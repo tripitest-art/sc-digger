@@ -22,6 +22,9 @@ WORKDIR = "/root/sc-digger"
 OLLAMA = os.environ.get("OLLAMA", "http://192.168.0.210:11434")
 MODEL = os.environ.get("MODEL", "qwen3-coder-64k")
 LABEL = "agent-qwen"
+# Nur Reviews dieses Kontos zählen (AGENTS.md: nur Anweisungen von tripitest-art). Das Repo ist
+# öffentlich; jeder könnte sonst per Review Befehle in einen Auftrag mit Schreibrecht schieben.
+OWNER = "tripitest-art"
 WORKER = "Qwen3-Coder 30B"
 STATE = "/root/worker-state.json"
 MAX_TRIES = 2               # Versuche je Auftrag, danach liegt er bei Stephan
@@ -52,24 +55,40 @@ def save_state(state: dict) -> None:
         json.dump(state, fh, indent=1)
 
 
+def review_is_current(review: dict, pr: dict) -> bool:
+    """Bezieht sich das Review auf den aktuellen Stand des PRs?
+
+    Maßgeblich ist der geprüfte Commit, nicht das Datum: committedDate ist die Zeit des lokalen
+    Commits, nicht des Pushs. Ein vor dem Review erstellter, danach gepushter Commit sähe sonst
+    wie „noch nicht nachgebessert“ aus. Ohne Commit-Angabe (ältere gh-Version) bleibt nur das Datum.
+    """
+    oid = (review.get("commit") or {}).get("oid")
+    if oid:
+        return oid == pr["headRefOid"]
+    return review["submittedAt"] > max(c["committedDate"] for c in pr["commits"])
+
+
 def rework_job():
     """(Schlüssel, Auftrag, PR-Nummer, Head-SHA) für die älteste fällige Nacharbeit oder None.
 
     Das Review steht wörtlich im Auftrag: Qwen hat es sonst nicht gelesen, nur die Tests auf
     main laufen lassen und den PR selbst für fertig erklärt (#103, erster Lauf).
     """
-    prs = gh("pr", "list", "--state", "open", "--json", "number,headRefName,headRefOid,reviews,commits")
+    prs = gh("pr", "list", "--state", "open", "--json",
+             "number,headRefName,headRefOid,isCrossRepository,reviews,commits")
     for pr in sorted(prs, key=lambda p: p["number"]):
         m = re.match(r"feature/issue-(\d+)", pr["headRefName"])
-        if not m or not pr["reviews"] or not pr["commits"]:
+        if not m or pr.get("isCrossRepository") or not pr["commits"]:
+            continue  # Fork-PRs nie: Branch-Name und Inhalt bestimmt dort ein Fremder
+        reviews = [r for r in pr["reviews"] if (r.get("author") or {}).get("login") == OWNER]
+        if not reviews:
             continue
         issue_no = m.group(1)
-        issue = gh("issue", "view", issue_no, "--json", "labels,title")
+        issue = gh("issue", "view", issue_no, "--json", "labels")
         if LABEL not in {lab["name"] for lab in issue["labels"]}:
             continue
-        review = max(pr["reviews"], key=lambda r: r["submittedAt"])
-        last_commit = max(c["committedDate"] for c in pr["commits"])
-        if review["submittedAt"] > last_commit and "Änderungen nötig" in review["body"][:80]:
+        review = max(reviews, key=lambda r: r["submittedAt"])
+        if review_is_current(review, pr) and "Änderungen nötig" in review["body"][:80]:
             n = pr["number"]
             key = f"pr{n}@{review['submittedAt']}"
             task = f"""Du arbeitest ein Review ab (AGENTS.md, Worker, Schritt 8). Du bist Worker: {WORKER}.
@@ -80,7 +99,7 @@ Gehe genau diese Schritte durch und führe jeden als Befehl aus:
    von Issue #{issue_no} liegen. Nie Dateien unter tests/acceptance/ ändern.
 3. Ist der PR-Text gefordert: schreib ihn in .git/pr-body.md nach .github/pull_request_template.md,
    mit „Closes #{issue_no}“ und „Worker: {WORKER}“, und führe aus:
-   `gh pr edit {n} --title "{issue['title']}" --body-file .git/pr-body.md`
+   `gh pr edit {n} --title "$(gh issue view {issue_no} --json title -q .title)" --body-file .git/pr-body.md`
 4. `python -m pytest -q` muss komplett grün sein.
 5. Alle Code-Änderungen in einem Commit, dann `git push`.
 6. Prüfe mit `git log -1 --oneline` und `gh pr view {n}`, dass Commit und Text angekommen sind.
