@@ -64,11 +64,14 @@ def process(tracks: list[Track], cfg: Config, *, dry_run: bool,
     retry_max = (cfg.raw.get("retry") or {}).get("max_attempts", 3)
     if not token and any(t.download_kind == DownloadKind.NATIVE for t in fresh):
         log.info("SOUNDCLOUD_AUTH_TOKEN fehlt: native Downloads werden nur verlinkt, nicht geladen")
-    with RetryQueue(cfg["state"]["db_path"], max_attempts=retry_max) as retry_q:
+    retry_q: RetryQueue | None = None
+    try:
         for t in fresh:
             if t.download_kind == DownloadKind.NATIVE:
                 path = download_native(t, inbox, token)
                 if token:
+                    if retry_q is None:
+                        retry_q = RetryQueue(cfg["state"]["db_path"], max_attempts=retry_max)
                     if path:
                         retry_q.record_success(t.id)
                     else:
@@ -130,6 +133,9 @@ def process(tracks: list[Track], cfg: Config, *, dry_run: bool,
                              bucket_size=org.get("bpm_bucket_size", 5))
                 except Exception as e:
                     t.notes.append(f"Organize fehlgeschlagen: {e}")
+    finally:
+        if retry_q:
+            retry_q.close()
 
     return fresh, dupes
 
