@@ -33,6 +33,7 @@ from .output import (DigestMessage, State, build_digest, build_digest_messages, 
 from .pipeline import (classify_download, dedupe, estimate_bpm, filter_bpm, filter_sets,
                        genre_relevant, mark_sets, score_tracks)
 from .rekordbox import write_rekordbox_xml
+from .retry import RetryQueue
 from .soundcloud import ClientIdError, RateLimitError, SoundCloudClient, SoundCloudError
 
 log = logging.getLogger("sc_digger")
@@ -60,67 +61,75 @@ def process(tracks: list[Track], cfg: Config, *, dry_run: bool,
     inbox = Path(cfg["download"]["inbox_dir"])
     org = cfg.raw.get("organize", {})
     token = cfg.soundcloud_auth_token
+    retry_max = (cfg.raw.get("retry") or {}).get("max_attempts", 3)
     if not token and any(t.download_kind == DownloadKind.NATIVE for t in fresh):
         log.info("SOUNDCLOUD_AUTH_TOKEN fehlt: native Downloads werden nur verlinkt, nicht geladen")
-    for t in fresh:
-        if t.download_kind == DownloadKind.NATIVE:
-            path = download_native(t, inbox, token)
-        elif t.download_kind == DownloadKind.CLOUD and not cfg["download"].get("auto_download_native_only", True):
-            path = download_cloud(t, inbox, max_mb=cfg["download"].get("cloud_max_mb", 500))
-        else:
-            continue
-        if not path:
-            continue
-        # Fakes -> _rejected/, Brickwall -> _rejected/clipped/; nur Echtes läuft weiter
-        path = finalize_quality(t, path, inbox, cfg)
-        if not path:
-            continue
+    with RetryQueue(cfg["state"]["db_path"], max_attempts=retry_max) as retry_q:
+        for t in fresh:
+            if t.download_kind == DownloadKind.NATIVE:
+                path = download_native(t, inbox, token)
+                if token:
+                    if path:
+                        retry_q.record_success(t.id)
+                    else:
+                        reason = t.notes[-1] if t.notes else "Original-Download fehlgeschlagen"
+                        retry_q.record_failure(t, reason)
+            elif t.download_kind == DownloadKind.CLOUD and not cfg["download"].get("auto_download_native_only", True):
+                path = download_cloud(t, inbox, max_mb=cfg["download"].get("cloud_max_mb", 500))
+            else:
+                continue
+            if not path:
+                continue
+            # Fakes -> _rejected/, Brickwall -> _rejected/clipped/; nur Echtes läuft weiter
+            path = finalize_quality(t, path, inbox, cfg)
+            if not path:
+                continue
 
-        # Audio-Analyse: BPM + Key aus dem Audiomaterial erkennen
-        if org.get("detect_bpm", True) or org.get("detect_key", True):
-            try:
-                analysis = analyze_track(path)
-                if org.get("detect_bpm", True):
-                    # Text-BPM als Anker: in playlist/similar lief filter_bpm nicht
-                    text_bpm = t.bpm or estimate_bpm(t)
-                    s = cfg["search"]
-                    t.bpm, reason = resolve_bpm(
-                        analysis["bpm"], text_bpm,
-                        window=(s["bpm_min"], s["bpm_max"]),
-                        plausible=(org.get("bpm_plausible_min", 120), org.get("bpm_plausible_max", 200)),
+            # Audio-Analyse: BPM + Key aus dem Audiomaterial erkennen
+            if org.get("detect_bpm", True) or org.get("detect_key", True):
+                try:
+                    analysis = analyze_track(path)
+                    if org.get("detect_bpm", True):
+                        # Text-BPM als Anker: in playlist/similar lief filter_bpm nicht
+                        text_bpm = t.bpm or estimate_bpm(t)
+                        s = cfg["search"]
+                        t.bpm, reason = resolve_bpm(
+                            analysis["bpm"], text_bpm,
+                            window=(s["bpm_min"], s["bpm_max"]),
+                            plausible=(org.get("bpm_plausible_min", 120), org.get("bpm_plausible_max", 200)),
+                        )
+                        log.debug("BPM %s für %s: %s", t.bpm, t.title, reason)
+                        audio_bpm = analysis["bpm"]
+                        if audio_bpm and t.bpm and abs(t.bpm - audio_bpm) > 1.0:
+                            t.notes.append(f"BPM korrigiert: {reason}")
+                    if org.get("detect_key", True):
+                        t.key_camelot = analysis["key_camelot"]
+                        t.key_name = analysis["key_name"]
+                except Exception as e:
+                    t.notes.append(f"Audio-Analyse fehlgeschlagen: {e}")
+
+            # ID3-Tags schreiben
+            if org.get("write_tags", True):
+                comment = f"Score: {t.percentile:.0f}p" if t.percentile else ""
+                if t.key_camelot:
+                    comment += f" | Key: {t.key_camelot}"
+                try:
+                    write_tags(
+                        path, artist=t.artist, title=t.title, bpm=t.bpm, key_name=t.key_name,
+                        genre=t.genre or org.get("default_genre", "Schranz"),
+                        comment=comment.strip(" |"), url=t.url,
+                        loudness=t.quality_report,
                     )
-                    log.debug("BPM %s für %s: %s", t.bpm, t.title, reason)
-                    audio_bpm = analysis["bpm"]
-                    if audio_bpm and t.bpm and abs(t.bpm - audio_bpm) > 1.0:
-                        t.notes.append(f"BPM korrigiert: {reason}")
-                if org.get("detect_key", True):
-                    t.key_camelot = analysis["key_camelot"]
-                    t.key_name = analysis["key_name"]
-            except Exception as e:
-                t.notes.append(f"Audio-Analyse fehlgeschlagen: {e}")
+                except Exception as e:
+                    t.notes.append(f"Tagging fehlgeschlagen: {e}")
 
-        # ID3-Tags schreiben
-        if org.get("write_tags", True):
-            comment = f"Score: {t.percentile:.0f}p" if t.percentile else ""
-            if t.key_camelot:
-                comment += f" | Key: {t.key_camelot}"
-            try:
-                write_tags(
-                    path, artist=t.artist, title=t.title, bpm=t.bpm, key_name=t.key_name,
-                    genre=t.genre or org.get("default_genre", "Schranz"),
-                    comment=comment.strip(" |"), url=t.url,
-                    loudness=t.quality_report,
-                )
-            except Exception as e:
-                t.notes.append(f"Tagging fehlgeschlagen: {e}")
-
-        # Auto-Organize: nach BPM/Key-Ordner verschieben
-        if org.get("enabled", True):
-            try:
-                organize(path, inbox, bpm=t.bpm, key_camelot=t.key_camelot,
-                         bucket_size=org.get("bpm_bucket_size", 5))
-            except Exception as e:
-                t.notes.append(f"Organize fehlgeschlagen: {e}")
+            # Auto-Organize: nach BPM/Key-Ordner verschieben
+            if org.get("enabled", True):
+                try:
+                    organize(path, inbox, bpm=t.bpm, key_camelot=t.key_camelot,
+                             bucket_size=org.get("bpm_bucket_size", 5))
+                except Exception as e:
+                    t.notes.append(f"Organize fehlgeschlagen: {e}")
 
     return fresh, dupes
 
@@ -291,9 +300,68 @@ def source_footer(d: Discovery) -> str | None:
     return "\n".join(lines)
 
 
+def retry_downloads(sc: SoundCloudClient, cfg: Config) -> list[str]:
+    """Arbeitet RetryQueue.due() ab. Pro Eintrag: t = sc.resolve_track(item.url), dann
+    process([t], cfg, dry_run=False). Damit landen Erfolg und Fehlschlag über process() in der Queue.
+    - resolve_track wirft -> record_failure mit dem Fehlertext
+    - Track inzwischen in der Sammlung (t.duplicate_of) oder nicht mehr NATIVE -> record_success
+      (nichts mehr zu tun, keine Digest-Zeile)
+    Rückgabe: Digest-Zeilen (Klartext), leer wenn nichts zu melden:
+      "🔄 <N> nachgeholt: <Artist> – <Title>, ..."               (Eintrag danach weg)
+      "❌ <N> endgültig fehlgeschlagen (<max> Versuche): <Artist> – <Title>, ..."
+                                                    (Status wechselte in diesem Aufruf auf "failed")
+    Ein endgültig gescheiterter Track wird genau einmal gemeldet (due() liefert ihn danach nicht mehr).
+    Wirft nicht wegen einzelner Einträge."""
+    retry_cfg = cfg.raw.get("retry") or {}
+    max_attempts = retry_cfg.get("max_attempts", 3)
+    recovered: list[str] = []
+    failed_final: list[str] = []
+
+    with RetryQueue(cfg["state"]["db_path"], max_attempts=max_attempts) as q:
+        items = q.due()
+        for item in items:
+            try:
+                try:
+                    t = sc.resolve_track(item.url)
+                except Exception as e:
+                    new_status = q.record_failure(item, f"{type(e).__name__}: {e}")
+                    if new_status == "failed":
+                        failed_final.append(f"{item.artist} – {item.title}")
+                    continue
+
+                process([t], cfg, dry_run=False)
+                if t.duplicate_of or t.download_kind != DownloadKind.NATIVE:
+                    q.record_success(item.sc_id)
+                    continue
+
+                status = q.status(item.sc_id)
+                if status is None:
+                    recovered.append(f"{t.artist} – {t.title}")
+                elif status == "failed":
+                    failed_final.append(f"{t.artist} – {t.title}")
+            except Exception as e:
+                log.warning("Fehler beim Retry von %s: %s", item.url, e)
+                try:
+                    new_status = q.record_failure(item, f"{type(e).__name__}: {e}")
+                    if new_status == "failed":
+                        failed_final.append(f"{item.artist} – {item.title}")
+                except Exception:
+                    pass
+
+    lines: list[str] = []
+    if recovered:
+        lines.append(f"🔄 {len(recovered)} nachgeholt: {', '.join(recovered)}")
+    if failed_final:
+        lines.append(f"❌ {len(failed_final)} endgültig fehlgeschlagen ({max_attempts} Versuche): {', '.join(failed_final)}")
+    return lines
+
+
 def _discover(cfg: Config, dry_run: bool, no_telegram: bool) -> int:
     """Führt die Discovery aus und gibt die Zahl der Rohtreffer (vor Filtern) zurück."""
     sc, s = SoundCloudClient(), cfg["search"]
+    retry_lines: list[str] = []
+    if not dry_run:
+        retry_lines = retry_downloads(sc, cfg)
     d = collect_sources(sc, s)
     if d.succeeded == 0 and d.first_error:
         raise d.first_error
@@ -312,9 +380,15 @@ def _discover(cfg: Config, dry_run: bool, no_telegram: bool) -> int:
         fresh, dupes = process(tracks, cfg, dry_run=dry_run)
         log.info("Neu: %d (Duplikate in Sammlung: %d)", len(fresh), len(dupes))
 
+        footer_parts = list(retry_lines)
+        sf = source_footer(d)
+        if sf:
+            footer_parts.append(sf)
+        footer = "\n".join(footer_parts) if footer_parts else None
+
         deliver(f"sc-digger – {len(fresh)} neue Treffer", fresh, dupes, cfg,
                 dry_run=dry_run, no_telegram=no_telegram, export_name="Täglicher Digest",
-                footer=source_footer(d))
+                footer=footer)
         if not dry_run:
             # Erst nach erfolgreichem Versand markieren: bei Fehler in send_telegram
             # werden Tracks beim nächsten Lauf erneut gemeldet statt verloren zu gehen.

@@ -134,6 +134,10 @@ state:
   db_path: /data/seen.sqlite
   track_db_path: /data/tracks.sqlite  # Lokale SQLite-DB (nie auf NFS, da WAL-Modus)
 
+retry:
+  # Fehlgeschlagene Original-Downloads beim nächsten discover-Lauf erneut versuchen (Versuche gesamt)
+  max_attempts: 3
+
 health:
   # Alarm per Telegram, wenn so viele discover-Läufe in Folge scheitern oder 0 Rohtreffer
   # (vor Filtern) liefern. Bei täglichem Cron: 2 = Alarm am zweiten stillen Tag.
