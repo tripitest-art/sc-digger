@@ -1,57 +1,81 @@
 ---
 name: sc-digger-planner
-description: "Planer-Aufgabe in tripitest-art/sc-digger über die GitHub-MCP-Werkzeuge. Nutzen bei „Plane …“ oder „Erstelle ein Issue für …“. Feste Abfolge vom Auftrag bis zum angelegten worker-task-Issue."
+description: "Worker-Issue für tripitest-art/sc-digger planen und anlegen (Planer-Rolle). Nutzen bei „Plane …“, „Erstelle ein Issue für …“ oder „Mach daraus eine Aufgabe“. Erst Entwurf im Chat, nach Stephans OK Issue mit Label entwurf."
 always-apply: true
-compatibility: Braucht den MCP-Server github-planner (siehe MCP.md). Für Qwen in LibreChat.
+compatibility: Braucht den MCP-Server github-planner (siehe MCP.md). Für lokale Modelle in LibreChat.
 ---
 
-# Planer-Aufgabe in sc-digger
+# Worker-Issue planen in sc-digger
 
-Die Regeln stehen in `AGENTS.md` (Abschnitt „Planer“) und `ENTWICKLUNG.md` (Abschnitt
-„Planer-Ablauf“). Dieser Skill legt nur fest, **wie** du sie mit den MCP-Werkzeugen
-abarbeitest. Repo immer `owner: tripitest-art`, `repo: sc-digger`. Suche nie nach anderen
-Repositories.
-
-Du schreibst ein Issue, keinen Code: kein `create_branch`, kein `push_files`, kein PR.
+Die Regeln stehen in `AGENTS.md` (Abschnitt „Planer“). Dieser Skill legt nur fest, **wie** du
+sie mit den MCP-Werkzeugen abarbeitest. Repo immer `owner: tripitest-art`, `repo: sc-digger`.
+Suche nie nach anderen Repositories.
 
 Führe jeden Schritt als Werkzeugaufruf aus. Kündige ihn nicht nur an. Ein Schritt ist erst
 erledigt, wenn das Werkzeug ein Ergebnis geliefert hat.
 
-## Schritt 1: Regeln lesen
+Du hast keine Shell und kannst Tests nicht ausführen. Deshalb legst du Issues **immer** mit
+dem Label `entwurf` an, nie mit `bereit`. Stephan oder ein Agent mit Shell prüft die
+Akzeptanztests und gibt das Issue danach frei.
 
-`get_file_contents` (`ref: main`) für `AGENTS.md` und `ENTWICKLUNG.md`. Lies „Goldene Regeln“,
-„Planer“, „Architektur“ und „Planer-Ablauf“.
+## Schritt 1: Regeln und Architektur lesen
+
+`get_file_contents` (`ref: main`) für `AGENTS.md` und `ENTWICKLUNG.md`.
 
 ## Schritt 2: Auftrag klären
 
-Fasse den Auftrag von Stephan in zwei Sätzen zusammen (Ziel und Grenze). Ist etwas fachlich
-offen (Schwellwert, Verhalten im Fehlerfall, welcher Modus), frag Stephan und warte. Nicht
-raten. Ist der Auftrag größer als ein PR, schlag Teile vor und plane nur Teil 1.
+Stell Stephan Rückfragen, bis diese Punkte klar sind:
+- das Ziel in ein, zwei Sätzen
+- was ausdrücklich **nicht** dazugehört
+- der Merge-Modus: „automatisch nach Review“ oder „manuell durch Stephan“. Manuell ist Pflicht
+  bei Betrieb, Dateien auf dem Server, Zugangsdaten und Downloads.
 
-## Schritt 3: Stand prüfen
+Eine Aufgabe = ein Thema. Ist der Auftrag zu groß, schlag eine Aufteilung in mehrere Issues vor.
 
-1. `search_issues` mit
-   `repo:tripitest-art/sc-digger is:issue is:open label:worker-task`: Gibt es das schon?
-   Dann aufhören und Stephan die Nummer nennen.
-2. `search_pull_requests` mit `repo:tripitest-art/sc-digger is:pr is:open`. Für jeden offenen
-   PR, der dieselben Dateien berühren könnte: `pull_request_read` mit `method: get_files`.
-3. Berührt ein offenes Issue mit `in-arbeit` oder ein offener PR eine deiner Dateien (oder baut
-   deine Aufgabe darauf auf): Dein Issue bekommt `blockiert` statt `bereit` und im Kontext die
-   Zeile `Wartet auf: #X, #Y`.
+## Schritt 3: Code lesen
 
-## Schritt 4: Code lesen
+1. Welche Dateien betroffen sind, steht in der Architektur-Tabelle in `ENTWICKLUNG.md`.
+2. `get_file_contents` für jede betroffene Datei (`ref: main`). Lies die Funktionen, die sich
+   ändern, und ihre Aufrufer.
+3. Für die Akzeptanztests: `get_file_contents` für einen passenden bestehenden Test. Die Fakes
+   `FakeSC` stehen in `tests/test_modes.py`, `FakeLinkSC` in `tests/test_merge.py`,
+   synthetisches Audio in `tests/test_analysis_organize.py`. Übernimm deren Muster, statt
+   eigene Fakes zu erfinden.
 
-`get_file_contents` (`ref: main`) für jede Datei, die du ändern lassen willst, und für
-`tests/test_modes.py` (Fakes `mk`, `FakeSC`). Findest du eine Funktion nicht: `search_code`
-mit `repo:tripitest-art/sc-digger <Name>`. Übernimm Namen, Typen und Log-Stil aus dem
-vorhandenen Code. Nie eine Signatur erfinden, die es schon anders gibt.
+## Schritt 4: Konflikte prüfen (Regel 8)
 
-Als Vorbild für Aufbau und Genauigkeit: `issue_read` mit `method: get`, `issue_number: 95`.
+1. `list_pull_requests` (`state: open`) und für jeden PR `pull_request_read` mit
+   `method: get_files`.
+2. `search_issues` mit `repo:tripitest-art/sc-digger is:issue is:open label:in-arbeit`.
 
-## Schritt 5: Issue-Text schreiben
+Ändert ein offener PR oder ein Issue in Arbeit dieselben Dateien, oder baut die Aufgabe darauf
+auf: Label `blockiert` zusätzlich setzen und im Kontext `Wartet auf: #X` eintragen. Mit
+`sc_digger/main.py`: Label `berührt-main.py`.
 
-Genau diese Überschriften, in dieser Reihenfolge (so erzeugt sie das Formular, und
-`acceptance-guard` liest danach):
+## Schritt 5: Entwurf im Chat
+
+Schreib den vollständigen Issue-Text nach der Vorlage unten **in den Chat** und frag Stephan:
+„Soll ich das Issue so anlegen?“ Erst nach seinem OK weiter mit Schritt 6.
+
+Regeln für die Akzeptanztests:
+- pytest, ohne Netzwerk (Fakes), keine `skip`/`xfail`.
+- Sie importieren nur die Schnittstellen aus „Schnittstellen“ und prüfen deren Verhalten.
+- Vor der Umsetzung müssen sie rot sein (die neue Funktion fehlt oder verhält sich anders).
+  Schreib dazu, **warum** sie heute rot sind.
+- Jeder Test prüft mit `assert` ein konkretes Ergebnis, nicht nur „kein Fehler“.
+
+## Schritt 6: Issue anlegen
+
+`issue_write` mit `method: create`, `title:` kurz und sachlich, `body:` der Text aus Schritt 5
+und `labels: ["worker-task", "entwurf", "phase-N"]`, dazu bei Bedarf `berührt-main.py` und
+`blockiert`.
+
+Danach Stephan melden: „Issue #N angelegt (Label `entwurf`). Bitte die Akzeptanztests
+prüfen lassen und dann `entwurf` durch `bereit` ersetzen.“
+
+## Vorlage für den Issue-Text
+
+Die Überschriften genau so, denn `acceptance-guard` sucht die Überschrift „Akzeptanztests“:
 
 ````
 ### Ziel
@@ -60,20 +84,20 @@ Genau diese Überschriften, in dieser Reihenfolge (so erzeugt sie das Formular, 
 
 ### Betroffene Dateien
 
-- `sc_digger/<datei>.py`: <Funktion, was sich ändert>
+- `sc_digger/<datei>.py` (<Funktion>)
 - `tests/acceptance/test_issue_<N>.py`: Akzeptanztests unten, zeichengenau
 - `tests/test_<thema>.py` (neu): eigene Tests
 
 ### Schnittstellen
 
 ```python
-def name(arg: Typ) -> Rückgabe:
-    """Verhalten, auch bei leer/None/Fehler. Wirft nicht / wirft X."""
+def <name>(<parameter mit Typen>) -> <Rückgabetyp>:
+    """<Verhalten, auch im Fehlerfall>"""
 ```
 
 ### Nicht Teil dieser Aufgabe
 
-- …
+- <…>
 
 ### Akzeptanztests
 
@@ -84,7 +108,7 @@ def name(arg: Typ) -> Rückgabe:
 ### Fertig, wenn
 
 - [ ] Akzeptanztests grün
-- [ ] Weitere Tests decken das neue Verhalten ab (Netzwerk nur über Fakes), u. a.: …
+- [ ] Weitere Tests decken das neue Verhalten ab (Netzwerk nur über Fakes), u. a.: <…>
 - [ ] `python -m pytest -q` komplett grün
 
 ### Berührt sc_digger/main.py
@@ -97,47 +121,9 @@ automatisch nach Review
 
 ### Kontext
 
-- …
-- Akzeptanztests ungeprüft (Planer ohne Shell).
+- <Anlass, Beobachtung>
+- Regel 8: <welche offenen PRs/Issues geprüft, Ergebnis>
+- Akzeptanztests noch nicht ausgeführt (Planer ohne Shell). Erwartung: rot, weil <…>.
 ````
 
-- `test_issue_<N>` so stehen lassen, die Nummer vergibt GitHub.
-- „Berührt sc_digger/main.py“: `nein` oder `ja`.
-- „Merge-Modus“: `automatisch nach Review` oder
-  `manuell durch Stephan (Betrieb, Dateien, Zugangsdaten, Downloads)`.
-
-**Akzeptanztests** (genau ein ```` ```python ````-Block):
-- Nur Funktionen aus „Schnittstellen“ aufrufen, keine Interna.
-- Kein Netzwerk, keine Uhrzeit, kein Zufall, kein `skip`/`xfail`.
-- Imports nur aus `sc_digger` und vorhandenen Test-Helfern (z. B. `from tests.test_modes import mk`).
-- Dateien nur in `tmp_path`; nie `/music` oder die echte `config.yaml` beschreiben.
-- Jeder Test hat ein `assert`, das echtes Verhalten prüft.
-- Ohne Umsetzung müssen sie rot sein. Prüfe das im Kopf: Importiert der Test etwas, das es
-  auf `main` noch nicht gibt, oder prüft er ein Verhalten, das es noch nicht gibt?
-
-## Schritt 6: Entwurf vorlegen
-
-Zeig Stephan im Chat Titel, vollständigen Text und Labels. Warte auf sein OK. Änderungswünsche
-einarbeiten und erneut vorlegen. Erst nach „OK“ weiter (oder wenn er vorher ausdrücklich
-„direkt anlegen“ gesagt hat).
-
-## Schritt 7: Issue anlegen
-
-`issue_write` mit `method: create`, `title`, `body` (der Text aus Schritt 5) und `labels`:
-- `worker-task`
-- `phase-N` (aus `ROADMAP.md` oder von Stephan; nicht raten)
-- `blockiert`, wenn Schritt 3 das ergab. **Nie `bereit`:** Du kannst die Akzeptanztests nicht
-  ausführen. Stephan oder ein Planer mit Shell prüft sie und setzt dann `bereit`.
-- `berührt-main.py`, wenn „Berührt sc_digger/main.py“ `ja` ist.
-
-## Schritt 8: Fertig melden
-
-`issue_read` mit `method: get` auf die neue Nummer: Stehen Text und Labels richtig da? Dann
-Stephan in einem Satz: „Issue #N angelegt, Akzeptanztests ungeprüft, `bereit` fehlt noch.“
-
-## Nachträglich ändern
-
-Nur solange das Issue **nicht** `in-arbeit` trägt: `issue_write` mit `method: update` und
-`body` (vollständiger Text). Labels nur mitschicken, wenn sie sich ändern sollen, dann als
-vollständige Liste. Trägt es `in-arbeit`: nichts ändern, sondern `add_issue_comment` und
-Stephan Bescheid geben.
+`<N>` im Dateinamen bleibt so stehen; die Nummer kennt erst GitHub.

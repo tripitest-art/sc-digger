@@ -30,7 +30,7 @@ Modul anlegt, trägt es in die Tabelle ein.
 | `sc_digger/redact.py` | Zugangsdaten aus Texten und Logs entfernen |
 | `config.yaml` | Einzige Konfiguration (Tags, Referenz-Accounts, Schwellwerte). Ist die Produktivkonfiguration. |
 | `entrypoint.sh` | Schreibt `cron.env` (Cron hat sonst weder PATH noch Secrets), startet cron und Bot |
-| `skills/*/SKILL.md` | Abläufe für Qwen in LibreChat (Planer, Review, Worker), per GitHub Skill Sync gespiegelt; Regeln bleiben in `AGENTS.md` |
+| `skills/*/SKILL.md` | Abläufe für lokale Modelle in LibreChat (Review, Worker, Planer), per GitHub Skill Sync gespiegelt; Regeln bleiben in `AGENTS.md` |
 | `.github/scripts/acceptance_guard.py` | CI-Check `acceptance-guard`: Akzeptanztests = Issue, keine neuen skips, CI/Test-Konfiguration geschützt |
 | `set-secret.sh` / `update.sh` | Zugangsdaten setzen / Update ausrollen (auf dem Server) |
 
@@ -85,12 +85,13 @@ Der Planer schreibt Issues, keinen Code: keine Branches, keine Commits, keine PR
    rot (meist `ImportError`), gegen eine Probe-Umsetzung grün, restliche Suite grün. Die
    Probe-Umsetzung wird weder committet noch gepusht. Ergebnis mit Commit-Hash von `main` in
    den Kontext („ohne Umsetzung rot, mit Umsetzung 12 grün“).
-   **Ohne Shell** geht das nicht: im Kontext „Akzeptanztests ungeprüft (Planer ohne Shell)“
-   vermerken und `bereit` **nicht** setzen. Stephan oder ein Planer mit Shell prüft und setzt
-   dann `bereit`.
+   **Ohne Shell** geht das nicht: Label `entwurf` statt `bereit`, im Kontext „Akzeptanztests
+   noch nicht ausgeführt (Planer ohne Shell)“. Stephan oder ein Agent mit Shell prüft sie und
+   ersetzt `entwurf` durch `bereit`.
 7. **Entwurf zeigen.** Titel, Text und Labels Stephan im Chat vorlegen; erst nach seinem OK
    anlegen (außer er hat ausdrücklich „direkt anlegen“ gesagt).
-8. **Anlegen** mit Labels `worker-task`, `phase-N`, `bereit` oder `blockiert`, bei Bedarf
+8. **Anlegen** mit Labels `worker-task`, `phase-N`, `bereit` (ohne Shell `entwurf`), bei Bedarf
+   `blockiert` und
    `berührt-main.py`. Danach Nummer und Link melden. Im Issue-Text `test_issue_<N>` stehen
    lassen; die Nummer kennt der Worker.
 
@@ -109,10 +110,10 @@ Für Stephan: Mit diesen Sätzen startet man einen Agenten.
 | Reviewer | „Prüfe PR #M nach AGENTS.md, Abschnitt Worker-Aufgaben → Reviewer.“ |
 | Reviewer (autonom) | „/goal Prüfe den nächsten PR nach AGENTS.md, Worker-Aufgaben → Nächsten Review selbst wählen.“ |
 | Worker (Nacharbeit) | „Arbeite das Review in PR #M ab (AGENTS.md, Worker → Schritt 8).“ |
-| Qwen Planer (LibreChat) | „Repo tripitest-art/sc-digger. Plane nach dem Skill sc-digger-planner: <Aufgabe in ein paar Sätzen>.“ |
 | Qwen Reviewer (LibreChat) | „Repo tripitest-art/sc-digger. Prüfe PR #M nach dem Skill sc-digger-review.“ |
 | Qwen Worker (LibreChat) | „Repo tripitest-art/sc-digger. Bearbeite Issue #N nach dem Skill sc-digger-worker.“ |
 | Qwen Worker (Nacharbeit) | „Repo tripitest-art/sc-digger. Arbeite das Review in PR #M ab, Skill sc-digger-worker, Teil B.“ |
+| Planer (LibreChat) | „Repo tripitest-art/sc-digger. Plane nach dem Skill sc-digger-planner: <Aufgabe in ein paar Sätzen>.“ Legt das Issue mit `entwurf` an; freigeben erst nach Prüfung der Akzeptanztests. |
 
 Die Qwen-Aufträge nennen Repo und Skill ausdrücklich: Mit der Kurzform suchte Qwen nach einem
 anderen Repo und hielt AGENTS.md für den Prüfgegenstand. Die Skills liegen unter `skills/`

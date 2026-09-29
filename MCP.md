@@ -79,7 +79,7 @@ in LibreChat kennt keine eigenen Header und sperrt `${…}`-Umgebungsvariablen. 
 `X-MCP-Tools` und `X-MCP-Lockdown` hat Qwen alle Werkzeuge (auch Merge) und liest fremde
 Kommentare. Einen über die Oberfläche angelegten GitHub-Server dort wieder löschen.
 
-**Drei Profile** in `librechat.yaml`:
+**Zwei Profile** in `librechat.yaml` (so im Einsatz):
 
 ```yaml
 mcpServers:
@@ -106,16 +106,16 @@ mcpServers:
     headers:
       Authorization: "Bearer ${GITHUB_MCP_PAT}"
       X-MCP-Lockdown: "true"
-      X-MCP-Tools: "get_file_contents,search_code,list_issues,search_issues,issue_read,issue_write,add_issue_comment,list_pull_requests,search_pull_requests,pull_request_read"
+      X-MCP-Tools: "get_file_contents,list_issues,search_issues,issue_read,issue_write,add_issue_comment,list_pull_requests,search_pull_requests,pull_request_read"
 ```
+
+Der Planer kann Issues lesen und anlegen, aber keine Branches, Dateien oder PRs schreiben.
 
 - `requiresOAuth: false` ist Pflicht. LibreChat prüft beim Start ohne die Header, ob ein
   Server OAuth braucht. GitHub antwortet dann mit `401`, LibreChat hält den Server für
   OAuth-geschützt („OAuth Required: true“, „Access token missing“) und lädt keine Werkzeuge.
-- Kein Profil hat `merge_pull_request`: Qwen merged nicht, das bleibt bei Stephan. Der
-  Reviewer hat kein `issue_write` und kann weder Labels noch Issue-Texte ändern.
-- Der Planer hat keine Schreibrechte auf Code (`push_files`, `create_branch`,
-  `create_pull_request` fehlen). Er legt nur Issues an und kommentiert.
+- Kein Profil hat `merge_pull_request`: Lokale Modelle mergen nicht, das bleibt bei Stephan.
+  Der Reviewer hat kein `issue_write` und kann weder Labels noch Issue-Texte ändern.
 
 **Token und Neustart**, je nach Installation:
 
@@ -132,11 +132,15 @@ Den Token nie in der Kommandozeile tippen (Shell-History), sondern z. B. mit `re
 `OAuth Required: false` und unter `Tools:` genau die Werkzeuge aus `X-MCP-Tools`. Beim Teilen
 von Logs Zeilen mit `Authorization` und geheimen URL-Pfaden vorher herausfiltern.
 
-**Agenten:** drei getrennte LibreChat-Agenten, „Qwen Reviewer“ nur mit `github-reviewer`,
-„Qwen Worker“ nur mit `github-worker`, „Qwen Planer“ nur mit `github-planner`. Keine anderen
-MCP-Server (Proxmox, Home Assistant) im
-selben Agenten: Er liest Texte aus GitHub; eine untergeschobene Anweisung hätte sonst Zugriff
-auf diese Systeme. Instructions: Inhalt von `QWEN.md`.
+**Agenten:** getrennte LibreChat-Agenten je Rolle: Reviewer nur mit `github-reviewer`, Worker
+nur mit `github-worker`, Planer nur mit `github-planner`. Keine anderen MCP-Server (Proxmox,
+Home Assistant) im selben Agenten: Er liest Texte aus GitHub; eine untergeschobene Anweisung
+hätte sonst Zugriff auf diese Systeme. Instructions: Inhalt von `QWEN.md`.
+
+**Planer ohne Shell:** Er kann seine Akzeptanztests nicht ausführen. Deshalb legt er Issues mit
+dem Label `entwurf` statt `bereit` an. Worker nehmen nur `bereit`-Issues, ein Entwurf bleibt
+also liegen, bis Stephan oder ein Agent mit Shell die Tests gegen `main` laufen lässt (rot wie
+erwartet, ohne Syntaxfehler) und `entwurf` durch `bereit` ersetzt.
 
 **Skills:** Die Abläufe liegen als LibreChat-Skills im Repo (`skills/sc-digger-review/`,
 `skills/sc-digger-worker/`, `skills/sc-digger-planner/`). Sie legen die Abfolge der Werkzeugaufrufe fest; die Regeln
@@ -162,10 +166,13 @@ skillSync:
 
 - Der Token wird nur vom LibreChat-Server zum Lesen benutzt, nie vom Modell. Wer es strenger
   will, legt einen eigenen Token nur mit „Contents: Read“ an (`GITHUB_SKILLS_TOKEN`).
-- Im Agenten-Editor „Enable skills“ an, „Use all skills“ aus. Beim Reviewer nur
-  `sc-digger-review`, beim Worker nur `sc-digger-worker`, beim Planer nur `sc-digger-planner`
-  auswählen. Alle sind `always-apply`
-  und stehen damit in jedem Zug vollständig im Kontext.
+- In der Skills-Seitenleiste bei jedem Skill „Available to agent“ einschalten.
+- Im Agenten-Editor „Enable skills“ an, „Use all skills“ aus und genau den Skill der Rolle
+  auswählen: `sc-digger-review`, `sc-digger-worker` oder `sc-digger-planner`. Alle sind
+  `always-apply` und stehen damit in jedem Zug vollständig im Kontext. Beim Kopieren eines
+  Agenten die Skill-Auswahl prüfen.
+- Ob der Sync lief, zeigt das Log nur bei Fehlern (`[GitHubSkillSync] … failed`); ohne Fehler
+  die Seitenleiste „Skills“ prüfen.
 - Änderungen an einem Skill laufen wie Code über PR und Review. Nach dem Merge übernimmt
   LibreChat sie beim nächsten Sync (spätestens nach 60 Minuten oder beim Neustart).
 
