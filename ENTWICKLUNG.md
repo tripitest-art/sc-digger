@@ -31,7 +31,7 @@ Modul anlegt, trägt es in die Tabelle ein.
 | `config.yaml` | Einzige Konfiguration (Tags, Referenz-Accounts, Schwellwerte). Ist die Produktivkonfiguration. |
 | `entrypoint.sh` | Schreibt `cron.env` (Cron hat sonst weder PATH noch Secrets), startet cron und Bot |
 | `skills/*/SKILL.md` | Abläufe für lokale Modelle in LibreChat (Review, Worker, Planer), per GitHub Skill Sync gespiegelt; Regeln bleiben in `AGENTS.md` |
-| `.github/scripts/acceptance_guard.py` | CI-Check `acceptance-guard`: Akzeptanztests = Issue, keine neuen skips, CI/Test-Konfiguration geschützt |
+| `.github/scripts/acceptance_guard.py` | CI-Check `acceptance-guard`: Akzeptanztests = Issue, keine neuen skips, CI/Test-Konfiguration geschützt, PR-Text ausgefüllt (`Closes #N`, `Worker:`) |
 | `set-secret.sh` / `update.sh` | Zugangsdaten setzen / Update ausrollen (auf dem Server) |
 
 ## Bekannte Stolperfallen (alle schon einmal passiert)
@@ -68,3 +68,18 @@ Für Stephan: Mit diesen Sätzen startet man einen Agenten.
 Die Qwen-Aufträge nennen Repo und Skill ausdrücklich: Mit der Kurzform suchte Qwen nach einem
 anderen Repo und hielt AGENTS.md für den Prüfgegenstand. Die Skills liegen unter `skills/`
 (siehe `MCP.md`, Abschnitt Skills). Jeden Auftrag in einem neuen Chat starten.
+
+## Agenten-Labels
+
+Der Planer gibt jedem Worker-Issue genau ein Label, welche Modellfamilie es umsetzt. Worker
+nehmen nur Issues mit ihrem Label (`AGENTS.md`, Nächste Aufgabe selbst wählen). Der Reviewer
+stammt aus einer anderen Familie.
+
+| Label | Worker | Passende Issues |
+|---|---|---|
+| `agent-qwen` | OpenCode + Qwen3-Coder in der Sandbox (lokal, langsam) | klein: eine Datei, eine Funktion, genaue Signatur |
+| `agent-gemini` | Gemini CLI | mittel: mehrere Dateien, bestehende Muster |
+| `agent-claude` | Claude Code | schwer: `main.py`, mehrere Module, Betrieb |
+
+Im Zweifel die größere Stufe. Ein Issue, das liegen bleibt, bekommt ein anderes Label; das ist
+keine Änderung am Vertrag und auch nach `bereit` erlaubt, solange es nicht `in-arbeit` ist.

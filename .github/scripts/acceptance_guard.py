@@ -11,9 +11,14 @@ machen, indem er sie abschwächt. Dieser Check ist der unabhängige Schiedsricht
 5. Der Text eines verlinkten Issues mit Akzeptanztest-Block wird nach der Übernahme
    (erstes Label `in-arbeit`) nicht mehr geändert. Sonst ändert, wer den Text ändert,
    still den Test, gegen den Regel 2 prüft.
+6. Der PR-Text ist ausgefüllt: kein „Closes #“ ohne Nummer; ein Worker-Branch
+   (`feature/issue-<N>-…`) verlinkt Issue N und nennt „Worker: <Familie> <Modell>“.
+   Sonst prüft Regel 2 nichts, der Check wäre trotzdem grün, und kein Reviewer kann die
+   Modellfamilie abgleichen.
 
 Verstöße gegen 1, 3, 4 und 5 kann Stephan bewusst mit dem Label `freigabe-geschützt` erlauben.
-Regel 2 kennt keine Ausnahme: Stimmt der Test nicht, wird das Issue korrigiert.
+Regel 2 und 6 kennen keine Ausnahme: Stimmt der Test nicht, wird das Issue korrigiert,
+fehlt etwas im PR-Text, wird der Text ergänzt.
 
 Läuft als pull_request_target mit dem Stand aus `main` und liest den PR nur über die
 GitHub-API. Nur Standardbibliothek, damit der Job ohne pip auskommt.
@@ -44,6 +49,10 @@ PROTECTED_PREFIXES = (".github/",)
 _LINK_RE = re.compile(r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s*:?\s+#(\d+)\b", re.I)
 _HEADING_RE = re.compile(r"^(#{1,6})\s*(.*?)\s*#*\s*$")
 _FENCE_RE = re.compile(r"^(`{3,}|~{3,})[^\n]*\n(.*?)\n?^\1[ \t]*$", re.M | re.S)
+_BARE_LINK_RE = re.compile(r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s*:?\s+#(?!\d)", re.I)
+_HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.S)
+_WORKER_BRANCH_RE = re.compile(r"^feature/issue-(\d+)(?:-|$)")
+_WORKER_LINE_RE = re.compile(r"^[\s>*_-]*Worker[*_]*\s*:[\s*_]*\w", re.I | re.M)
 _SKIP_RE = re.compile(
     r"pytest\.mark\.(?:skip|skipif|xfail)\b|pytest\.(?:skip|xfail|importorskip)\s*\("
 )
@@ -68,6 +77,22 @@ def linked_issues(pr_body: str | None) -> list[int]:
         if n not in seen:
             seen.append(n)
     return seen
+
+
+def pr_text_violations(head_ref: str | None, pr_body: str | None) -> list[str]:
+    """Regel 6: Verstöße im PR-Text. Kommentare der Vorlage (<!-- … -->) zählen nicht."""
+    text = _HTML_COMMENT_RE.sub("", pr_body or "")
+    found = []
+    if _BARE_LINK_RE.search(text):
+        found.append("PR-Text enthält „Closes #“ ohne Issue-Nummer (Vorlage nicht ausgefüllt).")
+    m = _WORKER_BRANCH_RE.match(head_ref or "")
+    if m:
+        number = int(m.group(1))
+        if number not in linked_issues(text):
+            found.append(f"Worker-Branch `{head_ref}`, aber der PR-Text enthält kein „Closes #{number}“.")
+        if not _WORKER_LINE_RE.search(text):
+            found.append("PR-Text nennt keinen Worker („Worker: <Familie> <Modell>“, AGENTS.md Worker 7).")
+    return found
 
 
 def extract_acceptance_block(issue_body: str | None) -> str | None:
@@ -353,6 +378,8 @@ def main() -> int:
     )
     if not issues:
         res.notes.append("PR verlinkt kein Issue („Closes #N“); Akzeptanz-Abgleich entfällt.")
+    # 6. Ohne Ausnahme per Label: Ein unausgefüllter PR-Text wird korrigiert, nicht erlaubt.
+    res.violations += pr_text_violations(pr["head"].get("ref"), pr.get("body"))
 
     text = report(res)
     print(text)
