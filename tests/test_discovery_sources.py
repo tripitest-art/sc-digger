@@ -175,6 +175,8 @@ def test_deliver_appends_footer_and_respects_max_message_length(monkeypatch, tmp
         sent_messages.extend(messages)
 
     monkeypatch.setattr(m, "send_digest", fake_send_digest)
+    monkeypatch.setattr(m, "send_telegram_document", lambda *a, **k: None)
+    monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
     cfg = _cfg(tmp_path)
 
     # 1. Normaler Footer wird an letzte Nachricht angehängt
