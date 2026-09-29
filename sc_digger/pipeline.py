@@ -128,7 +128,43 @@ def dedupe(tracks: list[Track]) -> list[Track]:
     return list(seen.values())
 
 
-# ---------------------------------------------------------------- Scoring
+# ---------------------------------------------------------------- Spam-Signale & Scoring
+def spam_signals(t: Track, phrases: list[str]) -> list[str]:
+    """Gründe (Klartext), warum t nach Promo-Netzwerk aussieht; [] wenn unauffällig. Feste Reihenfolge:
+    1. "Reposts > 3× Likes"                 wenn t.reposts >= 10 und t.reposts > 3 * t.likes
+    2. "viele Reposts, kaum Kommentare"     wenn t.reposts >= 50 und t.comments <= 1
+    3. "Promo-Text: <phrase in Kleinbuchstaben>" für die ERSTE Phrase aus phrases, die (Groß/klein egal)
+       in t.title, t.description oder einem Eintrag von t.tags vorkommt; höchstens eine solche Zeile.
+    None-Felder zählen als leer. Wirft nicht."""
+    reasons: list[str] = []
+    try:
+        reposts = t.reposts or 0
+        likes = t.likes or 0
+        comments = t.comments or 0
+
+        if reposts >= 10 and reposts > 3 * likes:
+            reasons.append("Reposts > 3× Likes")
+
+        if reposts >= 50 and comments <= 1:
+            reasons.append("viele Reposts, kaum Kommentare")
+
+        title = (t.title or "").lower()
+        desc = (t.description or "").lower()
+        tags = [str(tag).lower() for tag in (t.tags or []) if tag]
+
+        for p in phrases:
+            if not p:
+                continue
+            p_lower = p.strip().lower()
+            if p_lower in title or p_lower in desc or any(p_lower in tag for tag in tags):
+                reasons.append(f"Promo-Text: {p_lower}")
+                break
+    except Exception as e:
+        log.warning("Fehler in spam_signals: %s", e)
+
+    return reasons
+
+
 def _percentile_rank(value: float, sorted_vals: list[float]) -> float:
     """Anteil der Werte, die <= value sind (0-100)."""
     if not sorted_vals:
@@ -174,6 +210,10 @@ def score_tracks(tracks: list[Track], cfg: Config, apply_filter: bool = True) ->
         )
         if t.reference_hit:
             t.score += sc.get("reference_boost", 0)
+        reasons = spam_signals(t, sc.get("spam_phrases") or [])
+        if reasons:
+            t.score -= sc.get("spam_penalty", 0)
+            t.notes.append("Promo-Verdacht: " + "; ".join(reasons))
     scores = sorted(t.score for t in pool)
     for t in pool:
         t.percentile = _percentile_rank(t.score, scores)
