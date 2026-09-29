@@ -85,8 +85,8 @@ flowchart TD
 |---|---|---|---|
 | **Phase 1** | Basis & DJ-Ready Pipeline | ✅ **Abgeschlossen** | Native Downloads, FFT-Fake-Check, BPM/Key, Tagging, Inbox-Organize, Modi discover/playlist/similar |
 | **Phase 1.5** | Robustheit | ✅ **Abgeschlossen** | BPM-Oktav-Korrektur, Health-Alarm |
-| **Phase 2** | Track-DB & Library Audit | 🟡 **Fast fertig** | Zentrale DB ✅, `audit` ✅, Fingerprint-Duplikate (Issue #40 offen), LUFS-Tags ✅ |
-| **Phase 3** | Feedback & Smart Ingestion | 🟡 **Laufend** | 👍/👎 ✅, Cloud-Downloads ✅, DJ-Sets ✅, Rekordbox-Wochen-XML ✅, Curator-Mining 🔵, Kaufliste 🔵, Cloud-Quellen erweitern 🔵 |
+| **Phase 2** | Track-DB & Library Audit | 🟡 **Fast fertig** | Zentrale DB ✅, `audit` ✅, Fingerprint-Duplikate ✅, LUFS-Tags ✅, Container-Healthcheck ✅; offen: robuste Discovery (#61), Retry-Queue (#50), Inbox-Normalisierung (#74) |
+| **Phase 3** | Feedback & Smart Ingestion | 🟡 **Laufend** | 👍/👎 ✅, Cloud-Downloads ✅, DJ-Sets ✅, Rekordbox-Wochen-XML ✅, Curator-Mining 🟡 (Vorschläge ✅), Cloud-Quellen erweitern ✅, Kaufliste 🟡 (#47), Eingangsordner 🔵 (#70) |
 | **Phase 4** | Geschmacksmodell & KI-Copilot | 🔵 Geplant | Audio-Embeddings, persönlicher Taste-Score, Qwen-Copilot via Tool-Calling |
 | **Phase 5** | DJ-Performance & Set-Tools | 🟣 Vision | Rekordbox-Cues, Next-Track-Recommender, Web-Dashboard, Stem-Extraktion |
 
@@ -134,16 +134,19 @@ Copilot, Recommender und Dashboard.
 - [x] **Index-Aufbau:** füllt die Track-DB mit allen Messwerten (BPM, Key, Cutoff, Bitrate, LUFS, True Peak, LRA).
 - [x] **Inkrementell:** bereits erfasste, unveränderte Dateien (mtime + Größe) werden blitzschnell aus dem Cache übernommen.
 
-### 2.3 Duplikate per Audio-Fingerprint
+### 2.3 Duplikate per Audio-Fingerprint (✅ Implementiert)
 * Chromaprint (`fpcalc`) ergänzt den Fuzzy-Match auf Dateinamen: findet umbenannte Duplikate und
   unterscheidet echte unterschiedliche Edits.
 * Duplikat-Report statt automatischer Löschung.
+* Fingerprints der Sammlung in der Track-DB, Report doppelter Aufnahmen im Audit (#42).
+* Neue Downloads werden am Klang mit der Sammlung abgeglichen → `_rejected/duplicate/` (#44).
 
-### 2.4 Lautheit messen statt normalisieren
+### 2.4 Lautheit messen statt normalisieren (Messen ✅, Inbox-Normalisierung 🔵 #74)
 * LUFS (EBU R128) und True Peak messen und als Tag speichern (ReplayGain bzw. eigenes Feld).
 * Audio im Archiv bleibt unverändert; den Pegelausgleich macht Auto-Gain in Rekordbox/Traktor/Engine.
-* Optional und nur für die Inbox: verlustfreies Absenken zu lauter Tracks (MP3-Global-Gain,
-  Lossless-Scaling nur nach unten). Kein Anheben, da das bei −0,5 dBTP-Grenze einen Limiter erfordert.
+* Geplant, nur für die Inbox (Issue #74): WAV/AIFF/FLAC samplegenau auf −8,5 LUFS bringen,
+  Metadaten byte-identisch. Absenken immer; Anheben nur so weit, wie der Abstand zu −0,5 dBTP
+  es ohne Limiter erlaubt. MP3-Global-Gain folgt als eigenes Issue.
 
 ---
 
@@ -163,7 +166,12 @@ Copilot, Recommender und Dashboard.
 ### 3.4 Rekordbox-XML Wochen-Playlists (✅ Implementiert)
 * ~~Nach jedem `discover`-Lauf: `sc-digger.xml` mit Playlist pro Kalenderwoche (`KW xx/yyyy`).~~
 
-### 3.5 Curator-Mining (🔵 Geplant)
+### 3.5 Curator-Mining (🟡 Teilweise implementiert, #64)
+* ✅ Umgesetzt: `soundcloud.py` (`get_likers`, `get_reposters`), `db.py` (`get_liked_sc_ids`),
+  Bot-Befehl `/curator_mining` mit Vorschlagsliste, `config.yaml` → `curator_mining`.
+* Offen: Inline-Button „✅ Hinzufügen" (Bot ergänzt `config.yaml`) und wöchentlicher Cron.
+
+Ursprünglicher Plan:
 * `soundcloud.py`: `get_likers(track_id)` und `get_reposters(track_id)` über api-v2 (paginiert, konfigurierbar).
 * `db.py`: `get_liked_sc_ids()` – alle sc_ids mit `feedback = 'like'`.
 * Neuer Modus `curator-mining` in `main.py`: aggregiert Profile über alle 👍-Tracks, filtert bereits bekannte
@@ -173,14 +181,14 @@ Copilot, Recommender und Dashboard.
 * **Trigger:** wöchentlich (Cron) **und** auf Zuruf per Bot (`/curator-mining`).
 * `config.yaml` → `curator_mining.min_appearances` (default: 2), `curator_mining.max_likers_per_track` (default: 50).
 
-### 3.6 Kaufliste (🔵 Geplant)
+### 3.6 Kaufliste (🟡 In Arbeit, Issue #47 / PR #71)
 * Store-Tracks (Bandcamp, Beatport) werden beim Digest in eine neue `store_items`-Tabelle eingetragen
   (sc_id, purchase_url, purchase_title, title, artist, first_seen).
 * Wöchentliche Zusammenfassung: Telegram-Nachricht mit allen Store-Tracks, für die noch kein Feedback
   oder `feedback = 'like'` vorliegt.
 * **Trigger:** wöchentlich (Cron, Sonntag Abend) **und** Bot-Befehl `/kaufliste`.
 
-### 3.7 Cloud-Quellen erweitern (🔵 Geplant)
+### 3.7 Cloud-Quellen erweitern (✅ Implementiert, #66)
 * **WeTransfer:** ablaufende Links (7 Tage) werden erkannt und im Digest als „⏳ WeTransfer (läuft ab)"
   markiert; kein automatischer Download.
 * **Mega:** clientseitig verschlüsselt → im Digest als „🔒 Mega (manuell)" verlinken.
@@ -188,6 +196,10 @@ Copilot, Recommender und Dashboard.
 * `models.py`: ggf. neue `DownloadKind`-Varianten `MEGA`, `WETRANSFER` (oder gemeinsam `MANUAL_CLOUD`).
 * Bewusst **nicht** geplant: Umgehung clientseitiger Verschlüsselung, Wegwerf-Adressen, Gate-Bypass
   (Goldene Regel 6 bleibt unverändert).
+
+### 3.8 Eingangsordner für manuell geladene Tracks (🔵 Geplant, Issue #70)
+* `inbox/_eingang/`: selbst geladene Dateien (z. B. aus Gates) durchlaufen Fake-Check, Fingerprint-Abgleich,
+  BPM/Key, Tags und Sortierung wie native Downloads; Ergebnis im Digest.
 
 ---
 
@@ -216,7 +228,7 @@ Copilot, Recommender und Dashboard.
 
 ## 🟣 Phase 5: DJ-Performance & Set-Tools (Vision)
 
-- [ ] **Rekordbox-XML-Export:** wöchentliche Playlist „sc-digger KW xx“ aus der Inbox, ohne manuellen Import.
+- [x] **Rekordbox-XML-Export:** wöchentliche Playlist „sc-digger KW xx“ aus der Inbox, ohne manuellen Import (siehe 3.4).
 - [ ] **Auto-Cue-Points:** Intro-Ende, Drop, Outro-Start als `POSITION_MARK` im Rekordbox-XML / Traktor-NML.
 - [ ] **Next-Track-Recommender:** harmonisch (Camelot-Nachbarn), tempomäßig und per Embedding-Ähnlichkeit
   passende Anschlusstracks aus der Sammlung.
@@ -233,9 +245,11 @@ Copilot, Recommender und Dashboard.
 3. ~~Phase 2.3–2.4: Fingerprint-Duplikate (DB + Audit), LUFS-Tags~~ ✅
 4. ~~Phase 3.1: Feedback-Buttons (Digest + Bot)~~ ✅
 5. ~~Phase 3.2–3.4: Cloud-Downloads, DJ-Sets, Rekordbox-Wochen-XML~~ ✅
-6. **Phase 2.3 Teil 2:** Fingerprint-Abgleich beim Download → `_rejected/duplicate/` (Issue #40, in-arbeit)
-7. **Phase 3.5:** Curator-Mining (parallel zu #40)
-8. **Phase 3.7:** Cloud-Quellen erweitern: WeTransfer/Mega erkennen (parallel)
-9. **Phase 3.6:** Kaufliste (nach 3.5, nutzt 👍-Daten)
-10. Phase 4: Embeddings → Taste-Score → Copilot
+6. ~~Phase 2.3 Teil 2: Fingerprint-Abgleich beim Download → `_rejected/duplicate/`~~ ✅
+7. ~~Phase 3.5 Teil 1: Curator-Mining (Vorschläge per Bot)~~ ✅
+8. ~~Phase 3.7: Cloud-Quellen erweitern: WeTransfer/Mega erkennen, Bandcamp als Store~~ ✅
+9. **Phase 2 Robustheit:** Discovery bricht bei einzelnen Quellen nicht ab (#61, PR #73) → Retry-Queue (#50)
+10. **Phase 3.6:** Kaufliste (#47, PR #71) → Inbox-Normalisierung −8,5 LUFS (#74)
+11. **Phase 3.8:** Eingangsordner (#70, nach #61 und #50)
+12. Phase 4: Embeddings → Taste-Score → Copilot
 11. Phase 5: Rekordbox-Cues, Recommender, Dashboard, Stems
