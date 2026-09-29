@@ -20,7 +20,22 @@ GATE_HOSTS = {
     "theartistunion.com": DownloadKind.ARTIST_UNION,
 }
 STORE_HOSTS = ("bandcamp.com", "beatport.com", "traxsource.com", "juno.co.uk")
-CLOUD_HOSTS = ("drive.google.com", "dropbox.com", "mega.nz", "mega.io", "wetransfer.com")
+CLOUD_HOSTS = ("drive.google.com", "dropbox.com")
+WETRANSFER_HOSTS = ("wetransfer.com", "we.tl")
+MEGA_HOSTS = ("mega.nz", "mega.co.nz", "mega.io")
+
+DOWNLOAD_PRIORITY: tuple[DownloadKind, ...] = (
+    DownloadKind.NATIVE,
+    DownloadKind.CLOUD,
+    DownloadKind.STORE,
+    DownloadKind.WETRANSFER,
+    DownloadKind.MEGA,
+    DownloadKind.HYPEDDIT,
+    DownloadKind.DROPLOUD,
+    DownloadKind.TONEDEN,
+    DownloadKind.ARTIST_UNION,
+    DownloadKind.NONE,
+)
 
 
 def _host(url: str) -> str:
@@ -173,8 +188,33 @@ def score_tracks(tracks: list[Track], cfg: Config, apply_filter: bool = True) ->
 
 
 # ---------------------------------------------------------------- Download-Klassifizierung
-def classify_download(t: Track) -> Track:
-    """Bestimmt den Download-Weg. Gates werden nur erkannt, nie durchlaufen."""
+def classify_url(url: str) -> tuple[DownloadKind, str]:
+    """Klassifiziert eine einzelne URL anhand von Host und Pfad."""
+    h = _host(url)
+    for gate_host, kind in GATE_HOSTS.items():
+        if _host_matches(h, gate_host):
+            return kind, url
+    if any(_host_matches(h, w) for w in WETRANSFER_HOSTS):
+        return DownloadKind.WETRANSFER, url
+    if any(_host_matches(h, m) for m in MEGA_HOSTS):
+        return DownloadKind.MEGA, url
+    if any(_host_matches(h, s) for s in STORE_HOSTS):
+        return DownloadKind.STORE, url
+    if any(_host_matches(h, c) for c in CLOUD_HOSTS):
+        return DownloadKind.CLOUD, url
+    return DownloadKind.NONE, url
+
+
+def classify_download(t_or_url: Track | str) -> Track | tuple[DownloadKind, str]:
+    """Bestimmt den Download-Weg. Gates werden nur erkannt, nie durchlaufen.
+
+    Kann entweder mit einem Track-Objekt (Pipeline) oder einer URL als String
+    aufgerufen werden.
+    """
+    if isinstance(t_or_url, str):
+        return classify_url(t_or_url)
+
+    t = t_or_url
     if t.downloadable and t.has_downloads_left:
         t.download_kind = DownloadKind.NATIVE
         t.download_link = t.url
@@ -185,22 +225,30 @@ def classify_download(t: Track) -> Track:
         candidates.append(t.purchase_url)
     candidates += URL_RE.findall(t.description or "")
 
-    store_hit = cloud_hit = None
+    store_hit = cloud_hit = wetransfer_hit = mega_hit = None
     for u in candidates:
         h = _host(u)
         for gate_host, kind in GATE_HOSTS.items():
             if _host_matches(h, gate_host):
                 t.download_kind, t.download_link = kind, u
                 return t
-        if not store_hit and any(_host_matches(h, s) for s in STORE_HOSTS):
-            store_hit = u
         if not cloud_hit and any(_host_matches(h, c) for c in CLOUD_HOSTS):
             cloud_hit = u
+        if not store_hit and any(_host_matches(h, s) for s in STORE_HOSTS):
+            store_hit = u
+        if not wetransfer_hit and any(_host_matches(h, w) for w in WETRANSFER_HOSTS):
+            wetransfer_hit = u
+        if not mega_hit and any(_host_matches(h, m) for m in MEGA_HOSTS):
+            mega_hit = u
 
     if cloud_hit:
         t.download_kind, t.download_link = DownloadKind.CLOUD, cloud_hit
     elif store_hit:
         t.download_kind, t.download_link = DownloadKind.STORE, store_hit
+    elif wetransfer_hit:
+        t.download_kind, t.download_link = DownloadKind.WETRANSFER, wetransfer_hit
+    elif mega_hit:
+        t.download_kind, t.download_link = DownloadKind.MEGA, mega_hit
     else:
         t.download_kind, t.download_link = DownloadKind.NONE, None
     return t
