@@ -86,7 +86,11 @@ roter `github-advanced-security` ist kein Mangel.
 4. Umsetzen, nur in den Dateien aus dem Issue. Eigene Tests ergänzen.
    `python -m pytest -q`, bis alles grün ist.
 5. **Verboten:** Akzeptanztests ändern; neue `skip`/`xfail`/`importorskip`; Änderungen an
-   `.github/`, `conftest.py` oder pytest-Konfiguration; das Label `freigabe-geschützt` setzen.
+   `.github/`, `conftest.py` oder pytest-Konfiguration; das Label `freigabe-geschützt` setzen;
+   **Titel oder Text des Issues ändern** (das Issue ist der Vertrag, `acceptance-guard` und
+   Reviewer prüfen dagegen; Stand, Fragen und Begründungen als Kommentar:
+   `gh issue comment <N> --body-file <datei>`); andere Labels als `bereit` → `in-arbeit` setzen
+   oder entfernen.
    Hältst du einen Akzeptanztest für falsch: aufhören und im Issue begründen. Nie den Test
    passend machen.
 6. Nach drei erfolglosen Anläufen am selben Fehler: aufhören, Branch pushen, Draft-PR
