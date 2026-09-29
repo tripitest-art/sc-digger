@@ -180,7 +180,11 @@ def run_intake(cfg: Config, *, dry_run: bool = False) -> list[str]:
 
     intake_dir = Path(intake_dir_str)
     if not dry_run:
-        intake_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            intake_dir.mkdir(parents=True, exist_ok=True)
+        except OSError as e:
+            log.debug("Eingangsordner konnte nicht angelegt werden: %s", e)
+            return []
     elif not intake_dir.exists():
         return []
 

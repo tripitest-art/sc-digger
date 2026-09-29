@@ -235,6 +235,8 @@ class TestRunIntake:
         inbox = tmp_path / "inbox"
         cfg = Config(dict(CFG.raw))
         cfg.raw["download"] = {**CFG["download"], "inbox_dir": str(inbox)}
+        cfg.raw["state"] = {**CFG["state"], "db_path": str(tmp_path / "state.sqlite"),
+                            "track_db_path": str(tmp_path / "tracks.sqlite")}
         from sc_digger.models import Track
         t = Track(
             id=123, title="Test", url="", artist="Artist", artist_url="",
