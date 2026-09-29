@@ -1,6 +1,7 @@
 """Tests für .github/scripts/acceptance_guard.py (reine Logik, kein Netzwerk)."""
 
 import importlib.util
+import json
 import sys
 from pathlib import Path
 
@@ -166,3 +167,78 @@ def test_ordinary_code_and_test_changes_pass():
         _file("README.md"),
     ]
     assert g.evaluate(files, set(), {}, _reader({})).ok
+
+
+# ---------------- Issue-Text nach der Übernahme (issue_times, GraphQL gefakt) ----------------
+class _FakeResponse:
+    def __init__(self, payload: dict):
+        self._data = json.dumps(payload).encode("utf-8")
+
+    def read(self):
+        return self._data
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+def _fake_graphql(monkeypatch, payload: dict) -> list:
+    """Ersetzt urlopen im Guard; gibt die Liste der abgeschickten Requests zurück."""
+    sent = []
+
+    def fake_urlopen(req, timeout=None):
+        sent.append(req)
+        return _FakeResponse(payload)
+
+    monkeypatch.setattr(g.urllib.request, "urlopen", fake_urlopen)
+    return sent
+
+
+def _issue_payload(last_edited, events):
+    nodes = [{"createdAt": ts, "label": {"name": name}} for ts, name in events]
+    return {"data": {"repository": {"issue": {
+        "lastEditedAt": last_edited,
+        "timelineItems": {"nodes": nodes},
+    }}}}
+
+
+def test_issue_times_takes_earliest_claim_and_ignores_other_labels(monkeypatch):
+    sent = _fake_graphql(monkeypatch, _issue_payload("2026-09-03T12:00:00Z", [
+        ("2026-09-01T08:00:00Z", "bereit"),
+        ("2026-09-02T10:00:00Z", "in-arbeit"),  # erneut gesetzt, zählt nicht
+        ("2026-09-01T09:00:00Z", "in-arbeit"),  # frühestes, auch wenn nicht zuerst geliefert
+        ("2026-08-31T09:00:00Z", "worker-task"),
+    ]))
+    gh = g.GitHub("tripitest-art/sc-digger", "tok", graphql_url="https://ghe.example/graphql")
+
+    assert gh.issue_times(87) == ("2026-09-03T12:00:00Z", "2026-09-01T09:00:00Z")
+
+    req = sent[0]
+    assert req.full_url == "https://ghe.example/graphql"
+    assert req.get_method() == "POST"
+    body = json.loads(req.data)
+    assert body["variables"] == {"owner": "tripitest-art", "name": "sc-digger", "number": 87}
+
+
+def test_issue_times_without_claim_event_is_none(monkeypatch):
+    _fake_graphql(monkeypatch, _issue_payload(None, [("2026-09-01T08:00:00Z", "bereit")]))
+    gh = g.GitHub("tripitest-art/sc-digger", "tok")
+    assert gh.issue_times(87) == (None, None)
+
+
+def test_issue_times_graphql_error_is_not_swallowed(monkeypatch):
+    # GraphQL meldet Fehler mit HTTP 200; der Check muss dann rot werden, nicht still grün.
+    _fake_graphql(monkeypatch, {"data": None, "errors": [{"message": "kaputt"}]})
+    gh = g.GitHub("tripitest-art/sc-digger", "tok")
+    with pytest.raises(RuntimeError):
+        gh.issue_times(87)
+
+
+def test_never_claimed_issue_can_be_allowed_by_override():
+    res = g.evaluate([_file("tests/acceptance/test_issue_8.py", "added")], {g.OVERRIDE_LABEL},
+                     {8: FORM_BODY}, _reader({"tests/acceptance/test_issue_8.py": ACCEPT}),
+                     issue_meta={8: (None, None)})
+    assert res.ok
+    assert any("#8" in n and g.OVERRIDE_LABEL in n for n in res.notes)

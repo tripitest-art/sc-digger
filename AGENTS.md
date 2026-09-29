@@ -76,6 +76,8 @@ roter `github-advanced-security` ist kein Mangel.
   `blockiert` statt `bereit` und im Kontext eine Zeile `Wartet auf: #X, #Y` (PRs oder Issues).
   Daran gibt der Reviewer das Issue nach dem Merge frei (Reviewer → Nächsten Review selbst
   wählen, Schritt 5).
+- Ein Issue in Arbeit (`in-arbeit`) nicht mehr ändern. Muss ein Akzeptanztest korrigiert werden:
+  Issue korrigieren, der PR braucht dann `freigabe-geschützt` (Stephan). `acceptance-guard` prüft das.
 
 ### Worker
 

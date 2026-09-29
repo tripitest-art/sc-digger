@@ -8,8 +8,11 @@ machen, indem er sie abschwächt. Dieser Check ist der unabhängige Schiedsricht
    tests/acceptance/test_issue_N.py genau diesem Block entsprechen.
 3. Keine neuen skip/xfail-Markierungen in Tests.
 4. CI- und Test-Infrastruktur (.github/, conftest.py, pytest-Konfiguration) bleibt unberührt.
+5. Der Text eines verlinkten Issues mit Akzeptanztest-Block wird nach der Übernahme
+   (erstes Label `in-arbeit`) nicht mehr geändert. Sonst ändert, wer den Text ändert,
+   still den Test, gegen den Regel 2 prüft.
 
-Verstöße gegen 1, 3 und 4 kann Stephan bewusst mit dem Label `freigabe-geschützt` erlauben.
+Verstöße gegen 1, 3, 4 und 5 kann Stephan bewusst mit dem Label `freigabe-geschützt` erlauben.
 Regel 2 kennt keine Ausnahme: Stimmt der Test nicht, wird das Issue korrigiert.
 
 Läuft als pull_request_target mit dem Stand aus `main` und liest den PR nur über die
@@ -26,10 +29,12 @@ import sys
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import PurePosixPath
 from typing import Callable
 
 OVERRIDE_LABEL = "freigabe-geschützt"
+CLAIM_LABEL = "in-arbeit"
 ACCEPTANCE_DIR = "tests/acceptance/"
 
 # Dateien, über die sich Tests oder CI still aushebeln lassen.
@@ -117,18 +122,45 @@ def is_protected_infra(path: str) -> bool:
     return path.startswith(PROTECTED_PREFIXES) or PurePosixPath(path).name in PROTECTED_NAMES
 
 
+def _instant(ts: str) -> datetime:
+    # fromisoformat versteht „Z“ erst ab Python 3.11; der Guard soll nicht davon abhängen.
+    return datetime.fromisoformat(ts.replace("Z", "+00:00"))
+
+
+def issue_edit_violation(number: int, last_edited_at: str | None, claimed_at: str | None) -> str | None:
+    """Verstoßtext oder None.
+
+    last_edited_at: letzte Änderung des Issue-Texts (ISO 8601), None = nie geändert.
+    claimed_at: Zeitpunkt des ersten Label-Ereignisses `in-arbeit`, None = nie übernommen.
+    Ohne Übernahme lässt sich nicht belegen, dass der Text beim Arbeitsbeginn schon so
+    lautete; deshalb ist das ebenfalls ein Verstoß.
+    """
+    if claimed_at is None:
+        return (f"Issue #{number} wurde nie mit `{CLAIM_LABEL}` übernommen; "
+                "unveränderter Issue-Text nicht belegbar.")
+    if last_edited_at is None:
+        return None
+    # Als Zeitpunkte vergleichen: GitHub liefert „Z“, andere Quellen evtl. einen Offset.
+    if _instant(last_edited_at) <= _instant(claimed_at):
+        return None
+    return (f"Text von Issue #{number} wurde nach der Übernahme (`{CLAIM_LABEL}`, {claimed_at}) "
+            f"geändert ({last_edited_at}). Damit ändert sich der Akzeptanztest.")
+
+
 # ---------------- Bewertung ----------------
 def evaluate(
     files: list[dict],
     labels: set[str],
     issues: dict[int, str | None],
     read_head_file: Callable[[str], str | None],
+    issue_meta: dict[int, tuple[str | None, str | None]] | None = None,
 ) -> Result:
     """Reine Logik, damit sie ohne GitHub testbar ist.
 
     files: Einträge aus GET /pulls/{n}/files (filename, status, previous_filename, patch)
     issues: verlinkte Issues -> Body (nur echte Issues, keine PRs)
     read_head_file: liest eine Datei im Stand des PR-Heads, None wenn sie fehlt
+    issue_meta: Issue -> (last_edited_at, claimed_at); None = Regel 5 nicht prüfen
     """
     res = Result()
     override = OVERRIDE_LABEL in labels
@@ -167,6 +199,11 @@ def evaluate(
         if expected is None:
             res.notes.append(f"Issue #{number} hat keinen Akzeptanztest-Block.")
             continue
+        # 5. Issue-Text nach der Übernahme geändert?
+        if issue_meta is not None and number in issue_meta:
+            edit = issue_edit_violation(number, *issue_meta[number])
+            if edit:
+                protected(edit)
         actual = read_head_file(path)
         if actual is None:
             res.violations.append(f"`{path}` fehlt. Akzeptanztests aus Issue #{number} 1:1 übernehmen.")
@@ -190,10 +227,27 @@ def evaluate(
 
 
 # ---------------- GitHub-Anbindung ----------------
+_ISSUE_TIMES_QUERY = """
+query($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    issue(number: $number) {
+      lastEditedAt
+      timelineItems(itemTypes: [LABELED_EVENT], first: 100) {
+        nodes { ... on LabeledEvent { createdAt label { name } } }
+      }
+    }
+  }
+}
+"""
+
+
 class GitHub:
-    def __init__(self, repo: str, token: str, api: str = "https://api.github.com"):
+    def __init__(self, repo: str, token: str, api: str = "https://api.github.com",
+                 graphql_url: str = "https://api.github.com/graphql"):
         self.base = f"{api}/repos/{repo}"
+        self.repo = repo
         self.token = token
+        self.graphql_url = graphql_url
 
     def _get(self, path: str, raw: bool = False):
         req = urllib.request.Request(
@@ -232,6 +286,37 @@ class GitHub:
     def file_at(self, path: str, ref: str) -> str | None:
         return self._get(f"/contents/{path}?ref={ref}", raw=True)
 
+    def _graphql(self, query: str, variables: dict) -> dict:
+        req = urllib.request.Request(
+            self.graphql_url,
+            data=json.dumps({"query": query, "variables": variables}).encode("utf-8"),
+            headers={"Authorization": f"Bearer {self.token}", "Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=30) as r:
+            data = json.loads(r.read())
+        # GraphQL meldet Fehler mit HTTP 200; ohne diese Prüfung liefe der Check still grün.
+        if data.get("errors"):
+            raise RuntimeError(f"GraphQL-Fehler: {data['errors']}")
+        return data["data"]
+
+    def issue_times(self, number: int) -> tuple[str | None, str | None]:
+        """(last_edited_at, claimed_at) des Issues.
+
+        Fehler werden bewusst nicht abgefangen: der Check soll dann rot werden, nicht still grün.
+        """
+        owner, name = self.repo.split("/", 1)
+        issue = self._graphql(_ISSUE_TIMES_QUERY,
+                              {"owner": owner, "name": name, "number": number})["repository"]["issue"]
+        # Das erste Ereignis zählt: Ein späteres Entfernen und Neusetzen des Labels darf eine
+        # Änderung dazwischen nicht nachträglich legitimieren.
+        claims = [
+            n["createdAt"] for n in issue["timelineItems"]["nodes"]
+            if n and (n.get("label") or {}).get("name") == CLAIM_LABEL
+        ]
+        claimed = min(claims, key=_instant) if claims else None
+        return issue.get("lastEditedAt"), claimed
+
 
 def report(res: Result) -> str:
     lines = ["## acceptance-guard", ""]
@@ -248,19 +333,23 @@ def main() -> int:
     event = json.loads(open(os.environ["GITHUB_EVENT_PATH"], encoding="utf-8").read())
     pr = event["pull_request"]
     gh = GitHub(os.environ["GITHUB_REPOSITORY"], os.environ["GITHUB_TOKEN"],
-                os.environ.get("GITHUB_API_URL", "https://api.github.com"))
+                os.environ.get("GITHUB_API_URL", "https://api.github.com"),
+                os.environ.get("GITHUB_GRAPHQL_URL", "https://api.github.com/graphql"))
 
     issues: dict[int, str | None] = {}
+    issue_meta: dict[int, tuple[str | None, str | None]] = {}
     for n in linked_issues(pr.get("body")):
         real, body = gh.issue_body(n)
         if real:
             issues[n] = body
+            issue_meta[n] = gh.issue_times(n)
 
     res = evaluate(
         files=gh.pr_files(pr["number"]),
         labels={lab["name"] for lab in pr.get("labels", [])},
         issues=issues,
         read_head_file=lambda p: gh.file_at(p, pr["head"]["sha"]),
+        issue_meta=issue_meta,
     )
     if not issues:
         res.notes.append("PR verlinkt kein Issue („Closes #N“); Akzeptanz-Abgleich entfällt.")
