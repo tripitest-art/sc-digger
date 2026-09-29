@@ -16,6 +16,8 @@ statt in `AGENTS.md`, weil Antigravity Regeldateien bei 12.000 Zeichen abschneid
   - `docker compose ps` zeigt den Status in der Health-Spalte (`healthy` oder `unhealthy`).
   - Detaillierte Meldung der Prüfungen: `docker compose exec sc-digger python -m sc_digger.healthcheck`
   - Bei Problemen oder Entwarnung wird automatisch eine Textmeldung an Telegram gesendet (falls Tokens gesetzt sind).
+- **Worker-Sandbox** (eigener Container für Coding-Agenten, nicht der sc-digger-Server):
+  Einrichtung, SSH und Fehlersuche in `sandbox/README.md`.
 - **Testlauf ohne Nebenwirkungen:** `docker compose exec sc-digger python -m sc_digger.main --dry-run --no-telegram -v`
 
 ## Zugangsdaten setzen
