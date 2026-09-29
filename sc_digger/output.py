@@ -290,18 +290,43 @@ def feedback_keyboard(items: list[tuple[int, int]]) -> dict | None:
 
 def build_digest_messages(
     tracks: list[Track],
-    max_items: int | None,
+    max_items: int | None = None,
     header: str | None = None,
     *,
     numbered: bool = False,
+    cfg: Config | None = None,
 ) -> list[DigestMessage]:
     """Heutige Logik von build_digest (Gruppen, Umbruch bei 3900 Zeichen, Fortsetzungs-Kopf,
     „… und N weitere“), zusätzlich:
     numbered=True: jeder Track-Eintrag beginnt mit "<b>{n}.</b> "; n zählt ab 1 in Anzeige-
     reihenfolge über alle Nachrichten; jede Nachricht enthält höchstens 10 Tracks (sonst neue
     Nachricht mit Fortsetzungs-Kopf); items enthält (n, t.id) der Tracks dieser Nachricht.
-    numbered=False: Text exakt wie bisher, items leer."""
+    numbered=False: Text exakt wie bisher, items leer.
+    Store-Tracks, die in den Nachrichten erscheinen, per upsert_store_item in store_items
+    eintragen (Track-DB aus cfg["state"]["track_db_path"]).
+    cfg None: Config.load("config.yaml"). Scheitert das Laden oder das Eintragen: log.warning,
+    Digest wird trotzdem gebaut."""
     shown = tracks if max_items is None else tracks[:max_items]
+
+    store_tracks = [t for t in shown if t.download_kind == DownloadKind.STORE and t.purchase_url]
+    if store_tracks:
+        cfg_to_use = cfg
+        if cfg_to_use is None:
+            from .models import Config
+            try:
+                cfg_to_use = Config.load("config.yaml")
+            except Exception as e:
+                log.warning("Konnte config.yaml für Store-Items nicht laden: %s", e)
+                cfg_to_use = None
+
+        if cfg_to_use is not None and "state" in cfg_to_use.raw and "track_db_path" in cfg_to_use["state"]:
+            try:
+                from .db import TrackDB
+                with TrackDB(cfg_to_use["state"]["track_db_path"]) as db:
+                    for t in store_tracks:
+                        db.upsert_store_item(t.id, t.title, t.artist, t.purchase_url, t.purchase_title)
+            except Exception as e:
+                log.warning("Konnte Store-Tracks nicht in DB eintragen: %s", e)
     groups: dict[str, list[Track]] = defaultdict(list)
     for t in shown:
         groups[_BUCKET_LABEL[t.download_kind]].append(t)
@@ -464,3 +489,69 @@ def send_telegram_document(cfg: Config, filename: str, content: str, chat_id: st
         return
     telegram_call(token, "sendDocument", timeout=30, data={"chat_id": chat},
                   files={"document": (filename, content.encode("utf-8"), "text/plain")})
+
+
+def send_kaufliste(cfg: Config, *, dry_run: bool = False, chat_id: str | None = None) -> None:
+    """Liest store_items aus der DB, formatiert als Telegram-Nachricht.
+    Format pro Eintrag: "🛒 <Artist> – <Title>\n   → <purchase_title or 'Kaufen'>: <purchase_url>"
+    Maximal cfg["digest"].get("kaufliste_max_items", 30) Einträge, neueste zuerst (last_seen DESC).
+    Sendet via output.telegram_call(token, "sendMessage", json={...}), auch ohne Token
+    (telegram_call meldet das als TelegramError, ohne Token im Text).
+    Bei 0 Einträgen: kurze Meldung "Kaufliste ist leer."
+    dry_run=True: nur auf stdout ausgeben, kein telegram_call."""
+    from .db import TrackDB
+    import html
+
+    db_path = cfg["state"]["track_db_path"]
+    with TrackDB(db_path) as db:
+        items = db.get_store_items()
+
+    limit = 30
+    if "digest" in cfg.raw and isinstance(cfg.raw["digest"], dict):
+        limit = cfg.raw["digest"].get("kaufliste_max_items", 30)
+    items = items[:limit]
+
+    if not items:
+        chunks = ["Kaufliste ist leer."]
+    else:
+        entries = []
+        for it in items:
+            artist = html.escape(it.get("artist") or "")
+            title = html.escape(it.get("title") or "")
+            p_title = html.escape(it.get("purchase_title") or "Kaufen")
+            url = html.escape(it.get("purchase_url") or "")
+            entries.append(f"🛒 {artist} – {title}\n   → {p_title}: {url}")
+
+        chunks = []
+        current_chunk: list[str] = []
+        current_len = 0
+        MAX_MSG_LEN = 4000
+
+        for entry in entries:
+            added_len = len(entry) + (2 if current_chunk else 0)
+            if current_chunk and (current_len + added_len > MAX_MSG_LEN):
+                chunks.append("\n\n".join(current_chunk))
+                current_chunk = [entry]
+                current_len = len(entry)
+            else:
+                current_chunk.append(entry)
+                current_len += added_len
+        if current_chunk:
+            chunks.append("\n\n".join(current_chunk))
+
+    if dry_run:
+        for chunk in chunks:
+            print(re.sub(r"<[^>]+>", "", chunk))
+        return
+
+    token = cfg.telegram_token or ""
+    chat = chat_id or cfg.telegram_chat_id or ""
+
+    for chunk in chunks:
+        payload: dict[str, Any] = {
+            "chat_id": chat,
+            "text": chunk,
+            "parse_mode": "HTML",
+            "disable_web_page_preview": True,
+        }
+        telegram_call(token, "sendMessage", json=payload)

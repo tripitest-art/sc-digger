@@ -22,6 +22,7 @@ from .db import TrackDB
 from .main import run_link
 from .models import Config
 from .output import TelegramError, parse_feedback_callback, telegram_call
+from . import output
 from .redact import install_redacting_logging
 from .soundcloud import SoundCloudClient, SoundCloudError
 
@@ -36,6 +37,7 @@ HELP_TEXT = (
     "• einzelner Track-Link -> ich zeige dir die 'Station' dazu "
     "(das, was der SoundCloud-Algorithmus als Radio vorschlägt)\n\n"
     "Befehle:\n"
+    "• /kaufliste -> zeigt die aktuelle Kaufliste offener Store-Tracks\n"
     "• /curator_mining -> Profile aus 👍-Tracks vorschlagen\n\n"
     "Kein täglicher Filter, du bekommst die volle Liste mit Stats und Download-Einordnung."
 )
@@ -45,6 +47,20 @@ def _send_text(cfg: Config, chat_id: str, text: str) -> None:
     telegram_call(cfg.telegram_token, "sendMessage",
                   json={"chat_id": chat_id, "text": text, "parse_mode": "HTML",
                         "disable_web_page_preview": True})
+
+
+def handle_kaufliste_command(cfg: Config, chat_id: str | None = None) -> None:
+    """Bearbeitet den /kaufliste-Befehl und sendet die aktuelle Kaufliste."""
+    target_chat = chat_id or cfg.telegram_chat_id or ""
+    try:
+        if chat_id is not None:
+            output.send_kaufliste(cfg, chat_id=chat_id)
+        else:
+            output.send_kaufliste(cfg)
+    except Exception:
+        log.exception("Fehler beim Senden der Kaufliste")
+        if target_chat:
+            _send_text(cfg, target_chat, "Kaufliste fehlgeschlagen, siehe Container-Log.")
 
 
 def run_curator_mining(sc, cfg: Config) -> str:
@@ -125,6 +141,10 @@ def handle_message(cfg: Config, sc: SoundCloudClient, chat_id: str, text: str) -
         return
 
     first_word = text.split()[0].split("@")[0].lower() if text else ""
+    if first_word == "/kaufliste":
+        handle_kaufliste_command(cfg, chat_id=chat_id)
+        return
+
     if first_word in ("/curator-mining", "/curator_mining"):
         try:
             msg = run_curator_mining(sc, cfg)
