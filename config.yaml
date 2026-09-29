@@ -16,6 +16,16 @@ search:
   max_age_days: 14
   # Maximale Track-Dauer in Minuten für discover (längere sind DJ-Sets und werden aussortiert)
   max_duration_min: 12
+  # Titelmuster (Regex, Groß/klein egal) für kurze Mixe/Podcasts, die discover zusätzlich aussortiert
+  set_title_patterns:
+    - '\bselects\s*#?\d+'
+    - '\bblend\b'
+    - '\bpodcast\b'
+    - '\bmix\s*#?\d{2,}\b'
+    - '\bmixtape\b'
+    - '\b(dj|live)[ -]?set\b'
+    - '\bradio\s*show\b'
+
   # Pro Tag maximal so viele Treffer abrufen
   limit_per_tag: 100
   # Zusätzliche Quellen: Uploads von Künstlern/Labels, denen du folgst
