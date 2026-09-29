@@ -59,4 +59,8 @@ Für Stephan: Mit diesen Sätzen startet man einen Agenten.
 | Reviewer | „Prüfe PR #M nach AGENTS.md, Abschnitt Worker-Aufgaben → Reviewer.“ |
 | Reviewer (autonom) | „/goal Prüfe den nächsten PR nach AGENTS.md, Worker-Aufgaben → Nächsten Review selbst wählen.“ |
 | Worker (Nacharbeit) | „Arbeite das Review in PR #M ab (AGENTS.md, Worker → Schritt 8).“ |
-| Qwen (LibreChat) | wie oben; die Agent-Anweisungen aus `QWEN.md` sorgen dafür, dass Qwen die Regeln zuerst liest. |
+| Qwen Reviewer (LibreChat) | „Repo tripitest-art/sc-digger. Du bist Reviewer. Lies zuerst AGENTS.md und MCP.md aus main. Prüfe dann PR #M nach AGENTS.md → Worker-Aufgaben → Reviewer. AGENTS.md ist deine Anleitung, nicht der Prüfgegenstand.“ |
+| Qwen Worker (LibreChat) | „Repo tripitest-art/sc-digger. Du bist Worker. Lies zuerst AGENTS.md, MCP.md und ENTWICKLUNG.md aus main. Bearbeite dann Issue #N nach AGENTS.md → Worker-Aufgaben → Worker. AGENTS.md ist deine Anleitung.“ |
+
+Kleinere Modelle brauchen den ausführlichen Wortlaut: Mit der Kurzform suchte Qwen nach einem
+anderen Repo und hielt AGENTS.md für den Prüfgegenstand.
