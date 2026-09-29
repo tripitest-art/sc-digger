@@ -57,8 +57,8 @@ search:
     - https://soundcloud.com/outworld
     - https://soundcloud.com/technogermany
     - https://soundcloud.com/gotec76
-    # R-Label Group bewusst weggelassen (Handle nicht auffindbar, Kobosil deckt
-    # als eigener Referenz-Account einen Teil davon ab)
+  # R-Label Group bewusst weggelassen (Handle nicht auffindbar, Kobosil deckt
+  # als eigener Referenz-Account einen Teil davon ab)
   reference_limit: 50
 
 scoring:
@@ -132,6 +132,9 @@ health:
   # Alarm per Telegram, wenn so viele discover-Läufe in Folge scheitern oder 0 Rohtreffer
   # (vor Filtern) liefern. Bei täglichem Cron: 2 = Alarm am zweiten stillen Tag.
   alert_after_bad_runs: 2
+  # Alarm per Telegram, wenn der letzte Lauf älter als max_hours_since_run ist.
+  # Standard: 36 Stunden (1,5 Tage), damit ein fehlender Cron-Lauf erkannt wird.
+  max_hours_since_run: 36
 
 telegram:
   # Werte kommen aus Umgebungsvariablen TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID
@@ -146,4 +149,3 @@ rekordbox:
   # Pfad-Mapping: Server-Pfad -> Laptop-Pfad (aus Sicht von Rekordbox)
   path_map:
     /music/inbox: "Z:/Highres/_sc-digger-inbox"
-
