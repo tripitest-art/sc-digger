@@ -31,6 +31,14 @@ class SoundCloudError(RuntimeError):
     pass
 
 
+class ClientIdError(SoundCloudError):
+    """client_id nicht aus dem Frontend lesbar. Betrifft jede api-v2-Anfrage."""
+
+
+class RateLimitError(SoundCloudError):
+    """SoundCloud antwortet auch nach allen Wiederholungen mit 429."""
+
+
 class SoundCloudClient:
     def __init__(self, request_delay: float = 0.6):
         self.s = requests.Session()
@@ -56,7 +64,7 @@ class SoundCloudClient:
             m = re.search(r'client_id\s*[:=]\s*"([a-zA-Z0-9]{32})"', js)
             if m:
                 return m.group(1)
-        raise SoundCloudError("client_id konnte nicht ermittelt werden")
+        raise ClientIdError("client_id konnte nicht ermittelt werden")
 
     def _ensure_client_id(self) -> None:
         if not self.client_id:
@@ -69,8 +77,10 @@ class SoundCloudClient:
         url = path_or_url if path_or_url.startswith("http") else f"{API}{path_or_url}"
         params = dict(params or {})
         params["client_id"] = self.client_id
+        last_status = None
         for attempt in range(3):
             r = self.s.get(url, params=params, timeout=20)
+            last_status = r.status_code
             if r.status_code == 401 or r.status_code == 403:
                 # client_id abgelaufen -> neu holen
                 self.client_id = None
@@ -83,6 +93,8 @@ class SoundCloudClient:
             r.raise_for_status()
             time.sleep(self.delay)
             return r.json()
+        if last_status == 429:
+            raise RateLimitError(f"Request fehlgeschlagen: {url}")
         raise SoundCloudError(f"Request fehlgeschlagen: {url}")
 
     def _paginate(self, path: str, params: dict, limit: int) -> Iterator[dict]:

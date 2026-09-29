@@ -11,9 +11,11 @@ Alle Modi: --dry-run (nichts laden/senden), -v, --config, --no-telegram
 from __future__ import annotations
 
 import argparse
+import html
 import logging
 import re
 import sys
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -25,13 +27,13 @@ from .collection import Collection
 from .health import Health
 from .models import Config, DownloadKind, Track
 from .organize import organize, write_tags
-from .redact import install_redacting_logging
-from .output import (State, build_digest, build_digest_messages, build_export_txt, download_native, finalize_quality,
+from .redact import install_redacting_logging, redact
+from .output import (DigestMessage, State, build_digest, build_digest_messages, build_export_txt, download_native, finalize_quality,
                      send_digest, send_telegram, send_telegram_document)
 from .pipeline import (classify_download, dedupe, estimate_bpm, filter_bpm, filter_sets,
                        genre_relevant, mark_sets, score_tracks)
 from .rekordbox import write_rekordbox_xml
-from .soundcloud import SoundCloudClient, SoundCloudError
+from .soundcloud import ClientIdError, RateLimitError, SoundCloudClient, SoundCloudError
 
 log = logging.getLogger("sc_digger")
 
@@ -125,13 +127,25 @@ def process(tracks: list[Track], cfg: Config, *, dry_run: bool,
 
 def deliver(header: str, fresh: list[Track], dupes: list[Track], cfg: Config,
             *, dry_run: bool, no_telegram: bool, show_all: bool = False,
-            export_name: str = "sc-digger", chat_id: str | None = None) -> None:
+            export_name: str = "sc-digger", chat_id: str | None = None,
+            footer: str | None = None) -> None:
     """Digest als Chat-Nachrichten + Export-Datei (Anhang) für das Download-Tool."""
     max_items = None if show_all else cfg["telegram"]["max_items_per_digest"]
     buttons = bool(cfg["telegram"].get("feedback_buttons", True))
     messages = build_digest_messages(fresh, max_items, header=header, numbered=buttons)
     if dupes and messages:
         messages[-1].text += f"\n<i>{len(dupes)} bereits in deiner Sammlung (übersprungen)</i>"
+    if footer:
+        esc_footer = html.escape(footer)
+        if messages and len(messages[-1].text) + len(esc_footer) + 2 <= 3900:
+            sep = "\n" if messages[-1].text.endswith("\n") else "\n\n"
+            messages[-1].text = f"{messages[-1].text}{sep}{esc_footer}"
+        else:
+            while len(esc_footer) > 3900:
+                messages.append(DigestMessage(text=esc_footer[:3900], items=[]))
+                esc_footer = esc_footer[3900:]
+            if esc_footer:
+                messages.append(DigestMessage(text=esc_footer, items=[]))
     if dry_run or no_telegram:
         for m in messages:
             print(re.sub(r"<[^>]+>", "", m.text))
@@ -177,34 +191,119 @@ def _notify_health(cfg: Config, message: str | None, no_telegram: bool) -> None:
         log.error("Health-Alarm konnte nicht gesendet werden: %s", e)
 
 
+@dataclass
+class Discovery:
+    tracks: list[Track]                 # alle Treffer aller erfolgreichen Quellen (noch nicht dedupliziert)
+    reference_ids: set[int]             # IDs aus Referenz-Accounts (nach genre_relevant, wie bisher)
+    total_sources: int                  # Anzahl Tags + followed_users + reference_accounts
+    succeeded: int                      # Quellen ohne Exception
+    failed: list[str]                   # je gescheiterter Quelle: "<Quelle>: <Fehlertyp>: <Meldung>",
+                                        #   durch redact(), höchstens 200 Zeichen; <Quelle> enthält den Tag
+                                        #   bzw. die Profil-URL
+    aborted: str | None                 # gesetzt, wenn nach ClientIdError/RateLimitError abgebrochen wurde
+    first_error: Exception | None       # erste aufgetretene Exception
+
+
+def collect_sources(sc: SoundCloudClient, s: dict) -> Discovery:
+    """Fragt die Quellen in dieser Reihenfolge ab: alle Tags, dann followed_users, dann
+    reference_accounts. Jede Quelle einzeln in try/except Exception; ein Fehler wird in `failed`
+    eingetragen und die nächste Quelle abgefragt. Nach ClientIdError oder RateLimitError wird
+    KEINE weitere Quelle mehr abgefragt (aborted gesetzt). Wirft nie."""
+    tags = list(s.get("tags", []))
+    followed = list(s.get("followed_users", []))
+    reference = list(s.get("reference_accounts", []))
+    total_sources = len(tags) + len(followed) + len(reference)
+
+    tracks: list[Track] = []
+    reference_ids: set[int] = set()
+    succeeded = 0
+    failed: list[str] = []
+    aborted: str | None = None
+    first_error: Exception | None = None
+
+    # Tags
+    for tag in tags:
+        try:
+            tracks.extend(sc.search_tag(tag, s["max_age_days"], s["limit_per_tag"]))
+            succeeded += 1
+        except Exception as e:
+            if first_error is None:
+                first_error = e
+            failed.append(redact(f"{tag}: {type(e).__name__}: {e}")[:200])
+            log.warning("Tag %s fehlgeschlagen: %s", tag, e)
+            if isinstance(e, (ClientIdError, RateLimitError)):
+                aborted = type(e).__name__
+                break
+
+    # Followed users
+    if not aborted:
+        for profile in followed:
+            try:
+                tracks.extend(sc.user_uploads(profile, s["max_age_days"]))
+                succeeded += 1
+            except Exception as e:
+                if first_error is None:
+                    first_error = e
+                failed.append(redact(f"{profile}: {type(e).__name__}: {e}")[:200])
+                log.warning("Profil %s fehlgeschlagen: %s", profile, e)
+                if isinstance(e, (ClientIdError, RateLimitError)):
+                    aborted = type(e).__name__
+                    break
+
+    # Reference accounts
+    if not aborted:
+        for profile in reference:
+            try:
+                ref = sc.reference_activity(profile, s["max_age_days"], s.get("reference_limit", 50))
+                ref = [t for t in ref if genre_relevant(t, tags)]
+                reference_ids.update(t.id for t in ref)
+                tracks.extend(ref)
+                succeeded += 1
+            except Exception as e:
+                if first_error is None:
+                    first_error = e
+                failed.append(redact(f"{profile}: {type(e).__name__}: {e}")[:200])
+                log.warning("Referenz-Account %s fehlgeschlagen: %s", profile, e)
+                if isinstance(e, (ClientIdError, RateLimitError)):
+                    aborted = type(e).__name__
+                    break
+
+    return Discovery(
+        tracks=tracks,
+        reference_ids=reference_ids,
+        total_sources=total_sources,
+        succeeded=succeeded,
+        failed=failed,
+        aborted=aborted,
+        first_error=first_error,
+    )
+
+
+def source_footer(d: Discovery) -> str | None:
+    """None, wenn nichts fehlschlug. Sonst Klartext (kein HTML):
+    Zeile 1: "⚠️ <len(failed)> von <total_sources> Quellen fehlgeschlagen: <failed[0]>"
+    Zeile 2 (nur wenn aborted): "Restliche Quellen übersprungen (<aborted>)"."""
+    if not d.failed:
+        return None
+    lines = [f"⚠️ {len(d.failed)} von {d.total_sources} Quellen fehlgeschlagen: {d.failed[0]}"]
+    if d.aborted:
+        lines.append(f"Restliche Quellen übersprungen ({d.aborted})")
+    return "\n".join(lines)
+
+
 def _discover(cfg: Config, dry_run: bool, no_telegram: bool) -> int:
     """Führt die Discovery aus und gibt die Zahl der Rohtreffer (vor Filtern) zurück."""
     sc, s = SoundCloudClient(), cfg["search"]
-    tracks: list[Track] = []
-    for tag in s["tags"]:
-        tracks += sc.search_tag(tag, s["max_age_days"], s["limit_per_tag"])
-    for profile in s.get("followed_users", []):
-        try:
-            tracks += sc.user_uploads(profile, s["max_age_days"])
-        except Exception as e:
-            log.warning("Profil %s übersprungen: %s", profile, e)
-    # Reposts/Likes von Referenz-Accounts: bestes Signal, bekommt Score-Bonus
-    reference_ids: set[int] = set()
-    for profile in s.get("reference_accounts", []):
-        try:
-            ref = sc.reference_activity(profile, s["max_age_days"], s.get("reference_limit", 50))
-        except Exception as e:
-            log.warning("Referenz-Account %s übersprungen: %s", profile, e)
-            continue
-        ref = [t for t in ref if genre_relevant(t, s["tags"])]
-        reference_ids.update(t.id for t in ref)
-        tracks += ref
-    tracks = dedupe(tracks)
+    d = collect_sources(sc, s)
+    if d.succeeded == 0 and d.first_error:
+        raise d.first_error
+
+    tracks = dedupe(d.tracks)
     for t in tracks:
-        t.reference_hit = t.id in reference_ids
+        t.reference_hit = t.id in d.reference_ids
     raw_found = len(tracks)
     log.info("Discovery: %d einzigartige Tracks (davon %d von Referenz-Accounts)",
-             raw_found, len(reference_ids))
+             raw_found, len(d.reference_ids))
 
     tracks = score_tracks(filter_bpm(filter_sets(tracks, cfg), cfg), cfg)
     log.info("Nach Filter/Scoring: %d Tracks", len(tracks))
@@ -214,7 +313,8 @@ def _discover(cfg: Config, dry_run: bool, no_telegram: bool) -> int:
         log.info("Neu: %d (Duplikate in Sammlung: %d)", len(fresh), len(dupes))
 
         deliver(f"sc-digger – {len(fresh)} neue Treffer", fresh, dupes, cfg,
-                dry_run=dry_run, no_telegram=no_telegram, export_name="Täglicher Digest")
+                dry_run=dry_run, no_telegram=no_telegram, export_name="Täglicher Digest",
+                footer=source_footer(d))
         if not dry_run:
             # Erst nach erfolgreichem Versand markieren: bei Fehler in send_telegram
             # werden Tracks beim nächsten Lauf erneut gemeldet statt verloren zu gehen.
