@@ -17,7 +17,18 @@ export DEBIAN_FRONTEND=noninteractive
 echo "== Pakete"
 apt-get update -qq
 apt-get install -y -qq git curl ca-certificates python3 python3-venv python3-pip ffmpeg \
-  libsndfile1 libchromaprint-tools gh >/dev/null
+  libsndfile1 libchromaprint-tools >/dev/null
+# gh aus dem Paketarchiv von GitHub, nicht von Debian: Debians 2.23 fragt bei `gh pr edit` und
+# `gh pr view` noch „Projects (classic)“ ab und bricht mit einem GraphQL-Fehler ab. Qwen hielt
+# das für Erfolg; der PR-Text von #103 kam zweimal nicht an.
+install -d -m 755 /etc/apt/keyrings
+curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+  -o /etc/apt/keyrings/githubcli-archive-keyring.gpg
+chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+  > /etc/apt/sources.list.d/github-cli.list
+apt-get update -qq
+apt-get install -y -qq gh >/dev/null
 
 echo "== Repo und Python-Umgebung"
 git config --global user.name >/dev/null || git config --global user.name "Stephan (Sandbox-Agent)"
@@ -76,6 +87,7 @@ systemctl daemon-reload
 
 echo "== Prüfung"
 ok=1
+gh --version | head -1
 if gh auth status >/dev/null 2>&1; then echo "GitHub: angemeldet"; else echo "GitHub: NICHT angemeldet (README, Schritt 3)"; ok=0; fi
 if curl -s -m 10 "$OLLAMA/api/tags" | grep -q "\"$MODEL"; then echo "Ollama: $MODEL vorhanden"
 else echo "Ollama: $MODEL nicht erreichbar (PC aus, Bildmodus oder Modell fehlt)"; fi

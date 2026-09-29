@@ -8,6 +8,7 @@ Pro Takt höchstens ein Auftrag, in dieser Reihenfolge:
 2. Neues Issue: worker-task + bereit + agent-qwen, nicht blockiert.
 Erst wenn es Arbeit gibt, wird Ollama gefragt; so weckt der Takt den Gaming-PC nicht umsonst.
 Läuft dort ein anderes Modell (Chat, Bilder), wartet der Takt auf die nächste Runde.
+Nach einer Nacharbeit prüft er, ob ein neuer Commit oder ein geänderter PR-Text ankam.
 """
 import json
 import os
@@ -68,14 +69,23 @@ def review_is_current(review: dict, pr: dict) -> bool:
     return review["submittedAt"] > max(c["committedDate"] for c in pr["commits"])
 
 
+def pr_snapshot(pr: dict) -> tuple:
+    """Stand eines PRs, an dem sich eine Nacharbeit zeigen muss: Commit, Titel oder Text.
+
+    Nur auf den Commit zu schauen reicht nicht: Verlangt ein Review nur den PR-Text (#103), ist
+    „kein neuer Commit“ richtig und die Nacharbeit trotzdem erledigt.
+    """
+    return pr["headRefOid"], pr.get("title", ""), (pr.get("body") or "").replace("\r\n", "\n")
+
+
 def rework_job():
-    """(Schlüssel, Auftrag, PR-Nummer, Head-SHA) für die älteste fällige Nacharbeit oder None.
+    """(Schlüssel, Auftrag, PR-Nummer, pr_snapshot) für die älteste fällige Nacharbeit oder None.
 
     Das Review steht wörtlich im Auftrag: Qwen hat es sonst nicht gelesen, nur die Tests auf
     main laufen lassen und den PR selbst für fertig erklärt (#103, erster Lauf).
     """
     prs = gh("pr", "list", "--state", "open", "--json",
-             "number,headRefName,headRefOid,isCrossRepository,reviews,commits")
+             "number,headRefName,headRefOid,isCrossRepository,reviews,commits,title,body")
     for pr in sorted(prs, key=lambda p: p["number"]):
         m = re.match(r"feature/issue-(\d+)", pr["headRefName"])
         if not m or pr.get("isCrossRepository") or not pr["commits"]:
@@ -101,14 +111,19 @@ Gehe genau diese Schritte durch und führe jeden als Befehl aus:
    mit „Closes #{issue_no}“ und „Worker: {WORKER}“, und führe aus:
    `gh pr edit {n} --title "$(gh issue view {issue_no} --json title -q .title)" --body-file .git/pr-body.md`
 4. `python -m pytest -q` muss komplett grün sein.
-5. Alle Code-Änderungen in einem Commit, dann `git push`.
-6. Prüfe mit `git log -1 --oneline` und `gh pr view {n}`, dass Commit und Text angekommen sind.
+5. Alle Code-Änderungen in einem Commit, dann `git push`. Verlangt das Review nur den PR-Text,
+   gibt es keinen Commit.
+6. Prüfe mit `git log -1 --oneline` und `gh pr view {n} --json title,body`, dass Commit und Text
+   angekommen sind: Die Ausgabe muss deinen neuen Titel und Text zeigen.
+Gibt ein Befehl eine Fehlermeldung aus (z. B. „GraphQL: …“, „error“, Exit-Code ungleich 0), ist
+der Schritt NICHT erledigt, auch wenn danach nichts mehr kommt. Dann nicht „fertig“ melden,
+sondern den Fehler wörtlich als Kommentar in den PR schreiben und aufhören.
 Du gibst den PR nie selbst frei und mergst nie; das macht der Reviewer.
 
 ----- Review -----
 {review['body']}
 ----- Ende Review -----"""
-            return key, task, n, pr["headRefOid"]
+            return key, task, n, pr_snapshot(pr)
     return None
 
 
@@ -142,7 +157,7 @@ def main() -> int:
     if not job:
         log("Keine Arbeit.")
         return 0
-    key, task, pr_no, old_sha = job
+    key, task, pr_no, before = job
     if state.get(key, 0) >= MAX_TRIES:
         log(f"{key}: schon {MAX_TRIES} Versuche, wartet auf Stephan.")
         return 0
@@ -168,11 +183,14 @@ def main() -> int:
         log(f"{key}: nach {RUN_TIMEOUT // 60} min abgebrochen.")
     # Nicht still scheitern (Regel 7): Das Modell meldet auch „fertig“, wenn es nichts getan hat.
     if pr_no is not None:
-        new_sha = gh("pr", "view", str(pr_no), "--json", "headRefOid")["headRefOid"]
-        if new_sha == old_sha:
-            log(f"WARNUNG {key}: kein neuer Commit auf PR #{pr_no}, Nacharbeit nicht erledigt.")
+        after = pr_snapshot(gh("pr", "view", str(pr_no), "--json", "headRefOid,title,body"))
+        if after[0] != before[0]:
+            log(f"{key}: neuer Commit {after[0][:7]} auf PR #{pr_no}.")
+        elif after[1:] != before[1:]:
+            log(f"{key}: PR-Text von #{pr_no} geändert, kein neuer Commit.")
         else:
-            log(f"{key}: neuer Commit {new_sha[:7]} auf PR #{pr_no}.")
+            log(f"WARNUNG {key}: weder Commit noch PR-Text auf PR #{pr_no} geändert, "
+                "Nacharbeit nicht erledigt.")
     return 0
 
 

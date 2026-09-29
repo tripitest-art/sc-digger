@@ -26,7 +26,8 @@ def _pr(number=103, branch="feature/issue-100-camelot-distance", commit="2026-09
         review["commit"] = {"oid": reviewed_oid}
     return {"number": number, "headRefName": branch, "headRefOid": "3373e35",
             "isCrossRepository": fork, "commits": [{"committedDate": commit}],
-            "reviews": [review] if review_at else []}
+            "reviews": [review] if review_at else [],
+            "title": "Implement camelot_distance", "body": "## Was und warum\r\n\r\nCloses #\r\n"}
 
 
 class FakeGH:
@@ -47,9 +48,9 @@ class FakeGH:
 
 def test_rework_job_embeds_review_and_checkout(monkeypatch):
     monkeypatch.setattr(w, "gh", FakeGH(prs=[_pr()]))
-    key, task, pr_no, sha = w.rework_job()
+    key, task, pr_no, before = w.rework_job()
     assert key == "pr103@2026-09-29T21:39:23Z"
-    assert (pr_no, sha) == (103, "3373e35")
+    assert pr_no == 103 and before[0] == "3373e35"
     # Ohne diese drei Stellen lief Qwen auf main, las das Review nie und gab sich selbst frei.
     assert "gh pr checkout 103" in task
     assert REVIEW_CHANGES in task
@@ -58,6 +59,9 @@ def test_rework_job_embeds_review_and_checkout(monkeypatch):
     # Titel nicht einsetzen: ein Anführungszeichen darin bräche den Befehl.
     assert "Titel von Issue" not in task
     assert '--title "$(gh issue view 100 --json title -q .title)"' in task
+    # Mit gh 2.23 schlug `gh pr edit` mit „GraphQL: …“ fehl, Qwen meldete trotzdem Erfolg (#103).
+    assert "GraphQL" in task and "NICHT erledigt" in task
+    assert "gh pr view 103 --json title,body" in task
 
 
 @pytest.mark.parametrize("pr, labels", [
@@ -160,14 +164,15 @@ def test_main_without_work_does_not_touch_ollama(monkeypatch, tmp_path):
     assert w.main() == 0
 
 
-def test_main_warns_when_rework_left_no_commit(monkeypatch, tmp_path, capsys):
+def _run_rework(monkeypatch, tmp_path, after: dict) -> list:
+    """main() mit fälliger Nacharbeit an PR #103; `after` ist, was gh pr view danach liefert."""
     monkeypatch.setattr(w, "STATE", str(tmp_path / "state.json"))
     fake = FakeGH(prs=[_pr()])
     real_call = fake.__call__
 
     def gh(*args):
         if args[:2] == ("pr", "view"):
-            return {"headRefOid": "3373e35"}  # unverändert
+            return {**_pr(), **after}
         return real_call(*args)
 
     monkeypatch.setattr(w, "gh", gh)
@@ -179,6 +184,30 @@ def test_main_warns_when_rework_left_no_commit(monkeypatch, tmp_path, capsys):
 
     monkeypatch.setattr(w.subprocess, "run", lambda cmd, **kw: runs.append(cmd) or Done())
     assert w.main() == 0
+    return runs
+
+
+def test_main_warns_when_rework_changed_nothing(monkeypatch, tmp_path, capsys):
+    runs = _run_rework(monkeypatch, tmp_path, {})
     assert any(c[0] == "opencode" for c in runs)
     assert "WARNUNG pr103" in capsys.readouterr().out
     assert json.loads((tmp_path / "state.json").read_text()) == {"pr103@2026-09-29T21:39:23Z": 1}
+
+
+def test_main_ignores_line_endings_in_body(monkeypatch, tmp_path, capsys):
+    # GitHub liefert den Text mal mit \r\n, mal mit \n; das ist keine Nacharbeit.
+    _run_rework(monkeypatch, tmp_path, {"body": "## Was und warum\n\nCloses #\n"})
+    assert "WARNUNG pr103" in capsys.readouterr().out
+
+
+def test_main_accepts_text_only_rework(monkeypatch, tmp_path, capsys):
+    # Review verlangt nur den PR-Text: kein Commit ist richtig, keine Warnung (#103).
+    _run_rework(monkeypatch, tmp_path, {"title": "Harmonic Mixing: …", "body": "Closes #100"})
+    out = capsys.readouterr().out
+    assert "WARNUNG" not in out and "PR-Text von #103 geändert" in out
+
+
+def test_main_reports_new_commit(monkeypatch, tmp_path, capsys):
+    _run_rework(monkeypatch, tmp_path, {"headRefOid": "b0b0b0b0"})
+    out = capsys.readouterr().out
+    assert "WARNUNG" not in out and "neuer Commit b0b0b0b" in out

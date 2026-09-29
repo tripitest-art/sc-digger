@@ -20,7 +20,8 @@ Mounts**: kein Zugriff auf Sammlung, Inbox oder andere Container. Darin:
 
   Erst wenn es Arbeit gibt, fragt der Durchlauf Ollama (weckt den PC also nicht umsonst). Ist dort
   ein anderes Modell geladen, wartet er. Je Auftrag höchstens zwei Versuche
-  (`/root/worker-state.json`); nach einer Nacharbeit prüft er, ob ein neuer Commit ankam.
+  (`/root/worker-state.json`); nach einer Nacharbeit prüft er, ob ein neuer Commit oder ein
+  geänderter PR-Text ankam.
 
 Dateien: `host-create.sh` (Proxmox-Host), `install.sh` (im Container, beliebig oft),
 `worker_tick.py` (Taktgeber, Tests in `tests/test_worker_tick.py`).
@@ -124,7 +125,8 @@ Log-Meldungen:
 | `Keine Arbeit.` | kein passendes Issue, keine fällige Nacharbeit |
 | `Ollama nicht erreichbar` / `Ollama belegt` | PC aus, Bildmodus oder anderes Modell geladen; nächste Runde |
 | `… (Versuch n): starte OpenCode.` | Auftrag läuft (bis 90 min) |
-| `WARNUNG …: kein neuer Commit` | Nacharbeit nicht erledigt; Log davor lesen |
+| `… neuer Commit …` / `… PR-Text von #n geändert` | Nacharbeit angekommen; Inhalt auf GitHub prüfen |
+| `WARNUNG …: weder Commit noch PR-Text` | Nacharbeit nicht erledigt; Log davor lesen, besonders Fehler von `gh` |
 | `schon 2 Versuche, wartet auf Stephan` | Auftrag liegt, bis Stephan entscheidet |
 | Python-Traceback | Fehler im Taktgeber oder bei `gh`; siehe Tabelle |
 
@@ -133,6 +135,7 @@ Log-Meldungen:
 | Symptom | Ursache | Abhilfe |
 |---|---|---|
 | `gh … returned non-zero exit status 4` im Timer, von Hand geht es | systemd-Dienst ohne `HOME` | steht in `install.sh` (`Environment=HOME=/root`); `install.sh` erneut ausführen |
+| `gh pr edit` meldet `GraphQL: Projects (classic) is being deprecated …`, PR-Text bleibt alt; Modell meldet trotzdem Erfolg | `gh` 2.23 aus Debian fragt noch Projects (classic) ab | `install.sh` holt `gh` aus dem Paketarchiv von GitHub; `install.sh` erneut ausführen, Versuche zurücksetzen |
 | `permission requested: external_directory (/tmp/*); auto-rejecting` | OpenCode schreibt nur im Projektordner | Hilfsdateien nach `.git/` (wird nie committet), nicht nach `/tmp` |
 | Modell meldet „alle Tests grün, 705 passed“, am PR ändert sich nichts | lief auf `main` statt auf dem PR-Branch, Review nicht gelesen | Auftrag enthält `gh pr checkout` und das Review wörtlich; bei Wiederholung Nacharbeit einer stärkeren Familie geben |
 | Modell hört mitten im Satz auf („Ich werde nun …“) | Modell beendet den Zug ohne Werkzeugaufruf | zweiter Versuch in der nächsten Runde; häuft es sich, Issue auf `agent-gemini` umlabeln |
