@@ -61,9 +61,8 @@ Rechteverwaltung durch, sondern der Check `acceptance-guard` (läuft immer mit d
 `main`) und das Review.
 
 Auf `main` gilt die GitHub-Regel `main-schutz`: nur per Pull Request, nur Squash-Merge,
-Pflicht-Checks `tests`, `acceptance-guard` und CodeQL (blockiert ab „High“). Copilot-Review
-und `github-advanced-security` brauchen einen bezahlten Copilot-Plan: nie darauf warten, ein
-roter `github-advanced-security` ist kein Mangel.
+Pflicht-Checks `tests`, `acceptance-guard` und CodeQL (ab „High“). Auf Copilot-Review nie
+warten; ein roter `github-advanced-security` ist kein Mangel.
 
 ### Planer
 
@@ -71,7 +70,8 @@ roter `github-advanced-security` ist kein Mangel.
   nicht dazugehört, Merge-Modus.
 - Akzeptanztests als pytest-Code ins Issue. Sie laufen ohne Netzwerk (Fakes, synthetisches
   Audio per ffmpeg wie in `tests/test_analysis_organize.py`) und sind vor der Umsetzung rot.
-- Labels: `worker-task`, `bereit`, `phase-N`, bei Bedarf `berührt-main.py`.
+- Labels: `worker-task`, `bereit`, `phase-N`, ein `agent-<familie>` (`ENTWICKLUNG.md`,
+  Agenten-Labels), bei Bedarf `berührt-main.py`.
 - Muss das Issue auf andere warten (gleiche Dateien, Regel 8, oder es baut darauf auf): Label
   `blockiert` statt `bereit` und im Kontext eine Zeile `Wartet auf: #X, #Y` (PRs oder Issues).
   Daran gibt der Reviewer das Issue nach dem Merge frei (Reviewer → Nächsten Review selbst
@@ -100,12 +100,10 @@ roter `github-advanced-security` ist kein Mangel.
    (`--draft`) mit genauer Beschreibung des Problems. Kein Umbau quer durchs Projekt.
 7. PR mit ausgefüllter Vorlage öffnen. `--fill` reicht nicht, weil `Closes #<N>` fehlen würde:
    `gh pr create --title "<Issue-Titel>" --body-file <ausgefüllte Vorlage>`
-   Der Body muss `Closes #<N>` enthalten, sonst prüft `acceptance-guard` nichts gegen das Issue.
-   Unter Windows/PowerShell Texte nie inline übergeben (Backtick ist dort Escape-Zeichen,
-   aus `` `t `` wird ein Tabulator), immer `--body-file`.
-   Im Abschnitt „Umgesetzt von / Review durch“ `Worker: <Familie> <Modell>` eintragen
-   (z. B. `Worker: Gemini Flash`, `Worker: Qwen 3.5`). Daran erkennt ein Reviewer, ob er
-   den PR prüfen darf.
+   Ohne `Closes #<N>` und `Worker:`-Zeile (unten) wird `acceptance-guard` rot.
+   Unter PowerShell Texte immer per `--body-file` (Backtick ist dort Escape-Zeichen).
+   Unter „Umgesetzt von / Review durch“ `Worker: <Familie> <Modell>` eintragen
+   (z. B. `Worker: Gemini Flash`). Daran erkennt der Reviewer, ob er prüfen darf.
 8. Review-Kommentare (Reviewer, ggf. Copilot): „Muss“-Punkte und echte Fehler im Issue-Umfang
    beheben; alles andere im Thread kurz begründen, nicht umsetzen. Das Issue gilt, nicht der
    Vorschlag. Nie deshalb Tests abschwächen oder weitere Dateien anfassen. Alle Korrekturen
@@ -113,7 +111,7 @@ roter `github-advanced-security` ist kein Mangel.
 
 ### Nächste Aufgabe selbst wählen
 
-1. `gh issue list --state open --label worker-task --label bereit --search "sort:created-asc -label:blockiert"`
+1. `gh issue list --state open --label worker-task --label bereit --label agent-<familie> --search "sort:created-asc -label:blockiert"`
 2. Das erste nehmen. Ausnahme Regel 8: Hat es `berührt-main.py` und ist ein anderes offenes
    Issue mit `in-arbeit` und `berührt-main.py` vorhanden, das nächste nehmen.
 3. Bleibt keins übrig: sagen und aufhören, nichts anderes anfangen.
@@ -125,7 +123,6 @@ roter `github-advanced-security` ist kein Mangel.
 
 1. `gh pr view <PR> --comments`, `gh pr diff <PR>`, `gh pr checks <PR>`. Sind `tests`,
    `acceptance-guard` oder CodeQL nicht grün: nicht mergen, Befund als Review schreiben.
-   Die Regel `main-schutz` erzwingt das ohnehin; der Merge würde abgelehnt.
 2. Gegen das Issue prüfen: nur genannte Dateien geändert, Signaturen exakt, „Fertig, wenn“
    vollständig, Goldene Regeln eingehalten (besonders 4–7). Eigene Tests des Workers auf
    Aussagekraft prüfen (`assert True`, zu schwache Vergleiche, gemockter Prüfling).
