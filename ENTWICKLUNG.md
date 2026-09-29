@@ -30,6 +30,7 @@ Modul anlegt, trägt es in die Tabelle ein.
 | `sc_digger/redact.py` | Zugangsdaten aus Texten und Logs entfernen |
 | `config.yaml` | Einzige Konfiguration (Tags, Referenz-Accounts, Schwellwerte). Ist die Produktivkonfiguration. |
 | `entrypoint.sh` | Schreibt `cron.env` (Cron hat sonst weder PATH noch Secrets), startet cron und Bot |
+| `skills/*/SKILL.md` | Abläufe für Qwen in LibreChat (Review, Worker), per GitHub Skill Sync gespiegelt; Regeln bleiben in `AGENTS.md` |
 | `.github/scripts/acceptance_guard.py` | CI-Check `acceptance-guard`: Akzeptanztests = Issue, keine neuen skips, CI/Test-Konfiguration geschützt |
 | `set-secret.sh` / `update.sh` | Zugangsdaten setzen / Update ausrollen (auf dem Server) |
 
@@ -59,8 +60,10 @@ Für Stephan: Mit diesen Sätzen startet man einen Agenten.
 | Reviewer | „Prüfe PR #M nach AGENTS.md, Abschnitt Worker-Aufgaben → Reviewer.“ |
 | Reviewer (autonom) | „/goal Prüfe den nächsten PR nach AGENTS.md, Worker-Aufgaben → Nächsten Review selbst wählen.“ |
 | Worker (Nacharbeit) | „Arbeite das Review in PR #M ab (AGENTS.md, Worker → Schritt 8).“ |
-| Qwen Reviewer (LibreChat) | „Repo tripitest-art/sc-digger. Du bist Reviewer. Lies zuerst AGENTS.md und MCP.md aus main. Prüfe dann PR #M nach AGENTS.md → Worker-Aufgaben → Reviewer. AGENTS.md ist deine Anleitung, nicht der Prüfgegenstand.“ |
-| Qwen Worker (LibreChat) | „Repo tripitest-art/sc-digger. Du bist Worker. Lies zuerst AGENTS.md, MCP.md und ENTWICKLUNG.md aus main. Bearbeite dann Issue #N nach AGENTS.md → Worker-Aufgaben → Worker. AGENTS.md ist deine Anleitung.“ |
+| Qwen Reviewer (LibreChat) | „Repo tripitest-art/sc-digger. Prüfe PR #M nach dem Skill sc-digger-review.“ |
+| Qwen Worker (LibreChat) | „Repo tripitest-art/sc-digger. Bearbeite Issue #N nach dem Skill sc-digger-worker.“ |
+| Qwen Worker (Nacharbeit) | „Repo tripitest-art/sc-digger. Arbeite das Review in PR #M ab, Skill sc-digger-worker, Teil B.“ |
 
-Kleinere Modelle brauchen den ausführlichen Wortlaut: Mit der Kurzform suchte Qwen nach einem
-anderen Repo und hielt AGENTS.md für den Prüfgegenstand.
+Die Qwen-Aufträge nennen Repo und Skill ausdrücklich: Mit der Kurzform suchte Qwen nach einem
+anderen Repo und hielt AGENTS.md für den Prüfgegenstand. Die Skills liegen unter `skills/`
+(siehe `MCP.md`, Abschnitt Skills). Jeden Auftrag in einem neuen Chat starten.
