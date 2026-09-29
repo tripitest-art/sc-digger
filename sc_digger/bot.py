@@ -36,7 +36,7 @@ HELP_TEXT = (
     "• einzelner Track-Link -> ich zeige dir die 'Station' dazu "
     "(das, was der SoundCloud-Algorithmus als Radio vorschlägt)\n\n"
     "Befehle:\n"
-    "• /curator-mining -> Profile aus 👍-Tracks vorschlagen\n\n"
+    "• /curator_mining -> Profile aus 👍-Tracks vorschlagen\n\n"
     "Kein täglicher Filter, du bekommst die volle Liste mit Stats und Download-Einordnung."
 )
 
@@ -105,11 +105,15 @@ def run_curator_mining(sc, cfg: Config) -> str:
     if not candidates:
         return "Keine neuen Curator-Vorschläge."
 
+    max_display = 30
     lines = ["🔍 Curator-Vorschläge", ""]
-    for p_lower, count in candidates:
+    for p_lower, count in candidates[:max_display]:
         permalink = original_permalinks[p_lower]
         username = html.escape(usernames.get(p_lower, permalink))
         lines.append(f"• {username} (soundcloud.com/{permalink}) – {count}× gesehen")
+
+    if len(candidates) > max_display:
+        lines.append(f"… und {len(candidates) - max_display} weitere")
 
     return "\n".join(lines)
 
@@ -122,8 +126,12 @@ def handle_message(cfg: Config, sc: SoundCloudClient, chat_id: str, text: str) -
 
     first_word = text.split()[0].split("@")[0].lower() if text else ""
     if first_word in ("/curator-mining", "/curator_mining"):
-        msg = run_curator_mining(sc, cfg)
-        _send_text(cfg, chat_id, msg)
+        try:
+            msg = run_curator_mining(sc, cfg)
+            _send_text(cfg, chat_id, msg)
+        except Exception:
+            log.exception("Fehler bei Curator-Mining")
+            _send_text(cfg, chat_id, "Curator-Mining fehlgeschlagen, siehe Container-Log.")
         return
 
     m = URL_RE.search(text)

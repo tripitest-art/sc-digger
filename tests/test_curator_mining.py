@@ -225,3 +225,53 @@ def test_handle_message_curator_mining_command(cfg, monkeypatch):
     bot.handle_message(cfg, sc, "12345", "/curator_mining")
     assert len(calls) == 1
     assert "🔍 Curator-Vorschläge" in calls[0][1]["text"]
+
+
+def test_curator_mining_limits_output_and_caps_telegram_length(cfg):
+    with TrackDB(cfg["state"]["track_db_path"]) as db:
+        db.set_sc_feedback(1, "like")
+        db.set_sc_feedback(2, "like")
+
+    # 200 Kandidaten erstellen
+    fake_users = [
+        {"id": i, "permalink": f"curator_candidate_{i:03d}", "username": f"Curator Candidate {i:03d}"}
+        for i in range(1, 201)
+    ]
+
+    class FakeSC:
+        def get_likers(self, track_id, max_results=50):
+            return fake_users
+
+        def get_reposters(self, track_id, max_results=50):
+            return []
+
+    text = bot.run_curator_mining(FakeSC(), cfg)
+    assert len(text) <= 4096
+    assert "… und 170 weitere" in text
+    assert "curator_candidate_001" in text
+    assert "curator_candidate_030" in text
+    assert "curator_candidate_031" not in text
+
+
+def test_handle_message_curator_mining_error(cfg, monkeypatch):
+    calls = []
+
+    def fake_telegram_call(token, method, **kw):
+        calls.append((method, kw.get("json")))
+        return {"ok": True, "result": True}
+
+    monkeypatch.setattr(bot, "telegram_call", fake_telegram_call)
+
+    def boom(sc, c):
+        raise RuntimeError("DB connection failed")
+
+    monkeypatch.setattr(bot, "run_curator_mining", boom)
+
+    sc = MagicMock()
+    bot.handle_message(cfg, sc, "12345", "/curator-mining")
+
+    assert len(calls) == 1
+    assert calls[0][0] == "sendMessage"
+    assert calls[0][1]["chat_id"] == "12345"
+    assert "Curator-Mining fehlgeschlagen, siehe Container-Log." in calls[0][1]["text"]
+
