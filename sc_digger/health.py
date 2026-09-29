@@ -93,6 +93,9 @@ class Health:
                 if "client_id" in last_error:
                     lines.append("Vermutlich hat SoundCloud die client_id-Auslieferung geändert "
                                  "→ <code>soundcloud.py</code> (_fetch_client_id) prüfen.")
+                if "RateLimitError" in last_error:
+                    lines.append("SoundCloud drosselt die Anfragen (429) "
+                                 "→ weniger Tags/Referenz-Accounts oder kleineres limit_per_tag.")
             else:
                 lines.append("Keine Fehler, aber 0 Rohtreffer: Such-Endpunkt oder Filter "
                              "haben sich vermutlich geändert → <code>soundcloud.py</code> (search_tag) prüfen.")
