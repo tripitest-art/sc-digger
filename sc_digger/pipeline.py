@@ -86,6 +86,24 @@ def is_dj_set(t: Track, max_minutes: float) -> bool:
     return t.duration_ms > max_minutes * 60_000
 
 
+def is_mix_title(t: Track, patterns: list[str]) -> bool:
+    """True, wenn eines der Regex-Muster (re.search, re.IGNORECASE) auf t.title passt.
+    t.title None -> "". Ungültiges Muster: log.warning mit dem Muster, überspringen, nie werfen.
+    Leere Liste -> False."""
+    if not patterns or t is None:
+        return False
+    title = t.title or ""
+    for pat in patterns:
+        try:
+            if re.search(pat, title, re.IGNORECASE):
+                return True
+        except re.error:
+            log.warning("Ungültiges Regex-Muster für Mix-Titel: %r", pat)
+            continue
+    return False
+
+
+
 def filter_sets(tracks: list[Track], cfg: Config) -> list[Track]:
     """Nur für discover: neue Liste ohne DJ-Sets, Reihenfolge bleibt.
     Grenze: cfg["search"].get("max_duration_min", 12).
@@ -95,7 +113,15 @@ def filter_sets(tracks: list[Track], cfg: Config) -> list[Track]:
     removed = len(tracks) - len(kept)
     if removed > 0:
         log.info("DJ-Sets aussortiert: %d (länger als %s min)", removed, limit)
+    patterns = cfg["search"].get("set_title_patterns") or []
+    if patterns:
+        mix_kept = [t for t in kept if not is_mix_title(t, patterns)]
+        mix_removed = len(kept) - len(mix_kept)
+        if mix_removed > 0:
+            log.info("Mix-Titel aussortiert: %d", mix_removed)
+        kept = mix_kept
     return kept
+
 
 
 def mark_sets(tracks: list[Track], cfg: Config) -> list[Track]:
