@@ -57,8 +57,8 @@ search:
     - https://soundcloud.com/outworld
     - https://soundcloud.com/technogermany
     - https://soundcloud.com/gotec76
-  # R-Label Group bewusst weggelassen (Handle nicht auffindbar, Kobosil deckt
-  # als eigener Referenz-Account einen Teil davon ab)
+    # R-Label Group bewusst weggelassen (Handle nicht auffindbar, Kobosil deckt
+    # als eigener Referenz-Account einen Teil davon ab)
   reference_limit: 50
 
 scoring:
@@ -149,3 +149,4 @@ rekordbox:
   # Pfad-Mapping: Server-Pfad -> Laptop-Pfad (aus Sicht von Rekordbox)
   path_map:
     /music/inbox: "Z:/Highres/_sc-digger-inbox"
+

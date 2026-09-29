@@ -1,20 +1,14 @@
 """Container-Healthcheck: Cron, letzten Lauf und DB-Integrität prüfen."""
+from __future__ import annotations
+
 import json
-import os
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List
 
-import telegram
-
-from sc_digger.db import Health
-from sc_digger.output import telegram_call
-
-# Zugangsdaten aus Umgebungsvariablen (siehe entrypoint.sh, cron.env)
-TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
-TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
+from sc_digger.models import Config
+from sc_digger.output import TelegramError, telegram_call
 
 
 @dataclass
@@ -31,19 +25,21 @@ def check_cron(proc_root: Path = Path("/proc")) -> CheckResult:
     ok, wenn ein Prozess mit /proc/<pid>/comm == "cron" existiert. Nur numerische
     Unterordner zählen. Liest /proc direkt (python:3.12-slim hat kein ps/pgrep).
     """
+    proc_root = Path(proc_root)
     try:
-        # Nur numerische PID-Ordner prüfen
-        for pid in proc_root.iterdir():
-            if pid.is_dir() and pid.name.isdigit():
-                comm_path = pid / "comm"
-                if comm_path.exists():
-                    try:
-                        comm_text = comm_path.read_text(encoding="utf-8").strip()
-                        if comm_text == "cron":
-                            return CheckResult(name="cron", ok=True, detail="ok")
-                    except (OSError, UnicodeDecodeError):
-                        # unreadable comm-Datei wird übersprungen
-                        continue
+        if not proc_root.exists():
+            return CheckResult(name="cron", ok=False, detail="cron läuft nicht")
+        for pid_entry in proc_root.iterdir():
+            if pid_entry.is_dir() and pid_entry.name.isdigit():
+                comm_path = pid_entry / "comm"
+                if not comm_path.exists():
+                    continue
+                try:
+                    comm_text = comm_path.read_text(encoding="utf-8").strip()
+                    if comm_text == "cron":
+                        return CheckResult(name="cron", ok=True, detail="ok")
+                except (OSError, UnicodeDecodeError):
+                    continue
         return CheckResult(name="cron", ok=False, detail="cron läuft nicht")
     except (OSError, PermissionError):
         return CheckResult(name="cron", ok=False, detail="cron läuft nicht")
@@ -68,19 +64,27 @@ def check_last_run(db_path: str | Path, max_age_hours: float,
         return CheckResult(name="letzter_lauf", ok=True, detail="noch kein Lauf")
 
     try:
-        conn = sqlite3.connect(str(db_path), uri=True, timeout=5.0)
-        conn.execute("PRAGMA query_only=ON")  # nur lesen
-        cursor = conn.execute(
-            "SELECT finished_at, mode FROM runs WHERE mode='discover' ORDER BY finished_at DESC LIMIT 1"
-        )
-        row = cursor.fetchone()
-        conn.close()
+        conn = sqlite3.connect(f"file:{db_path.as_posix()}?mode=ro", uri=True, timeout=5.0)
+        try:
+            cursor = conn.execute(
+                "SELECT finished_at FROM runs WHERE mode='discover' ORDER BY finished_at DESC LIMIT 1"
+            )
+            row = cursor.fetchone()
+        except sqlite3.OperationalError as e:
+            if "no such table" in str(e).lower():
+                return CheckResult(name="letzter_lauf", ok=True, detail="noch kein Lauf")
+            raise
+        finally:
+            conn.close()
 
         if row is None:
             return CheckResult(name="letzter_lauf", ok=True, detail="noch kein Lauf")
 
         finished_at_str = row[0]
         finished_at = datetime.fromisoformat(finished_at_str.replace("Z", "+00:00"))
+        if finished_at.tzinfo is None:
+            finished_at = finished_at.replace(tzinfo=timezone.utc)
+
         age_hours = (now - finished_at).total_seconds() / 3600
 
         if age_hours <= max_age_hours:
@@ -92,22 +96,21 @@ def check_last_run(db_path: str | Path, max_age_hours: float,
 
 
 def check_sqlite(db_path: str | Path, name: str) -> CheckResult:
-    """Prüft die Integrität einer SQLite-DB.
-
-    PRAGMA quick_check == "ok". Datei fehlt -> ok ("noch nicht angelegt"), nichts anlegen.
-    sqlite3.Error (z.B. "file is not a database") -> nicht ok, wirft nie.
-    Nur lesend öffnen.
+    """PRAGMA quick_check == "ok". Datei fehlt -> ok ("noch nicht angelegt"), nichts anlegen.
+    sqlite3.Error (z. B. "file is not a database") -> nicht ok, wirft nie. Nur lesend öffnen.
     """
     db_path = Path(db_path)
     if not db_path.exists():
         return CheckResult(name=name, ok=True, detail="noch nicht angelegt")
 
     try:
-        conn = sqlite3.connect(str(db_path), uri=True, timeout=5.0)
-        conn.execute("PRAGMA query_only=ON")
-        cursor = conn.execute("PRAGMA quick_check")
-        result = cursor.fetchone()[0]
-        conn.close()
+        conn = sqlite3.connect(f"file:{db_path.as_posix()}?mode=ro", uri=True, timeout=5.0)
+        try:
+            cursor = conn.execute("PRAGMA quick_check")
+            row = cursor.fetchone()
+            result = row[0] if row else "unknown"
+        finally:
+            conn.close()
 
         if result == "ok":
             return CheckResult(name=name, ok=True, detail="ok")
@@ -117,95 +120,79 @@ def check_sqlite(db_path: str | Path, name: str) -> CheckResult:
         return CheckResult(name=name, ok=False, detail=f"DB-Fehler: {e}")
 
 
-def run_checks(cfg: dict, *, proc_root: Path = Path("/proc"),
-               now: datetime | None = None) -> List[CheckResult]:
-    """Führt alle Health-Prüfungen aus.
+def run_checks(cfg: Config, *, proc_root: Path = Path("/proc"),
+               now: datetime | None = None) -> list[CheckResult]:
+    """cron, letzter_lauf (cfg["state"]["db_path"], health.max_hours_since_run, Standard 36),
+    state_db (cfg["state"]["db_path"]), track_db (cfg["state"]["track_db_path"])."""
+    results: list[CheckResult] = []
 
-    cron, letzter_lauf (cfg["state"]["db_path"], health.max_hours_since_run, Standard 36),
-    state_db (cfg["state"]["db_path"]), track_db (cfg["state"]["track_db_path"]).
-    """
-    results = []
-
-    # cron prüfen
+    # 1. cron
     results.append(check_cron(proc_root=proc_root))
 
-    # letzter_lauf prüfen
-    state_db_path = cfg.get("state", {}).get("db_path")
+    raw = cfg.raw if hasattr(cfg, "raw") else cfg
+    state = raw.get("state", {})
+    health = raw.get("health", {})
+    state_db_path = state.get("db_path")
+    track_db_path = state.get("track_db_path")
+    max_hours = float(health.get("max_hours_since_run", 36))
+
+    # 2. letzter_lauf
     if state_db_path:
-        health_cfg = cfg.get("health", {})
-        max_hours = health_cfg.get("max_hours_since_run", 36)
         results.append(check_last_run(state_db_path, max_hours, now=now))
 
-    # state_db Integrität prüfen
-    results.append(check_sqlite(state_db_path, "state_db"))
+    # 3. state_db
+    if state_db_path:
+        results.append(check_sqlite(state_db_path, "state_db"))
 
-    # track_db Integrität prüfen
-    track_db_path = cfg.get("state", {}).get("track_db_path")
+    # 4. track_db
     if track_db_path:
         results.append(check_sqlite(track_db_path, "track_db"))
 
     return results
 
 
-def alert_message(state_file: Path, results: List[CheckResult]) -> str | None:
-    """Erstellt Alarm- oder Entwarnungsnachricht.
-
-    Alarm-Zustand in einer JSON-Datei (nicht in der SQLite-DB, die könnte ja kaputt sein).
+def alert_message(state_file: Path, results: list[CheckResult]) -> str | None:
+    """Alarm-Zustand in einer JSON-Datei (nicht in der SQLite-DB, die könnte ja kaputt sein).
     Wechsel gesund -> krank: Alarmtext mit einer Zeile je fehlgeschlagener Prüfung
     ("<name>: <detail>"); Wechsel krank -> gesund: Entwarnung, die das Wort "wieder" enthält;
     sonst None. Speichert den neuen Zustand nur bei einem Wechsel.
     """
-    state_file = state_file or Path("/data/container_health.json")
+    state_file = Path(state_file) if state_file else Path("/data/container_health.json")
+    all_ok = all(r.ok for r in results)
+    curr_alert = not all_ok
 
-    # Neuen Zustand serialisieren
-    new_state = json.dumps([{"name": r.name, "ok": r.ok, "detail": r.detail} for r in results],
-                          ensure_ascii=False, indent=2)
-
-    # Lese alten Zustand
-    old_state_json = None
+    prev_alert = False
     if state_file.exists():
         try:
-            old_state_json = state_file.read_text(encoding="utf-8").strip()
-        except (OSError, UnicodeDecodeError):
-            old_state_json = None
+            data = json.loads(state_file.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                prev_alert = bool(data.get("alert", False))
+            elif isinstance(data, list):
+                prev_alert = any(not item.get("ok", True) for item in data if isinstance(item, dict))
+        except (OSError, ValueError, TypeError):
+            prev_alert = False
 
-    # Wenn sich der Zustand geändert hat
-    if old_state_json is None or new_state_json != old_state_json:
-        # Neue Status speichern
-        try:
-            state_file.write_text(new_state_json, encoding="utf-8")
-        except (OSError, PermissionError):
-            pass  # kann nicht speichern, aber Meldung trotzdem senden
+    if curr_alert == prev_alert:
+        return None
 
-        # Prüfen, ob sich der Gesamtzustand geändert hat
-        all_ok_now = all(r.ok for r in results)
-        all_ok_before = old_state_json is None or all(json.loads(old_state_json)[i]["ok"]
-                                                    for i in range(len(results)))
+    # Neuer Zustand speichern nur bei Wechsel
+    try:
+        state_file.parent.mkdir(parents=True, exist_ok=True)
+        state_file.write_text(json.dumps({"alert": curr_alert}), encoding="utf-8")
+    except OSError:
+        pass
 
-        if all_ok_now and not all_ok_before:
-            # Wieder gesund -> Entwarnung
-            failed_checks = [json.loads(old_state_json)[i] for i in range(len(results))
-                            if not json.loads(old_state_json)[i]["ok"]]
-            if failed_checks:
-                recovery_msg = "Container wieder gesund!\n"
-                for fc in failed_checks:
-                    recovery_msg += f"- {fc['name']}: {fc['detail']}\n"
-                return recovery_msg.strip()
-        elif not all_ok_now and all_ok_before:
-            # Wurde krank -> Alarm
-            failed_checks = [r for r in results if not r.ok]
-            alarm_msg = "Container nicht gesund!\n"
-            for fc in failed_checks:
-                alarm_msg += f"- {fc['name']}: {fc['detail']}\n"
-            return alarm_msg.strip()
-
-    return None
+    if curr_alert:
+        # Wechsel gesund -> krank
+        lines = [f"{r.name}: {r.detail}" for r in results if not r.ok]
+        return "\n".join(lines)
+    else:
+        # Wechsel krank -> gesund: Entwarnung, die das Wort "wieder" enthält
+        return "Container ist wieder gesund."
 
 
 def main(argv: list[str] | None = None, *, proc_root: Path = Path("/proc")) -> int:
-    """Hauptfunktion für den HEALTHCHECK.
-
-    --config (Standard config.yaml). Führt run_checks aus, druckt eine Zeile je Prüfung,
+    """--config (Standard config.yaml). Führt run_checks aus, druckt eine Zeile je Prüfung,
     state_file = Path(cfg["state"]["db_path"]).parent / "container_health.json".
     Gibt es eine Meldung und sind TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID gesetzt: senden über
     telegram_call(token, "sendMessage", ...) (Name im Modul importiert, damit Tests es ersetzen
@@ -216,41 +203,38 @@ def main(argv: list[str] | None = None, *, proc_root: Path = Path("/proc")) -> i
 
     parser = argparse.ArgumentParser(description="sc-digger Container-Healthcheck")
     parser.add_argument("--config", type=str, default="config.yaml",
-                       help="Pfad zur Konfigurationsdatei (Standard: config.yaml)")
+                        help="Pfad zur Konfigurationsdatei (Standard: config.yaml)")
     args = parser.parse_args(argv)
 
-    # Konfiguration laden
     try:
-        import yaml
-        cfg = yaml.safe_load(Path(args.config).read_text(encoding="utf-8"))
-    except (FileNotFoundError, yaml.YAMLError) as e:
+        cfg = Config.load(args.config)
+    except Exception as e:
         print(f"Konfigurationsdatei nicht lesbar: {e}")
         return 1
 
-    # Prüfungen ausführen
-    now = datetime.now(timezone.utc)
-    results = run_checks(cfg, proc_root=proc_root, now=now)
+    results = run_checks(cfg, proc_root=proc_root)
 
-    # Ergebnisse drucken
     for result in results:
         status = "ok" if result.ok else "FEHLER"
         print(f"{result.name}: {status} - {result.detail}")
 
-    # Meldungsdatei
-    state_dir = Path(cfg["state"]["db_path"]).parent
-    state_file = state_dir / "container_health.json"
+    raw = cfg.raw if hasattr(cfg, "raw") else cfg
+    state_db_path = raw.get("state", {}).get("db_path", "/data/seen.sqlite")
+    state_file = Path(state_db_path).parent / "container_health.json"
 
-    # Alarm-/Entwarnungsnachricht erstellen
     message = alert_message(state_file, results)
 
-    # Telegram senden, wenn es eine Meldung gibt und Tokens gesetzt sind
-    if message and TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID:
+    token = cfg.telegram_token
+    chat_id = cfg.telegram_chat_id
+    if message and token and chat_id:
         try:
-            telegram_call(TELEGRAM_BOT_TOKEN, "sendMessage",
-                         chat_id=TELEGRAM_CHAT_ID, text=message, parse_mode="Markdown")
-        except telegram.error.TelegramError as e:
-            # Telegram-Fehler wird geloggt, ändert Exit-Code nicht
+            telegram_call(token, "sendMessage", json={"chat_id": chat_id, "text": message})
+        except TelegramError as e:
             print(f"Telegram-Fehler: {e}")
 
-    # Exit-Code
     return 0 if all(r.ok for r in results) else 1
+
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(main())
