@@ -24,7 +24,7 @@ KINDS = {
     ".m4a": "M4A File",
 }
 
-_SKIP_PREFIXES = ("_rejected", ".", "_dl_", ".cloud-tmp")
+_SKIP_PREFIXES = ("_rejected", ".", "_dl_", ".cloud-tmp", "_eingang")
 
 
 @dataclass

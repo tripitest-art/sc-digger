@@ -74,6 +74,7 @@ python -m sc_digger.main similar https://soundcloud.com/artist/track    # Relate
 python -m sc_digger.main similar https://soundcloud.com/artist/track --radio    # Track-Radio
 python -m sc_digger.main similar https://soundcloud.com/artist/track --filter   # mit BPM-Fenster und Scoring
 python -m sc_digger.main rekordbox                                  # Rekordbox-XML der Inbox neu schreiben
+python -m sc_digger.main intake                                     # Manuell abgelegte Tracks verarbeiten
 python -m sc_digger.main audit --report report.html                 # Sammlung prüfen, nur lesend (siehe unten)
 ```
 
@@ -215,6 +216,43 @@ lädt sc-digger Einzeldateien und ZIP-Archive von `dropbox.com` und `drive.googl
 sie durch dieselbe Prüfung wie native Downloads. Aus ZIPs wird genau eine Datei gewählt (verlustfrei
 vor M4A vor MP3, dann die größte). Nur erlaubte Hosts, auch nach Umleitungen; Dateinamen und
 ZIP-Inhalte können nicht aus der Inbox ausbrechen; Maximalgröße `download.cloud_max_mb` (500 MB).
+
+### Manuell geladene Tracks
+
+Dateien, die manuell in den Eingangsordner gelegt werden (z. B. nach einem Gate-Download über
+Hypeddit oder Droploud), durchlaufen dieselbe Pipeline wie automatisch geladene Originale:
+
+1. **Warten:** Dateien müssen mindestens `intake_min_age_s` Sekunden unverändert sein (Standard: 120 s),
+   damit laufende Kopiervorgänge nicht gestört werden.
+2. **Qualitätsprüfung:** Fake-Erkennung und Brickwall-Check. Fakes → `inbox/_rejected/`.
+3. **Analyse:** BPM und Tonart per Beat-Tracking und Chroma-Analyse.
+4. **Tagging:** Artist, Titel, BPM, Key, Genre und Lautheits-Tags.
+5. **Sortieren:** In die BPM/Key-Ordnerstruktur der Inbox (`inbox/<BPM>/<Key>/`).
+
+| Dateityp | Ziel |
+|---|---|
+| Echtes Audio (WAV, FLAC, MP3, AIFF, M4A) | `inbox/<BPM>/<Key>/` |
+| Fake | `inbox/_rejected/` |
+| Brickwall-Master | `inbox/_rejected/clipped/` |
+| Duplikat | `inbox/_rejected/duplicate/` |
+| Nicht-Audio (ZIP, TXT, …) | `_eingang/_unbekannt/` |
+| Prüfung fehlgeschlagen | `_eingang/_fehler/` |
+
+Der Eingangsordner liegt standardmäßig unter `inbox/_eingang/` und wird von der Rekordbox-XML
+ignoriert. Im täglichen `discover`-Lauf wird er automatisch vor den Downloads abgearbeitet.
+Alternativ manuell:
+
+```bash
+python -m sc_digger.main intake              # sofort verarbeiten
+python -m sc_digger.main intake --dry-run    # nur auflisten, nichts verschieben
+```
+
+Konfiguration in `config.yaml`:
+```yaml
+download:
+  intake_dir: /music/inbox/_eingang    # Eingangsordner
+  intake_min_age_s: 120                # Wartezeit in Sekunden
+```
 
 ### Rekordbox
 
