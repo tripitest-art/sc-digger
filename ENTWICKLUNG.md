@@ -31,6 +31,7 @@ Modul anlegt, trägt es in die Tabelle ein.
 | `config.yaml` | Einzige Konfiguration (Tags, Referenz-Accounts, Schwellwerte). Ist die Produktivkonfiguration. |
 | `entrypoint.sh` | Schreibt `cron.env` (Cron hat sonst weder PATH noch Secrets), startet cron und Bot |
 | `skills/*/SKILL.md` | Abläufe für lokale Modelle in LibreChat (Review, Worker, Planer), per GitHub Skill Sync gespiegelt; Regeln bleiben in `AGENTS.md` |
+| `sandbox/` | Worker-Sandbox (Proxmox-Container): Einrichtung `install.sh`, Taktgeber `worker_tick.py` für den Qwen-Worker, Anleitung per SSH in `README.md` |
 | `.github/scripts/acceptance_guard.py` | CI-Check `acceptance-guard`: Akzeptanztests = Issue, keine neuen skips, CI/Test-Konfiguration geschützt, PR-Text ausgefüllt (`Closes #N`, `Worker:`) |
 | `set-secret.sh` / `update.sh` | Zugangsdaten setzen / Update ausrollen (auf dem Server) |
 
