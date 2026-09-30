@@ -40,6 +40,9 @@ RUN_TIMEOUT = 90 * 60       # Sekunden je Lauf des Agenten
 AGENT = os.environ.get("AGENT", "qwen-code")   # oder "opencode"
 PR_TEMPLATE = ".github/pull_request_template.md"
 TOOL_OUTPUT_LINES = 15      # so viele Zeilen je Werkzeugausgabe ins Log
+# Sekunden, die der Takt aufs Wecken wartet; länger als WAKE_TIMEOUT des Proxys (180 s),
+# damit der Proxy aufgibt und nicht der Takt.
+WAKE_WAIT = int(os.environ.get("WAKE_WAIT", "240"))
 
 # Wie .github/scripts/acceptance_guard.py: Kommentare der Vorlage zählen nicht.
 _LINK_RE = re.compile(r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s*:?\s+#(\d+)\b", re.I)
@@ -360,13 +363,42 @@ def run_agent(prompt: str) -> int:
     return proc.returncode
 
 
-def ollama_free() -> bool:
+def _get_json(url: str, timeout: float):
+    with urllib.request.urlopen(url, timeout=timeout) as r:
+        return json.load(r)
+
+
+def pc_status() -> dict | None:
+    """/proxy/status des WoL-Proxys; weckt den PC nie. None ohne Proxy (Ollama direkt)."""
     try:
-        with urllib.request.urlopen(f"{OLLAMA}/api/ps", timeout=15) as r:
-            loaded = [m["name"] for m in json.load(r).get("models", [])]
-    except Exception as e:  # PC aus, Bildmodus (Proxy blockt) oder Netz weg
+        return _get_json(f"{OLLAMA}/proxy/status", 10)
+    except Exception:
+        return None
+
+
+def ollama_free() -> bool:
+    """Ollama bereit und frei für MODEL? Schläft der Gaming-PC, weckt ihn die Anfrage.
+
+    Nur aufrufen, wenn es Arbeit gibt. /api/ps über den Proxy weckt einen schlafenden PC und
+    hält die Anfrage, bis Ollama antwortet (aus S5 etwa 45–50 s). Mit 15 s Timeout gab der
+    Takt vorher auf: der PC fuhr hoch, lief ohne Modell 5 min leer, KDE schaltete ihn ab, und
+    30 min später begann es von vorn, ohne dass der Auftrag je lief.
+    """
+    status = pc_status()
+    if status and status.get("mode") == "bild":
+        log("Gaming-PC im Bildmodus, nächste Runde.")
+        return False
+    waking = bool(status) and not status.get("ollama_up")
+    if waking:
+        log("Gaming-PC ist aus, wecke ihn über den WoL-Proxy.")
+    started = time.monotonic()
+    try:
+        loaded = [m["name"] for m in _get_json(f"{OLLAMA}/api/ps", WAKE_WAIT).get("models", [])]
+    except Exception as e:  # Wecken gescheitert, Bildmodus (Proxy blockt) oder Netz weg
         log(f"Ollama nicht erreichbar ({type(e).__name__}), nächste Runde.")
         return False
+    if waking:
+        log(f"Gaming-PC wach nach {round(time.monotonic() - started)} s.")
     busy = [n for n in loaded if not n.startswith(MODEL)]
     if busy:
         log(f"Ollama belegt ({', '.join(busy)}), nächste Runde.")
