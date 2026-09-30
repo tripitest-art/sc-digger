@@ -26,6 +26,7 @@ from .output import TelegramError, parse_feedback_callback, telegram_call
 from . import output
 from .redact import install_redacting_logging
 from .soundcloud import SoundCloudClient, SoundCloudError
+from .stats import calculate_stats, format_stats
 
 log = logging.getLogger("sc_digger.bot")
 
@@ -210,6 +211,14 @@ def handle_message(cfg: Config, sc: SoundCloudClient, chat_id: str, text: str) -
         except Exception:
             log.exception("Fehler bei Mix-Suche")
             _send_text(cfg, chat_id, "Mix-Suche fehlgeschlagen, siehe Container-Log.")
+        return
+
+    if first_word == "/stats":
+        try:
+            stats_reply(cfg, chat_id)
+        except Exception:
+            log.exception("Fehler bei /stats-Befehl")
+            _send_text(cfg, chat_id, "Statistikabfrage fehlgeschlagen, siehe Container-Log.")
         return
 
     m = URL_RE.search(text)
@@ -403,6 +412,24 @@ def listen(cfg: Config) -> None:
         except Exception:
             log.exception("Unerwarteter Fehler im Bot-Loop")
             time.sleep(5)
+
+
+def stats_reply(cfg: Config, chat_id: str) -> None:
+    """Antwort auf den /stats-Befehl."""
+    try:
+        track_db_path = cfg.raw.get("state", {}).get("track_db_path")
+        state_db_path = cfg.raw.get("state", {}).get("state_db_path")
+        
+        if not track_db_path or not state_db_path:
+            _send_text(cfg, chat_id, "Statistikdaten nicht konfiguriert.")
+            return
+            
+        stats = calculate_stats(track_db_path, state_db_path, days=7)
+        text = format_stats(stats)
+        _send_text(cfg, chat_id, text)
+    except Exception:
+        log.exception("Fehler bei /stats-Befehl")
+        _send_text(cfg, chat_id, "Statistikabfrage fehlgeschlagen, siehe Container-Log.")
 
 
 def cli() -> None:
