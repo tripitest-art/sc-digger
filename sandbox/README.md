@@ -188,4 +188,39 @@ sudo systemctl restart ollama
 ```
 
 > [!WARNING]
-> **Achtung bei AMD RX 6000 Serie (RDNA2):** Die Parameter (insbesondere `OLLAMA_FLASH_ATTENTION=1`) führen bei älteren AMD ROCm-Treibern (z.B. RX 6800 XT) häufig zu Kernel-Freezes und Timeouts (Ollama hängt bei `/api/ps`). Bei solchen Karten diesen Override besser weglassen!
+> **Achtung bei AMD RX 6000 Serie (RDNA2):** Die Parameter (insbesondere `OLLAMA_FLASH_ATTENTION=1`) führen bei älteren AMD ROCm-Treibern (z.B. RX 6800 XT) häufig zu Kernel-Freezes und Timeouts (Ollama hängt bei `/api/ps`). Bei diesen Karten darf Flash Attention **nicht** aktiviert werden! `OLLAMA_KV_CACHE_TYPE=q8_0` funktioniert hingegen fehlerfrei und ist dringend empfohlen.
+
+
+## GPU Hardware-Tuning (Linux / RDNA2)
+
+LLM-Inferenz (insbesondere für Qwen3-Coder) lastet die GPU-Shader kaum aus, skaliert aber massiv mit der Speicherbandbreite. Eine ungedrosselte RX 6800 XT verschwendet beim Generieren sinnlos Strom (Spikes bis 300 W).
+
+**Empfohlenes Tuning (am sichersten via LACT):**
+- **Power Limit:** Auf 150 W absenken (verhindert massive VDD-Spikes beim Pre-Fill)
+- **Core Clock:** Max auf 2100 MHz begrenzen
+- **Core Voltage Offset:** -100 mV (ca. 1050 mV)
+- **VRAM Clock:** Maximal lassen (VRAM ist der Flaschenhals!)
+
+Mit diesen Einstellungen sinkt der Verbrauch von >250W auf ca. 140W, während die Token-Rate (~50 Tokens/s bei 30B) bei RDNA2 exakt gleich bleibt, da der VRAM-Durchsatz erhalten bleibt.
+
+## Home Assistant & MQTT Integration
+
+Die Sandbox kann ihr Live-Log in Echtzeit an einen MQTT-Broker streamen, um das Agenten-Gedankengut z.B. in Home Assistant anzuzeigen. Dazu wird `mosquitto-clients` installiert und ein eigener Systemd-Service in der Sandbox eingerichtet, der das `worker.log` streamt:
+
+```bash
+apt-get update && apt-get install -y mosquitto-clients
+cat > /etc/systemd/system/qwen-mqtt.service << 'EOF'
+[Unit]
+Description=Stream Qwen Log to MQTT
+After=network.target
+
+[Service]
+ExecStart=/bin/bash -c "tail -n 0 -F /root/worker.log | mosquitto_pub -h HA_IP -u 'USER' -P 'PASS' -t 'sc_digger/worker/log' -l"
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+systemctl daemon-reload && systemctl enable --now qwen-mqtt.service
+```
