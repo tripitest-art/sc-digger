@@ -170,3 +170,22 @@ Log-Meldungen:
 | Langes Einfügen in der Proxmox-Konsole bricht ab | Browser-Konsole verträgt keine langen mehrzeiligen Texte | per SSH arbeiten oder Dateien aus dem Repo nehmen (dieser Ordner) |
 | Einrichtung „fehlt alles“, obwohl sie lief | im falschen Container (zwei hießen `agent-sandbox`) | `pct list`, nur einen Container behalten |
 | Worker sehr langsam | Modell teilt sich den Gaming-PC mit Chat/Bildern | auf dem PC `OLLAMA_MAX_LOADED_MODELS=1`, `OLLAMA_NUM_PARALLEL=1`; Variante mit 64k Kontext |
+
+## Ollama Tuning für knappen VRAM (z. B. 16 GB RX 6800 XT)
+
+Wenn große MoE-Modelle (wie `qwen3-coder:30b`) fast den gesamten VRAM belegen, landet der stetig wachsende KV-Cache im langsamen System-RAM (DDR4). Das führt zu einer massiven Verzögerung vor dem ersten generierten Token (Pre-fill Bottleneck).
+
+Abhilfe schaffen diese beiden Umgebungsvariablen:
+- `OLLAMA_KV_CACHE_TYPE=q8_0`: Quantisiert den Kontextverlauf auf 8-Bit und spart bis zu 75 % Speicherbedarf für den Cache, damit er im schnellen VRAM bleibt.
+- `OLLAMA_FLASH_ATTENTION=1`: Beschleunigt das massiv parallele Einlesen des Kontextes drastisch.
+
+**Einrichtung unter Linux (systemd):**
+```bash
+sudo mkdir -p /etc/systemd/system/ollama.service.d
+echo -e "[Service]\nEnvironment=\"OLLAMA_KV_CACHE_TYPE=q8_0\"\nEnvironment=\"OLLAMA_FLASH_ATTENTION=1\"" | sudo tee /etc/systemd/system/ollama.service.d/override.conf
+sudo systemctl daemon-reload
+sudo systemctl restart ollama
+```
+
+> [!WARNING]
+> **Achtung bei AMD RX 6000 Serie (RDNA2):** Die Parameter (insbesondere `OLLAMA_FLASH_ATTENTION=1`) führen bei älteren AMD ROCm-Treibern (z.B. RX 6800 XT) häufig zu Kernel-Freezes und Timeouts (Ollama hängt bei `/api/ps`). Bei solchen Karten diesen Override besser weglassen!
