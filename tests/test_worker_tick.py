@@ -107,14 +107,54 @@ def test_rework_job_ignores_newer_foreign_review(monkeypatch):
     assert "evil.example" not in task and REVIEW_CHANGES in task
 
 
+ISSUE_BODY = "### Ziel\n\nAbstand anzeigen.\n\n### Akzeptanztests\n\n```python\ndef test_x():\n    pass\n```"
+
+
+def _issue(number=102, author="tripitest-art"):
+    return {"number": number, "title": "Harmonic Mixing: Camelot-Abstand", "body": ISSUE_BODY,
+            "author": {"login": author}}
+
+
 def test_issue_job(monkeypatch):
-    fake = FakeGH(issues=[{"number": 102}])
+    fake = FakeGH(issues=[_issue()])
     monkeypatch.setattr(w, "gh", fake)
     key, task, pr_no, sha = w.issue_job()
     assert key == "issue102" and pr_no is None and sha is None
-    assert "agent-qwen" in task
     listed = next(c for c in fake.calls if c[:2] == ("issue", "list"))
     assert "bereit" in listed and "agent-qwen" in listed and "-label:blockiert" in " ".join(listed)
+    # Mit „nach AGENTS.md“ allein übersprang Qwen Label, Branch und Akzeptanz-Commit (#102).
+    for step in ("gh issue edit 102 --add-label in-arbeit --remove-label bereit",
+                 "git checkout -b feature/issue-102",
+                 "tests/acceptance/test_issue_102.py",
+                 "git push -u origin feature/issue-102",
+                 "--body-file .git/pr-body.md",
+                 "gh pr view feature/issue-102 --json number,title,body"):
+        assert step in task
+    assert "Closes #102" in task and f"Worker: {w.WORKER}" in task
+    assert ISSUE_BODY in task  # Issue wörtlich, nicht vom Modell nachzulesen
+    assert "Ein roter Test ist kein Grund aufzuhören" in task  # erster Lauf endete dort
+    assert "NICHT erledigt" in task and "ins Issue #102" in task
+    assert "/tmp/" not in task
+    assert '--title "$(gh issue view 102 --json title -q .title)"' in task
+
+
+def test_issue_job_ignores_foreign_issue(monkeypatch):
+    # Öffentliches Repo: Ein fremdes Issue darf nie zum Auftrag mit Schreibrecht werden.
+    monkeypatch.setattr(w, "gh", FakeGH(issues=[_issue(author="fremder")]))
+    assert w.issue_job() is None
+
+
+def test_check_issue_result(monkeypatch, capsys):
+    fake = FakeGH(prs=[{"number": 111}])
+    monkeypatch.setattr(w, "gh", fake)
+    w.check_issue_result("issue102")
+    assert "PR #111 von feature/issue-102 ist offen" in capsys.readouterr().out
+    listed = next(c for c in fake.calls if c[:2] == ("pr", "list"))
+    assert "feature/issue-102" in listed
+
+    monkeypatch.setattr(w, "gh", FakeGH(prs=[]))
+    w.check_issue_result("issue102")
+    assert "WARNUNG issue102: kein PR von feature/issue-102" in capsys.readouterr().out
 
 
 def test_issue_job_none(monkeypatch):
@@ -151,7 +191,7 @@ def test_main_stops_after_max_tries(monkeypatch, tmp_path, capsys):
     state = tmp_path / "state.json"
     state.write_text(json.dumps({"issue102": w.MAX_TRIES}))
     monkeypatch.setattr(w, "STATE", str(state))
-    monkeypatch.setattr(w, "gh", FakeGH(issues=[{"number": 102}]))
+    monkeypatch.setattr(w, "gh", FakeGH(issues=[_issue()]))
     monkeypatch.setattr(w, "ollama_free", lambda: pytest.fail("Ollama darf nicht gefragt werden"))
     assert w.main() == 0
     assert "wartet auf Stephan" in capsys.readouterr().out
@@ -233,7 +273,7 @@ def test_main_skips_done_rework_and_takes_issue(monkeypatch, tmp_path, capsys):
     state.write_text(json.dumps({"pr103@2026-09-29T21:39:23Z": 2,
                                  w.DONE: ["pr103@2026-09-29T21:39:23Z"]}))
     monkeypatch.setattr(w, "STATE", str(state))
-    monkeypatch.setattr(w, "gh", FakeGH(prs=[_pr()], issues=[{"number": 102}]))
+    monkeypatch.setattr(w, "gh", FakeGH(prs=[_pr()], issues=[_issue()]))
     monkeypatch.setattr(w, "ollama_free", lambda: False)  # Auftrag gewählt, dann Schluss
     assert w.main() == 0
     assert "wartet auf Stephan" not in capsys.readouterr().out

@@ -126,6 +126,8 @@ Log-Meldungen:
 | `Ollama nicht erreichbar` / `Ollama belegt` | PC aus, Bildmodus oder anderes Modell geladen; nächste Runde |
 | `… (Versuch n): starte OpenCode.` | Auftrag läuft (bis 90 min) |
 | `… neuer Commit …` / `… PR-Text von #n geändert` | Nacharbeit angekommen; Inhalt auf GitHub prüfen |
+| `issueN: PR #m von feature/issue-N ist offen` | neues Issue umgesetzt; Review steht an |
+| `WARNUNG issueN: kein PR von feature/issue-N` | Issue nicht erledigt; Log davor lesen, besonders wo das Modell aufhörte |
 | `WARNUNG …: weder Commit noch PR-Text` | Nacharbeit nicht erledigt; Log davor lesen, besonders Fehler von `gh` |
 | `schon 2 Versuche, wartet auf Stephan` | Auftrag liegt, bis Stephan entscheidet |
 | Python-Traceback | Fehler im Taktgeber oder bei `gh`; siehe Tabelle |

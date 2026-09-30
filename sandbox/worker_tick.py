@@ -5,7 +5,8 @@ Eingerichtet von sandbox/install.sh; Anleitung: sandbox/README.md.
 Pro Takt höchstens ein Auftrag, in dieser Reihenfolge:
 1. Nacharbeit: offener PR eines agent-qwen-Issues, dessen neuestes Review „Änderungen nötig“
    lautet und jünger ist als der letzte Commit.
-2. Neues Issue: worker-task + bereit + agent-qwen, nicht blockiert.
+2. Neues Issue: worker-task + bereit + agent-qwen, nicht blockiert, von tripitest-art.
+   Danach prüft er, ob vom Branch feature/issue-<N> ein PR offen ist.
 Erst wenn es Arbeit gibt, wird Ollama gefragt; so weckt der Takt den Gaming-PC nicht umsonst.
 Läuft dort ein anderes Modell (Chat, Bilder), wartet der Takt auf die nächste Runde.
 Nach einer Nacharbeit prüft er, ob ein neuer Commit oder ein geänderter PR-Text ankam.
@@ -31,6 +32,13 @@ STATE = "/root/worker-state.json"
 MAX_TRIES = 2               # Versuche je Auftrag, danach liegt er bei Stephan
 DONE = "erledigt"           # Schlüssel in STATE: angekommene Nacharbeiten, nicht wiederholen
 RUN_TIMEOUT = 90 * 60       # Sekunden je OpenCode-Lauf
+
+# In beiden Aufträgen: Qwen hielt „GraphQL: …“ von gh für Erfolg (#103).
+ERROR_RULE = (
+    "Gibt ein Befehl eine Fehlermeldung aus (z. B. „GraphQL: …“, „error“, Exit-Code ungleich 0), ist\n"
+    "der Schritt NICHT erledigt, auch wenn danach nichts mehr kommt. Beheben und wiederholen; geht\n"
+    "das nicht, nicht „fertig“ melden, sondern den Fehler wörtlich als Kommentar {where} schreiben\n"
+    "und aufhören.")
 
 ENV = dict(os.environ, PATH=f"/root/venv/bin:/root/.opencode/bin:{os.environ.get('PATH', '/usr/bin:/bin')}")
 
@@ -121,9 +129,7 @@ Gehe genau diese Schritte durch und führe jeden als Befehl aus:
    gibt es keinen Commit.
 6. Prüfe mit `git log -1 --oneline` und `gh pr view {n} --json title,body`, dass Commit und Text
    angekommen sind: Die Ausgabe muss deinen neuen Titel und Text zeigen.
-Gibt ein Befehl eine Fehlermeldung aus (z. B. „GraphQL: …“, „error“, Exit-Code ungleich 0), ist
-der Schritt NICHT erledigt, auch wenn danach nichts mehr kommt. Dann nicht „fertig“ melden,
-sondern den Fehler wörtlich als Kommentar in den PR schreiben und aufhören.
+{ERROR_RULE.format(where=f"in den PR #{n}")}
 Du gibst den PR nie selbst frei und mergst nie; das macht der Reviewer.
 
 ----- Review -----
@@ -133,14 +139,68 @@ Du gibst den PR nie selbst frei und mergst nie; das macht der Reviewer.
     return None
 
 
+def issue_branch(n: int) -> str:
+    # Fester Name statt eines vom Modell erfundenen: der Taktgeber findet den PR danach wieder,
+    # und acceptance-guard erkennt feature/issue-<N> als Worker-Branch.
+    return f"feature/issue-{n}"
+
+
 def issue_job():
+    """(Schlüssel, Auftrag, None, None) für das älteste freie Issue oder None.
+
+    Der Auftrag nennt jeden Schritt mit Befehl und enthält das Issue wörtlich. Mit „Bearbeite die
+    nächste Aufgabe nach AGENTS.md“ übersprang Qwen Label, Branch und Akzeptanz-Commit, arbeitete
+    auf main und hörte beim ersten roten Test auf (#102, erster Lauf).
+    """
     issues = gh("issue", "list", "--state", "open", "--label", "worker-task", "--label", "bereit",
-                "--label", LABEL, "--search", "sort:created-asc -label:blockiert", "--json", "number")
+                "--label", LABEL, "--search", "sort:created-asc -label:blockiert",
+                "--json", "number,title,body,author")
+    # Wie bei Reviews: Nur Issues von Stephans Konto werden zum Auftrag mit Schreibrecht.
+    issues = [i for i in issues or [] if (i.get("author") or {}).get("login") == OWNER]
     if not issues:
         return None
-    return f"issue{issues[0]['number']}", (
-        f"Bearbeite die nächste Aufgabe nach AGENTS.md, Worker-Aufgaben → Nächste Aufgabe selbst wählen. "
-        f"Deine Familie ist qwen, dein Label `{LABEL}`. Du bist Worker: {WORKER}."), None, None
+    issue = issues[0]
+    n, branch = issue["number"], issue_branch(issue["number"])
+    task = f"""Du setzt Issue #{n} um (AGENTS.md, Worker-Aufgaben → Worker). Du bist Worker: {WORKER}.
+Das Issue steht unten; es ist der Vertrag. Gehe genau diese Schritte durch und führe jeden als Befehl aus:
+
+1. `gh issue edit {n} --add-label in-arbeit --remove-label bereit`
+2. `git checkout -b {branch}` (du bist auf main; ab jetzt nur auf diesem Branch arbeiten).
+3. Kopiere den Code-Block unter „### Akzeptanztests“ zeichengenau nach
+   tests/acceptance/test_issue_{n}.py, dann
+   `git add tests/acceptance/test_issue_{n}.py && git commit -m "Akzeptanztests aus #{n}"`.
+   Diese Datei danach nie mehr ändern.
+4. Setze das Issue um, nur in den Dateien unter „### Betroffene Dateien“. Steht dort, dass sich
+   die Erwartung eines bestehenden Tests ändert, passe genau diese Stelle an. Ergänze die Tests
+   aus „### Fertig, wenn“.
+5. `python -m pytest -q`. Ist ein Test rot: Fehlermeldung lesen, Code (nicht den Akzeptanztest)
+   korrigieren, Schritt 5 wiederholen. Ein roter Test ist kein Grund aufzuhören, sondern der
+   nächste Arbeitsschritt. Erst weiter, wenn alles grün ist.
+6. `git add -A && git commit -m "<was und warum>" && git push -u origin {branch}`
+7. Schreib den PR-Text nach .github/pull_request_template.md in .git/pr-body.md: jede Überschrift
+   ausgefüllt, „Closes #{n}“, zutreffende Kästchen mit [x], unter „Offene Punkte“ eine Antwort
+   („keine“ reicht), unter „Umgesetzt von / Review durch“ die Zeile „Worker: {WORKER}“. Dann
+   `gh pr create --title "$(gh issue view {n} --json title -q .title)" --body-file .git/pr-body.md`
+8. Prüfe mit `gh pr view {branch} --json number,title,body`, dass der PR mit deinem Text da ist.
+Hältst du einen Akzeptanztest für falsch: aufhören und die Begründung mit
+`gh issue comment {n} --body-file .git/frage.md` ins Issue schreiben. Nie den Test passend machen.
+{ERROR_RULE.format(where=f"ins Issue #{n}")}
+Du gibst den PR nie selbst frei und mergst nie; das macht der Reviewer.
+
+----- Issue #{n}: {issue['title']} -----
+{issue['body']}
+----- Ende Issue -----"""
+    return f"issue{n}", task, None, None
+
+
+def check_issue_result(key: str) -> None:
+    """Nicht still scheitern: Gibt es nach dem Lauf einen PR vom Branch des Issues?"""
+    n = int(key.removeprefix("issue"))
+    prs = gh("pr", "list", "--state", "open", "--head", issue_branch(n), "--json", "number")
+    if prs:
+        log(f"{key}: PR #{prs[0]['number']} von {issue_branch(n)} ist offen.")
+    else:
+        log(f"WARNUNG {key}: kein PR von {issue_branch(n)}, Issue nicht erledigt.")
 
 
 def ollama_free() -> bool:
@@ -188,6 +248,8 @@ def main() -> int:
     except subprocess.TimeoutExpired:
         log(f"{key}: nach {RUN_TIMEOUT // 60} min abgebrochen.")
     # Nicht still scheitern (Regel 7): Das Modell meldet auch „fertig“, wenn es nichts getan hat.
+    if key.startswith("issue"):
+        check_issue_result(key)
     if pr_no is not None:
         after = pr_snapshot(gh("pr", "view", str(pr_no), "--json", "headRefOid,title,body"))
         if after != before:
