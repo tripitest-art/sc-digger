@@ -37,6 +37,33 @@ def compatible_keys(key: str) -> list[str]:
     ]
 
 
+def camelot_distance(a: str, b: str) -> int:
+    """Schritte zwischen zwei Camelot-Keys: kürzester Weg um das Rad zwischen den Zahlen
+    (0 bis 6, 12 und 1 liegen nebeneinander) plus 1, wenn die Buchstaben verschieden sind.
+    Ergebnis 0 bis 7, symmetrisch.
+    Eingaben werden wie in compatible_keys normalisiert (Leerzeichen, Groß/klein);
+    ungültige Keys -> ValueError (am einfachsten über compatible_keys(x)[0])."""
+    # Normalisieren und Validierung durch compatible_keys
+    norm_a = compatible_keys(a)[0]
+    norm_b = compatible_keys(b)[0]
+    
+    # Nummern extrahieren
+    num_a = int(_CAMELOT_RE.match(norm_a).group(1))
+    num_b = int(_CAMELOT_RE.match(norm_b).group(1))
+    letter_a = _CAMELOT_RE.match(norm_a).group(2)
+    letter_b = _CAMELOT_RE.match(norm_b).group(2)
+    
+    # Abstand der Zahlen auf dem Rad berechnen
+    # Der kürzeste Weg zwischen zwei Zahlen auf einem Kreis mit 12 Elementen
+    diff = abs(num_a - num_b)
+    radial_distance = min(diff, 12 - diff)
+    
+    # Buchstaben-Abstand (0 wenn gleich, 1 wenn verschieden)
+    letter_distance = 0 if letter_a == letter_b else 1
+    
+    return radial_distance + letter_distance
+
+
 def find_mix_candidates(
     db: TrackDB,
     key: str,

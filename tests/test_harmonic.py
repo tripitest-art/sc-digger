@@ -114,3 +114,57 @@ def test_compatible_keys_boundary_cases():
     """Prüft das Schließen des Rads für 1 und 12 sowohl für A als auch B."""
     assert compatible_keys("1B") == ["1B", "12B", "2B", "1A"]
     assert compatible_keys("12A") == ["12A", "11A", "1A", "12B"]
+
+
+def test_camelot_distance_all_pairs():
+    """Testet alle 24x24 Paare im gültigen Bereich für Abstände 0-7."""
+    from sc_digger.harmonic import camelot_distance
+    
+    # Generiere alle möglichen Keys
+    keys = [f"{n}{letter}" for n in range(1, 13) for letter in "AB"]
+    
+    # Teste alle Paare
+    for i, a in enumerate(keys):
+        for j, b in enumerate(keys):
+            distance = camelot_distance(a, b)
+            assert 0 <= distance <= 7, f"Distance {distance} out of range for {a}, {b}"
+            
+            # Symmetrie prüfen
+            assert distance == camelot_distance(b, a), f"Distance not symmetric for {a}, {b}"
+
+
+def test_camelot_distance_triangle_inequality():
+    """Testet die Dreiecksungleichung für einige Beispiele."""
+    from sc_digger.harmonic import camelot_distance
+    
+    # Dreiecksungleichung: d(a,c) <= d(a,b) + d(b,c)
+    a, b, c = "1A", "5B", "12A"
+    d_ab = camelot_distance(a, b)
+    d_bc = camelot_distance(b, c)
+    d_ac = camelot_distance(a, c)
+    
+    assert d_ac <= d_ab + d_bc, f"Triangle inequality violated: {d_ac} > {d_ab} + {d_bc}"
+
+
+def test_camelot_distance_values():
+    """Testet spezifische Abstandswerte aus der Dokumentation."""
+    from sc_digger.harmonic import camelot_distance
+    
+    # Testfälle aus dem Issue
+    assert camelot_distance("8A", "8A") == 0
+    assert camelot_distance("8A", "9A") == 1
+    assert camelot_distance("8A", "7A") == 1
+    assert camelot_distance("12A", "1A") == 1
+    assert camelot_distance("1B", "12B") == 1
+    assert camelot_distance("8A", "8B") == 1
+    assert camelot_distance("8A", "9B") == 2
+    assert camelot_distance("8A", "2A") == 6
+    assert camelot_distance("1A", "7B") == 7
+    assert camelot_distance("3B", "10B") == 5
+
+
+def test_camelot_distance_symmetric():
+    """Testet Symmetrie der Abstände."""
+    from sc_digger.harmonic import camelot_distance
+    
+    assert camelot_distance("3A", "11B") == camelot_distance("11B", "3A") == 5
