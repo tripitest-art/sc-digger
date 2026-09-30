@@ -13,12 +13,21 @@ import re
 
 _TG_TOKEN_RE = re.compile(r"bot\d{5,}:[A-Za-z0-9_-]{20,}")
 _SECRET_ENV = ("TELEGRAM_BOT_TOKEN", "SOUNDCLOUD_AUTH_TOKEN")
+_OAUTH_HEADER_RE = re.compile(r"(OAuth\s+)[A-Za-z0-9._-]{20,}(?=[\s&]|$)", re.IGNORECASE)
+_OAUTH_URL_PARAM_RE = re.compile(r"(oauth_token=)[A-Za-z0-9._-]{20,}(?=[\s&]|$)", re.IGNORECASE)
+_AUTH_TOKEN_ARG_RE = re.compile(r"(--auth-token[=\s])[A-Za-z0-9._-]{20,}(?=[\s&]|$)", re.IGNORECASE)
 
 
 def redact(text: object) -> str:
     """Ersetzt bekannte Zugangsdaten in einem beliebigen Text durch ***."""
     s = str(text)
     s = _TG_TOKEN_RE.sub("bot***", s)
+    
+    # Entferne OAuth-Tokens aus verschiedenen Stellen
+    s = _OAUTH_HEADER_RE.sub(r"\1***", s)
+    s = _OAUTH_URL_PARAM_RE.sub(r"\1***", s)
+    s = _AUTH_TOKEN_ARG_RE.sub(r"\1***", s)
+    
     for name in _SECRET_ENV:
         value = os.environ.get(name)
         if value and len(value) >= 8:
