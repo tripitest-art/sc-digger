@@ -1,0 +1,19 @@
+# Ignore standard python caches
+__pycache__/
+*.pyc
+.pytest_cache/
+.env
+
+# Ignore databases and binary files
+*.db
+*.sqlite
+*.sqlite3
+*.db-shm
+*.db-wal
+*.log
+
+# Ignore heavy directories that Qwen Code doesn't need to read for features
+sandbox/
+
+# Ignore documentation that Qwen Code doesn't need to read implicitly (it gets it in the prompt anyway)
+# Wait, actually we shouldn't ignore AGENTS.md, because it might want to read it via tool if it forgets something.
