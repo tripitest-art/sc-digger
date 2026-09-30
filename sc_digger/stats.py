@@ -33,7 +33,7 @@ def calculate_stats(
     stats = DigestStats(days=days)
     
     # Zeitfenster berechnen
-    cutoff_date = datetime.now() - timedelta(days=days)
+    cutoff_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
     
     try:
         # State DB (runs) auswerten
