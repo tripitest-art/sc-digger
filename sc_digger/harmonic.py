@@ -131,7 +131,10 @@ def format_mix_list(
     """Klartext (kein HTML) für Telegram/Konsole.
     Kopf: "🎛 <KEY> · <bpm:g> BPM ±<bpm_tolerance:g>: <n> Track" bzw. "... Tracks" ab 2;
           bei 0 Einträgen "🎛 <KEY> · <bpm:g> BPM ±<tol:g>: keine passenden Tracks".
-    Je Eintrag eine Zeile: "<artist or '?'> – <title or path> · <bpm:.1f> BPM · <key_camelot>"."""
+    Je Eintrag eine Zeile: "<artist or '?'> – <title or path> · <bpm:.1f> BPM · <key_camelot>",
+    dahinter " (d<n>)" mit n = camelot_distance(key, key_camelot), wenn n > 0.
+    Kein Suffix bei n == 0, bei fehlendem key_camelot ("?") und wenn camelot_distance
+    einen ValueError wirft (ungültiger Ziel- oder Track-Key)."""
     try:
         norm_key = compatible_keys(key)[0]
     except ValueError:
@@ -148,6 +151,17 @@ def format_mix_list(
         title = r.title or r.path
         bpm_str = f"{r.bpm:.1f}" if r.bpm is not None else "??"
         key_str = r.key_camelot or "?"
-        lines.append(f"{artist} – {title} · {bpm_str} BPM · {key_str}")
+        if r.key_camelot is not None:
+            try:
+                distance = camelot_distance(key, r.key_camelot)
+                if distance > 0:
+                    lines.append(f"{artist} – {title} · {bpm_str} BPM · {key_str} (d{distance})")
+                else:
+                    lines.append(f"{artist} – {title} · {bpm_str} BPM · {key_str}")
+            except ValueError:
+                # Ungültiger Key -> kein Differenz-Suffix
+                lines.append(f"{artist} – {title} · {bpm_str} BPM · {key_str}")
+        else:
+            lines.append(f"{artist} – {title} · {bpm_str} BPM · {key_str}")
 
     return "\n".join(lines)

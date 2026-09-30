@@ -107,7 +107,7 @@ def test_format_mix_list_plural_tracks_and_float_tolerance():
     lines = formatted.split("\n")
     assert lines[0] == "🎛 12A · 153.5 BPM ±1.5: 2 Tracks"
     assert lines[1] == "Artist 1 – Title 1 · 152.5 BPM · 12A"
-    assert lines[2] == "Artist 2 – Title 2 · 154.0 BPM · 1A"
+    assert lines[2] == "Artist 2 – Title 2 · 154.0 BPM · 1A (d1)"
 
 
 def test_compatible_keys_boundary_cases():
