@@ -186,3 +186,6 @@ echo -e "[Service]\nEnvironment=\"OLLAMA_KV_CACHE_TYPE=q8_0\"\nEnvironment=\"OLL
 sudo systemctl daemon-reload
 sudo systemctl restart ollama
 ```
+
+> [!WARNING]
+> **Achtung bei AMD RX 6000 Serie (RDNA2):** Die Parameter (insbesondere `OLLAMA_FLASH_ATTENTION=1`) führen bei älteren AMD ROCm-Treibern (z.B. RX 6800 XT) häufig zu Kernel-Freezes und Timeouts (Ollama hängt bei `/api/ps`). Bei solchen Karten diesen Override besser weglassen!
