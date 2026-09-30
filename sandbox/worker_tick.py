@@ -10,7 +10,9 @@ Pro Takt höchstens ein Auftrag, in dieser Reihenfolge:
    Modell auch „fertig“ meldet, wenn es den Schritt ausgelassen hat (#112).
 3. Neues Issue: worker-task + bereit + agent-qwen, nicht blockiert, von tripitest-art.
    Danach prüft er, ob vom Branch feature/issue-<N> ein PR offen ist.
-Erst wenn es Arbeit gibt, wird Ollama gefragt; so weckt der Takt den Gaming-PC nicht umsonst.
+Vorgabe (WAKE_PC=0): Der Takt läuft alle 5 min, weckt den Gaming-PC aber nie. Zuerst liest er
+/proxy/status (weckt nie); nur wenn der PC an ist und Chat aktiv, sucht er Arbeit auf GitHub.
+Mit WAKE_PC=1 wird erst bei Arbeit gefragt und ein schlafender PC per WoL geweckt.
 Läuft dort ein anderes Modell (Chat, Bilder), wartet der Takt auf die nächste Runde.
 Nach einer Nacharbeit prüft er, ob ein neuer Commit oder ein geänderter PR-Text ankam.
 
@@ -43,6 +45,11 @@ TOOL_OUTPUT_LINES = 15      # so viele Zeilen je Werkzeugausgabe ins Log
 # Sekunden, die der Takt aufs Wecken wartet; länger als WAKE_TIMEOUT des Proxys (180 s),
 # damit der Proxy aufgibt und nicht der Takt.
 WAKE_WAIT = int(os.environ.get("WAKE_WAIT", "240"))
+# 1: bei Arbeit den Gaming-PC per WoL wecken. 0 (Vorgabe): nur arbeiten, wenn er an ist und
+# Chat aktiv; dafür läuft der Takt oft (install.sh, TAKT).
+WAKE_PC = os.environ.get("WAKE_PC", "0") == "1"
+# Schlüssel in STATE: letzter Zustand von PC und Arbeit (Meldung nur beim Wechsel)
+LAST_PC, LAST_WORK = "_pc", "_arbeit"
 
 # Wie .github/scripts/acceptance_guard.py: Kommentare der Vorlage zählen nicht.
 _LINK_RE = re.compile(r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s*:?\s+#(\d+)\b", re.I)
@@ -376,18 +383,54 @@ def pc_status() -> dict | None:
         return None
 
 
-def ollama_free() -> bool:
-    """Ollama bereit und frei für MODEL? Schläft der Gaming-PC, weckt ihn die Anfrage.
+def pc_ready(status: dict | None) -> str | None:
+    """Ohne WAKE_PC: None, wenn der Takt arbeiten darf, sonst der Grund, warum nicht.
 
-    Nur aufrufen, wenn es Arbeit gibt. /api/ps über den Proxy weckt einen schlafenden PC und
-    hält die Anfrage, bis Ollama antwortet (aus S5 etwa 45–50 s). Mit 15 s Timeout gab der
-    Takt vorher auf: der PC fuhr hoch, lief ohne Modell 5 min leer, KDE schaltete ihn ab, und
-    30 min später begann es von vorn, ohne dass der Auftrag je lief.
+    Der Takt läuft oft (alle 5 min) und soll den PC nie wecken: Er arbeitet nur, wenn der PC
+    ohnehin an ist und Chat aktiv. Ohne Proxy (Ollama direkt) gilt der PC als bereit.
     """
-    status = pc_status()
+    if status is None:
+        return None
+    if status.get("mode") == "bild":
+        return "Gaming-PC im Bildmodus"
+    if not status.get("ollama_up"):
+        return "Gaming-PC aus, kein Wecken"
+    return None
+
+
+def log_on_change(state: dict, slot: str, what: str, msg: str) -> bool:
+    """Zustandsmeldung nur beim Wechsel; sonst stünde sie alle 5 min im Log."""
+    if state.get(slot) == what:
+        return False
+    log(msg)
+    state[slot] = what
+    save_state(state)
+    return True
+
+
+def ollama_free(status: dict | None = None, say=log) -> bool:
+    """Ollama bereit und frei für MODEL?
+
+    Mit WAKE_PC=1 weckt die Anfrage einen schlafenden PC: /api/ps über den Proxy hält sie, bis
+    Ollama antwortet (aus S5 etwa 45–50 s). Mit 15 s Timeout gab der Takt früher auf, der PC
+    lief leer, KDE schaltete ihn ab, und es begann von vorn, ohne dass der Auftrag je lief.
+    Ohne WAKE_PC kommen die geladenen Modelle aus /proxy/status; das weckt nie, auch nicht,
+    wenn der PC gerade ausgeht.
+    """
+    if status is None:
+        status = pc_status()
     if status and status.get("mode") == "bild":
         log("Gaming-PC im Bildmodus, nächste Runde.")
         return False
+    if status and not WAKE_PC:
+        if not status.get("ollama_up"):
+            log("Gaming-PC aus, kein Wecken, nächste Runde.")
+            return False
+        busy = [m["name"] for m in status.get("models") or [] if not m["name"].startswith(MODEL)]
+        if busy:
+            say(f"Ollama belegt ({', '.join(busy)}), nächste Runde.")
+            return False
+        return True
     waking = bool(status) and not status.get("ollama_up")
     if waking:
         log("Gaming-PC ist aus, wecke ihn über den WoL-Proxy.")
@@ -401,23 +444,34 @@ def ollama_free() -> bool:
         log(f"Gaming-PC wach nach {round(time.monotonic() - started)} s.")
     busy = [n for n in loaded if not n.startswith(MODEL)]
     if busy:
-        log(f"Ollama belegt ({', '.join(busy)}), nächste Runde.")
+        say(f"Ollama belegt ({', '.join(busy)}), nächste Runde.")
         return False
     return True
 
 
 def main() -> int:
     state = load_state()
+    status = None
+    if not WAKE_PC:
+        # Zuerst der PC, dann GitHub: Ist er aus, kostet der Takt nur eine lokale Anfrage.
+        status = pc_status()
+        reason = pc_ready(status)
+        if reason:
+            log_on_change(state, LAST_PC, reason, f"{reason}, warte.")
+            return 0
+        if log_on_change(state, LAST_PC, "bereit", "Gaming-PC an, Chat aktiv: suche Arbeit."):
+            state.pop(LAST_WORK, None)   # Ergebnis der ersten Suche wieder zeigen
     job = rework_job(frozenset(state.get(DONE, []))) or text_fix_job() or issue_job()
     if not job:
-        log("Keine Arbeit.")
+        log_on_change(state, LAST_WORK, "keine", "Keine Arbeit.")
         return 0
     key, task, pr_no, before = job
     if state.get(key, 0) >= MAX_TRIES:
-        log(f"{key}: schon {MAX_TRIES} Versuche, wartet auf Stephan.")
+        log_on_change(state, LAST_WORK, f"{key} liegt", f"{key}: schon {MAX_TRIES} Versuche, wartet auf Stephan.")
         return 0
-    if not ollama_free():
+    if not ollama_free(status, say=lambda m: log_on_change(state, LAST_WORK, f"{key} belegt", m)):
         return 0
+    state[LAST_WORK] = key
 
     state[key] = state.get(key, 0) + 1
     save_state(state)

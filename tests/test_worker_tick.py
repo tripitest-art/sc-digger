@@ -22,9 +22,14 @@ BAD_BODY = "## Was und warum\r\n\r\nCloses #\r\n"   # Vorlage nicht ausgefüllt 
 
 
 @pytest.fixture(autouse=True)
-def _repo_workdir(monkeypatch):
+def _repo_workdir(monkeypatch, tmp_path):
     # Die PR-Vorlage liest der Taktgeber aus WORKDIR; in Tests ist das dieses Repo.
     monkeypatch.setattr(w, "WORKDIR", str(REPO_ROOT))
+    monkeypatch.setattr(w, "STATE", str(tmp_path / "state-default.json"))
+
+    def no_network(url, timeout):   # nie den echten Proxy fragen; wie „kein Proxy“
+        raise urllib.error.URLError("kein Netz im Test")
+    monkeypatch.setattr(w.urllib.request, "urlopen", no_network)
 
 
 def _good_body(issue_no=100):
@@ -186,9 +191,17 @@ def _fake_urlopen(models, status=None, calls=None):
         if url.endswith("/proxy/status"):
             if status is None:
                 raise urllib.error.HTTPError(url, 404, "Not Found", {}, None)
-            return io.BytesIO(json.dumps(status).encode())
+            # Der Proxy liefert die geladenen Modelle mit, solange Ollama läuft.
+            full = {"models": [{"name": m} for m in models] if status.get("ollama_up") else [],
+                    **status}
+            return io.BytesIO(json.dumps(full).encode())
         return io.BytesIO(json.dumps({"models": [{"name": m} for m in models]}).encode())
     return urlopen
+
+
+PC_CHAT = {"pc": "an", "ollama_up": True, "mode": "chat"}
+PC_AUS = {"pc": "aus", "ollama_up": False, "mode": "aus"}
+PC_BILD = {"pc": "an", "ollama_up": False, "mode": "bild"}
 
 
 @pytest.mark.parametrize("models, free", [
@@ -197,15 +210,33 @@ def _fake_urlopen(models, status=None, calls=None):
     (["qwen3.5:9b"], False),
     (["qwen3-coder-64k:latest", "flux:latest"], False),
 ])
-@pytest.mark.parametrize("status", [None, {"mode": "chat", "ollama_up": True}])
-def test_ollama_free(monkeypatch, models, free, status):
+@pytest.mark.parametrize("status", [None, PC_CHAT])
+@pytest.mark.parametrize("wake", [False, True])
+def test_ollama_free(monkeypatch, models, free, status, wake):
+    monkeypatch.setattr(w, "WAKE_PC", wake)
     monkeypatch.setattr(w.urllib.request, "urlopen", _fake_urlopen(models, status))
     assert w.ollama_free() is free
+
+
+def test_ollama_free_without_wake_never_asks_ollama(monkeypatch, capsys):
+    # /api/ps über den Proxy würde einen PC wecken, der gerade ausgeht. Ohne WAKE_PC kommen
+    # die Modelle aus /proxy/status.
+    calls = []
+    monkeypatch.setattr(w, "WAKE_PC", False)
+    monkeypatch.setattr(w.urllib.request, "urlopen", _fake_urlopen(["qwen3.5:9b"], PC_CHAT, calls))
+    assert w.ollama_free() is False
+    assert [c[0] for c in calls] == ["/proxy/status"]
+    assert "Ollama belegt (qwen3.5:9b)" in capsys.readouterr().out
+    calls.clear()
+    monkeypatch.setattr(w.urllib.request, "urlopen", _fake_urlopen([], PC_AUS, calls))
+    assert w.ollama_free() is False
+    assert [c[0] for c in calls] == ["/proxy/status"]
 
 
 def test_ollama_free_wakes_sleeping_pc(monkeypatch, capsys):
     # Mit 15 s Timeout gab der Takt auf, bevor der PC wach war (aus S5 ~45 s), und weckte ihn
     # alle 30 min umsonst. Jetzt wartet er länger als der Proxy selbst.
+    monkeypatch.setattr(w, "WAKE_PC", True)
     calls = []
     monkeypatch.setattr(w.urllib.request, "urlopen",
                         _fake_urlopen([], {"pc": "aus", "ollama_up": False, "mode": "aus"}, calls))
@@ -244,7 +275,7 @@ def test_main_stops_after_max_tries(monkeypatch, tmp_path, capsys):
     state.write_text(json.dumps({"issue102": w.MAX_TRIES}))
     monkeypatch.setattr(w, "STATE", str(state))
     monkeypatch.setattr(w, "gh", FakeGH(issues=[_issue()]))
-    monkeypatch.setattr(w, "ollama_free", lambda: pytest.fail("Ollama darf nicht gefragt werden"))
+    monkeypatch.setattr(w, "ollama_free", lambda *a, **k: pytest.fail("Ollama darf nicht gefragt werden"))
     assert w.main() == 0
     assert "wartet auf Stephan" in capsys.readouterr().out
 
@@ -252,7 +283,7 @@ def test_main_stops_after_max_tries(monkeypatch, tmp_path, capsys):
 def test_main_without_work_does_not_touch_ollama(monkeypatch, tmp_path):
     monkeypatch.setattr(w, "STATE", str(tmp_path / "state.json"))
     monkeypatch.setattr(w, "gh", FakeGH())
-    monkeypatch.setattr(w, "ollama_free", lambda: pytest.fail("weckt den PC ohne Arbeit"))
+    monkeypatch.setattr(w, "ollama_free", lambda *a, **k: pytest.fail("weckt den PC ohne Arbeit"))
     assert w.main() == 0
 
 
@@ -268,7 +299,7 @@ def _run_rework(monkeypatch, tmp_path, after: dict) -> list:
         return real_call(*args)
 
     monkeypatch.setattr(w, "gh", gh)
-    monkeypatch.setattr(w, "ollama_free", lambda: True)
+    monkeypatch.setattr(w, "ollama_free", lambda *a, **k: True)
     monkeypatch.setattr(w.subprocess, "run", lambda cmd, **kw: None)  # git-Vorbereitung
     prompts = []
     monkeypatch.setattr(w, "run_agent", lambda prompt: prompts.append(prompt) or 0)
@@ -280,7 +311,7 @@ def test_main_warns_when_rework_changed_nothing(monkeypatch, tmp_path, capsys):
     prompts = _run_rework(monkeypatch, tmp_path, {})
     assert len(prompts) == 1 and "gh pr checkout 103" in prompts[0]
     assert "WARNUNG pr103@2026-09-29T21:39:23Z: weder Commit" in capsys.readouterr().out
-    assert json.loads((tmp_path / "state.json").read_text()) == {"pr103@2026-09-29T21:39:23Z": 1}
+    assert json.loads((tmp_path / "state.json").read_text())["pr103@2026-09-29T21:39:23Z"] == 1
 
 
 def test_main_ignores_line_endings_in_body(monkeypatch, tmp_path, capsys):
@@ -332,7 +363,7 @@ def test_main_skips_done_rework_and_takes_issue(monkeypatch, tmp_path, capsys):
     monkeypatch.setattr(w, "STATE", str(state))
     monkeypatch.setattr(w, "gh", FakeGH(prs=[_pr(body=_good_body())], issues=[_issue()]))
     chosen = []
-    monkeypatch.setattr(w, "ollama_free", lambda: chosen.append(1) or False)
+    monkeypatch.setattr(w, "ollama_free", lambda *a, **k: chosen.append(1) or False)
     assert w.main() == 0
     assert chosen and "wartet auf Stephan" not in capsys.readouterr().out
 
@@ -425,3 +456,65 @@ def test_log_stream_line(capsys):
     assert "✗ Fehler:\n    GraphQL: kaputt" in out
     assert "[Qwen Code: success, 3 Züge, 47 s]" in out
     assert "kein json" in out
+
+
+# --- Nur arbeiten, wenn der Gaming-PC an ist und Chat aktiv (WAKE_PC=0) ---
+
+class NoGH:
+    def __call__(self, *args):
+        pytest.fail(f"GitHub gefragt, obwohl der PC nicht bereit ist: {args}")
+
+
+@pytest.mark.parametrize("status, msg", [
+    (PC_AUS, "Gaming-PC aus, kein Wecken, warte."),
+    (PC_BILD, "Gaming-PC im Bildmodus, warte."),
+])
+def test_main_waits_for_pc_without_asking_github(monkeypatch, tmp_path, capsys, status, msg):
+    monkeypatch.setattr(w, "WAKE_PC", False)
+    monkeypatch.setattr(w, "STATE", str(tmp_path / "state.json"))
+    monkeypatch.setattr(w, "gh", NoGH())
+    monkeypatch.setattr(w.urllib.request, "urlopen", _fake_urlopen([], status))
+    assert w.main() == 0
+    assert w.main() == 0      # zweiter Takt: gleicher Zustand, keine neue Zeile
+    assert capsys.readouterr().out.count(msg) == 1
+
+
+def test_main_logs_state_changes_once(monkeypatch, tmp_path, capsys):
+    monkeypatch.setattr(w, "WAKE_PC", False)
+    monkeypatch.setattr(w, "STATE", str(tmp_path / "state.json"))
+    monkeypatch.setattr(w, "gh", FakeGH())
+    monkeypatch.setattr(w.urllib.request, "urlopen", _fake_urlopen([], PC_CHAT))
+    for _ in range(3):
+        assert w.main() == 0
+    out = capsys.readouterr().out
+    assert out.count("Keine Arbeit.") == 1
+    monkeypatch.setattr(w.urllib.request, "urlopen", _fake_urlopen([], PC_AUS))
+    assert w.main() == 0
+    monkeypatch.setattr(w.urllib.request, "urlopen", _fake_urlopen([], PC_CHAT))
+    assert w.main() == 0
+    out = capsys.readouterr().out
+    assert "Gaming-PC aus" in out and "Keine Arbeit." in out   # nach dem Wechsel wieder
+
+
+def test_main_with_pc_on_runs_job(monkeypatch, tmp_path, capsys):
+    monkeypatch.setattr(w, "WAKE_PC", False)
+    monkeypatch.setattr(w, "STATE", str(tmp_path / "state.json"))
+    monkeypatch.setattr(w, "gh", FakeGH(issues=[_issue()], prs=[]))
+    monkeypatch.setattr(w.urllib.request, "urlopen", _fake_urlopen([], PC_CHAT))
+    monkeypatch.setattr(w.subprocess, "run", lambda cmd, **kw: None)
+    prompts = []
+    monkeypatch.setattr(w, "run_agent", lambda prompt: prompts.append(prompt) or 0)
+    assert w.main() == 0
+    assert len(prompts) == 1 and "Issue #102" in prompts[0]
+
+
+def test_main_logs_busy_ollama_once(monkeypatch, tmp_path, capsys):
+    # Chattest du in LibreChat mit einem anderen Modell, wartet der Worker, ohne das Log zu füllen.
+    monkeypatch.setattr(w, "WAKE_PC", False)
+    monkeypatch.setattr(w, "STATE", str(tmp_path / "state.json"))
+    monkeypatch.setattr(w, "gh", FakeGH(issues=[_issue()], prs=[]))
+    monkeypatch.setattr(w.urllib.request, "urlopen", _fake_urlopen(["qwen3.5:9b"], PC_CHAT))
+    monkeypatch.setattr(w, "run_agent", lambda prompt: pytest.fail("Ollama ist belegt"))
+    for _ in range(3):
+        assert w.main() == 0
+    assert capsys.readouterr().out.count("Ollama belegt (qwen3.5:9b)") == 1

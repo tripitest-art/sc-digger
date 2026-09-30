@@ -5,6 +5,7 @@
 #   bash /root/sc-digger/sandbox/install.sh            # einrichten / aktualisieren
 #   MODEL=qwen3-coder-64k OLLAMA=http://… bash …       # andere Werte als die Vorgaben
 #   AGENT=opencode bash …                              # OpenCode statt Qwen Code
+#   WAKE_PC=1 TAKT=30min bash …                        # PC bei Arbeit wecken, seltener schauen
 #
 # Der GitHub-Zugang wird hier bewusst NICHT eingerichtet: den Token gibt Stephan selbst
 # verdeckt ein (README, Schritt 3). Das Skript prüft nur, ob er da ist.
@@ -14,6 +15,8 @@ REPO_DIR=/root/sc-digger
 OLLAMA=${OLLAMA:-http://192.168.0.210:11434}
 MODEL=${MODEL:-qwen3-coder-64k}
 AGENT=${AGENT:-qwen-code}                       # oder opencode
+TAKT=${TAKT:-5min}                              # so oft sucht der Worker Arbeit
+WAKE_PC=${WAKE_PC:-0}                           # 1: Gaming-PC bei Arbeit per WoL wecken
 QWEN_CODE_VERSION=${QWEN_CODE_VERSION:-0.24.7}  # fest: ein Update soll bewusst passieren
 export DEBIAN_FRONTEND=noninteractive
 
@@ -115,18 +118,19 @@ Environment=HOME=/root
 Environment=OLLAMA=$OLLAMA
 Environment=MODEL=$MODEL
 Environment=AGENT=$AGENT
+Environment=WAKE_PC=$WAKE_PC
 Environment=LANG=C.UTF-8
 Environment=QWEN_CODE_SUPPRESS_YOLO_WARNING=1
 ExecStart=/usr/bin/flock -n /run/qwen-worker.lock /usr/bin/python3 /root/worker_tick.py
 StandardOutput=append:/root/worker.log
 StandardError=append:/root/worker.log
 UNIT
-cat > /etc/systemd/system/qwen-worker.timer <<'UNIT'
+cat > /etc/systemd/system/qwen-worker.timer <<UNIT
 [Unit]
-Description=Qwen-Worker alle 30 Minuten
+Description=Qwen-Worker alle $TAKT
 [Timer]
-OnBootSec=5min
-OnUnitActiveSec=30min
+OnBootSec=2min
+OnUnitActiveSec=$TAKT
 [Install]
 WantedBy=timers.target
 UNIT
@@ -142,7 +146,8 @@ else echo "Ollama: $MODEL nicht erreichbar (PC aus, Bildmodus oder Modell fehlt)
 (cd "$REPO_DIR" && /root/venv/bin/python -m pytest -q 2>&1 | tail -1)
 
 if [ "$ok" = 1 ]; then
-  systemctl enable --now qwen-worker.timer >/dev/null
+  systemctl enable qwen-worker.timer >/dev/null
+  systemctl restart qwen-worker.timer   # neuer TAKT gilt sofort
   echo "Timer aktiv:"; systemctl list-timers qwen-worker.timer --no-pager | sed -n 2p
 else
   systemctl disable --now qwen-worker.timer >/dev/null 2>&1 || true
