@@ -143,27 +143,27 @@ def calculate_stats(
 
 def format_stats(stats: DigestStats) -> str:
     """Formatiert die Statistik als lesbaren Klartext für Telegram / Konsole."""
-    
+
     text = f"Statistiken der letzten {stats.days} Tage:\n\n"
-    
+
     text += f"✅ erfolgreiche Runs: {stats.runs_ok}/{stats.runs_total}\n"
-    text += f"📊 gescannte Tracks: {stats.tracks_scanned:,}\n"
+    text += f"📊 gescannte Tracks: {f'{stats.tracks_scanned:,}'.replace(',', '.')}\n"
     text += f"📥 neue Inbox-Downloads: {stats.tracks_inbox}\n"
     text += f"🚫 abgelehnte Fakes: {stats.tracks_rejected}\n\n"
-    
+
     if stats.quality_breakdown:
         text += "🔍 Qualitätsverteilung:\n"
         for quality, count in sorted(stats.quality_breakdown.items()):
             text += f"  {quality}: {count}\n"
         text += "\n"
-    
-    text += f"👍 Likes: {stats.likes}\n"
+
+    text += f"👍 Likes: {stats.likes} 👍\n"
     text += f"👎 Dislikes: {stats.dislikes}\n"
     text += f"🕒 Later: {stats.later}\n\n"
-    
+
     if stats.top_artists:
         text += "🎵 Top-Artisten:\n"
         for artist, count in stats.top_artists:
             text += f"  {artist} ({count})\n"
-    
+
     return text

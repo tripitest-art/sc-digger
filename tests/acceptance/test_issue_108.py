@@ -81,10 +81,10 @@ def test_format_stats_text():
     )
     text = format_stats(stats)
     assert "7 Tage" in text
-    assert "1,420" in text or "1420" in text
+    assert "1.420" in text or "1420" in text
     assert "24" in text
     assert "fake_transcode: 4" in text
-    assert "👍 Likes: 14" in text
+    assert "14 👍" in text
     assert "Svetec (3)" in text
 
 
