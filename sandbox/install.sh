@@ -73,6 +73,9 @@ fi
   npm install -g -s "@qwen-code/qwen-code@$QWEN_CODE_VERSION"
 mkdir -p /root/.qwen
 # Ollama als OpenAI-kompatibler Anbieter. Lange Timeouts: das Modell teilt sich den Gaming-PC.
+# Sampling ausdrücklich nach der Model-Card von Qwen3-Coder-30B-A3B-Instruct, damit Qwen Code
+# keine eigenen Werte schickt, die die Ollama-Modelldatei überschreiben. repetition_penalty 1.05
+# reicht Ollamas OpenAI-Schnittstelle nicht durch; das steht in der Modelldatei (repeat_penalty).
 cat > /root/.qwen/settings.json <<JSON
 {
   "env": { "OLLAMA_API_KEY": "ollama" },
@@ -87,7 +90,8 @@ cat > /root/.qwen/settings.json <<JSON
           "timeout": 900000,
           "streamIdleTimeoutMs": 900000,
           "maxRetries": 1,
-          "contextWindowSize": 65536
+          "contextWindowSize": 65536,
+          "samplingParams": { "temperature": 0.7, "top_p": 0.8, "top_k": 20 }
         }
       }
     ]
