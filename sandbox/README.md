@@ -14,7 +14,7 @@ Mounts**: kein Zugriff auf Sammlung, Inbox oder andere Container. Darin:
   dem Gaming-PC, Einstellungen in `/root/.qwen/settings.json`. [OpenCode](https://opencode.ai)
   bleibt installiert: `AGENT=opencode bash sandbox/install.sh` schaltet um, `AGENT=qwen-code` zurück.
 - `gh`, angemeldet mit einem eigenen fein granularen Token nur für dieses Repo
-- Timer `qwen-worker.timer`: alle 30 min ein Durchlauf von `/root/worker_tick.py`
+- Timer `qwen-worker.timer`: alle 5 min (`TAKT`) ein Durchlauf von `/root/worker_tick.py`
   (Kopie von `sandbox/worker_tick.py`). Pro Durchlauf höchstens ein Auftrag:
   1. Nacharbeit: offener PR zu einem Issue mit `agent-qwen`, neuestes Review
      „Änderungen nötig“ und jünger als der letzte Commit. Das Review steht wörtlich im Auftrag.
@@ -26,12 +26,20 @@ Mounts**: kein Zugriff auf Sammlung, Inbox oder andere Container. Darin:
   Jeder Auftrag nennt die Schritte mit Befehl und enthält Issue bzw. Review und die PR-Vorlage
   wörtlich.
 
-  Erst wenn es Arbeit gibt, fragt der Durchlauf Ollama (weckt den PC also nicht umsonst). Vorher
-  liest er `/proxy/status` des WoL-Proxys, das den PC nie weckt: Im Bildmodus hört er auf, ist
-  der PC aus, weckt ihn die Anfrage an `/api/ps` und der Takt wartet bis zu `WAKE_WAIT` (240 s,
-  länger als der Proxy selbst). Danach hält das geladene Modell den PC wach (`ollama-inhibit`);
-  15 min nach der letzten Anfrage entlädt Ollama es, 5 min später schaltet KDE ab. Ist dort
-  ein anderes Modell geladen, wartet er. Je Auftrag höchstens zwei Versuche
+  **Nur wenn der Gaming-PC an ist (Vorgabe, `WAKE_PC=0`).** Jeder Durchlauf liest zuerst
+  `/proxy/status` des WoL-Proxys, das den PC nie weckt. Ist der PC aus oder im Bildmodus, hört
+  er auf, ohne GitHub zu fragen. Nur wenn er an ist und Chat aktiv, sucht er Arbeit; welche
+  Modelle geladen sind, liest er ebenfalls aus dem Proxy-Status, damit auch ein PC, der gerade
+  ausgeht, nicht geweckt wird. Hast du gerade ein anderes Modell geladen (LibreChat, Home
+  Assistant), wartet er. Zustandsmeldungen stehen nur beim Wechsel im Log, nicht alle 5 min.
+  Arbeitet der Worker, hält das geladene Modell den PC wach (`ollama-inhibit`); 15 min nach
+  der letzten Anfrage entlädt Ollama es, 5 min später schaltet KDE ab.
+
+  **Mit Wecken (`WAKE_PC=1 TAKT=30min bash sandbox/install.sh`).** Erst bei Arbeit fragt der
+  Durchlauf `/api/ps`; ist der PC aus, weckt ihn der Proxy per WoL und der Takt wartet bis zu
+  `WAKE_WAIT` (240 s, länger als der Proxy selbst).
+
+  Je Auftrag höchstens zwei Versuche
   (`/root/worker-state.json`); nach einer Nacharbeit prüft er, ob ein neuer Commit oder ein
   geänderter PR-Text ankam.
 
@@ -134,8 +142,10 @@ Log-Meldungen:
 
 | Meldung | Bedeutung |
 |---|---|
-| `Keine Arbeit.` | kein passendes Issue, keine fällige Nacharbeit |
-| `Gaming-PC ist aus, wecke ihn …` / `Gaming-PC wach nach n s` | Auftrag steht an, PC wird per WoL geweckt (aus S5 etwa 45–50 s) |
+| `Gaming-PC aus, kein Wecken, warte.` / `Gaming-PC im Bildmodus, warte.` | PC nicht bereit; der Worker schaut alle 5 min, meldet es aber nur einmal |
+| `Gaming-PC an, Chat aktiv: suche Arbeit.` | PC ist (wieder) bereit; danach folgt das Ergebnis der Suche |
+| `Keine Arbeit.` | kein passendes Issue, keine fällige Nacharbeit (nur beim Wechsel) |
+| `Gaming-PC ist aus, wecke ihn …` / `Gaming-PC wach nach n s` | nur mit `WAKE_PC=1`: Auftrag steht an, PC wird per WoL geweckt (aus S5 etwa 45–50 s) |
 | `Gaming-PC im Bildmodus` | ComfyUI läuft; nächste Runde, ohne Ollama zu fragen |
 | `Ollama nicht erreichbar` / `Ollama belegt` | Wecken gescheitert (Proxy gibt nach 180 s auf), Netz weg oder anderes Modell geladen; nächste Runde |
 | `… (Versuch n): starte Qwen Code.` | Auftrag läuft (bis 90 min). Darunter je Befehl `$ …` mit gekürzter Ausgabe, `✗ Fehler:` bei Fehlschlag |
