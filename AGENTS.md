@@ -147,8 +147,8 @@ warten; ein roter `github-advanced-security` ist kein Mangel.
    - Alle Checks sind abgeschlossen (`gh pr checks <PR>`). Laufen noch welche: nächster PR.
      Rote Checks sind kein Grund zum Überspringen, sondern ein Befund (Reviewer, Schritt 1).
    - Seit dem letzten Review gibt es einen neuen Commit
-     (`gh pr view <PR> --json reviews,commits`). Sonst wartet der PR auf die Nacharbeit
-     des Workers.
+     (`gh pr view <PR> --json reviews,commits`) oder einen geänderten PR-Text
+     (`lastEditedAt`, `ENTWICKLUNG.md`). Sonst wartet der PR auf die Nacharbeit des Workers.
    - Der Abschnitt „Umgesetzt von / Review durch“ nennt als Worker nicht deine eigene
      Modellfamilie.
      Fehlt die Angabe: nächster PR und Stephan Bescheid geben.

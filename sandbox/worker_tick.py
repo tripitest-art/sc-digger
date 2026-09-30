@@ -29,6 +29,7 @@ OWNER = "tripitest-art"
 WORKER = "Qwen3-Coder 30B"
 STATE = "/root/worker-state.json"
 MAX_TRIES = 2               # Versuche je Auftrag, danach liegt er bei Stephan
+DONE = "erledigt"           # Schlüssel in STATE: angekommene Nacharbeiten, nicht wiederholen
 RUN_TIMEOUT = 90 * 60       # Sekunden je OpenCode-Lauf
 
 ENV = dict(os.environ, PATH=f"/root/venv/bin:/root/.opencode/bin:{os.environ.get('PATH', '/usr/bin:/bin')}")
@@ -78,8 +79,11 @@ def pr_snapshot(pr: dict) -> tuple:
     return pr["headRefOid"], pr.get("title", ""), (pr.get("body") or "").replace("\r\n", "\n")
 
 
-def rework_job():
+def rework_job(done=frozenset()):
     """(Schlüssel, Auftrag, PR-Nummer, pr_snapshot) für die älteste fällige Nacharbeit oder None.
+
+    `done`: Schlüssel schon angekommener Nacharbeiten. Betraf sie nur den PR-Text, bleibt der
+    Commit gleich und das Review sähe weiter fällig aus; ohne diese Liste lief #103 erneut.
 
     Das Review steht wörtlich im Auftrag: Qwen hat es sonst nicht gelesen, nur die Tests auf
     main laufen lassen und den PR selbst für fertig erklärt (#103, erster Lauf).
@@ -98,9 +102,11 @@ def rework_job():
         if LABEL not in {lab["name"] for lab in issue["labels"]}:
             continue
         review = max(reviews, key=lambda r: r["submittedAt"])
+        key = f"pr{pr['number']}@{review['submittedAt']}"
+        if key in done:
+            continue
         if review_is_current(review, pr) and "Änderungen nötig" in review["body"][:80]:
             n = pr["number"]
-            key = f"pr{n}@{review['submittedAt']}"
             task = f"""Du arbeitest ein Review ab (AGENTS.md, Worker, Schritt 8). Du bist Worker: {WORKER}.
 Gehe genau diese Schritte durch und führe jeden als Befehl aus:
 
@@ -153,7 +159,7 @@ def ollama_free() -> bool:
 
 def main() -> int:
     state = load_state()
-    job = rework_job() or issue_job()
+    job = rework_job(frozenset(state.get(DONE, []))) or issue_job()
     if not job:
         log("Keine Arbeit.")
         return 0
@@ -184,10 +190,13 @@ def main() -> int:
     # Nicht still scheitern (Regel 7): Das Modell meldet auch „fertig“, wenn es nichts getan hat.
     if pr_no is not None:
         after = pr_snapshot(gh("pr", "view", str(pr_no), "--json", "headRefOid,title,body"))
-        if after[0] != before[0]:
-            log(f"{key}: neuer Commit {after[0][:7]} auf PR #{pr_no}.")
-        elif after[1:] != before[1:]:
-            log(f"{key}: PR-Text von #{pr_no} geändert, kein neuer Commit.")
+        if after != before:
+            if after[0] != before[0]:
+                log(f"{key}: neuer Commit {after[0][:7]} auf PR #{pr_no}.")
+            else:
+                log(f"{key}: PR-Text von #{pr_no} geändert, kein neuer Commit.")
+            state.setdefault(DONE, []).append(key)
+            save_state(state)
         else:
             log(f"WARNUNG {key}: weder Commit noch PR-Text auf PR #{pr_no} geändert, "
                 "Nacharbeit nicht erledigt.")

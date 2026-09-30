@@ -205,6 +205,38 @@ def test_main_accepts_text_only_rework(monkeypatch, tmp_path, capsys):
     _run_rework(monkeypatch, tmp_path, {"title": "Harmonic Mixing: …", "body": "Closes #100"})
     out = capsys.readouterr().out
     assert "WARNUNG" not in out and "PR-Text von #103 geändert" in out
+    state = json.loads((tmp_path / "state.json").read_text())
+    assert state[w.DONE] == ["pr103@2026-09-29T21:39:23Z"]
+
+
+def test_main_failed_rework_is_not_done(monkeypatch, tmp_path):
+    _run_rework(monkeypatch, tmp_path, {})
+    assert w.DONE not in json.loads((tmp_path / "state.json").read_text())
+
+
+def test_done_rework_is_not_repeated(monkeypatch):
+    # Nach einer Nacharbeit nur am PR-Text bleibt der Commit gleich, das Review sähe weiter
+    # fällig aus. Ohne die Liste lief #103 um 01:17 ein zweites Mal und hing dann fest.
+    monkeypatch.setattr(w, "gh", FakeGH(prs=[_pr()]))
+    assert w.rework_job(frozenset({"pr103@2026-09-29T21:39:23Z"})) is None
+    # Ein neues Review auf denselben Commit ist ein neuer Auftrag.
+    pr = _pr()
+    pr["reviews"].append({"submittedAt": "2026-09-30T02:00:00Z", "body": REVIEW_CHANGES,
+                          "author": {"login": "tripitest-art"}, "commit": {"oid": "3373e35"}})
+    monkeypatch.setattr(w, "gh", FakeGH(prs=[pr]))
+    key, *_ = w.rework_job(frozenset({"pr103@2026-09-29T21:39:23Z"}))
+    assert key == "pr103@2026-09-30T02:00:00Z"
+
+
+def test_main_skips_done_rework_and_takes_issue(monkeypatch, tmp_path, capsys):
+    state = tmp_path / "state.json"
+    state.write_text(json.dumps({"pr103@2026-09-29T21:39:23Z": 2,
+                                 w.DONE: ["pr103@2026-09-29T21:39:23Z"]}))
+    monkeypatch.setattr(w, "STATE", str(state))
+    monkeypatch.setattr(w, "gh", FakeGH(prs=[_pr()], issues=[{"number": 102}]))
+    monkeypatch.setattr(w, "ollama_free", lambda: False)  # Auftrag gewählt, dann Schluss
+    assert w.main() == 0
+    assert "wartet auf Stephan" not in capsys.readouterr().out
 
 
 def test_main_reports_new_commit(monkeypatch, tmp_path, capsys):

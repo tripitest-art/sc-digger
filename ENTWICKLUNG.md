@@ -48,6 +48,10 @@ Modul anlegt, trägt es in die Tabelle ein.
 - **Zwei Code-Stände** (Server-Kopie und Repo) liefen schon einmal auseinander. Siehe Regel 1.
 - **Labels per MCP:** `issue_write` ersetzt die ganze Label-Liste. So gingen bei #62 Labels
   verloren. Siehe `MCP.md`.
+- **Nacharbeit ohne Commit:** Verlangt ein Review nur den PR-Text, gibt es keinen neuen
+  Commit (#103). Ob der Text nach dem Review geändert wurde, zeigt `lastEditedAt`:
+  `gh api graphql -f query='{repository(owner:"tripitest-art",name:"sc-digger"){pullRequest(number:<PR>){lastEditedAt}}}'`
+  Jünger als das letzte Review heißt: Nacharbeit da, der PR ist wieder dran.
 
 ## Planer-Ablauf
 
