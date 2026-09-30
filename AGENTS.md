@@ -93,12 +93,15 @@ warten; ein roter `github-advanced-security` ist kein Mangel.
    `.github/`, `conftest.py` oder pytest-Konfiguration; das Label `freigabe-geschützt` setzen;
    **Titel oder Text des Issues ändern** (das Issue ist der Vertrag, `acceptance-guard` und
    Reviewer prüfen dagegen; Stand, Fragen und Begründungen als Kommentar:
-   `gh issue comment <N> --body-file <datei>`); andere Labels als `bereit` → `in-arbeit` setzen
-   oder entfernen.
+   `gh issue comment <N> --body-file <datei>`); andere Labels als `bereit` ↔ `in-arbeit` setzen
+   oder entfernen (Ausnahme: Eskalation in Schritt 6).
    Hältst du einen Akzeptanztest für falsch: aufhören und im Issue begründen. Nie den Test
    passend machen.
-6. Nach drei erfolglosen Anläufen am selben Fehler: aufhören, Branch pushen, Draft-PR
-   (`--draft`) mit genauer Beschreibung des Problems. Kein Umbau quer durchs Projekt.
+6. **Eskalation bei Scheitern:** Nach drei erfolglosen Anläufen am selben Fehler: aufhören,
+   Branch pushen, Draft-PR (`--draft`) mit genauer Beschreibung des Problems öffnen.
+   Kein Umbau quer durchs Projekt. Danach das Issue an die nächststärkere Agenten-Familie
+   eskalieren (`agent-qwen` → `agent-antigravity` → `agent-claude`):
+   `gh issue edit <N> --remove-label in-arbeit,agent-<aktuell> --add-label bereit,agent-<nächste>`
 7. PR mit ausgefüllter Vorlage öffnen. `--fill` reicht nicht, weil `Closes #<N>` fehlen würde:
    `gh pr create --title "<Issue-Titel>" --body-file <ausgefüllte Vorlage>`
    Ohne `Closes #<N>` und `Worker:`-Zeile (unten) wird `acceptance-guard` rot.
