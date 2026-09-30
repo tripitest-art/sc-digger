@@ -480,9 +480,13 @@ def main() -> int:
                 ["git", "reset", "-q", "--hard", "origin/main"], ["git", "clean", "-qfd"]):
         subprocess.run(cmd, cwd=WORKDIR, check=True, env=ENV)
 
-    prompt = (f"{task} Führe vor jedem Push `python -m pytest -q` aus. Nutze gh für alle GitHub-Schritte. "
-              "Arbeite ohne Rückfragen; kommst du nicht weiter, schreib das Problem als Kommentar ins "
-              "Issue bzw. in den PR und hör auf.")
+    prompt = (f"{task}\n\n"
+              "WICHTIGE REGELN FÜR DIESEN LAUF:\n"
+              "1. BRANCHE-CHECK: Verifiziere mit `git branch`, ob du auf dem Ziel-Branch bist, bevor du etwas änderst.\n"
+              "2. PRÄZISE ÄNDERUNGEN: Überschreibe niemals ganze Dateien! Nutze kleine Python-Skripte (z.B. mit `open()`, `.replace()`) oder `sed`, um nur die betroffenen Zeilen auszutauschen.\n"
+              "3. TEST-PFLICHT: Führe vor jedem Push zwingend `python -m pytest -q` aus. Ein roter Test heißt: Code weiter korrigieren.\n"
+              "4. ESKALATION: Arbeite ohne Rückfragen. Kommst du nicht weiter, schreibe das Problem als Kommentar ins Issue bzw. den PR und beende deine Arbeit.\n\n"
+              "Nutze gh für alle GitHub-Schritte.")
     name = "OpenCode" if AGENT == "opencode" else "Qwen Code"
     log(f"{key} (Versuch {state[key]}): starte {name}.")
     rc = run_agent(prompt)
