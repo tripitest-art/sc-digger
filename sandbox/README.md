@@ -10,13 +10,21 @@ Ein unprivilegierter Debian-Container auf Proxmox (`agent-sandbox`, derzeit CT 1
 Mounts**: kein Zugriff auf Sammlung, Inbox oder andere Container. Darin:
 
 - Repo unter `/root/sc-digger`, Python-Umgebung `/root/venv` (für `pytest`)
-- [OpenCode](https://opencode.ai) mit Qwen3-Coder aus Ollama auf dem Gaming-PC
+- [Qwen Code](https://github.com/QwenLM/qwen-code) (Node 22) mit Qwen3-Coder aus Ollama auf
+  dem Gaming-PC, Einstellungen in `/root/.qwen/settings.json`. [OpenCode](https://opencode.ai)
+  bleibt installiert: `AGENT=opencode bash sandbox/install.sh` schaltet um, `AGENT=qwen-code` zurück.
 - `gh`, angemeldet mit einem eigenen fein granularen Token nur für dieses Repo
 - Timer `qwen-worker.timer`: alle 30 min ein Durchlauf von `/root/worker_tick.py`
   (Kopie von `sandbox/worker_tick.py`). Pro Durchlauf höchstens ein Auftrag:
   1. Nacharbeit: offener PR zu einem Issue mit `agent-qwen`, neuestes Review
      „Änderungen nötig“ und jünger als der letzte Commit. Das Review steht wörtlich im Auftrag.
-  2. Sonst ein neues Issue mit `worker-task`, `bereit`, `agent-qwen`, ohne `blockiert`.
+  2. PR-Text nachtragen: offener PR zu einem `agent-qwen`-Issue, in dessen Text `Closes #N`,
+     die `Worker:`-Zeile oder eine Überschrift der PR-Vorlage fehlt. Das prüft der Taktgeber
+     selbst; das Modell meldet auch „fertig“, wenn es den Schritt ausgelassen hat.
+  3. Sonst ein neues Issue mit `worker-task`, `bereit`, `agent-qwen`, ohne `blockiert`.
+
+  Jeder Auftrag nennt die Schritte mit Befehl und enthält Issue bzw. Review und die PR-Vorlage
+  wörtlich.
 
   Erst wenn es Arbeit gibt, fragt der Durchlauf Ollama (weckt den PC also nicht umsonst). Ist dort
   ein anderes Modell geladen, wartet er. Je Auftrag höchstens zwei Versuche
@@ -124,7 +132,8 @@ Log-Meldungen:
 |---|---|
 | `Keine Arbeit.` | kein passendes Issue, keine fällige Nacharbeit |
 | `Ollama nicht erreichbar` / `Ollama belegt` | PC aus, Bildmodus oder anderes Modell geladen; nächste Runde |
-| `… (Versuch n): starte OpenCode.` | Auftrag läuft (bis 90 min) |
+| `… (Versuch n): starte Qwen Code.` | Auftrag läuft (bis 90 min). Darunter je Befehl `$ …` mit gekürzter Ausgabe, `✗ Fehler:` bei Fehlschlag |
+| `WARNUNG …: im Text von PR #n fehlt …` | PR-Text unvollständig; der nächste Durchlauf trägt ihn als eigenen Auftrag nach |
 | `… neuer Commit …` / `… PR-Text von #n geändert` | Nacharbeit angekommen; Inhalt auf GitHub prüfen |
 | `issueN: PR #m von feature/issue-N ist offen` | neues Issue umgesetzt; Review steht an |
 | `WARNUNG issueN: kein PR von feature/issue-N` | Issue nicht erledigt; Log davor lesen, besonders wo das Modell aufhörte |
@@ -140,6 +149,7 @@ Log-Meldungen:
 | `gh pr edit` meldet `GraphQL: Projects (classic) is being deprecated …`, PR-Text bleibt alt; Modell meldet trotzdem Erfolg | `gh` 2.23 aus Debian fragt noch Projects (classic) ab | `install.sh` holt `gh` aus dem Paketarchiv von GitHub; `install.sh` erneut ausführen, Versuche zurücksetzen |
 | `permission requested: external_directory (/tmp/*); auto-rejecting` | OpenCode schreibt nur im Projektordner | Hilfsdateien nach `.git/` (wird nie committet), nicht nach `/tmp` |
 | Modell meldet „alle Tests grün, 705 passed“, am PR ändert sich nichts | lief auf `main` statt auf dem PR-Branch, Review nicht gelesen | Auftrag enthält `gh pr checkout` und das Review wörtlich; bei Wiederholung Nacharbeit einer stärkeren Familie geben |
+| PR-Text mit eigenen Überschriften, ohne `Closes #N`, Tests abgehakt, die es nicht gibt | Auftrag nannte nur den Dateinamen der Vorlage | Vorlage steht wörtlich im Auftrag; Taktgeber prüft den Text selbst und gibt einen Nachtrag-Auftrag |
 | Modell hört mitten im Satz auf („Ich werde nun …“) | Modell beendet den Zug ohne Werkzeugaufruf | zweiter Versuch in der nächsten Runde; häuft es sich, Issue auf `agent-gemini` umlabeln |
 | Langes Einfügen in der Proxmox-Konsole bricht ab | Browser-Konsole verträgt keine langen mehrzeiligen Texte | per SSH arbeiten oder Dateien aus dem Repo nehmen (dieser Ordner) |
 | Einrichtung „fehlt alles“, obwohl sie lief | im falschen Container (zwei hießen `agent-sandbox`) | `pct list`, nur einen Container behalten |

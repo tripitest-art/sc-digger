@@ -4,6 +4,7 @@
 #
 #   bash /root/sc-digger/sandbox/install.sh            # einrichten / aktualisieren
 #   MODEL=qwen3-coder-64k OLLAMA=http://… bash …       # andere Werte als die Vorgaben
+#   AGENT=opencode bash …                              # OpenCode statt Qwen Code
 #
 # Der GitHub-Zugang wird hier bewusst NICHT eingerichtet: den Token gibt Stephan selbst
 # verdeckt ein (README, Schritt 3). Das Skript prüft nur, ob er da ist.
@@ -12,6 +13,8 @@ set -euo pipefail
 REPO_DIR=/root/sc-digger
 OLLAMA=${OLLAMA:-http://192.168.0.210:11434}
 MODEL=${MODEL:-qwen3-coder-64k}
+AGENT=${AGENT:-qwen-code}                       # oder opencode
+QWEN_CODE_VERSION=${QWEN_CODE_VERSION:-0.24.7}  # fest: ein Update soll bewusst passieren
 export DEBIAN_FRONTEND=noninteractive
 
 echo "== Pakete"
@@ -59,6 +62,43 @@ cat > /root/.config/opencode/opencode.json <<JSON
 }
 JSON
 
+echo "== Qwen Code"
+# Braucht Node 22; Debian 12 hat nur 18. Qwen3-Coder ist auf das Werkzeug-Format von Qwen Code
+# trainiert (github.com/QwenLM/qwen-code); OpenCode bleibt als Ausweichweg (AGENT=opencode).
+if ! node --version 2>/dev/null | grep -qE '^v(2[2-9]|[3-9][0-9])\.'; then
+  curl -fsSL https://deb.nodesource.com/setup_22.x | bash - >/dev/null
+  apt-get install -y -qq nodejs >/dev/null
+fi
+[ "$(qwen --version 2>/dev/null)" = "$QWEN_CODE_VERSION" ] || \
+  npm install -g -s "@qwen-code/qwen-code@$QWEN_CODE_VERSION"
+mkdir -p /root/.qwen
+# Ollama als OpenAI-kompatibler Anbieter. Lange Timeouts: das Modell teilt sich den Gaming-PC.
+cat > /root/.qwen/settings.json <<JSON
+{
+  "env": { "OLLAMA_API_KEY": "ollama" },
+  "modelProviders": {
+    "openai": [
+      {
+        "id": "$MODEL",
+        "name": "$MODEL (Ollama, Gaming-PC)",
+        "envKey": "OLLAMA_API_KEY",
+        "baseUrl": "$OLLAMA/v1",
+        "generationConfig": {
+          "timeout": 900000,
+          "streamIdleTimeoutMs": 900000,
+          "maxRetries": 1,
+          "contextWindowSize": 65536
+        }
+      }
+    ]
+  },
+  "security": { "auth": { "selectedType": "openai" } },
+  "model": { "name": "$MODEL" },
+  "privacy": { "usageStatisticsEnabled": false },
+  "telemetry": { "enabled": false }
+}
+JSON
+
 echo "== Taktgeber"
 install -m 755 "$REPO_DIR/sandbox/worker_tick.py" /root/worker_tick.py
 cat > /etc/systemd/system/qwen-worker.service <<UNIT
@@ -70,6 +110,9 @@ Type=oneshot
 Environment=HOME=/root
 Environment=OLLAMA=$OLLAMA
 Environment=MODEL=$MODEL
+Environment=AGENT=$AGENT
+Environment=LANG=C.UTF-8
+Environment=QWEN_CODE_SUPPRESS_YOLO_WARNING=1
 ExecStart=/usr/bin/flock -n /run/qwen-worker.lock /usr/bin/python3 /root/worker_tick.py
 StandardOutput=append:/root/worker.log
 StandardError=append:/root/worker.log
@@ -88,6 +131,7 @@ systemctl daemon-reload
 echo "== Prüfung"
 ok=1
 gh --version | head -1
+echo "Agent: $AGENT (Qwen Code $(qwen --version 2>/dev/null || echo fehlt))"
 if gh auth status >/dev/null 2>&1; then echo "GitHub: angemeldet"; else echo "GitHub: NICHT angemeldet (README, Schritt 3)"; ok=0; fi
 if curl -s -m 10 "$OLLAMA/api/tags" | grep -q "\"$MODEL"; then echo "Ollama: $MODEL vorhanden"
 else echo "Ollama: $MODEL nicht erreichbar (PC aus, Bildmodus oder Modell fehlt)"; fi
