@@ -26,7 +26,11 @@ Mounts**: kein Zugriff auf Sammlung, Inbox oder andere Container. Darin:
   Jeder Auftrag nennt die Schritte mit Befehl und enthält Issue bzw. Review und die PR-Vorlage
   wörtlich.
 
-  Erst wenn es Arbeit gibt, fragt der Durchlauf Ollama (weckt den PC also nicht umsonst). Ist dort
+  Erst wenn es Arbeit gibt, fragt der Durchlauf Ollama (weckt den PC also nicht umsonst). Vorher
+  liest er `/proxy/status` des WoL-Proxys, das den PC nie weckt: Im Bildmodus hört er auf, ist
+  der PC aus, weckt ihn die Anfrage an `/api/ps` und der Takt wartet bis zu `WAKE_WAIT` (240 s,
+  länger als der Proxy selbst). Danach hält das geladene Modell den PC wach (`ollama-inhibit`);
+  15 min nach der letzten Anfrage entlädt Ollama es, 5 min später schaltet KDE ab. Ist dort
   ein anderes Modell geladen, wartet er. Je Auftrag höchstens zwei Versuche
   (`/root/worker-state.json`); nach einer Nacharbeit prüft er, ob ein neuer Commit oder ein
   geänderter PR-Text ankam.
@@ -131,7 +135,9 @@ Log-Meldungen:
 | Meldung | Bedeutung |
 |---|---|
 | `Keine Arbeit.` | kein passendes Issue, keine fällige Nacharbeit |
-| `Ollama nicht erreichbar` / `Ollama belegt` | PC aus, Bildmodus oder anderes Modell geladen; nächste Runde |
+| `Gaming-PC ist aus, wecke ihn …` / `Gaming-PC wach nach n s` | Auftrag steht an, PC wird per WoL geweckt (aus S5 etwa 45–50 s) |
+| `Gaming-PC im Bildmodus` | ComfyUI läuft; nächste Runde, ohne Ollama zu fragen |
+| `Ollama nicht erreichbar` / `Ollama belegt` | Wecken gescheitert (Proxy gibt nach 180 s auf), Netz weg oder anderes Modell geladen; nächste Runde |
 | `… (Versuch n): starte Qwen Code.` | Auftrag läuft (bis 90 min). Darunter je Befehl `$ …` mit gekürzter Ausgabe, `✗ Fehler:` bei Fehlschlag |
 | `WARNUNG …: im Text von PR #n fehlt …` | PR-Text unvollständig; der nächste Durchlauf trägt ihn als eigenen Auftrag nach |
 | `… neuer Commit …` / `… PR-Text von #n geändert` | Nacharbeit angekommen; Inhalt auf GitHub prüfen |

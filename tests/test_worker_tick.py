@@ -4,6 +4,7 @@ import importlib.util
 import io
 import json
 import sys
+import urllib.error
 from pathlib import Path
 
 import pytest
@@ -177,8 +178,15 @@ def test_issue_job_none(monkeypatch):
     assert w.issue_job() is None
 
 
-def _fake_urlopen(models):
+def _fake_urlopen(models, status=None, calls=None):
+    """Ollama hinter dem WoL-Proxy. status=None: kein Proxy, /proxy/status gibt 404."""
     def urlopen(url, timeout):
+        if calls is not None:
+            calls.append((url.rsplit("11434", 1)[-1], timeout))
+        if url.endswith("/proxy/status"):
+            if status is None:
+                raise urllib.error.HTTPError(url, 404, "Not Found", {}, None)
+            return io.BytesIO(json.dumps(status).encode())
         return io.BytesIO(json.dumps({"models": [{"name": m} for m in models]}).encode())
     return urlopen
 
@@ -189,9 +197,38 @@ def _fake_urlopen(models):
     (["qwen3.5:9b"], False),
     (["qwen3-coder-64k:latest", "flux:latest"], False),
 ])
-def test_ollama_free(monkeypatch, models, free):
-    monkeypatch.setattr(w.urllib.request, "urlopen", _fake_urlopen(models))
+@pytest.mark.parametrize("status", [None, {"mode": "chat", "ollama_up": True}])
+def test_ollama_free(monkeypatch, models, free, status):
+    monkeypatch.setattr(w.urllib.request, "urlopen", _fake_urlopen(models, status))
     assert w.ollama_free() is free
+
+
+def test_ollama_free_wakes_sleeping_pc(monkeypatch, capsys):
+    # Mit 15 s Timeout gab der Takt auf, bevor der PC wach war (aus S5 ~45 s), und weckte ihn
+    # alle 30 min umsonst. Jetzt wartet er länger als der Proxy selbst.
+    calls = []
+    monkeypatch.setattr(w.urllib.request, "urlopen",
+                        _fake_urlopen([], {"pc": "aus", "ollama_up": False, "mode": "aus"}, calls))
+    assert w.ollama_free() is True
+    assert ("/api/ps", w.WAKE_WAIT) in calls and w.WAKE_WAIT > 180
+    out = capsys.readouterr().out
+    assert "wecke ihn über den WoL-Proxy" in out and "Gaming-PC wach nach" in out
+
+
+def test_ollama_free_skips_image_mode_without_asking_ollama(monkeypatch, capsys):
+    calls = []
+    monkeypatch.setattr(w.urllib.request, "urlopen",
+                        _fake_urlopen([], {"pc": "an", "ollama_up": False, "mode": "bild"}, calls))
+    assert w.ollama_free() is False
+    assert [c[0] for c in calls] == ["/proxy/status"]
+    assert "Bildmodus" in capsys.readouterr().out
+
+
+def test_ollama_free_pc_on_does_not_log_wake(monkeypatch, capsys):
+    monkeypatch.setattr(w.urllib.request, "urlopen",
+                        _fake_urlopen([], {"pc": "an", "ollama_up": True, "mode": "chat"}))
+    assert w.ollama_free() is True
+    assert "wecke" not in capsys.readouterr().out
 
 
 def test_ollama_unreachable_is_not_free(monkeypatch, capsys):
