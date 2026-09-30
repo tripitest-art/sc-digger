@@ -107,7 +107,7 @@ def test_format_mix_list_plural_tracks_and_float_tolerance():
     lines = formatted.split("\n")
     assert lines[0] == "🎛 12A · 153.5 BPM ±1.5: 2 Tracks"
     assert lines[1] == "Artist 1 – Title 1 · 152.5 BPM · 12A"
-    assert lines[2] == "Artist 2 – Title 2 · 154.0 BPM · 1A"
+    assert lines[2] == "Artist 2 – Title 2 · 154.0 BPM · 1A (d1)"
 
 
 def test_compatible_keys_boundary_cases():
@@ -166,5 +166,50 @@ def test_camelot_distance_values():
 def test_camelot_distance_symmetric():
     """Testet Symmetrie der Abstände."""
     from sc_digger.harmonic import camelot_distance
-    
+
     assert camelot_distance("3A", "11B") == camelot_distance("11B", "3A") == 5
+
+
+def test_format_mix_list_multiple_entries_with_mixed_distances():
+    """Testet die Formatierung mit mehreren Einträgen mit unterschiedlichen Abständen."""
+    records = [
+        TrackRecord(
+            path="/m/1.wav", mtime=1.0, size=1, key_camelot="5A", bpm=152.5,
+            status=TrackStatus.ARCHIVE, artist="Artist 1", title="Title 1",
+        ),
+        TrackRecord(
+            path="/m/2.wav", mtime=1.0, size=1, key_camelot="6A", bpm=154.0,
+            status=TrackStatus.ARCHIVE, artist="Artist 2", title="Title 2",
+        ),
+        TrackRecord(
+            path="/m/3.wav", mtime=1.0, size=1, key_camelot="7B", bpm=156.0,
+            status=TrackStatus.ARCHIVE, artist="Artist 3", title="Title 3",
+        ),
+        TrackRecord(
+            path="/m/4.wav", mtime=1.0, size=1, key_camelot=None, bpm=157.0,
+            status=TrackStatus.ARCHIVE, artist="Artist 4", title="Title 4",
+        ),
+    ]
+    formatted = format_mix_list("5A", 153.5, records)
+    lines = formatted.split("\n")
+    assert lines[0] == "🎛 5A · 153.5 BPM ±3: 4 Tracks"
+    # Abstände: 0, 1, 2, keine Angabe
+    assert lines[1] == "Artist 1 – Title 1 · 152.5 BPM · 5A"  # Kein Abstand
+    assert lines[2] == "Artist 2 – Title 2 · 154.0 BPM · 6A (d1)"  # Abstand 1
+    assert lines[3] == "Artist 3 – Title 3 · 156.0 BPM · 7B (d3)"  # Abstand 3
+    assert lines[4] == "Artist 4 – Title 4 · 157.0 BPM · ?"  # Kein Key
+
+
+def test_format_mix_list_invalid_track_key():
+    """Testet das Verhalten bei ungültigen Track-Keys."""
+    records = [
+        TrackRecord(
+            path="/m/invalid.wav", mtime=1.0, size=1, key_camelot="Am", bpm=154.0,
+            status=TrackStatus.ARCHIVE, artist="Artist", title="Title",
+        ),
+    ]
+    formatted = format_mix_list("5A", 153.5, records)
+    lines = formatted.split("\n")
+    assert lines[0] == "🎛 5A · 153.5 BPM ±3: 1 Track"
+    # Kein Abstand (da KeyError bei ungültigem Key)
+    assert lines[1] == "Artist – Title · 154.0 BPM · Am"
