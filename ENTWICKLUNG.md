@@ -140,9 +140,8 @@ stammt aus einer anderen Familie.
 
 | Label | Worker | Passende Issues |
 |---|---|---|
-| `agent-qwen` | OpenCode + Qwen3-Coder in der Sandbox (lokal, langsam) | klein: eine Datei, eine Funktion, genaue Signatur |
-| `agent-gemini` | Gemini CLI | mittel: mehrere Dateien, bestehende Muster |
-| `agent-claude` | Claude Code | schwer: `main.py`, mehrere Module, Betrieb |
+| `agent-qwen` | Qwen-Modelle in der Sandbox (lokal, langsam) | klein: eine Datei, eine Funktion, genaue Signatur |
+| `agent-antigravity` | Antigravity / Gemini | mittel: mehrere Dateien, Muster, Eskalationsstufe für Qwen |
+| `agent-claude` | Claude Code Opus 5.5 + Mensch | schwer: `main.py`, Betrieb, finale Eskalationsstufe |
 
-Im Zweifel die größere Stufe. Ein Issue, das liegen bleibt, bekommt ein anderes Label; das ist
-keine Änderung am Vertrag und auch nach `bereit` erlaubt, solange es nicht `in-arbeit` ist.
+Im Zweifel die größere Stufe. Ein Issue, das an einem Agenten scheitert, wird explizit an die nächsthöhere Stufe eskaliert (`agent-qwen` → `agent-antigravity` → `agent-claude`); dies ist keine Änderung am Vertrag und erlaubt, solange es nicht mehr `in-arbeit` ist.
