@@ -231,16 +231,66 @@ def _percentile_rank(value: float, sorted_vals: list[float]) -> float:
     return 100.0 * bisect.bisect_right(sorted_vals, value) / len(sorted_vals)
 
 
+def engagement_velocity(
+    t: Track,
+    now: datetime | None = None,
+    *,
+    min_age_hours: float = 1.0,
+) -> float:
+    """Berechnet die Engagement-Geschwindigkeit (Likes pro Stunde seit Upload).
+
+    - t.created_at wird als ISO-8601-Zeitstempel (UTC) geparst.
+    - now: Referenzzeitpunkt (default: datetime.now(timezone.utc)). Naive Zeitstempel
+      werden als UTC interpretiert.
+    - min_age_hours: Mindestalter in Stunden (Glättung gegen Division durch Null oder
+      hohe Spikes bei sekundenalten Uploads, default: 1.0).
+    - Liegt der Upload in der Zukunft (Clock-Skew) oder ist das Alter < min_age_hours,
+      wird min_age_hours verwendet.
+    - Bei ungültigem oder fehlendem created_at (None, leer, Syntaxfehler) -> 0.0.
+    - Ist t.likes None oder <= 0 -> 0.0.
+    - Rückgabe: float >= 0.0 (Likes / effektive Stunden)."""
+    if t is None:
+        return 0.0
+    likes = getattr(t, "likes", None)
+    if likes is None or likes <= 0:
+        return 0.0
+
+    created_raw = getattr(t, "created_at", None)
+    if not created_raw:
+        return 0.0
+
+    try:
+        created_str = str(created_raw).strip()
+        if not created_str:
+            return 0.0
+        created_dt = datetime.fromisoformat(created_str.replace("Z", "+00:00"))
+        if created_dt.tzinfo is None:
+            created_dt = created_dt.replace(tzinfo=timezone.utc)
+        else:
+            created_dt = created_dt.astimezone(timezone.utc)
+    except (ValueError, TypeError, AttributeError):
+        return 0.0
+
+    if now is None:
+        ref_now = datetime.now(timezone.utc)
+    elif now.tzinfo is None:
+        ref_now = now.replace(tzinfo=timezone.utc)
+    else:
+        ref_now = now.astimezone(timezone.utc)
+
+    age_hours = (ref_now - created_dt).total_seconds() / 3600.0
+    effective_hours = max(age_hours, min_age_hours)
+    if effective_hours <= 0:
+        return 0.0
+
+    return float(likes / effective_hours)
+
+
 def score_tracks(tracks: list[Track], cfg: Config, apply_filter: bool = True) -> list[Track]:
-    """Bewertet relativ zur aktuellen Kandidatenmenge (Genre-Baseline).
-
-    Absolute Schwellen wie 'Like-Ratio > 5 %' filtern bei Schranz/Hard Techno fast
-    alles weg, weil Plays durch Autoplay aufgebläht sind. Perzentile sind robuster.
-
-    apply_filter=False: nur bewerten und nach Score sortieren, nichts aussortieren.
-    Für On-Demand-Checks (Playlist/Station) will man die volle Liste sehen, nicht
-    nur das obere Perzentil des täglichen Digests.
-    """
+    """Berechnet zusätzlich für jeden Track im Pool vel = engagement_velocity(t, now),
+    speichert vel auf t.velocity und bezieht w.get("velocity", 0.0) * _percentile_rank(vel, vel_sorted)
+    in t.score ein (analog zu like_ratio, repost_ratio, comment_ratio). Fehlt velocity
+    in weights oder ist 0.0, verhält sich das Scoring wie bisher."""
     sc = cfg["scoring"]
     blocked = sc.get("blocked_accounts")
     if apply_filter and blocked:
@@ -262,6 +312,11 @@ def score_tracks(tracks: list[Track], cfg: Config, apply_filter: bool = True) ->
     max_age = cfg["search"]["max_age_days"]
 
     for t in pool:
+        t.velocity = engagement_velocity(t, now=now)
+    vel_sorted = sorted(t.velocity for t in pool)
+    vel_weight = w.get("velocity", 0.0)
+
+    for t in pool:
         try:
             age_days = (now - datetime.fromisoformat(t.created_at.replace("Z", "+00:00"))).days
         except (ValueError, TypeError):
@@ -269,10 +324,11 @@ def score_tracks(tracks: list[Track], cfg: Config, apply_filter: bool = True) ->
         recency = max(0.0, 1.0 - age_days / max_age)
         # log-Dämpfung: sehr viele Plays sollen nicht automatisch gewinnen
         t.score = (
-            w["like_ratio"] * _percentile_rank(t.like_ratio, like_sorted)
-            + w["repost_ratio"] * _percentile_rank(t.repost_ratio, rep_sorted)
-            + w["comment_ratio"] * _percentile_rank(t.comment_ratio, com_sorted)
-            + w["recency"] * 100.0 * recency
+            w.get("like_ratio", 0.0) * _percentile_rank(t.like_ratio, like_sorted)
+            + w.get("repost_ratio", 0.0) * _percentile_rank(t.repost_ratio, rep_sorted)
+            + w.get("comment_ratio", 0.0) * _percentile_rank(t.comment_ratio, com_sorted)
+            + vel_weight * _percentile_rank(t.velocity, vel_sorted)
+            + w.get("recency", 0.0) * 100.0 * recency
         )
         if t.reference_hit:
             t.score += sc.get("reference_boost", 0)

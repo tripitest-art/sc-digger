@@ -57,6 +57,7 @@ class Track:
     notes: list[str] = field(default_factory=list)
     set_minutes: int | None = None   # gesetzt von pipeline.mark_sets
     reference_hit: bool = False  # von einem reference_accounts-Profil gerepostet/geliked
+    velocity: float = 0.0  # Likes pro Stunde seit Upload, gefüllt in score_tracks()
 
     @property
     def like_ratio(self) -> float:

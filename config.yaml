@@ -78,8 +78,9 @@ scoring:
   min_like_ratio: 0.01        # harte Untergrenze, damit Spam rausfliegt
   min_percentile: 40          # Score muss im oberen 60 % der Kandidaten liegen
   weights:
-    like_ratio: 0.45
-    repost_ratio: 0.35
+    like_ratio: 0.35
+    repost_ratio: 0.25
+    velocity: 0.20
     comment_ratio: 0.10
     recency: 0.10
   # Bonus auf den Score (Punkte auf der 0-100-Perzentil-Skala), wenn ein Track
