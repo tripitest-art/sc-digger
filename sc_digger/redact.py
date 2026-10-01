@@ -13,9 +13,12 @@ import re
 
 _TG_TOKEN_RE = re.compile(r"bot\d{5,}:[A-Za-z0-9_-]{20,}")
 _SECRET_ENV = ("TELEGRAM_BOT_TOKEN", "SOUNDCLOUD_AUTH_TOKEN")
-_OAUTH_HEADER_RE = re.compile(r"(OAuth\s+)[A-Za-z0-9._-]{20,}(?=[\s&]|$)", re.IGNORECASE)
-_OAUTH_URL_PARAM_RE = re.compile(r"(oauth_token=)[A-Za-z0-9._-]{20,}(?=[\s&]|$)", re.IGNORECASE)
-_AUTH_TOKEN_ARG_RE = re.compile(r"(--auth-token[=\s])[A-Za-z0-9._-]{20,}(?=[\s&]|$)", re.IGNORECASE)
+# Token: mindestens 8 Zeichen aus [A-Za-z0-9._-] UND mindestens eine Ziffer.
+# Die Ziffer verhindert Fehltreffer bei normalen Wörtern ("OAuth required").
+_TOKEN_BODY = r"(?=[A-Za-z0-9._-]*\d)[A-Za-z0-9._-]{8,}"
+_OAUTH_HEADER_RE = re.compile(r"(OAuth\s+)" + _TOKEN_BODY + r"(?=[\s&]|$)", re.IGNORECASE)
+_OAUTH_URL_PARAM_RE = re.compile(r"(oauth_token=)" + _TOKEN_BODY + r"(?=[\s&]|$)", re.IGNORECASE)
+_AUTH_TOKEN_ARG_RE = re.compile(r"(--auth-token[=\s])" + _TOKEN_BODY + r"(?=[\s&]|$)", re.IGNORECASE)
 
 
 def redact(text: object) -> str:

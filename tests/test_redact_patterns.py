@@ -115,3 +115,33 @@ def test_normal_words_unchanged():
         result = redact(text)
         # None of these should be replaced since they don't contain actual tokens
         assert text == result, f"Text '{text}' was incorrectly modified to '{result}'"
+
+
+@pytest.mark.parametrize("token", [
+    "2-293847",          # 8 Zeichen, kürzester gültiger Token
+    "2-29384-abc1234",   # 16 Zeichen
+    "2-293847-1234567",  # 17 Zeichen
+    "AbCdEfGhIjKlMn0p",  # 16 Zeichen, eine Ziffer am Ende
+])
+def test_short_tokens_are_masked(token):
+    """Tokens mit 8 bis 19 Zeichen müssen ebenfalls maskiert werden (Review-Punkt 1)."""
+    for text, expected in [
+        (f"Authorization: OAuth {token}", "Authorization: OAuth ***"),
+        (f"oauth_token={token}", "oauth_token=***"),
+        (f"scdl --auth-token {token}", "scdl --auth-token ***"),
+        (f"scdl --auth-token={token}", "scdl --auth-token=***"),
+    ]:
+        result = redact(text)
+        assert result == expected
+        assert token not in result
+
+
+@pytest.mark.parametrize("text", [
+    "OAuth required",
+    "OAuth unauthenticated",
+    "OAuth unauthenticatedclient",
+    "Fehler: OAuth abgelaufen",
+])
+def test_words_without_digit_stay_unchanged(text):
+    """Wörter ab 8 Zeichen ohne Ziffer dürfen nicht maskiert werden (Review-Punkt 2)."""
+    assert redact(text) == text
