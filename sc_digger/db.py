@@ -242,6 +242,26 @@ MIGRATIONS: list[tuple[int, str, str]] = [
         CREATE INDEX IF NOT EXISTS idx_store_items_last_seen ON store_items(last_seen);
         """,
     ),
+    (
+        4,
+        "0004_track_snapshots",
+        """
+        CREATE TABLE IF NOT EXISTS track_snapshots (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sc_id INTEGER NOT NULL,
+            artist TEXT NOT NULL,
+            title TEXT,
+            plays INTEGER NOT NULL DEFAULT 0,
+            likes INTEGER NOT NULL DEFAULT 0,
+            reposts INTEGER NOT NULL DEFAULT 0,
+            comments INTEGER NOT NULL DEFAULT 0,
+            recorded_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_track_snapshots_sc_id ON track_snapshots(sc_id);
+        CREATE INDEX IF NOT EXISTS idx_track_snapshots_recorded_at ON track_snapshots(recorded_at);
+        """,
+    ),
 ]
 
 
@@ -517,6 +537,70 @@ class TrackDB:
             "SELECT sc_id FROM sc_feedback WHERE value = 'like' ORDER BY updated_at DESC"
         ).fetchall()
         return [row[0] for row in rows]
+
+    # ------------------------------------------------------------ Engagement-Snapshots
+
+    def record_track_snapshot(
+        self,
+        sc_id: int,
+        artist: str,
+        title: str | None = None,
+        plays: int = 0,
+        likes: int = 0,
+        reposts: int = 0,
+        comments: int = 0,
+        recorded_at: str | None = None,
+    ) -> None:
+        """Speichert einen historischen Engagement-Snapshot für einen SoundCloud-Track."""
+        if recorded_at is None:
+            self.db.execute(
+                """
+                INSERT INTO track_snapshots (sc_id, artist, title, plays, likes, reposts, comments)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (sc_id, artist, title, plays, likes, reposts, comments),
+            )
+        else:
+            self.db.execute(
+                """
+                INSERT INTO track_snapshots
+                    (sc_id, artist, title, plays, likes, reposts, comments, recorded_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (sc_id, artist, title, plays, likes, reposts, comments, recorded_at),
+            )
+        self.db.commit()
+
+    def record_track_snapshots(
+        self,
+        tracks: Sequence[Any],
+        recorded_at: str | None = None,
+    ) -> int:
+        """Speichert Snapshots für eine Liste von Track-Objekten.
+
+        Liefert die Anzahl der gespeicherten Datensätze. Ignoriert Tracks ohne sc_id / id.
+        """
+        stored = 0
+        for t in tracks:
+            sc_id = getattr(t, "sc_id", None)
+            if sc_id is None:
+                sc_id = getattr(t, "id", None)
+            if sc_id is None:
+                continue
+            artist = getattr(t, "artist", None) or ""
+            title = getattr(t, "title", None)
+            self.record_track_snapshot(
+                sc_id=int(sc_id),
+                artist=str(artist),
+                title=title,
+                plays=int(getattr(t, "plays", 0) or 0),
+                likes=int(getattr(t, "likes", 0) or 0),
+                reposts=int(getattr(t, "reposts", 0) or 0),
+                comments=int(getattr(t, "comments", 0) or 0),
+                recorded_at=recorded_at,
+            )
+            stored += 1
+        return stored
 
     def count_tracks(
         self,
