@@ -1,6 +1,7 @@
 """Tests für die Zusammenführung von Server-Zweig (Bot, Referenzen, Export, Lautheit)
 und GitHub-Zweig (Analyse, Organize, Health), inkl. der auf dem Server gefundenen Fehler."""
 import os
+import shlex
 import shutil
 import subprocess
 from pathlib import Path
@@ -41,13 +42,18 @@ def test_dockerfile_cron_job_sources_env_file():
 def test_exported_env_restores_path_and_secrets_in_clean_cron_env(tmp_path):
     """Nachstellung: entrypoint schreibt export -p, cron startet mit env -i und lädt die Datei."""
     envfile = tmp_path / "cron.env"
+    # Unter Windows (Git-sh) verschluckt sh die Backslashes eines nativen Pfads; die Datei
+    # (voller Umgebungs-Dump!) landete dann im Arbeitsverzeichnis statt in tmp_path.
+    # Daher POSIX-Schreibweise (C:/…) und gequotet.
+    sh_envfile = shlex.quote(envfile.as_posix())
     secret = "123:ab'c d\"e$f"                     # Sonderzeichen dürfen nichts kaputtmachen
-    subprocess.run(["sh", "-c", f"export -p > {envfile}"], check=True,
+    subprocess.run(["sh", "-c", f"export -p > {sh_envfile}"], check=True,
                    env={**os.environ, "PATH": f"/opt/fake/bin:{os.environ['PATH']}",
                         "TELEGRAM_BOT_TOKEN": secret})
+    assert envfile.is_file()                       # wirklich in tmp_path, nicht im cwd
     r = subprocess.run(
         ["env", "-i", "HOME=/root", "PATH=/usr/bin:/bin", "sh", "-c",
-         f'. {envfile}; printf "%s\\n%s" "$PATH" "$TELEGRAM_BOT_TOKEN"'],
+         f'. {sh_envfile}; printf "%s\\n%s" "$PATH" "$TELEGRAM_BOT_TOKEN"'],
         capture_output=True, text=True, check=True,
     )
     path, token = r.stdout.split("\n", 1)
