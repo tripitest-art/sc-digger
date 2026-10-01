@@ -42,14 +42,17 @@ Sammlung, aber Genres, Pfade und Schwellwerte stehen alle in `config.yaml`.
 Der tägliche `discover`-Lauf (07:30 per Cron):
 
 1. **Nachholen:** Original-Downloads, die beim letzten Mal gescheitert sind, erneut versuchen
-   (bis zu 3 Versuche insgesamt)
+   (bis zu 3 Versuche insgesamt), und Dateien aus dem Eingangsordner verarbeiten
+   (siehe [Manuell geladene Tracks](#manuell-geladene-tracks))
 2. **Suchen:** Genre-Tags, Uploads gefolgter Artists und Reposts/Likes von Referenz-Accounts
    (DJs, deren Geschmack du vertraust; ihre Treffer bekommen einen Bonus). Scheitert eine einzelne
    Quelle, läuft der Rest weiter und der Digest sagt, welche fehlte.
-3. **Vorfiltern:** DJ-Sets (länger als 12 Minuten) raus; BPM aus Titel, Tags und Beschreibung
-   geschätzt, unbekannt bleibt drin
-4. **Bewerten:** Perzentil-Score aus Likes, Reposts und Kommentaren pro Play plus Aktualität;
-   Abzug bei Promo-Netzwerk-Verdacht (Repost-Tausch, „send your tracks“)
+3. **Vorfiltern:** DJ-Sets (länger als 12 Minuten) und kurze Mixe/Podcasts (Titelmuster wie
+   „Selects 001“, „Podcast“, „Mix 007“) raus; BPM aus Titel, Tags und Beschreibung geschätzt,
+   unbekannt bleibt drin
+4. **Bewerten:** Uploads gesperrter Accounts (`scoring.blocked_accounts`) raus, dann Perzentil-Score
+   aus Likes, Reposts und Kommentaren pro Play, Engagement-Tempo (Likes pro Stunde seit Upload) und
+   Aktualität; Abzug bei Promo-Netzwerk-Verdacht (Repost-Tausch, „send your tracks“)
 5. **Aussortieren:** schon gemeldet (SQLite) oder schon in deiner Sammlung (Fuzzy-Match, Remixe zählen extra)
 6. **Download-Weg bestimmen:** nativ, Gate, Store, Cloud-Link oder nur Stream
 7. **Laden und prüfen:** Original über `scdl --only-original`, dann ffprobe, Spektrum-Check gegen
@@ -103,7 +106,8 @@ Geschmacksmodell), ⏳ merkt ein Gate für später vor.
 | Track-Link | die „Station“ zum Track (SoundCloud-Radio), ebenso aufbereitet |
 | `/kaufliste` | offene Store-Tracks (Bandcamp, Beatport, …) mit Kauflink |
 | `/curator_mining` | SoundCloud-Profile, die deine 👍-Tracks auffällig oft geliked oder repostet haben, als Kandidaten für `reference_accounts` |
-| `/mix <Key> <BPM> [Tol]` | harmonisch und tempomäßig passende Tracks aus der Track-DB (Sammlung) |
+| `/mix <Key> <BPM> [Tol]` | harmonisch und tempomäßig passende Tracks aus der Track-DB (Sammlung), mit Camelot-Abstand |
+| `/stats [Tage]` | Statistik der letzten 7 (bis 365) Tage: Läufe, gescannte Tracks, Inbox, Ablehnungen, Feedback, Top-Artists |
 
 Links aus der App (`on.soundcloud.com/…`) funktionieren auch. Die Kaufliste kommt zusätzlich jeden
 Sonntag um 20:00 von selbst. Fehlen die Telegram-Daten, pausiert der Bot; der tägliche Lauf läuft trotzdem.
@@ -138,8 +142,8 @@ Alles steht kommentiert in `config.yaml`:
 
 | Abschnitt | Wofür |
 |---|---|
-| `search` | Genre-Tags, BPM-Fenster, Zeitraum, maximale Track-Dauer, gefolgte Artists, Referenz-Accounts |
-| `scoring` | Mindest-Plays, Perzentil-Schwelle, Gewichte, Bonus für Referenz-Accounts, Abzug und Phrasen für Promo-Verdacht, Sperrliste |
+| `search` | Genre-Tags, BPM-Fenster, Zeitraum, maximale Track-Dauer, Titelmuster für kurze Mixe, gefolgte Artists, Referenz-Accounts |
+| `scoring` | Mindest-Plays, Perzentil-Schwelle, Gewichte (inkl. Engagement-Tempo), Bonus für Referenz-Accounts, Abzug und Phrasen für Promo-Verdacht, Sperrliste |
 | `download` | Sammlungs- und Inbox-Ordner, Cloud-Downloads ein/aus, Maximalgröße |
 | `organize` | Ordnerstruktur, BPM-/Key-Erkennung, Tags schreiben |
 | `quality` | Mindest-Bitrate, Spektrum-Grenzen, Brickwall-Schwellen |
