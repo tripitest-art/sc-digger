@@ -17,9 +17,7 @@ statt in `AGENTS.md`, weil Antigravity Regeldateien bei 12.000 Zeichen abschneid
   - Detaillierte Meldung der Prüfungen: `docker compose exec sc-digger python -m sc_digger.healthcheck`
   - Bei Problemen oder Entwarnung wird automatisch eine Textmeldung an Telegram gesendet (falls Tokens gesetzt sind).
 - **Worker-Sandbox** (eigener Container für Coding-Agenten, nicht der sc-digger-Server):
-  Einrichtung, SSH und Fehlersuche in `sandbox/README.md`. Die übergeordnete Homelab- und
-  GPU-Infrastruktur (WoL-Proxy, Proxmox LXC, AMD RDNA2 LACT-Tuning, Home Assistant Telemetrie)
-  ist im dedizierten Repository [`agent-sandbox-infra`](https://github.com/tripitest-art/agent-sandbox-infra) dokumentiert.
+  Einrichtung und Betrieb stehen in einem separaten, privaten Repository.
 - **Testlauf ohne Nebenwirkungen:** `docker compose exec sc-digger python -m sc_digger.main --dry-run --no-telegram -v`
 
 ## Zugangsdaten setzen
