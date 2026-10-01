@@ -58,6 +58,7 @@ class Track:
     set_minutes: int | None = None   # gesetzt von pipeline.mark_sets
     reference_hit: bool = False  # von einem reference_accounts-Profil gerepostet/geliked
     velocity: float = 0.0  # Likes pro Stunde seit Upload, gefüllt in score_tracks()
+    exploration_tag: str | None = None  # Tag, falls Track über einen Explorations-Suchlauf entdeckt wurde
 
     @property
     def like_ratio(self) -> float:
