@@ -10,3 +10,7 @@ data/
 
 # Zuletzt erfolgreich gebauter Stand (update.sh)
 .last-build
+
+# Umgebungs-Dumps (export -p, enthalten Tokens). Schutz, falls ein Test oder Skript
+# sie versehentlich ins Arbeitsverzeichnis schreibt (z. B. unter Windows, PR #133)
+*cron.env
