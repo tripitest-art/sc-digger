@@ -7,6 +7,15 @@ search:
     - hardtechno
     - industrial techno
     - hard techno
+  # Benachbarte Tags für gelegentliche Exploration (Tag-Rotation, Roadmap Phase 3).
+  # Diese Tags werden NICHT immer durchsucht, sondern nur mit der unten stehenden
+  # Wahrscheinlichkeit – so bleibt die Kernsuche unangetastet.
+  exploration_tags:
+    - acid techno
+    - warehouse techno
+  # Wahrscheinlichkeit pro Lauf, dass EIN Explorations-Tag zusätzlich durchsucht wird.
+  # 0.0 = aus; z. B. 0.2 für 20% der Läufe
+  exploration_probability: 0.0
   # BPM-Fenster (SoundCloud liefert bpm nur, wenn der Uploader es setzt;
   # fehlende BPM werden NICHT aussortiert, sondern per Titel/Tag geschätzt)
   bpm_min: 150

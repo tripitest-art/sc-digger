@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import html
 import logging
+import random
 import re
 import sys
 from dataclasses import dataclass
@@ -331,15 +332,45 @@ class Discovery:
     first_error: Exception | None       # erste aufgetretene Exception
 
 
-def collect_sources(sc: SoundCloudClient, s: dict) -> Discovery:
-    """Fragt die Quellen in dieser Reihenfolge ab: alle Tags, dann followed_users, dann
-    reference_accounts. Jede Quelle einzeln in try/except Exception; ein Fehler wird in `failed`
-    eingetragen und die nächste Quelle abgefragt. Nach ClientIdError oder RateLimitError wird
-    KEINE weitere Quelle mehr abgefragt (aborted gesetzt). Wirft nie."""
+def select_exploration_tags(
+    exploration_tags: list[str],
+    existing_tags: list[str],
+    probability: float = 0.0,
+    rng: random.Random | None = None,
+) -> list[str]:
+    """Wählt höchstens EINEN Explorations-Tag.
+    - probability <= 0 -> [] (rng wird dann nicht benutzt)
+    - Kandidaten = exploration_tags ohne die, die schon in existing_tags stehen; leer -> []
+    - rng is None -> random.Random()
+    - rng.random() < probability -> [rng.choice(kandidaten)], sonst []"""
+    if probability <= 0:
+        return []
+    candidates = [t for t in exploration_tags if t not in existing_tags]
+    if not candidates:
+        return []
+    if rng is None:
+        rng = random.Random()
+    if rng.random() < probability:
+        return [rng.choice(candidates)]
+    return []
+
+
+def collect_sources(sc: SoundCloudClient, s: dict, rng: random.Random | None = None) -> Discovery:
+    """Fragt die Quellen in dieser Reihenfolge ab: alle Tags, dann die gewählten
+    Explorations-Tags, dann followed_users, dann reference_accounts. Jede Quelle einzeln in
+    try/except Exception; ein Fehler wird in `failed` eingetragen und die nächste Quelle
+    abgefragt. Nach ClientIdError oder RateLimitError wird KEINE weitere Quelle mehr abgefragt
+    (aborted gesetzt). Wirft nie."""
     tags = list(s.get("tags", []))
     followed = list(s.get("followed_users", []))
     reference = list(s.get("reference_accounts", []))
-    total_sources = len(tags) + len(followed) + len(reference)
+    exploration = select_exploration_tags(
+        s.get("exploration_tags", []),
+        tags,
+        s.get("exploration_probability", 0.0),
+        rng,
+    )
+    total_sources = len(tags) + len(exploration) + len(followed) + len(reference)
 
     tracks: list[Track] = []
     reference_ids: set[int] = set()
@@ -361,6 +392,24 @@ def collect_sources(sc: SoundCloudClient, s: dict) -> Discovery:
             if isinstance(e, (ClientIdError, RateLimitError)):
                 aborted = type(e).__name__
                 break
+
+    # Explorations-Tags (wie ein Tag, nach den regulären Tags und vor followed_users)
+    if not aborted:
+        for tag in exploration:
+            try:
+                found = sc.search_tag(tag, s["max_age_days"], s["limit_per_tag"])
+                for t in found:
+                    t.exploration_tag = tag
+                tracks.extend(found)
+                succeeded += 1
+            except Exception as e:
+                if first_error is None:
+                    first_error = e
+                failed.append(redact(f"{tag}: {type(e).__name__}: {e}")[:200])
+                log.warning("Explorations-Tag %s fehlgeschlagen: %s", tag, e)
+                if isinstance(e, (ClientIdError, RateLimitError)):
+                    aborted = type(e).__name__
+                    break
 
     # Followed users
     if not aborted:
