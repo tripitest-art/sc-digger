@@ -1,7 +1,7 @@
 ---
 name: sc-digger-planner
 description: "Worker-Issue für tripitest-art/sc-digger planen und anlegen (Planer-Rolle). Nutzen bei „Plane …“, „Erstelle ein Issue für …“ oder „Mach daraus eine Aufgabe“. Erst Entwurf im Chat, nach Stephans OK Issue mit Label entwurf."
-always-apply: true
+always-apply: false
 compatibility: Braucht den MCP-Server github-planner (siehe MCP.md). Für lokale Modelle in LibreChat.
 ---
 
