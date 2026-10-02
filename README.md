@@ -179,6 +179,25 @@ Alle Optionen stehen in `config.yaml`; die folgende Liste nennt die Werte aus di
 | `digest.sunday_summary` | Wochenstatistik im Sonntagslauf senden | `false` |
 | `digest.stats_chart` | Balkendiagramm zum Wochen-Digest | `false` |
 
+### Lokale Override-Datei
+
+Die versionierte `config.yaml` bleibt die einzige Wahrheit. Änderungen ohne Git – später aus der
+Weboberfläche – legt `Config.load` per Deep-Merge aus einer optionalen lokalen Override-Datei
+darüber. Den Pfad nennt die Umgebungsvariable `SC_DIGGER_CONFIG_LOCAL` (im Container z. B.
+`/data/config.local.yaml`). Fehlt die Datei oder ist sie leer, ändert sich nichts am Betrieb.
+Kaputtes YAML scheitert laut mit Dateinamen, statt still ignoriert zu werden. Listen und Skalare
+aus der Override-Datei ersetzen den Wert aus `config.yaml`, Zuordnungen werden rekursiv gemischt.
+
+Konfiguration prüfen (Typen, Wertebereiche, Tippfehler):
+
+```bash
+python -m sc_digger.schema [--config config.yaml] [--local /data/config.local.yaml]
+```
+
+Je Problem eine Zeile `FEHLER <pfad>: <meldung>` bzw. `WARNUNG <pfad>: <meldung>`, sonst
+`OK: Konfiguration gültig`. Der Exit-Code ist 1 bei mindestens einem Fehler, Warnungen allein
+ändern ihn nicht. Die Prüfung verändert keine Datei.
+
 ## Funktionen im Detail
 
 ### Qualitätsprüfung

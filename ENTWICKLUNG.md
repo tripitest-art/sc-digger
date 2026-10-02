@@ -34,6 +34,7 @@ Modul anlegt, trägt es in die Tabelle ein.
 | `sc_digger/stats.py` | Statistikberechnung für Telegram-Digest und /stats-Bot-Befehl, `render_stats_chart`, `send_weekly_digest` |
 | `sc_digger/trends.py` | Trend-Radar (Phase 4): Wachstumsanalyse historischer Engagement-Snapshots (`track_snapshots`) je Track und Artist |
 | `sc_digger/preview.py` | Live-Preview (Phase 3): energiereichstes Segment einer Audiodatei per ffmpeg finden und als OGG-Opus-Snippet extrahieren (`find_loudest_segment`, `extract_preview`) |
+| `sc_digger/schema.py` | Config-Schema: `FIELDS`/`SECTION_TITLES`, `validate_config` (Typen, Wertebereiche, Warnungen), `deep_merge` für die lokale Override-Datei, Prüfbefehl `python -m sc_digger.schema` |
 | `config.yaml` | Einzige Konfiguration (Tags, Referenz-Accounts, Schwellwerte). Ist die Produktivkonfiguration. |
 | `entrypoint.sh` | Schreibt `cron.env` (Cron hat sonst weder PATH noch Secrets), startet cron und Bot |
 | `skills/*/SKILL.md` | Abläufe für lokale Modelle in LibreChat (Review, Worker, Planer), per GitHub Skill Sync gespiegelt; Regeln bleiben in `AGENTS.md` |
