@@ -153,6 +153,14 @@ class JobRecord:
         return cls(**{k: v for k, v in d.items() if k in known})
 
 
+@dataclass(frozen=True)
+class ArtistReputation:
+    artist: str
+    downloads: int = 0  # Tracks in inbox/archive ohne explizites Feedback
+    likes: int = 0      # Tracks oder Store-Items mit feedback = 'like'
+    dislikes: int = 0   # Tracks oder Store-Items mit feedback = 'dislike'
+
+
 FEEDBACK_VALUES: tuple[str, ...] = ("like", "dislike", "later")
 
 
@@ -537,6 +545,66 @@ class TrackDB:
             "SELECT sc_id FROM sc_feedback WHERE value = 'like' ORDER BY updated_at DESC"
         ).fetchall()
         return [row[0] for row in rows]
+
+    # ------------------------------------------------------------ Artist-Reputation
+
+    def get_artist_reputations(self) -> dict[str, ArtistReputation]:
+        """Aggregiert Reputation pro Künstler über tracks und store_items+sc_feedback.
+
+        Key ist der normalisierte Künstlername (LOWER(TRIM(artist))). Künstler ohne
+        Namen werden ignoriert. Als Download zählt ein Track in inbox/archive ohne
+        explizites Feedback (like/dislike/later werden separat gezählt).
+        """
+        acc: dict[str, dict[str, int]] = {}
+
+        track_rows = self.db.execute(
+            """
+            SELECT LOWER(TRIM(artist)) AS artist,
+                   SUM(CASE WHEN feedback = 'like' THEN 1 ELSE 0 END) AS likes,
+                   SUM(CASE WHEN feedback = 'dislike' THEN 1 ELSE 0 END) AS dislikes,
+                   SUM(CASE WHEN feedback IS NULL AND status IN ('archive', 'inbox')
+                            THEN 1 ELSE 0 END) AS downloads
+            FROM tracks
+            WHERE artist IS NOT NULL AND TRIM(artist) != ''
+            GROUP BY LOWER(TRIM(artist))
+            """
+        ).fetchall()
+        for row in track_rows:
+            acc[row["artist"]] = {
+                "downloads": row["downloads"] or 0,
+                "likes": row["likes"] or 0,
+                "dislikes": row["dislikes"] or 0,
+            }
+
+        store_rows = self.db.execute(
+            """
+            SELECT LOWER(TRIM(store_items.artist)) AS artist, sc_feedback.value AS value
+            FROM store_items
+            JOIN sc_feedback ON sc_feedback.sc_id = store_items.sc_id
+            WHERE store_items.artist IS NOT NULL AND TRIM(store_items.artist) != ''
+            """
+        ).fetchall()
+        for row in store_rows:
+            entry = acc.setdefault(row["artist"], {"downloads": 0, "likes": 0, "dislikes": 0})
+            if row["value"] == "like":
+                entry["likes"] += 1
+            elif row["value"] == "dislike":
+                entry["dislikes"] += 1
+
+        return {
+            key: ArtistReputation(
+                artist=key,
+                downloads=vals["downloads"],
+                likes=vals["likes"],
+                dislikes=vals["dislikes"],
+            )
+            for key, vals in acc.items()
+        }
+
+    def get_artist_reputation(self, artist: str) -> ArtistReputation:
+        """Reputation für einen einzelnen Künstler; leere Reputation, wenn unbekannt."""
+        key = str(artist).strip().lower() if artist is not None else ""
+        return self.get_artist_reputations().get(key, ArtistReputation(artist=key))
 
     # ------------------------------------------------------------ Engagement-Snapshots
 
