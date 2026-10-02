@@ -12,6 +12,7 @@ import json
 import posixpath
 import sqlite3
 from dataclasses import asdict, dataclass, field
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Any, Sequence
@@ -262,6 +263,19 @@ MIGRATIONS: list[tuple[int, str, str]] = [
         CREATE INDEX IF NOT EXISTS idx_track_snapshots_recorded_at ON track_snapshots(recorded_at);
         """,
     ),
+    (
+        5,
+        "0005_exploration_tag_stats",
+        """
+        CREATE TABLE IF NOT EXISTS exploration_tag_stats (
+            tag TEXT PRIMARY KEY,
+            uses INTEGER NOT NULL,
+            successes INTEGER NOT NULL,
+            last_used_at TEXT,
+            last_success_at TEXT
+        );
+        """,
+    ),
 ]
 
 
@@ -479,6 +493,32 @@ class TrackDB:
     def get_sc_feedback(self, sc_id: int) -> str | None:
         row = self.db.execute("SELECT value FROM sc_feedback WHERE sc_id = ?", (sc_id,)).fetchone()
         return row["value"] if row else None
+
+    def record_exploration_use(self, tag: str, success: bool, now: datetime | None = None) -> None:
+        ts = (now or datetime.now(timezone.utc)).strftime("%Y-%m-%d %H:%M:%S")
+        self.db.execute(
+            """
+            INSERT INTO exploration_tag_stats (tag, uses, successes, last_used_at, last_success_at)
+            VALUES (?, 1, ?, ?, ?)
+            ON CONFLICT(tag) DO UPDATE SET
+                uses = uses + 1,
+                successes = successes + excluded.successes,
+                last_used_at = excluded.last_used_at,
+                last_success_at = COALESCE(excluded.last_success_at, last_success_at)
+            """,
+            (tag, int(bool(success)), ts, ts if success else None),
+        )
+        self.db.commit()
+
+    def top_exploration_tags(self, days: int = 30, min_successes: int = 2,
+                             now: datetime | None = None) -> list[dict]:
+        cutoff = ((now or datetime.now(timezone.utc)) - timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
+        rows = self.db.execute(
+            "SELECT tag, uses, successes, last_success_at FROM exploration_tag_stats "
+            "WHERE successes >= ? AND last_success_at >= ? ORDER BY successes DESC, tag",
+            (min_successes, cutoff),
+        ).fetchall()
+        return [dict(r) for r in rows]
 
     def upsert_store_item(
         self,

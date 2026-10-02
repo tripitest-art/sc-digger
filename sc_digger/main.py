@@ -17,7 +17,7 @@ import logging
 import random
 import re
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -26,6 +26,7 @@ from .analysis import analyze_track, resolve_bpm
 from .audit import run_audit
 from .cloud import download_cloud
 from .collection import Collection
+from .db import TrackDB
 from .health import Health
 from .intake import AUDIO_EXTS, find_ready_files, track_from_file
 from .models import Config, DownloadKind, Track
@@ -331,6 +332,7 @@ class Discovery:
                                         #   bzw. die Profil-URL
     aborted: str | None                 # gesetzt, wenn nach ClientIdError/RateLimitError abgebrochen wurde
     first_error: Exception | None       # erste aufgetretene Exception
+    exploration_used: list[str] = field(default_factory=list)  # Exploration-Tags, deren Suche gelang
 
 
 def select_exploration_tags(
@@ -375,6 +377,7 @@ def collect_sources(sc: SoundCloudClient, s: dict, rng: random.Random | None = N
 
     tracks: list[Track] = []
     reference_ids: set[int] = set()
+    exploration_used: list[str] = []
     succeeded = 0
     failed: list[str] = []
     aborted: str | None = None
@@ -402,6 +405,7 @@ def collect_sources(sc: SoundCloudClient, s: dict, rng: random.Random | None = N
                 for t in found:
                     t.exploration_tag = tag
                 tracks.extend(found)
+                exploration_used.append(tag)
                 succeeded += 1
             except Exception as e:
                 if first_error is None:
@@ -453,6 +457,7 @@ def collect_sources(sc: SoundCloudClient, s: dict, rng: random.Random | None = N
         failed=failed,
         aborted=aborted,
         first_error=first_error,
+        exploration_used=exploration_used,
     )
 
 
@@ -524,6 +529,18 @@ def retry_downloads(sc: SoundCloudClient, cfg: Config) -> list[str]:
     return lines
 
 
+def record_exploration_stats(cfg: Config, used_tags: list[str], fresh: list[Track],
+                             now: datetime | None = None) -> None:
+    """Zählt je verwendetem Exploration-Tag eine Verwendung; Erfolg = mindestens ein neuer,
+    ausgelieferter Track (fresh) mit diesem exploration_tag. Ohne Tags: keine DB-Zugriffe."""
+    if not used_tags:
+        return
+    hits = {t.exploration_tag for t in fresh if t.exploration_tag}
+    with TrackDB(cfg["state"]["track_db_path"]) as db:
+        for tag in used_tags:
+            db.record_exploration_use(tag, tag in hits, now=now)
+
+
 def is_sunday(now: datetime | None = None) -> bool:
     """True, wenn *now* (Standard: jetzt in Europe/Berlin) ein Sonntag ist."""
     if now is None:
@@ -567,6 +584,10 @@ def _discover(cfg: Config, dry_run: bool, no_telegram: bool) -> int:
                 dry_run=dry_run, no_telegram=no_telegram, export_name="Täglicher Digest",
                 footer=footer)
         if not dry_run:
+            try:
+                record_exploration_stats(cfg, d.exploration_used, fresh)
+            except Exception:
+                log.exception("Exploration-Statistik fehlgeschlagen")
             # Erst nach erfolgreichem Versand markieren: bei Fehler in send_telegram
             # werden Tracks beim nächsten Lauf erneut gemeldet statt verloren zu gehen.
             for t in fresh:
