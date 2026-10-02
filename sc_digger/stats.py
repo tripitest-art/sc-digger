@@ -28,6 +28,12 @@ class DigestStats:
     dislikes: int = 0
     later: int = 0
     top_artists: List[Tuple[str, int]] = field(default_factory=list)
+    # Werte der gleich langen Vorperiode (Tage days+1 … 2*days zurück):
+    prev_runs_ok: int = 0
+    prev_tracks_scanned: int = 0
+    prev_tracks_inbox: int = 0
+    prev_tracks_rejected: int = 0
+    prev_likes: int = 0
 
 
 def calculate_stats(
@@ -36,13 +42,17 @@ def calculate_stats(
     *,
     days: int = 7,
 ) -> DigestStats:
-    """Berechnet aggregierte Kennzahlen aus track_db (tracks, sc_feedback) und state_db (runs).
-    Fehlen die DB-Dateien oder Tabellen, liefert die Funktion Nullen/leere Listen ohne Exception."""
+    """Berechnet aggregierte Kennzahlen aus track_db (tracks, sc_feedback) und state_db (runs)
+    sowie die Kennzahlen der gleich langen Vorperiode direkt davor (Tage days+1 … 2*days zurück)
+    in die prev_*-Felder. Fehlen die DB-Dateien, Tabellen oder Datensätze, bleiben die Werte
+    (auch die prev_*) 0; es wird keine Exception geworfen."""
     
     stats = DigestStats(days=days)
     
-    # Zeitfenster berechnen
-    cutoff_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
+    # Zeitfenster berechnen: aktuelle Periode und die gleich lange Vorperiode davor.
+    now = datetime.now()
+    cutoff_date = (now - timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
+    prev_cutoff_date = (now - timedelta(days=2 * days)).strftime("%Y-%m-%d %H:%M:%S")
     
     try:
         # State DB (runs) auswerten
@@ -52,7 +62,7 @@ def calculate_stats(
             if not cursor.fetchone():
                 return stats
                 
-            # Berechne Runs-Statistiken
+            # Berechne Runs-Statistiken (aktuelle Periode)
             rows = db.execute("""
                 SELECT mode, ok, found 
                 FROM runs 
@@ -65,6 +75,20 @@ def calculate_stats(
                 if row[1]:  # ok
                     stats.runs_ok += 1
                 stats.tracks_scanned += row[2] if row[2] is not None else 0
+
+            # Runs-Statistiken der Vorperiode (days+1 … 2*days zurück)
+            rows = db.execute("""
+                SELECT ok, found 
+                FROM runs 
+                WHERE finished_at > ? 
+                AND finished_at <= ? 
+                AND mode = 'discover'
+            """, (prev_cutoff_date, cutoff_date))
+            
+            for row in rows:
+                if row[0]:  # ok
+                    stats.prev_runs_ok += 1
+                stats.prev_tracks_scanned += row[1] if row[1] is not None else 0
                 
     except sqlite3.Error:
         # Bei Fehlern wird einfach die leere Statistik zurückgegeben
@@ -101,6 +125,25 @@ def calculate_stats(
             """, (cutoff_date,))
             
             stats.tracks_rejected = rows.fetchone()[0]
+            
+            # Inbox- und Rejected-Tracks der Vorperiode
+            rows = db.execute("""
+                SELECT COUNT(*) 
+                FROM tracks 
+                WHERE status = 'inbox' 
+                AND created_at > ?
+                AND created_at <= ?
+            """, (prev_cutoff_date, cutoff_date))
+            stats.prev_tracks_inbox = rows.fetchone()[0]
+            
+            rows = db.execute("""
+                SELECT COUNT(*) 
+                FROM tracks 
+                WHERE status = 'rejected' 
+                AND created_at > ?
+                AND created_at <= ?
+            """, (prev_cutoff_date, cutoff_date))
+            stats.prev_tracks_rejected = rows.fetchone()[0]
             
             # Quality-Statistiken
             rows = db.execute("""
@@ -142,6 +185,16 @@ def calculate_stats(
                     stats.dislikes = row[1]
                 elif row[0] == 'later':
                     stats.later = row[1]
+            
+            # Likes der Vorperiode
+            rows = db.execute("""
+                SELECT COUNT(*) 
+                FROM sc_feedback 
+                WHERE value = 'like' 
+                AND updated_at > ?
+                AND updated_at <= ?
+            """, (prev_cutoff_date, cutoff_date))
+            stats.prev_likes = rows.fetchone()[0]
                     
     except sqlite3.Error:
         # Bei Fehlern wird einfach die leere Statistik zurückgegeben
@@ -150,15 +203,39 @@ def calculate_stats(
     return stats
 
 
+def _format_change(prev: int, current: int) -> str:
+    """Anzeige-Suffix mit prozentualer Änderung von prev auf current.
+
+    prev <= 0 (fehlende Vorperiode oder Division durch 0) → leerer String "". Sonst
+    pct = round(100 * (current - prev) / prev); Vorzeichen: positiv „+“, negativ „−“
+    (U+2212), null ohne Vorzeichen.
+    """
+    if prev <= 0:
+        return ""
+    pct = round(100 * (current - prev) / prev)
+    if pct > 0:
+        sign = "+"
+    elif pct < 0:
+        sign = "−"
+        pct = -pct
+    else:
+        sign = ""
+    return f" ({sign}{pct} % ggü. Vorperiode)"
+
+
 def format_stats(stats: DigestStats) -> str:
-    """Formatiert die Statistik als lesbaren Klartext für Telegram / Konsole."""
+    """Formatiert die Statistik als lesbaren Klartext für Telegram / Konsole.
+
+    Hängt an die fünf Kernzahlen (Runs ok, gescannt, Inbox, abgelehnt, Likes) den Suffix
+    aus _format_change(prev_*, aktuell) an, wenn dieser nicht leer ist.
+    """
 
     text = f"Statistiken der letzten {stats.days} Tage:\n\n"
 
-    text += f"✅ erfolgreiche Runs: {stats.runs_ok}/{stats.runs_total}\n"
-    text += f"📊 gescannte Tracks: {f'{stats.tracks_scanned:,}'.replace(',', '.')}\n"
-    text += f"📥 neue Inbox-Downloads: {stats.tracks_inbox}\n"
-    text += f"🚫 abgelehnte Fakes: {stats.tracks_rejected}\n\n"
+    text += f"✅ erfolgreiche Runs: {stats.runs_ok}/{stats.runs_total}{_format_change(stats.prev_runs_ok, stats.runs_ok)}\n"
+    text += f"📊 gescannte Tracks: {f'{stats.tracks_scanned:,}'.replace(',', '.')}{_format_change(stats.prev_tracks_scanned, stats.tracks_scanned)}\n"
+    text += f"📥 neue Inbox-Downloads: {stats.tracks_inbox}{_format_change(stats.prev_tracks_inbox, stats.tracks_inbox)}\n"
+    text += f"🚫 abgelehnte Fakes: {stats.tracks_rejected}{_format_change(stats.prev_tracks_rejected, stats.tracks_rejected)}\n\n"
 
     if stats.quality_breakdown:
         text += "🔍 Qualitätsverteilung:\n"
@@ -166,7 +243,7 @@ def format_stats(stats: DigestStats) -> str:
             text += f"  {quality}: {count}\n"
         text += "\n"
 
-    text += f"👍 Likes: {stats.likes} 👍\n"
+    text += f"👍 Likes: {stats.likes}{_format_change(stats.prev_likes, stats.likes)} 👍\n"
     text += f"👎 Dislikes: {stats.dislikes}\n"
     text += f"🕒 Later: {stats.later}\n\n"
 

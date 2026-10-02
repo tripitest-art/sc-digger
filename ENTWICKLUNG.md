@@ -32,7 +32,7 @@ Modul anlegt, trägt es in die Tabelle ein.
 | `sc_digger/web/app.py` | FastAPI-App der Statusseite (HTTP-Basic, `docs_url=None`), HTML-Vorlage unter `sc_digger/web/templates/`; mit `base_path`/`local_path` zusätzlich die Editor-Routen `/config`, `/config/preview`, `/config/save`, `/config/reset` inkl. Origin-/Referer-Schutz |
 | `sc_digger/web/configedit.py` | Reine Logik des Konfigeditors (ohne Webframework): Formularwert parsen/formatieren, minimaler Override, Diff, Schlüssel entfernen, atomares Schreiben der lokalen Datei mit Backup |
 | `sc_digger/web/__main__.py` | Startbefehl `python -m sc_digger.web`; startet ohne `SC_DIGGER_WEB_PASSWORD` nicht, schaltet den Editor nur mit `SC_DIGGER_CONFIG_LOCAL` ein |
-| `sc_digger/stats.py` | Statistikberechnung für Telegram-Digest und /stats-Bot-Befehl, `render_stats_chart`, `send_weekly_digest`, `_trend_section` (Trend-Abschnitt) |
+| `sc_digger/stats.py` | Statistikberechnung für Telegram-Digest und /stats-Bot-Befehl, Vorperioden-Vergleich der Kernkennzahlen, `render_stats_chart`, `send_weekly_digest`, `_trend_section` (Trend-Abschnitt) |
 | `sc_digger/trends.py` | Trend-Radar (Phase 4): Wachstumsanalyse historischer Engagement-Snapshots (`track_snapshots`) je Track und Artist |
 | `sc_digger/preview.py` | Live-Preview (Phase 3): energiereichstes Segment einer Audiodatei per ffmpeg finden und als OGG-Opus-Snippet extrahieren (`find_loudest_segment`, `extract_preview`) |
 | `sc_digger/schema.py` | Config-Schema: `FIELDS`/`SECTION_TITLES`, `validate_config` (Typen, Wertebereiche, Warnungen), `deep_merge` für die lokale Override-Datei, Prüfbefehl `python -m sc_digger.schema` |
