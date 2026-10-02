@@ -1,7 +1,7 @@
 ---
 name: sc-digger-worker
 description: "Worker-Aufgabe in tripitest-art/sc-digger über die GitHub-MCP-Werkzeuge. Nutzen bei „Bearbeite Issue #N“ oder „Arbeite das Review in PR #M ab“. Feste Abfolge bis zum PR mit grünen Checks."
-always-apply: false
+always-apply: true
 compatibility: Braucht den MCP-Server github-worker (siehe MCP.md). Für Qwen in LibreChat.
 ---
 

@@ -1,7 +1,7 @@
 ---
 name: sc-digger-review
 description: "Review eines Pull Requests in tripitest-art/sc-digger über die GitHub-MCP-Werkzeuge. Nutzen bei „Prüfe PR #M“ oder „Review PR #M“. Feste Abfolge von Werkzeugaufrufen bis zum geposteten Review."
-always-apply: false
+always-apply: true
 compatibility: Braucht den MCP-Server github-reviewer (siehe MCP.md). Für Qwen in LibreChat.
 ---
 
