@@ -13,6 +13,12 @@ if [ -f /etc/cron.d/sc-digger ] && ! grep -q "send_kaufliste" /etc/cron.d/sc-dig
 fi
 
 cron
+
+# Web-Oberfläche nur, wenn ein Passwort gesetzt ist (Standard: aus)
+if [ -n "$SC_DIGGER_WEB_PASSWORD" ]; then
+    python -m sc_digger.web --host 0.0.0.0 --port "${SC_DIGGER_WEB_PORT:-8080}" >> /proc/1/fd/1 2>&1 &
+fi
+
 # Bot-Listener als Hauptprozess. Er beendet sich nie von selbst (auch ohne Telegram-Daten),
 # damit der Container und damit der tägliche Cron-Lauf weiterläuft.
 exec python -m sc_digger.bot

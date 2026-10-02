@@ -11,3 +11,7 @@ services:
       - /music/Schranz:/music/Schranz:ro             # Sammlung, nur lesend (NFS-Mount des LXC)
       - /music/inbox:/music/inbox                    # geprüfte Downloads (NFS-Mount des LXC)
       - ./data:/data                                 # State-DB
+    # Web-Statusseite: nur aktiv, wenn SC_DIGGER_WEB_PASSWORD in .env gesetzt ist.
+    # Port-Freigabe nur an die LAN-Adresse des Hosts (nicht 0.0.0.0):
+    # ports:
+    #   - "192.168.1.10:8080:8080"

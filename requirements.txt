@@ -7,3 +7,7 @@ librosa>=0.10
 mutagen>=1.47
 matplotlib>=3.8
 tzdata>=2024.1          # Zeitzonen unter Windows (Linux nutzt /usr/share/zoneinfo, schadet dort nicht)
+fastapi>=0.110          # Statusseite (sc_digger.web)
+uvicorn>=0.29           # ASGI-Server für die Statusseite
+jinja2>=3.1             # HTML-Vorlagen der Statusseite (Autoescape)
+httpx>=0.27             # ASGI-Testclient für die Tests

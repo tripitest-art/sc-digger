@@ -289,6 +289,19 @@ Rohtreffer oder brechen ab, kommt einmal ein 🚨-Alarm per Telegram mit der ver
 Ein Tag ohne *neue* Tracks ist kein Alarm. Unabhängig davon prüft der Docker-Healthcheck alle
 15 Minuten Cron, Alter des letzten Laufs und die Datenbanken.
 
+### Web-Statusseite (nur lesend)
+
+Setzt man in `.env` ein Passwort (`SC_DIGGER_WEB_PASSWORD`, siehe `.env.example`), startet der
+Container zusätzlich einen kleinen Webserver (`python -m sc_digger.web`) auf Port `8080`. Ohne
+Passwort startet er nicht (Standard aus), es wird kein zusätzlicher Port geöffnet. Die Seite zeigt
+unter HTTP-Basic-Anmeldung den Zustand: Ampel gesund/Achtung, letzter `discover`-Lauf mit Alter und
+Rohtreffern, aktiven Health-Alarm, Inbox-Größe, die letzten 10 Läufe und die Wochenstatistik –
+dieselben Daten zusätzlich als JSON unter `/api/status`. Sie ist rein lesend (nur GET) und enthält
+kein JavaScript. Für den Zugriff aus dem LAN ist in `docker-compose.yml` eine auskommentierte
+Port-Freigabe an die LAN-Adresse vorbereitet; die Bindung im Container ist `0.0.0.0`, die
+Erreichbarkeit regelt die Port-Freigabe. Neue Pakete (`fastapi`, `uvicorn`, `jinja2`, `httpx`) stehen
+in `requirements.txt`, dafür ist ein Image-Neubau nötig.
+
 ## Grenzen
 
 - **Inoffizielle API.** `soundcloud.py` nutzt SoundCloud api-v2 mit einer aus dem Web-Frontend
