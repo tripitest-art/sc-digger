@@ -9,6 +9,8 @@ from typing import Any
 
 import yaml
 
+from sc_digger.schema import deep_merge
+
 
 class DownloadKind(str, Enum):
     NATIVE = "native"        # downloadable=true -> automatisch ladbar
@@ -78,9 +80,37 @@ class Config:
     raw: dict[str, Any]
 
     @classmethod
-    def load(cls, path: str | Path) -> "Config":
+    def load(cls, path: str | Path, local: str | Path | None = None) -> "Config":
         with open(path, "r", encoding="utf-8") as f:
-            return cls(yaml.safe_load(f))
+            raw = yaml.safe_load(f)
+
+        # local=None: Pfad aus der Umgebungsvariable SC_DIGGER_CONFIG_LOCAL. Eine fehlende oder
+        # leere Datei wird ignoriert; kaputtes YAML scheitert laut (Regel 7).
+        local_path = Path(local) if local is not None else None
+        if local_path is None:
+            env = os.environ.get("SC_DIGGER_CONFIG_LOCAL")
+            if env:
+                local_path = Path(env)
+
+        if local_path is not None and local_path.is_file():
+            text = local_path.read_text(encoding="utf-8")
+            if text.strip():
+                try:
+                    override = yaml.safe_load(text)
+                except yaml.YAMLError as exc:
+                    raise ValueError(
+                        f"Lokale Override-Datei {local_path} ist kein gültiges YAML: {exc}"
+                    ) from exc
+                if not isinstance(override, dict):
+                    raise ValueError(
+                        f"Lokale Override-Datei {local_path} muss eine Zuordnung "
+                        "(Schlüssel/Wert) auf oberster Ebene sein."
+                    )
+                if isinstance(raw, dict):
+                    raw = deep_merge(raw, override)
+                else:
+                    raw = override
+        return cls(raw)
 
     def __getitem__(self, key: str) -> Any:
         return self.raw[key]
