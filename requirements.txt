@@ -11,3 +11,4 @@ fastapi>=0.110          # Statusseite (sc_digger.web)
 uvicorn>=0.29           # ASGI-Server für die Statusseite
 jinja2>=3.1             # HTML-Vorlagen der Statusseite (Autoescape)
 httpx>=0.27             # ASGI-Testclient für die Tests
+python-multipart>=0.0.9 # Formular-Parsing (application/x-www-form-urlencoded) im Konfigeditor

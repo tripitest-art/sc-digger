@@ -187,6 +187,7 @@ darüber. Den Pfad nennt die Umgebungsvariable `SC_DIGGER_CONFIG_LOCAL` (im Cont
 `/data/config.local.yaml`). Fehlt die Datei oder ist sie leer, ändert sich nichts am Betrieb.
 Kaputtes YAML scheitert laut mit Dateinamen, statt still ignoriert zu werden. Listen und Skalare
 aus der Override-Datei ersetzen den Wert aus `config.yaml`, Zuordnungen werden rekursiv gemischt.
+Pflegen lässt sie sich von Hand oder über den Web-Konfigeditor (siehe „Web-Konfigeditor“).
 
 Konfiguration prüfen (Typen, Wertebereiche, Tippfehler):
 
@@ -314,8 +315,24 @@ Rohtreffern, aktiven Health-Alarm, Inbox-Größe, die letzten 10 Läufe und die 
 dieselben Daten zusätzlich als JSON unter `/api/status`. Sie ist rein lesend (nur GET) und enthält
 kein JavaScript. Für den Zugriff aus dem LAN ist in `docker-compose.yml` eine auskommentierte
 Port-Freigabe an die LAN-Adresse vorbereitet; die Bindung im Container ist `0.0.0.0`, die
-Erreichbarkeit regelt die Port-Freigabe. Neue Pakete (`fastapi`, `uvicorn`, `jinja2`, `httpx`) stehen
-in `requirements.txt`, dafür ist ein Image-Neubau nötig.
+Erreichbarkeit regelt die Port-Freigabe. Neue Pakete (`fastapi`, `uvicorn`, `jinja2`, `httpx`)
+stehen in `requirements.txt`, dafür ist ein Image-Neubau nötig.
+
+### Web-Konfigeditor
+
+Setzt man zusätzlich `SC_DIGGER_CONFIG_LOCAL` (z. B. `/data/config.local.yaml`), erscheint unter
+`/config` ein Formular für die Einstellungen aus `config.yaml`. Es zeigt je Feld den aktuellen Wert
+(aus Basis- und lokaler Datei zusammengeführt), den Standardwert und einen Hinweis, wenn der Wert
+aus der lokalen Datei stammt; ein „Zurücksetzen“ entfernt genau diesen Eintrag wieder. „Vorschau“
+(`/config/preview`) zeigt den Diff und die Warnungen, ohne etwas zu schreiben; „Speichern“
+(`/config/save`) schreibt **nur** in die lokale Override-Datei und legt vorher ein Backup
+(`config.local.yaml.bak-JJJJMMDD-HHMMSS`, die letzten 10 bleiben) an. Die versionierte
+`config.yaml` wird nie verändert. Änderungen gelten ab dem nächsten Lauf; der Telegram-Bot liest
+die Datei erst nach einem Neustart. Betriebspfade (`editable=False`) und Zugangsdaten (Telegram-/
+SoundCloud-Token, Web-Passwort) sind nicht änderbar. Jede POST-Anfrage wird per Origin-/Referer-
+Abgleich gegen fremde Seiten geschützt. Ohne `SC_DIGGER_CONFIG_LOCAL` gibt es keine Editor-Routen,
+und es wird nichts geschrieben. Das Formular braucht `python-multipart` (siehe
+`requirements.txt`) – dafür ist ein Image-Neubau nötig.
 
 ## Grenzen
 
