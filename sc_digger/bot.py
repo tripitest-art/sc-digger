@@ -15,15 +15,17 @@ from __future__ import annotations
 import html
 import logging
 import re
+import tempfile
 import time
 from collections import Counter
+from pathlib import Path
 
 from .db import TrackDB
 from .harmonic import compatible_keys, find_mix_candidates, format_mix_list
 from .main import run_link
 from .models import Config
 from .output import TelegramError, parse_feedback_callback, telegram_call
-from . import output
+from . import output, preview
 from .redact import install_redacting_logging
 from .soundcloud import SoundCloudClient, SoundCloudError
 from .stats import calculate_stats, format_stats
@@ -34,6 +36,7 @@ URL_RE = re.compile(r"https?://(?:on\.)?(?:www\.|m\.)?soundcloud\.com/\S+", re.I
 
 MIX_USAGE = "Aufruf: /mix <Camelot-Key> <BPM> [Toleranz], z. B. /mix 5A 155 oder /mix 8B 160 2"
 STATS_USAGE = "Aufruf: /stats [Tage (1–365, Standard: 7)]"
+PREVIEW_USAGE = "Aufruf: /preview <Suchtext oder id>"
 
 HELP_TEXT = (
     "sc-digger Bot\n\n"
@@ -45,6 +48,7 @@ HELP_TEXT = (
     "• /kaufliste -> zeigt die aktuelle Kaufliste offener Store-Tracks\n"
     "• /curator_mining -> Profile aus 👍-Tracks vorschlagen\n"
     "• /mix 5A 155 -> harmonisch passende Tracks aus der Sammlung (±3 BPM)\n"
+    "• /preview <Suchtext oder id> -> 20s-Snippet eines heruntergeladenen Tracks als Sprachnachricht\n"
     "• /stats [Tage] -> Statistiken über Scans, Inbox und Feedback\n\n"
     "Kein täglicher Filter, du bekommst die volle Liste mit Stats und Download-Einordnung."
 )
@@ -187,6 +191,90 @@ def mix_reply(cfg: Config, text: str) -> str:
     return html.escape(result, quote=False)
 
 
+def preview_reply(cfg: Config, text: str, chat_id: str | None = None) -> str | None:
+    """Antwort auf '/preview <Argument>'. Muster: stats_reply. Sendet NIE selbst
+    Textnachrichten; Rückgabe ist der Text, den handle_message per _send_text
+    schickt, oder None, wenn die Voice-Message bereits gesendet wurde.
+    1. Fehlendes Argument -> PREVIEW_USAGE. (Alles außer reinen Ziffern ist
+       Suchtext; reine Ziffern sind die lokale Track-id.)
+    2. Reine Ziffern -> lokale Track-id: TrackDB.get_track_by_id(int).
+       Kein Treffer -> "Kein Track mit id <id> in der Track-DB."
+    3. Sonst Suchtext: TrackDB.search_tracks(arg). Kein Treffer ->
+       "Kein Treffer für '<arg>'."; mehrere Treffer -> Liste mit max. 5 Zeilen
+       "<id>: <artist> – <title>", bei mehr als 5 Treffern die Zeile
+       "… und weitere, bitte genauer suchen"; Hinweis: "Mit /preview <id>
+       senden." (id = lokale Track-DB-id.) Genau ein Treffer -> weiter mit 4.
+    4. Datei (TrackRecord.path) existiert nicht ->
+       "Datei nicht gefunden: <pfad>."
+    5. extract_preview(input_path, out_ogg, start_s=None, duration_s=20.0,
+       bitrate_kbps=64) -> False (Zieldatei in tempfile.gettempdir(),
+       Aufräumen im finally) -> "Preview konnte nicht erstellt werden
+       (ffmpeg-Fehler)."
+    6. Erfolg: send_telegram_voice(cfg, out_ogg,
+       caption="<artist> – <title>", chat_id=chat_id), danach temporäre
+       OGG-Datei löschen; Rückgabe None.
+       TelegramError beim Versand -> "Preview konnte nicht gesendet werden:
+       <Fehlermeldung ohne Token>."
+    Wirft in keinem Fall (keine Exception an den Bot-Loop)."""
+    try:
+        parts = text.strip().split()
+        arg = " ".join(parts[1:]).strip() if len(parts) > 1 else ""
+        if not arg:
+            return PREVIEW_USAGE
+
+        track_db_path = cfg["state"]["track_db_path"]
+        try:
+            with TrackDB(track_db_path) as db:
+                if arg.isdigit():
+                    rec = db.get_track_by_id(int(arg))
+                    recs = [rec] if rec is not None else []
+                else:
+                    recs = db.search_tracks(arg)
+        except Exception as e:
+            log.warning("Preview-Suche fehlgeschlagen für %r: %s", arg, e)
+            return "Preview konnte nicht erstellt werden (Datenbankfehler)."
+
+        if arg.isdigit() and not recs:
+            return f"Kein Track mit id {arg} in der Track-DB."
+        if not recs:
+            return f"Kein Treffer für '{arg}'."
+        if len(recs) > 1:
+            lines = [f"{rec.id}: {rec.artist} – {rec.title}" for rec in recs[:5]]
+            if len(recs) > 5:
+                lines.append("… und weitere, bitte genauer suchen")
+            lines.append("Mit /preview <id> senden.")
+            return "\n".join(lines)
+
+        rec = recs[0]
+        audio_path = Path(rec.path)
+        if not audio_path.is_file():
+            return f"Datei nicht gefunden: {rec.path}."
+
+        out_ogg = Path(tempfile.gettempdir()) / f"sc-digger-preview-{rec.id}.ogg"
+        try:
+            ok = preview.extract_preview(
+                audio_path, out_ogg, start_s=None, duration_s=20.0, bitrate_kbps=64
+            )
+            if not ok:
+                return "Preview konnte nicht erstellt werden (ffmpeg-Fehler)."
+            try:
+                output.send_telegram_voice(
+                    cfg, out_ogg, caption=f"{rec.artist} – {rec.title}", chat_id=chat_id
+                )
+            except TelegramError as e:
+                return f"Preview konnte nicht gesendet werden: {e}."
+            return None
+        finally:
+            try:
+                if out_ogg.is_file():
+                    out_ogg.unlink()
+            except OSError:
+                pass
+    except Exception:
+        log.exception("Unerwarteter Fehler bei /preview")
+        return "Preview fehlgeschlagen, siehe Container-Log."
+
+
 def handle_message(cfg: Config, sc: SoundCloudClient, chat_id: str, text: str) -> None:
     text = text.strip()
     if text in ("/start", "/help"):
@@ -221,6 +309,16 @@ def handle_message(cfg: Config, sc: SoundCloudClient, chat_id: str, text: str) -
         except Exception:
             log.exception("Fehler bei /stats-Befehl")
             _send_text(cfg, chat_id, "Statistikabfrage fehlgeschlagen, siehe Container-Log.")
+        return
+
+    if first_word == "/preview":
+        try:
+            reply = preview_reply(cfg, text, chat_id=chat_id)
+            if reply is not None:
+                _send_text(cfg, chat_id, reply)
+        except Exception:
+            log.exception("Fehler bei /preview-Befehl")
+            _send_text(cfg, chat_id, "Preview fehlgeschlagen, siehe Container-Log.")
         return
 
     m = URL_RE.search(text)

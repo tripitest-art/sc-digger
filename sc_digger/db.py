@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import logging
 import posixpath
 import sqlite3
 from dataclasses import asdict, dataclass, field
@@ -16,6 +17,8 @@ from datetime import datetime, timedelta, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Any, Sequence
+
+log = logging.getLogger(__name__)
 
 STALE_TIMEOUT_MINUTES: dict[str, int] = {"embedding": 120, "caption": 30, "tag_backfill": 30, "fingerprint": 30}
 
@@ -380,6 +383,43 @@ class TrackDB:
     def get_track_by_id(self, track_id: int) -> TrackRecord | None:
         row = self.db.execute("SELECT * FROM tracks WHERE id = ?", (track_id,)).fetchone()
         return TrackRecord.from_row(row) if row else None
+
+    def search_tracks(self, query: str, limit: int = 6) -> list[TrackRecord]:
+        """Sucht Tracks zu einem Suchtext. Der Suchtext wird an Leerzeichen in
+        Wörter geteilt; ein Track trifft zu, wenn JEDES Wort (ohne
+        Groß-/kleinschreibung) in artist ODER title vorkommt – so findet
+        "svetec raw" den Track "Svetec – Raw". Die LIKE-Wildcards % und _ werden
+        pro Wort mit ESCAPE escaped, damit ein wörtlicher Suchtext ("100%")
+        nicht alles matcht; die Abfrage ist parametrisiert.
+        Hinweis: SQLite-LIKE ist nur für ASCII groß-/kleinschreibungsunabhängig
+        (Umlaute: bewusst nicht Teil dieser Aufgabe).
+        Reihenfolge deterministisch: artist, title, id. Maximal limit Treffer.
+        Wirft nie (DB-Fehler -> leere Liste mit Log-Warnung)."""
+        try:
+            words = [w for w in str(query).split() if w]
+            if not words:
+                return []
+            conds: list[str] = []
+            params: list[Any] = []
+            for word in words:
+                escaped = (
+                    word.replace("\\", "\\\\")
+                    .replace("%", "\\%")
+                    .replace("_", "\\_")
+                )
+                conds.append("(artist LIKE ? ESCAPE '\\' OR title LIKE ? ESCAPE '\\')")
+                params.extend((f"%{escaped}%", f"%{escaped}%"))
+            where = " AND ".join(conds)
+            params.append(int(limit))
+            rows = self.db.execute(
+                f"SELECT * FROM tracks WHERE {where} "
+                "ORDER BY artist ASC, title ASC, id ASC LIMIT ?",
+                params,
+            ).fetchall()
+            return [TrackRecord.from_row(r) for r in rows]
+        except Exception as e:
+            log.warning("Track-Suche fehlgeschlagen für %r: %s", query, e)
+            return []
 
     def needs_audit(self, path: str | Path, mtime: float, size: int) -> bool:
         """Gibt True zurück, wenn die Datei noch nicht erfasst ist oder sich geändert hat.
