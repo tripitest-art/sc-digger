@@ -207,6 +207,11 @@ FIELDS: tuple[Field, ...] = (
        "Am Ende des sonntäglichen discover-Laufs die Wochenstatistik senden."),
     _f("digest.stats_chart", "bool", "Statistik-Diagramm",
        "Dem Wochen-Digest ein Balkendiagramm (PNG, matplotlib) als Foto beilegen."),
+    # --- scout ---
+    _f("scout.bandcamp.feeds", "list", "Bandcamp-Feeds",
+       "RSS-Feed-URLs von Bandcamp-Labels/Artists als zusätzliche Fundquelle."),
+    _f("scout.beatport.charts", "list", "Beatport-Charts",
+       "Chart-URLs von Beatport als zusätzliche Fundquelle."),
 )
 
 SECTION_TITLES: dict[str, str] = {
@@ -226,6 +231,9 @@ SECTION_TITLES: dict[str, str] = {
     "telegram": "Telegram",
     "rekordbox": "Rekordbox",
     "digest": "Digest",
+    "scout": "Multi-Platform-Scout",
+    "scout.bandcamp": "Multi-Platform-Scout: Bandcamp",
+    "scout.beatport": "Multi-Platform-Scout: Beatport",
 }
 
 _FIELD_BY_PATH: dict[str, Field] = {f.path: f for f in FIELDS}
