@@ -135,7 +135,7 @@ warten; ein roter `github-advanced-security` ist kein Mangel.
 1. `gh pr view <PR> --comments`, `gh pr diff <PR>`, `gh pr checks <PR>`. Sind `tests`,
    `acceptance-guard` oder CodeQL nicht grün: nicht mergen, Befund als Review schreiben.
 2. Gegen das Issue prüfen: nur genannte Dateien geändert, Signaturen exakt, „Fertig, wenn“
-   vollständig, Goldene Regeln eingehalten (besonders 4–7). Eigene Tests des Workers auf
+   vollständig, Goldene Regeln eingehalten (besonders 4–7 und 9). Eigene Tests des Workers auf
    Aussagekraft prüfen (`assert True`, zu schwache Vergleiche, gemockter Prüfling).
    Copilot-Kommentare: umgesetzt oder begründet abgelehnt; Umsetzungen außerhalb des
    Issue-Umfangs sind ein Mangel.
