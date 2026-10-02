@@ -12,6 +12,9 @@ services:
       - /music/inbox:/music/inbox                    # geprüfte Downloads (NFS-Mount des LXC)
       - ./data:/data                                 # State-DB
     # Web-Statusseite: nur aktiv, wenn SC_DIGGER_WEB_PASSWORD in .env gesetzt ist.
+    # Konfigeditor: setzt man zusätzlich SC_DIGGER_CONFIG_LOCAL, erscheint /config und schreibt
+    # nur in diese Override-Datei (nicht in die versionierte config.yaml):
+    #   SC_DIGGER_CONFIG_LOCAL: /data/config.local.yaml
     # Port-Freigabe nur an die LAN-Adresse des Hosts (nicht 0.0.0.0):
     # ports:
     #   - "192.168.1.10:8080:8080"

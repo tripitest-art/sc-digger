@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from pathlib import Path
 
 import uvicorn
 
@@ -28,7 +29,13 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     cfg = Config.load(args.config)
-    app = create_app(cfg, password=password)
+    # Editor nur, wenn eine lokale Override-Datei konfiguriert ist; sonst bleibt er wie bisher aus.
+    local_env = os.environ.get("SC_DIGGER_CONFIG_LOCAL")
+    if local_env:
+        app = create_app(cfg, password=password, base_path=Path(args.config),
+                         local_path=Path(local_env))
+    else:
+        app = create_app(cfg, password=password)
     uvicorn.run(app, host=args.host, port=args.port)
     return 0
 
