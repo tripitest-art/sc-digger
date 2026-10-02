@@ -3,9 +3,11 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Tuple
 
+import html
 import logging
 import sqlite3
 
+from .db import TrackDB
 from .models import Config
 from .output import TelegramError, send_telegram_photo
 
@@ -215,6 +217,21 @@ def render_stats_chart(stats: DigestStats) -> bytes | None:
             plt.close(fig)
 
 
+def _exploration_section(cfg: Config, days: int = 30) -> str:
+    """Vorschlagszeilen für erfolgreiche Exploration-Tags; leer ohne Treffer oder bei Fehlern."""
+    try:
+        with TrackDB(cfg["state"]["track_db_path"]) as db:
+            top = db.top_exploration_tags(days=days)
+    except Exception as e:
+        log.warning("Exploration-Vorschläge nicht verfügbar: %s", e)
+        return ""
+    if not top:
+        return ""
+    lines = [f"🔍 `{html.escape(t['tag'])}` hat in den letzten {days} Tagen {t['successes']}× "
+             f"erfolgreiche Treffer geliefert → `search.tags` ergänzen?" for t in top]
+    return "\n\n" + "\n".join(lines)
+
+
 def send_weekly_digest(
     cfg: Config,
     *,
@@ -233,6 +250,7 @@ def send_weekly_digest(
     """
     stats = calculate_stats(cfg["state"]["track_db_path"], cfg["state"]["db_path"], days=days)
     text = "📊 Woche im Überblick\n\n" + format_stats(stats)
+    text += _exploration_section(cfg)
     if dry_run or no_telegram:
         print(text)
         return stats
