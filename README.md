@@ -178,6 +178,8 @@ Alle Optionen stehen in `config.yaml`; die folgende Liste nennt die Werte aus di
 | `digest.kaufliste_max_items` | Obergrenze der Kaufliste | `30` |
 | `digest.sunday_summary` | Wochenstatistik im Sonntagslauf senden | `false` |
 | `digest.stats_chart` | Balkendiagramm zum Wochen-Digest | `false` |
+| `digest.trend_radar` | Trend-Abschnitt (Trending Artists / Top-Tracks) im Wochen-Digest | `true` |
+| `digest.trend_radar_days` | Zeitfenster der Trend-Berechnung in Tagen | `7` |
 
 ### Lokale Override-Datei
 
@@ -299,8 +301,8 @@ In Rekordbox einrichten:
 | `intake.py` | Eingangsordner: bereite Dateien finden und als `Track` vorbereiten |
 | `health.py` | Laufprotokoll, Alarm bei wiederholt leeren oder fehlerhaften Läufen |
 | `healthcheck.py` | Container-Healthcheck: Cron, letzter Lauf, DB-Integrität |
-| `stats.py` | Statistikberechnung für Digest und `/stats`, Diagramm (`render_stats_chart`), Wochen-Digest |
-| `trends.py` | Trend-Radar: Wachstumsanalyse historischer Engagement-Snapshots. **Noch nicht eingebunden:** weder `main.py` noch `bot.py` rufen das Modul auf; laut `ROADMAP.md` begonnen (Phase 4, geplant). |
+| `stats.py` | Statistikberechnung für Digest und `/stats`, Diagramm (`render_stats_chart`), Wochen-Digest inkl. Trend-Abschnitt |
+| `trends.py` | Trend-Radar: Wachstumsanalyse historischer Engagement-Snapshots; im Wochen-Digest über `stats.send_weekly_digest` eingebunden. |
 | `preview.py` | Live-Preview: energiereichstes Segment per ffmpeg, OGG-Opus-Snippet (`find_loudest_segment`, `extract_preview`). **Noch nicht eingebunden:** wird von `main.py` und `bot.py` nicht aufgerufen. |
 | `redact.py` | Zugangsdaten aus Texten, Logs und Fehlermeldungen entfernen |
 | `models.py` | Datenmodelle (`Track`, `Config`) und Config-Loader |

@@ -10,6 +10,7 @@ import sqlite3
 from .db import TrackDB
 from .models import Config
 from .output import TelegramError, send_telegram_photo
+from .trends import calculate_artist_trends, calculate_track_growth, format_trend_report
 
 log = logging.getLogger(__name__)
 
@@ -232,6 +233,36 @@ def _exploration_section(cfg: Config, days: int = 30) -> str:
     return "\n\n" + "\n".join(lines)
 
 
+def _trend_section(cfg: Config, days: int = 7) -> str:
+    """Trend-Radar-Text für den Wochen-Digest; leer, wenn deaktiviert oder keine Trends.
+
+    Liest digest.trend_radar (Default True) und digest.trend_radar_days (Default 7)
+    aus der Config. Ruft calculate_artist_trends und calculate_track_growth mit
+    min_initial_likes=10 und limit=10 auf. Formatiert das Ergebnis via format_trend_report.
+    Bei jeder Exception wird die Meldung geloggt und ein leerer String zurückgegeben,
+    nie eine Exception geworfen.
+    """
+    try:
+        digest_cfg = cfg.raw.get("digest") or {}
+        if not bool(digest_cfg.get("trend_radar", True)):
+            return ""
+        trend_days = int(digest_cfg.get("trend_radar_days", 7))
+        track_db_path = cfg["state"]["track_db_path"]
+        artist_trends = calculate_artist_trends(
+            track_db_path, days=trend_days, min_initial_likes=10, limit=10
+        )
+        track_trends = calculate_track_growth(
+            track_db_path, days=trend_days, min_initial_likes=10, limit=10
+        )
+        if not artist_trends and not track_trends:
+            return ""
+        report = format_trend_report(artist_trends, track_trends, days=trend_days)
+        return "\n\n" + report
+    except Exception as e:
+        log.warning("Trend-Radar nicht verfügbar: %s", e)
+        return ""
+
+
 def send_weekly_digest(
     cfg: Config,
     *,
@@ -247,10 +278,14 @@ def send_weekly_digest(
     chart None: aus der Config (digest.stats_chart, Standard aus). chart True hängt ein
     Balkendiagramm an. Ein Telegram-Fehler wird geloggt, aber nie geworfen: der tägliche
     Lauf soll daran nicht scheitern.
+
+    Hängt zusätzlich den Trend-Radar an, wenn cfg["digest"]["trend_radar"] True ist
+    (Default: True). Die Trend-Tage stammen aus cfg["digest"]["trend_radar_days"] (Default: 7).
     """
     stats = calculate_stats(cfg["state"]["track_db_path"], cfg["state"]["db_path"], days=days)
     text = "📊 Woche im Überblick\n\n" + format_stats(stats)
     text += _exploration_section(cfg)
+    text += _trend_section(cfg, days=days)
     if dry_run or no_telegram:
         print(text)
         return stats
