@@ -497,6 +497,45 @@ def send_telegram_document(cfg: Config, filename: str, content: str, chat_id: st
                   files={"document": (filename, content.encode("utf-8"), "text/plain")})
 
 
+def send_telegram_photo(
+    cfg: Config,
+    photo_bytes: bytes | None,
+    caption: str | None = None,
+    *,
+    chat_id: str | None = None,
+    filename: str = "stats.png",
+) -> None:
+    """Schickt ein PNG mit HTML-Caption an Telegram.
+
+    Fehlen Token oder Chat, wird nur geloggt (wie bei send_telegram_document). Ohne
+    photo_bytes geht nur der Text raus. Telegram-Grenze: Captions dürfen 1024 Zeichen
+    nicht überschreiten, danach folgt der volle Text als eigene Nachricht. Ein Fehler
+    beim Foto darf den Aufrufer nicht abbrechen: dann wird der Text nachgeschickt.
+    """
+    token, chat = cfg.telegram_token, chat_id or cfg.telegram_chat_id
+    if not token or not chat:
+        log.warning("TELEGRAM_BOT_TOKEN/CHAT_ID fehlen – Statistik-Foto wird nicht verschickt")
+        return
+    if photo_bytes:
+        short = caption[:1024] if caption and len(caption) > 1024 else caption
+        try:
+            telegram_call(token, "sendPhoto", timeout=30,
+                          data={"chat_id": chat, "caption": short, "parse_mode": "HTML"},
+                          files={"photo": (filename, photo_bytes, "image/png")})
+        except TelegramError as e:
+            log.warning("sendPhoto fehlgeschlagen: %s", e)
+            if caption:
+                telegram_call(token, "sendMessage",
+                              json={"chat_id": chat, "text": caption, "parse_mode": "HTML"})
+            return
+        if caption and len(caption) > 1024:
+            telegram_call(token, "sendMessage",
+                          json={"chat_id": chat, "text": caption, "parse_mode": "HTML"})
+    elif caption:
+        telegram_call(token, "sendMessage",
+                      json={"chat_id": chat, "text": caption, "parse_mode": "HTML"})
+
+
 def send_kaufliste(cfg: Config, *, dry_run: bool = False, chat_id: str | None = None) -> None:
     """Liest store_items aus der DB, formatiert als Telegram-Nachricht.
     Format pro Eintrag: "🛒 <Artist> – <Title>\n   → <purchase_title or 'Kaufen'>: <purchase_url>"

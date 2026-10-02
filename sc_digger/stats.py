@@ -3,7 +3,13 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Tuple
 
+import logging
 import sqlite3
+
+from .models import Config
+from .output import TelegramError, send_telegram_photo
+
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -167,3 +173,74 @@ def format_stats(stats: DigestStats) -> str:
             text += f"  {artist} ({count})\n"
 
     return text
+
+
+def render_stats_chart(stats: DigestStats) -> bytes | None:
+    """PNG-Balkendiagramm der Wochenzahlen (gescannt, Inbox, abgelehnt, Likes, Dislikes).
+
+    None, wenn es keine Daten gibt oder matplotlib nicht verfügbar ist. matplotlib wird
+    erst hier importiert (Agg-Backend, kein Display nötig); der Import ist optional, damit
+    der Rest des Tools ohne die Bibliothek läuft. Die Funktion wirft nie.
+    """
+    if stats.runs_total == 0 and stats.tracks_scanned == 0:
+        return None
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    except Exception as e:
+        log.warning("matplotlib nicht verfügbar, kein Diagramm: %s", e)
+        return None
+
+    fig = None
+    try:
+        from io import BytesIO
+
+        labels = ["gescannt", "Inbox", "abgelehnt", "Likes", "Dislikes"]
+        values = [stats.tracks_scanned, stats.tracks_inbox, stats.tracks_rejected,
+                  stats.likes, stats.dislikes]
+        fig, ax = plt.subplots(figsize=(6, 3))
+        ax.bar(labels, values)
+        ax.set_title(f"Woche im Überblick ({stats.days} Tage)")
+        ax.set_ylabel("Anzahl")
+        fig.tight_layout()
+        buf = BytesIO()
+        fig.savefig(buf, format="png", dpi=100)
+        return buf.getvalue()
+    except Exception as e:
+        log.warning("Statistik-Diagramm fehlgeschlagen: %s", e)
+        return None
+    finally:
+        if fig is not None:
+            plt.close(fig)
+
+
+def send_weekly_digest(
+    cfg: Config,
+    *,
+    days: int = 7,
+    chart: bool | None = None,
+    dry_run: bool = False,
+    no_telegram: bool = False,
+    chat_id: str | None = None,
+) -> DigestStats:
+    """Berechnet die Wochenstatistik und schickt sie als „📊 Woche im Überblick“.
+
+    dry_run/no_telegram: nur auf der Konsole, kein Rendern und kein Telegram-Aufruf.
+    chart None: aus der Config (digest.stats_chart, Standard aus). chart True hängt ein
+    Balkendiagramm an. Ein Telegram-Fehler wird geloggt, aber nie geworfen: der tägliche
+    Lauf soll daran nicht scheitern.
+    """
+    stats = calculate_stats(cfg["state"]["track_db_path"], cfg["state"]["db_path"], days=days)
+    text = "📊 Woche im Überblick\n\n" + format_stats(stats)
+    if dry_run or no_telegram:
+        print(text)
+        return stats
+    if chart is None:
+        chart = bool((cfg.raw.get("digest") or {}).get("stats_chart", False))
+    png = render_stats_chart(stats) if chart else None
+    try:
+        send_telegram_photo(cfg, png, text, chat_id=chat_id)
+    except TelegramError as e:
+        log.warning("Wochen-Digest konnte nicht gesendet werden: %s", e)
+    return stats

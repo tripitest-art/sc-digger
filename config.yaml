@@ -207,4 +207,8 @@ rekordbox:
 
 digest:
   kaufliste_max_items: 30   # Maximale Einträge in der wöchentlichen Kaufliste
+  # Am Ende des sonntäglichen discover-Laufs die Wochenstatistik („📊 Woche im Überblick“) senden
+  sunday_summary: false
+  # Dem Wochen-Digest ein Balkendiagramm (PNG, matplotlib) als Foto beilegen
+  stats_chart: false
 

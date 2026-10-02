@@ -5,4 +5,5 @@ scdl>=3.0
 soundcloud-v2>=1.7
 librosa>=0.10
 mutagen>=1.47
+matplotlib>=3.8
 tzdata>=2024.1          # Zeitzonen unter Windows (Linux nutzt /usr/share/zoneinfo, schadet dort nicht)
