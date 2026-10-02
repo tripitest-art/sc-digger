@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="refresh" content="60">
+<title>sc-digger Status</title>
+<style>
+  body { font-family: sans-serif; margin: 2rem; color: #222; }
+  h1 { margin-bottom: 0.2rem; }
+  .ampel { font-weight: bold; }
+  .ok { color: #1a7f37; }
+  .warn { color: #b00020; }
+  table { border-collapse: collapse; width: 100%; margin-top: 1rem; }
+  th, td { border: 1px solid #ccc; padding: 0.35rem 0.5rem; text-align: left; }
+  th { background: #f0f0f0; }
+  .meta { color: #666; font-size: 0.9rem; }
+</style>
+</head>
+<body>
+<h1>sc-digger Status</h1>
+<p class="meta">Stand: {{ snap.generated_at }} UTC (aktualisiert sich alle 60&nbsp;Sekunden)</p>
+
+{% if snap.healthy %}
+<p class="ampel ok">&#9679; gesund</p>
+{% else %}
+<p class="ampel warn">&#9679; Achtung</p>
+{% endif %}
+
+{% if snap.alert_active %}
+<p class="warn">Ein Health-Alarm ist aktiv.</p>
+{% endif %}
+
+<h2>Letzter discover-Lauf</h2>
+{% if snap.last_discover %}
+<p>
+  {{ snap.last_discover.finished_at }} UTC &middot;
+  {% if snap.last_discover.ok %}ok{% else %}<span class="warn">Fehler</span>{% endif %} &middot;
+  Rohtreffer: {{ snap.last_discover.found }} &middot;
+  Alter: {{ snap.last_discover_age_hours }} h
+</p>
+{% if snap.last_discover.error %}
+<p class="warn">Fehler: {{ snap.last_discover.error }}</p>
+{% endif %}
+{% else %}
+<p>Noch kein Lauf.</p>
+{% endif %}
+
+<h2>Inbox</h2>
+<p>{{ snap.inbox_total }} Track(s) mit Status inbox.</p>
+
+<h2>Letzte Läufe</h2>
+<table>
+  <tr><th>Zeit (UTC)</th><th>Modus</th><th>Ergebnis</th><th>Rohtreffer</th><th>Fehler</th></tr>
+  {% for run in snap.runs %}
+  <tr>
+    <td>{{ run.finished_at }}</td>
+    <td>{{ run.mode }}</td>
+    <td>{% if run.ok %}ok{% else %}Fehler{% endif %}</td>
+    <td>{{ run.found }}</td>
+    <td>{{ run.error or '' }}</td>
+  </tr>
+  {% else %}
+  <tr><td colspan="5">Noch kein Lauf.</td></tr>
+  {% endfor %}
+</table>
+
+<h2>Wochenstatistik ({{ snap.stats.days }} Tage)</h2>
+<ul>
+  <li>erfolgreiche Runs: {{ snap.stats.runs_ok }}/{{ snap.stats.runs_total }}</li>
+  <li>gescannte Tracks: {{ snap.stats.tracks_scanned }}</li>
+  <li>neue Inbox-Downloads: {{ snap.stats.tracks_inbox }}</li>
+  <li>abgelehnte Fakes: {{ snap.stats.tracks_rejected }}</li>
+  <li>Likes: {{ snap.stats.likes }} &middot; Dislikes: {{ snap.stats.dislikes }} &middot; Later: {{ snap.stats.later }}</li>
+</ul>
+</body>
+</html>

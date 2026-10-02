@@ -2,7 +2,7 @@
 name: sc-digger-review
 description: "Review eines Pull Requests in tripitest-art/sc-digger über die GitHub-MCP-Werkzeuge. Nutzen bei „Prüfe PR #M“ oder „Review PR #M“. Feste Abfolge von Werkzeugaufrufen bis zum geposteten Review."
 always-apply: true
-compatibility: Braucht den MCP-Server github-reviewer (siehe MCP.md). Für Qwen in LibreChat.
+compatibility: Braucht den MCP-Server github-reviewer (siehe MCP.md). Für den Review-Agenten in LibreChat (aktuell GLM).
 ---
 
 # Review eines PRs in sc-digger
@@ -26,7 +26,7 @@ Goldenen Regeln.
 Notiere aus dem Text:
 - Die Issue-Nummer aus `Closes #<N>`. Fehlt sie: Das ist ein **Muss**-Punkt („`Closes #<N>`
   fehlt, acceptance-guard prüft sonst nichts“).
-- Den Worker aus „Umgesetzt von / Review durch“. Steht dort **Qwen**: aufhören und Stephan
+- Den Worker aus „Umgesetzt von / Review durch“. Gehört er zur selben Modellfamilie wie du (z. B. GLM): aufhören und Stephan
   sagen, dass du diesen PR nicht prüfen darfst (andere Modellfamilie nötig).
 
 ## Schritt 3: Issue lesen
@@ -79,7 +79,7 @@ diesem Text (erste Zeile ist das Urteil):
 ```
 **Freigegeben**            ← oder **Änderungen nötig**
 
-Review nach AGENTS.md → Reviewer. Worker: <Familie>, Reviewer: Qwen (andere Modellfamilie).
+Review nach AGENTS.md → Reviewer. Worker: <Familie laut PR-Text>, Reviewer: <dein Modell laut Systemprompt, nicht raten>.
 
 - Checks: tests …, acceptance-guard …, CodeQL …
 - Dateien: …
