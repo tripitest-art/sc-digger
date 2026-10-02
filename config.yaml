@@ -221,3 +221,14 @@ digest:
   # Dem Wochen-Digest ein Balkendiagramm (PNG, matplotlib) als Foto beilegen
   stats_chart: false
 
+
+scout:
+  # Multi-Platform-Scout (Roadmap Phase 3): Bandcamp-RSS-Feeds und Beatport-Charts
+  # als zusätzliche Fundquellen. Beide Listen sind standardmäßig leer, damit ohne
+  # manuelle Konfiguration nichts gescannt wird.
+  bandcamp:
+    # RSS-Feed-URLs von Bandcamp-Labels/Artists, z. B. https://label.bandcamp.com/feed
+    feeds: []
+  beatport:
+    # Chart-URLs von Beatport, z. B. https://www.beatport.com/genre/hard-techno/2/top-100
+    charts: []
