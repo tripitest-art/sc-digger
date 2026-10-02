@@ -5,8 +5,11 @@ import logging
 import math
 import re
 from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
 from urllib.parse import urlparse
 
+from .db import ArtistReputation, TrackDB
 from .models import Config, DownloadKind, Track
 
 log = logging.getLogger(__name__)
@@ -286,6 +289,44 @@ def engagement_velocity(
     return float(likes / effective_hours)
 
 
+def artist_reputation_score(
+    rep: ArtistReputation | None,
+    cfg: dict[str, Any] | None = None,
+) -> tuple[float, str | None]:
+    """Berechnet Score-Bonus oder -Malus anhand der Artist-Reputation.
+
+    cfg-Schlüssel (mit Standardwerten):
+    - boost_per_like: float (5.0), boost_per_download: float (2.0), max_boost: float (20.0)
+    - min_dislikes_for_penalty: int (3), penalty: float (15.0)
+
+    Rückgabe: (delta, note_text oder None).
+    - Keine Downloads, keine Likes und genug Dislikes -> (-penalty, 'Artist-Malus: <n> 👎')
+    - Positiver Boost aus Likes/Downloads (gedeckelt auf max_boost) -> (boost, 'Artist-Bonus: +<boost>')
+    - Sonst: (0.0, None)
+    """
+    if rep is None:
+        return 0.0, None
+    c = cfg or {}
+    boost_per_like = c.get("boost_per_like", 5.0)
+    boost_per_download = c.get("boost_per_download", 2.0)
+    max_boost = c.get("max_boost", 20.0)
+    min_dislikes = c.get("min_dislikes_for_penalty", 3)
+    penalty = c.get("penalty", 15.0)
+
+    likes = rep.likes or 0
+    downloads = rep.downloads or 0
+    dislikes = rep.dislikes or 0
+
+    if likes == 0 and downloads == 0 and dislikes >= min_dislikes:
+        return -float(penalty), f"Artist-Malus: {dislikes} 👎"
+
+    raw_boost = boost_per_like * likes + boost_per_download * downloads
+    if raw_boost > 0:
+        boost = float(min(max_boost, raw_boost))
+        return boost, f"Artist-Bonus: +{boost:g}"
+    return 0.0, None
+
+
 def score_tracks(tracks: list[Track], cfg: Config, apply_filter: bool = True) -> list[Track]:
     """Berechnet zusätzlich für jeden Track im Pool vel = engagement_velocity(t, now),
     speichert vel auf t.velocity und bezieht w.get("velocity", 0.0) * _percentile_rank(vel, vel_sorted)
@@ -316,6 +357,17 @@ def score_tracks(tracks: list[Track], cfg: Config, apply_filter: bool = True) ->
     vel_sorted = sorted(t.velocity for t in pool)
     vel_weight = w.get("velocity", 0.0)
 
+    rep_cfg = sc.get("artist_reputation") or {}
+    reputations: dict[str, ArtistReputation] = {}
+    if rep_cfg.get("enabled", True):
+        db_path = (cfg.raw.get("state") or {}).get("track_db_path")
+        if db_path and Path(db_path).exists():
+            try:
+                with TrackDB(db_path) as db:
+                    reputations = db.get_artist_reputations()
+            except Exception as e:
+                log.warning("Artist-Reputation konnte nicht geladen werden: %s", e)
+
     for t in pool:
         try:
             age_days = (now - datetime.fromisoformat(t.created_at.replace("Z", "+00:00"))).days
@@ -336,6 +388,12 @@ def score_tracks(tracks: list[Track], cfg: Config, apply_filter: bool = True) ->
         if reasons:
             t.score -= sc.get("spam_penalty", 0)
             t.notes.append("Promo-Verdacht: " + "; ".join(reasons))
+        rep = reputations.get((t.artist or "").strip().lower())
+        rep_delta, rep_note = artist_reputation_score(rep, rep_cfg)
+        if rep_delta:
+            t.score += rep_delta
+        if rep_note:
+            t.notes.append(rep_note)
     scores = sorted(t.score for t in pool)
     for t in pool:
         t.percentile = _percentile_rank(t.score, scores)

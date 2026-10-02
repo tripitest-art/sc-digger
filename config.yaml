@@ -105,6 +105,15 @@ scoring:
     - promo service
   # Sperrliste: Uploads dieser Accounts (Profil-URL oder Kurzname) fliegen in discover raus
   blocked_accounts: []
+  # Artist-Reputation: bewährte Künstler bekommen einen Score-Bonus, notorisch
+  # dislikte Künstler ohne Likes/Downloads einen Malus (Punkte auf der 0-100-Skala).
+  artist_reputation:
+    enabled: true              # Reputation aus Track-DB in das Scoring einbeziehen
+    boost_per_like: 5.0        # Bonus je 👍 (Track- oder Store-Feedback)
+    boost_per_download: 2.0    # Bonus je Track in der Sammlung/Inbox ohne Feedback
+    max_boost: 20.0            # Obergrenze des Bonus
+    min_dislikes_for_penalty: 3  # ab so vielen 👎 ohne Likes/Downloads greift der Malus
+    penalty: 15.0              # Abzug bei Malus
 
 
 download:
