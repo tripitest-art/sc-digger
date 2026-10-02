@@ -220,6 +220,10 @@ digest:
   sunday_summary: false
   # Dem Wochen-Digest ein Balkendiagramm (PNG, matplotlib) als Foto beilegen
   stats_chart: false
+  # false = Trend-Abschnitt („📈 Trending Artists“ / „🔥 Top-Tracks“) im Wochen-Digest weglassen
+  trend_radar: true
+  # Zeitfenster für die Trend-Berechnung (Tage)
+  trend_radar_days: 7
 
 
 scout:

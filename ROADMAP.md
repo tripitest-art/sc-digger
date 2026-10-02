@@ -224,6 +224,7 @@ Ursprünglicher Plan:
 
 ### 4.0 Trend-Radar (🔵 In Arbeit, #122, Teil 1 von #54)
 * Engagement-Snapshots pro Lauf, Wachstum pro Track und Artist, wöchentlicher Trend-Report.
+* Im Wochen-Digest eingebunden (#162): Trend-Abschnitt über `digest.trend_radar` steuerbar.
 
 ### 4.1 Audio-Embeddings (Workstation)
 * Embeddings über Essentia (Discogs-EffNet / MAEST) oder CLAP, als Job aus der Track-DB.

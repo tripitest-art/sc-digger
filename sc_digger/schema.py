@@ -207,6 +207,10 @@ FIELDS: tuple[Field, ...] = (
        "Am Ende des sonntäglichen discover-Laufs die Wochenstatistik senden."),
     _f("digest.stats_chart", "bool", "Statistik-Diagramm",
        "Dem Wochen-Digest ein Balkendiagramm (PNG, matplotlib) als Foto beilegen."),
+    _f("digest.trend_radar", "bool", "Trend-Radar",
+       "Trend-Abschnitt (Trending Artists / Top-Tracks) im Wochen-Digest anzeigen."),
+    _f("digest.trend_radar_days", "int", "Trend-Zeitfenster (Tage)",
+       "Zeitfenster für die Trend-Berechnung im Wochen-Digest.", min=1),
     # --- scout ---
     _f("scout.bandcamp.feeds", "list", "Bandcamp-Feeds",
        "RSS-Feed-URLs von Bandcamp-Labels/Artists als zusätzliche Fundquelle."),
