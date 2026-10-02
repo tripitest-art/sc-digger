@@ -536,6 +536,36 @@ def send_telegram_photo(
                       json={"chat_id": chat, "text": caption, "parse_mode": "HTML"})
 
 
+def send_telegram_voice(
+    cfg: Config,
+    voice_path: Path,
+    caption: str | None = None,
+    *,
+    chat_id: str | None = None,
+) -> None:
+    """Sendet eine Audiodatei als Voice-Message (Telegram-Methode sendVoice),
+    nach dem Muster von send_telegram_photo: multipart-Versand mit
+    data={"chat_id": ..., "caption": ...} und files={"voice":
+    (name, filehandle, "audio/ogg")}. chat_id-Parameter überschreibt
+    cfg.telegram_chat_id (für Tests).
+    Ohne Token/Chat-ID: nur Log-Meldung, kein Versand.
+    TelegramError wird NICHT abgefangen, sondern geworfen (Behandler:
+    preview_reply)."""
+    token, chat = cfg.telegram_token, chat_id or cfg.telegram_chat_id
+    if not token or not chat:
+        log.warning("TELEGRAM_BOT_TOKEN/CHAT_ID fehlen – Voice-Nachricht wird nicht verschickt")
+        return
+    path = Path(voice_path)
+    with open(path, "rb") as fh:
+        telegram_call(
+            token,
+            "sendVoice",
+            timeout=60,
+            data={"chat_id": chat, "caption": caption or ""},
+            files={"voice": (path.name, fh, "audio/ogg")},
+        )
+
+
 def send_kaufliste(cfg: Config, *, dry_run: bool = False, chat_id: str | None = None) -> None:
     """Liest store_items aus der DB, formatiert als Telegram-Nachricht.
     Format pro Eintrag: "🛒 <Artist> – <Title>\n   → <purchase_title or 'Kaufen'>: <purchase_url>"
