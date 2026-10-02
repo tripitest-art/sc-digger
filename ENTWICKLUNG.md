@@ -141,7 +141,7 @@ stammt aus einer anderen Familie.
 
 | Label | Worker | Passende Issues |
 |---|---|---|
-| `agent-qwen` | Qwen-Modelle in der Sandbox (lokal, langsam) | klein: eine Datei, eine Funktion, genaue Signatur |
+| `agent-qwen` | Sandbox-Worker (OpenCode/Qwen Code; Modell aktuell DeepSeek über LiteLLM, früher Qwen lokal) | Issues mit genauer Schnittstelle und Akzeptanztests, auch `sc_digger/main.py` (Beleg: #109/PR #135, #116) |
 | `agent-antigravity` | Antigravity / Gemini | mittel: mehrere Dateien, Muster, Eskalationsstufe für Qwen |
 | `agent-claude` | Claude Code Opus 5.5 + Mensch | schwer: `main.py`, Betrieb, finale Eskalationsstufe |
 
