@@ -13,7 +13,7 @@ Modul anlegt, trägt es in die Tabelle ein.
 | `sc_digger/soundcloud.py` | Inoffizielle api-v2 (client_id aus dem Frontend), Playlists inkl. Stub-Nachladen, Station/Related, Referenz-Accounts (soundcloud-v2-Lib) |
 | `sc_digger/pipeline.py` | Text-BPM, Genre-Relevanz, Perzentil-Scoring, Download-Klassifizierung |
 | `sc_digger/collection.py` | Duplikat-Abgleich mit der Sammlung (Fuzzy-Match, Remixer beachten) |
-| `sc_digger/output.py` | State-DB, Original-Download (scdl), `finalize_quality`, Telegram-Digest, Export-Datei, `telegram_call` |
+| `sc_digger/output.py` | State-DB, Original-Download (scdl), `finalize_quality`, Telegram-Digest, Export-Datei, `telegram_call`, `send_telegram_photo` |
 | `sc_digger/retry.py` | Retry-Queue für fehlgeschlagene Original-Downloads |
 | `sc_digger/cloud.py` | Cloud-Downloads (Dropbox, Google Drive) |
 | `sc_digger/quality.py` | ffprobe, Spektrum-Cutoff (Fake-Erkennung), EBU R128 / LRA (Brickwall) |
@@ -28,7 +28,7 @@ Modul anlegt, trägt es in die Tabelle ein.
 | `sc_digger/health.py` | Laufprotokoll, Alarm bei wiederholt leeren/fehlerhaften Läufen |
 | `sc_digger/healthcheck.py` | Container-Healthcheck: Cron, letzter Lauf, DB-Integrität |
 | `sc_digger/redact.py` | Zugangsdaten aus Texten und Logs entfernen |
-| `sc_digger/stats.py` | Statistikberechnung für Telegram-Digest und /stats-Bot-Befehl |
+| `sc_digger/stats.py` | Statistikberechnung für Telegram-Digest und /stats-Bot-Befehl, `render_stats_chart`, `send_weekly_digest` |
 | `sc_digger/trends.py` | Trend-Radar (Phase 4): Wachstumsanalyse historischer Engagement-Snapshots (`track_snapshots`) je Track und Artist |
 | `sc_digger/preview.py` | Live-Preview (Phase 3): energiereichstes Segment einer Audiodatei per ffmpeg finden und als OGG-Opus-Snippet extrahieren (`find_loudest_segment`, `extract_preview`) |
 | `config.yaml` | Einzige Konfiguration (Tags, Referenz-Accounts, Schwellwerte). Ist die Produktivkonfiguration. |

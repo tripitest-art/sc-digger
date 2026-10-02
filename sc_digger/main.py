@@ -38,6 +38,7 @@ from .pipeline import (classify_download, dedupe, estimate_bpm, filter_bpm, filt
 from .rekordbox import write_rekordbox_xml
 from .retry import RetryQueue
 from .soundcloud import ClientIdError, RateLimitError, SoundCloudClient, SoundCloudError
+from .stats import calculate_stats, format_stats, render_stats_chart, send_weekly_digest
 
 log = logging.getLogger("sc_digger")
 
@@ -523,6 +524,13 @@ def retry_downloads(sc: SoundCloudClient, cfg: Config) -> list[str]:
     return lines
 
 
+def is_sunday(now: datetime | None = None) -> bool:
+    """True, wenn *now* (Standard: jetzt in Europe/Berlin) ein Sonntag ist."""
+    if now is None:
+        now = datetime.now(ZoneInfo("Europe/Berlin"))
+    return now.weekday() == 6
+
+
 def _discover(cfg: Config, dry_run: bool, no_telegram: bool) -> int:
     """Führt die Discovery aus und gibt die Zahl der Rohtreffer (vor Filtern) zurück."""
     sc, s = SoundCloudClient(), cfg["search"]
@@ -565,6 +573,13 @@ def _discover(cfg: Config, dry_run: bool, no_telegram: bool) -> int:
                 state.mark_one(t)
     if not dry_run:
         write_rekordbox_xml(cfg)
+    # Sonntags-Digest hängt nur am täglichen Lauf, Standard aus. Ein Fehler hier darf
+    # die Discovery nicht als gescheitert erscheinen lassen.
+    if is_sunday() and cfg["digest"].get("sunday_summary", False):
+        try:
+            send_weekly_digest(cfg, dry_run=dry_run, no_telegram=no_telegram)
+        except Exception:
+            log.exception("Sonntags-Digest fehlgeschlagen")
     return raw_found
 
 
@@ -644,6 +659,31 @@ def run_similar(cfg: Config, url: str, use_station: bool, apply_filter: bool,
             export_name=f"{kind}: {seed.artist} - {seed.title}")
 
 
+# ------------------------------------------------------------------ Modus: stats
+def run_stats(cfg: Config, *, days: int = 7, chart_path: str | None = None,
+              send: bool = False, dry_run: bool = False, no_telegram: bool = False) -> None:
+    """Wochenstatistik manuell: Text auf der Konsole, optional Diagramm und Telegram.
+
+    Ohne --send wird nichts verschickt, nur formatiert ausgegeben. Mit --send läuft die
+    Ausgabe über send_weekly_digest (bei --dry-run/--no-telegram nur Konsole). --chart
+    speichert das Balkendiagramm als PNG; gibt es keine Daten oder kein matplotlib, kommt
+    nur ein Hinweis statt der Datei.
+    """
+    if send:
+        stats = send_weekly_digest(cfg, days=days, chart=bool(chart_path),
+                                   dry_run=dry_run, no_telegram=no_telegram)
+    else:
+        stats = calculate_stats(cfg["state"]["track_db_path"], cfg["state"]["db_path"], days=days)
+        print(format_stats(stats))
+    if chart_path:
+        png = render_stats_chart(stats)
+        if png is None:
+            print("Kein Diagramm: keine Daten oder matplotlib nicht verfügbar.")
+        else:
+            Path(chart_path).write_bytes(png)
+            print(f"Diagramm gespeichert: {chart_path}")
+
+
 # ------------------------------------------------------------------ CLI
 def cli() -> None:
     common = argparse.ArgumentParser(add_help=False)
@@ -684,6 +724,12 @@ def cli() -> None:
     sub.add_parser("intake", parents=[common],
                    help="Manuell abgelegte Tracks prüfen, analysieren und einsortieren")
 
+    st = sub.add_parser("stats", parents=[common],
+                        help="Wochenstatistik auf der Konsole, optional Diagramm und Telegram")
+    st.add_argument("--days", type=int, default=7, help="Zeitfenster in Tagen (Standard 7)")
+    st.add_argument("--chart", help="Diagramm als PNG in diese Datei schreiben")
+    st.add_argument("--send", action="store_true", help="Statistik zusätzlich per Telegram senden")
+
     a = ap.parse_args()
     install_redacting_logging(logging.DEBUG if a.verbose else logging.INFO)
     cfg = Config.load(a.config)
@@ -715,6 +761,9 @@ def cli() -> None:
                     send_telegram(cfg, text)
             if not a.dry_run:
                 write_rekordbox_xml(cfg)
+        elif a.mode == "stats":
+            run_stats(cfg, days=a.days, chart_path=a.chart, send=a.send,
+                      dry_run=a.dry_run, no_telegram=a.no_telegram)
         else:
             run_discover(cfg, a.dry_run, a.no_telegram)
     except Exception:

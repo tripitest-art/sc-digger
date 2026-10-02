@@ -79,6 +79,8 @@ python -m sc_digger.main similar https://soundcloud.com/artist/track --filter   
 python -m sc_digger.main rekordbox                                  # Rekordbox-XML der Inbox neu schreiben
 python -m sc_digger.main intake                                     # Manuell abgelegte Tracks verarbeiten
 python -m sc_digger.main audit --report report.html                 # Sammlung prüfen, nur lesend (siehe unten)
+python -m sc_digger.main stats --days 7 --chart woche.png           # Wochenstatistik, optional Diagramm
+python -m sc_digger.main stats --send                              # Wochenstatistik per Telegram
 ```
 
 Für jeden Modus: `--dry-run` (nichts laden, senden oder speichern), `--no-telegram` (Ausgabe in
@@ -152,7 +154,7 @@ Alles steht kommentiert in `config.yaml`:
 | `retry` | wie oft ein gescheiterter Original-Download insgesamt versucht wird |
 | `health` | ab wie vielen schlechten Läufen ein Alarm kommt |
 | `telegram` | Digest-Länge, Feedback-Buttons |
-| `digest` | Länge der Kaufliste |
+| `digest` | Länge der Kaufliste; `sunday_summary`/`stats_chart` für die sonntägliche Wochen-Zusammenfassung mit optionalem Balkendiagramm |
 | `curator_mining` | ab wie vielen Treffern ein Profil vorgeschlagen wird |
 | `rekordbox` | XML-Export, Wochen-Playlists, Pfad-Mapping Server → DJ-Laptop |
 | `state` | Pfade der beiden SQLite-Datenbanken |
