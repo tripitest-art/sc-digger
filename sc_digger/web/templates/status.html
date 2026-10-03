@@ -20,6 +20,10 @@
 <h1>sc-digger Status</h1>
 <p class="meta">Stand: {{ snap.generated_at }} UTC (aktualisiert sich alle 60&nbsp;Sekunden)</p>
 
+{% if editor_available %}
+<p><a href="/config">Konfiguration bearbeiten</a></p>
+{% endif %}
+
 {% if snap.healthy %}
 <p class="ampel ok">&#9679; gesund</p>
 {% else %}

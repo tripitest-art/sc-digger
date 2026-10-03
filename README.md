@@ -108,6 +108,14 @@ Die Sammlung wird in `docker-compose.yml` mit `:ro` eingebunden und bleibt schre
 
 Auf einem Server setzt `./set-secret.sh NAME` die Zugangsdaten verdeckt in die `.env`; `./update.sh` holt den neuen Stand von `main` und baut neu. Betrieb, Mounts und Logs beschreibt `BETRIEB.md`.
 
+## Erststart
+
+1. `.env` aus `.env.example` kopieren und `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` sowie `SC_DIGGER_WEB_PASSWORD` (frei wählbares Passwort) eintragen.
+2. `docker compose up -d --build`
+3. `http://<host>:8080/` öffnen und das Passwort eingeben — Statusseite und Konfigeditor sind da.
+
+Den Port gibt man bei Bedarf an die LAN-Adresse des Hosts frei (siehe Kommentar in `docker-compose.yml`).
+
 Ob der Container gesund ist, prüft der Healthcheck im `Dockerfile` (`HEALTHCHECK --interval=15m`) über `sc_digger.healthcheck`. Dessen Prüfungen lassen sich auch manuell aufrufen:
 
 ```bash

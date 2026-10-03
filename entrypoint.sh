@@ -16,6 +16,9 @@ cron
 
 # Web-Oberfläche nur, wenn ein Passwort gesetzt ist (Standard: aus)
 if [ -n "$SC_DIGGER_WEB_PASSWORD" ]; then
+    # Konfigeditor standardmäßig aktivieren (Override-Datei im persistenten Volume /data);
+    # wer abweichen will, setzt SC_DIGGER_CONFIG_LOCAL selbst (leer = Editor aus).
+    export SC_DIGGER_CONFIG_LOCAL="${SC_DIGGER_CONFIG_LOCAL:-/data/config.local.yaml}"
     python -m sc_digger.web --host 0.0.0.0 --port "${SC_DIGGER_WEB_PORT:-8080}" >> /proc/1/fd/1 2>&1 &
 fi
 
