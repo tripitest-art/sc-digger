@@ -6,6 +6,7 @@
   python -m sc_digger.main check <url>                       # wie der Telegram-Bot: Playlist oder Station
   python -m sc_digger.main intake [--dry-run]                # Manuell abgelegte Tracks verarbeiten
   python -m sc_digger.main audit [--path ...] [--report ...] # Library-Audit (read-only)
+  python -m sc_digger.main scout [--dry-run]                 # Bandcamp-Feeds + Beatport-Charts in store_items
 
 Alle Modi: --dry-run (nichts laden/senden), -v, --config, --no-telegram
 """
@@ -38,6 +39,8 @@ from .pipeline import (classify_download, dedupe, estimate_bpm, filter_bpm, filt
                        genre_relevant, mark_sets, score_tracks)
 from .rekordbox import write_rekordbox_xml
 from .retry import RetryQueue
+from .scout.bandcamp import fetch_bandcamp_feeds
+from .scout.beatport import fetch_beatport_charts
 from .soundcloud import ClientIdError, RateLimitError, SoundCloudClient, SoundCloudError
 from .stats import calculate_stats, format_stats, render_stats_chart, send_weekly_digest
 
@@ -705,6 +708,54 @@ def run_stats(cfg: Config, *, days: int = 7, chart_path: str | None = None,
             print(f"Diagramm gespeichert: {chart_path}")
 
 
+def run_scout(cfg: Config, *, dry_run: bool = False) -> int:
+    """Lädt Bandcamp-Feeds und Beatport-Charts aus der Config,
+    schreibt neue Tracks via TrackDB.upsert_store_item() in die DB.
+
+    Args:
+        cfg: Config mit scout-Abschnitt
+        dry_run: Wenn True, nur Anzeigen was geschrieben würde, keine DB-Änderung
+
+    Returns:
+        Anzahl neu geschriebener Store-Items (0 bei dry_run).
+
+    Fehler einzelner Scouts werden geloggt, blockieren aber nicht den jeweils anderen.
+    """
+    scout_cfg = cfg.raw.get("scout", {}) or {}
+    feed_urls = list((scout_cfg.get("bandcamp", {}) or {}).get("feeds", []) or [])
+    chart_urls = list((scout_cfg.get("beatport", {}) or {}).get("charts", []) or [])
+
+    # Jeder Scout läuft getrennt: ein Fehler darf den anderen nicht verhindern.
+    tracks: list[Track] = []
+    for name, fn, urls in (
+        ("Bandcamp", fetch_bandcamp_feeds, feed_urls),
+        ("Beatport", fetch_beatport_charts, chart_urls),
+    ):
+        try:
+            tracks.extend(fn(urls))
+        except Exception as exc:  # noqa: BLE001 – ein Scout darf den anderen nicht stoppen
+            log.warning("%s-Scout fehlgeschlagen: %s", name, exc)
+
+    if dry_run:
+        for t in tracks:
+            log.info("[dry-run] Store-Item: %s – %s (%s)", t.artist, t.title, t.purchase_url)
+        return 0
+
+    written = 0
+    with TrackDB(cfg["state"]["track_db_path"]) as db:
+        for t in tracks:
+            db.upsert_store_item(
+                sc_id=t.id,
+                title=t.title,
+                artist=t.artist,
+                purchase_url=t.purchase_url or t.url,
+                purchase_title=t.purchase_title,
+            )
+            written += 1
+    log.info("Scout: %d Store-Items geschrieben", written)
+    return written
+
+
 # ------------------------------------------------------------------ CLI
 def cli() -> None:
     common = argparse.ArgumentParser(add_help=False)
@@ -751,6 +802,9 @@ def cli() -> None:
     st.add_argument("--chart", help="Diagramm als PNG in diese Datei schreiben")
     st.add_argument("--send", action="store_true", help="Statistik zusätzlich per Telegram senden")
 
+    sub.add_parser("scout", parents=[common],
+                   help="Bandcamp-Feeds und Beatport-Charts in store_items schreiben")
+
     a = ap.parse_args()
     install_redacting_logging(logging.DEBUG if a.verbose else logging.INFO)
     cfg = Config.load(a.config)
@@ -785,6 +839,8 @@ def cli() -> None:
         elif a.mode == "stats":
             run_stats(cfg, days=a.days, chart_path=a.chart, send=a.send,
                       dry_run=a.dry_run, no_telegram=a.no_telegram)
+        elif a.mode == "scout":
+            run_scout(cfg, dry_run=a.dry_run)
         else:
             run_discover(cfg, a.dry_run, a.no_telegram)
     except Exception:
