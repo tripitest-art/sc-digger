@@ -86,7 +86,7 @@ flowchart TD
 | **Phase 1** | Basis & DJ-Ready Pipeline | ✅ **Abgeschlossen** | Native Downloads, FFT-Fake-Check, BPM/Key, Tagging, Inbox-Organize, Modi discover/playlist/similar |
 | **Phase 1.5** | Robustheit | ✅ **Abgeschlossen** | BPM-Oktav-Korrektur, Health-Alarm |
 | **Phase 2** | Track-DB & Library Audit | 🟡 **Fast fertig** | Zentrale DB ✅, `audit` ✅, Fingerprint-Duplikate ✅, LUFS-Tags ✅, Container-Healthcheck ✅, Inbox-Normalisierung ✅, robuste Discovery ✅, Retry-Queue ✅, Engagement-Tempo ✅, `/stats` ✅; offen: Sonntags-Digest mit Grafik (#116) |
-| **Phase 3** | Feedback & Smart Ingestion | 🟡 **Laufend** | 👍/👎 ✅, Cloud-Downloads ✅, DJ-Sets inkl. kurzer Mixe ✅, Rekordbox-Wochen-XML ✅, Curator-Mining 🟡 (Vorschläge ✅), Cloud-Quellen erweitern ✅, Kaufliste ✅, Eingangsordner ✅, Promo-Abzug und Sperrliste ✅; offen: Tag-Rotation (#109), Artist-Reputation (#107), Live-Preview (#118) |
+| **Phase 3** | Feedback & Smart Ingestion | 🟡 **Laufend** | 👍/👎 ✅, Cloud-Downloads ✅, DJ-Sets inkl. kurzer Mixe ✅, Rekordbox-Wochen-XML ✅, Curator-Mining 🟡 (Vorschläge ✅), Cloud-Quellen erweitern ✅, Kaufliste ✅, Eingangsordner ✅, Promo-Abzug und Sperrliste ✅, Tag-Rotation/Exploration ✅ (#135, #141), Artist-Reputation ✅ (#140), Live-Preview 🟡 (Snippet #132 ✅, `/preview` #147 ✅; offen: Stream-Preview #168) |
 | **Phase 4** | Geschmacksmodell & KI-Copilot | 🔵 Geplant | Audio-Embeddings, persönlicher Taste-Score, Qwen-Copilot via Tool-Calling; begonnen: Trend-Radar (#122) |
 | **Phase 5** | DJ-Performance & Set-Tools | 🟣 Vision | Harmonic Mixing per `/mix` ✅; Rekordbox-Cues, Embedding-Recommender, Web-Dashboard, Stem-Extraktion |
 
@@ -215,9 +215,9 @@ Ursprünglicher Plan:
 * Sperrliste `scoring.blocked_accounts`: Uploads dieser Accounts fliegen in `discover` raus (#95).
 
 ### 3.10 In Arbeit / geplant
-* Tag-Rotation & Exploration-Modus (#109, Teil 1 von #56).
-* Artist-Reputation: Bonus/Malus aus Track-DB und Feedback (#107, zu #57).
-* Live-Preview: energiereichstes Segment als Audio-Snippet (#118, Teil 1 von #53).
+* Tag-Rotation & Exploration-Modus (✅ #135 und #141, zu #56).
+* Artist-Reputation: Bonus/Malus aus Track-DB und Feedback (✅ #140, zu #57).
+* Live-Preview: Snippet-Extraktion (✅ #132) und `/preview` für heruntergeladene Tracks (✅ #147); offen: Stream-Preview für Digest-Tracks (#168).
 
 ---
 
@@ -275,6 +275,6 @@ Ursprünglicher Plan:
 10. ~~Phase 3.6: Kaufliste (#47)~~ ✅ → ~~Inbox-Normalisierung −8,5 LUFS (#74)~~ ✅
 11. ~~Phase 3.8: Eingangsordner (#70)~~ ✅
 12. ~~Promo-Abzug (#77), Sperrliste (#95), kurze Mixe (#84), `/mix` (#94), Engagement-Tempo (#106), `/stats` (#108)~~ ✅
-13. **Laufend:** Tag-Rotation (#109) → Sonntags-Digest (#116); Trend-Radar (#122) → Artist-Reputation (#107); Live-Preview (#118)
+13. **Laufend:** Sonntags-Digest (#116); Trend-Radar (#122); Live-Preview, Stream-Preview (#168)
 14. Phase 4: Embeddings → Taste-Score → Copilot
 15. Phase 5: Rekordbox-Cues, Embedding-Recommender, Dashboard, Stems

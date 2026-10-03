@@ -303,7 +303,7 @@ In Rekordbox einrichten:
 | `healthcheck.py` | Container-Healthcheck: Cron, letzter Lauf, DB-Integrität |
 | `stats.py` | Statistikberechnung für Digest und `/stats`, Vorperioden-Vergleich der Kernkennzahlen, Diagramm (`render_stats_chart`), Wochen-Digest inkl. Trend-Abschnitt |
 | `trends.py` | Trend-Radar: Wachstumsanalyse historischer Engagement-Snapshots; im Wochen-Digest über `stats.send_weekly_digest` eingebunden. |
-| `preview.py` | Live-Preview: energiereichstes Segment per ffmpeg, OGG-Opus-Snippet (`find_loudest_segment`, `extract_preview`). **Noch nicht eingebunden:** wird von `main.py` und `bot.py` nicht aufgerufen. |
+| `preview.py` | Live-Preview: energiereichstes Segment per ffmpeg, OGG-Opus-Snippet (`find_loudest_segment`, `extract_preview`). Eingebunden über den Bot-Befehl `/preview` (`bot.py`, seit #147). |
 | `redact.py` | Zugangsdaten aus Texten, Logs und Fehlermeldungen entfernen |
 | `models.py` | Datenmodelle (`Track`, `Config`) und Config-Loader |
 
