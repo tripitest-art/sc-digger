@@ -630,3 +630,64 @@ def send_kaufliste(cfg: Config, *, dry_run: bool = False, chat_id: str | None = 
             "disable_web_page_preview": True,
         }
         telegram_call(token, "sendMessage", json=payload)
+
+
+def send_scout_error(
+    cfg: Config,
+    source: str,
+    message: str,
+    *,
+    chat_id: str | None = None,
+) -> None:
+    """Meldet den Fehler einer Scout-Quelle per Telegram.
+
+    Die Nachricht nennt die Quelle, damit im Digest erkennbar ist, welcher Scout
+    ausgefallen ist. Fehler von telegram_call werden wie bei send_kaufliste nicht
+    abgefangen; der Aufrufer entscheidet, ob er den Lauf fortsetzt.
+    """
+    token = cfg.telegram_token or ""
+    chat = chat_id or cfg.telegram_chat_id or ""
+    text = f"⚠️ Scout {source} fehlgeschlagen: {_esc(message)}"
+    payload: dict[str, Any] = {
+        "chat_id": chat,
+        "text": text,
+        "parse_mode": "HTML",
+        "disable_web_page_preview": True,
+    }
+    telegram_call(token, "sendMessage", json=payload)
+
+
+def send_scout_digest(
+    cfg: Config,
+    items: list[dict[str, Any]],
+    *,
+    max_items: int = 5,
+    chat_id: str | None = None,
+) -> None:
+    """Sendet den Digest-Block „🛒 Neu bei Bandcamp/Beatport".
+
+    items sind die in diesem Lauf neu in store_items geschriebenen Einträge
+    (neueste zuerst). Es werden höchstens max_items gezeigt. Bei leerer Liste
+    wird nichts gesendet.
+    """
+    if not items:
+        return
+
+    entries = []
+    for it in items[:max_items]:
+        artist = _esc(it.get("artist") or "")
+        title = _esc(it.get("title") or "")
+        p_title = _esc(it.get("purchase_title") or "Kaufen")
+        url = html.escape(it.get("purchase_url") or "")
+        entries.append(f"🛒 {artist} – {title}\n   → {p_title}: {url}")
+
+    text = "🛒 Neu bei Bandcamp/Beatport\n\n" + "\n\n".join(entries)
+    token = cfg.telegram_token or ""
+    chat = chat_id or cfg.telegram_chat_id or ""
+    payload: dict[str, Any] = {
+        "chat_id": chat,
+        "text": text,
+        "parse_mode": "HTML",
+        "disable_web_page_preview": True,
+    }
+    telegram_call(token, "sendMessage", json=payload)
