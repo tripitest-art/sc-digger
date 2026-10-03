@@ -12,6 +12,12 @@ if [ -f /etc/cron.d/sc-digger ] && ! grep -q "send_kaufliste" /etc/cron.d/sc-dig
     crontab /etc/cron.d/sc-digger 2>/dev/null || true
 fi
 
+# Täglicher Scout-Lauf (18:00), getrennt vom discover-Lauf im Dockerfile
+if [ -f /etc/cron.d/sc-digger ] && ! grep -q "sc_digger.main scout" /etc/cron.d/sc-digger; then
+    echo "0 18 * * * . /app/cron.env; cd /app && python -m sc_digger.main scout >> /proc/1/fd/1 2>&1" >> /etc/cron.d/sc-digger
+    crontab /etc/cron.d/sc-digger 2>/dev/null || true
+fi
+
 cron
 
 # Web-Oberfläche nur, wenn ein Passwort gesetzt ist (Standard: aus)

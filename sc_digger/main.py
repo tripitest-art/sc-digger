@@ -21,6 +21,7 @@ import sys
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 from zoneinfo import ZoneInfo
 
 from .analysis import analyze_track, resolve_bpm
@@ -33,8 +34,8 @@ from .intake import AUDIO_EXTS, find_ready_files, track_from_file
 from .models import Config, DownloadKind, Track
 from .organize import organize, write_tags
 from .redact import install_redacting_logging, redact
-from .output import (DigestMessage, State, build_digest, build_digest_messages, build_export_txt, download_native, finalize_quality,
-                     send_digest, send_telegram, send_telegram_document)
+from .output import (DigestMessage, State, TelegramError, build_digest, build_digest_messages, build_export_txt, download_native,
+                     finalize_quality, send_digest, send_scout_digest, send_scout_error, send_telegram, send_telegram_document)
 from .pipeline import (classify_download, dedupe, estimate_bpm, filter_bpm, filter_sets,
                        genre_relevant, mark_sets, score_tracks)
 from .rekordbox import write_rekordbox_xml
@@ -711,10 +712,18 @@ def run_stats(cfg: Config, *, days: int = 7, chart_path: str | None = None,
 def run_scout(cfg: Config, *, dry_run: bool = False) -> int:
     """Führt Bandcamp- und Beatport-Scout aus.
 
-    Liest Tracks über fetch_bandcamp_feeds und fetch_beatport_charts,
-    markiert Duplikate über Collection.mark_duplicates mit dem Pfad aus
-    cfg["download"]["collection_dir"], zählt Duplikate, loggt sie und
-    schreibt nur Nicht-Duplikate in store_items (außer bei dry_run=True).
+    Liest Tracks über fetch_bandcamp_feeds und fetch_beatport_charts, markiert
+    Duplikate über Collection.mark_duplicates, schreibt Nicht-Duplikate in
+    store_items (außer bei dry_run=True) und gibt die Anzahl der geschriebenen
+    Store-Items zurück.
+
+    Bei einem Fehler in einem Scout wird eine kurze Telegram-Meldung über
+    output.telegram_call gesendet (nicht bei dry_run=True). Ein Fehler in einem
+    Scout verhindert den anderen nicht.
+
+    Nach dem Lauf (nur bei dry_run=False) wird ein Telegram-Block
+    „🛒 Neu bei Bandcamp/Beatport" mit den in diesem Lauf neu in store_items
+    geschriebenen Tracks gesendet (höchstens 5 Einträge).
 
     Args:
         cfg: Config mit scout- und download-Abschnitt
@@ -722,14 +731,14 @@ def run_scout(cfg: Config, *, dry_run: bool = False) -> int:
 
     Returns:
         Anzahl der geschriebenen Store-Items (bei dry_run: 0).
-
-    Ein Fehler in einem Scout verhindert den anderen nicht.
     """
     scout_cfg = cfg.raw.get("scout", {}) or {}
     feed_urls = list((scout_cfg.get("bandcamp", {}) or {}).get("feeds", []) or [])
     chart_urls = list((scout_cfg.get("beatport", {}) or {}).get("charts", []) or [])
 
     # Jeder Scout läuft getrennt: ein Fehler darf den anderen nicht verhindern.
+    # Eine Fehlermeldung wird – außer bei dry_run – an Telegram gemeldet; ein
+    # Sendefehler (TelegramError) bricht run_scout nicht ab, wird aber geloggt.
     tracks: list[Track] = []
     for name, fn, urls in (
         ("Bandcamp", fetch_bandcamp_feeds, feed_urls),
@@ -739,6 +748,11 @@ def run_scout(cfg: Config, *, dry_run: bool = False) -> int:
             tracks.extend(fn(urls))
         except Exception as exc:  # noqa: BLE001 – ein Scout darf den anderen nicht stoppen
             log.warning("%s-Scout fehlgeschlagen: %s", name, exc)
+            if not dry_run:
+                try:
+                    send_scout_error(cfg, name, str(exc))
+                except TelegramError as terr:
+                    log.warning("Telegram-Meldung zum %s-Scout fehlgeschlagen: %s", name, terr)
 
     # Duplikat-Abgleich gegen die lokale Sammlung. Fehlt der Ordner, warnt Collection
     # und findet nichts. Duplikate werden nur gezählt/geloggt, nicht gespeichert.
@@ -758,7 +772,11 @@ def run_scout(cfg: Config, *, dry_run: bool = False) -> int:
         return 0
 
     written = 0
+    new_items: list[dict[str, Any]] = []
     with TrackDB(cfg["state"]["track_db_path"]) as db:
+        # Vor dem Schreiben merken, welche sc_ids schon in store_items stehen, um
+        # nur die in diesem Lauf neuen Einträge in den Digest-Block zu nehmen.
+        existing_ids = {it["sc_id"] for it in db.get_store_items()}
         for t in fresh:
             db.upsert_store_item(
                 sc_id=t.id,
@@ -768,7 +786,20 @@ def run_scout(cfg: Config, *, dry_run: bool = False) -> int:
                 purchase_title=t.purchase_title,
             )
             written += 1
+            if t.id not in existing_ids:
+                new_items.append({
+                    "sc_id": t.id,
+                    "artist": t.artist,
+                    "title": t.title,
+                    "purchase_url": t.purchase_url or t.url,
+                    "purchase_title": t.purchase_title,
+                })
     log.info("Scout: %d Store-Items geschrieben, %d Duplikate übersprungen", written, len(duplicates))
+    if new_items:
+        try:
+            send_scout_digest(cfg, new_items, max_items=5)
+        except TelegramError as terr:
+            log.warning("Telegram-Digest nach dem Scout fehlgeschlagen: %s", terr)
     return written
 
 
