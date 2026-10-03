@@ -85,6 +85,9 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
     if not password and not allow_anonymous:
         raise ValueError("SC_DIGGER_WEB_PASSWORD ist nicht gesetzt; Start abgelehnt")
 
+    # Editor-Routen gibt es nur mit beiden Pfaden; status.html verlinkt sie nur dann.
+    editor_available = base_path is not None and local_path is not None
+
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
     app.state.cfg = cfg
     app.state.password = password
@@ -100,7 +103,7 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
             return _unauthorized()
         snap = collect_status(cfg)
         template = _env.get_template("status.html")
-        return HTMLResponse(template.render(snap=snap))
+        return HTMLResponse(template.render(snap=snap, editor_available=editor_available))
 
     @app.get("/api/status")
     def api_status(request: Request):
