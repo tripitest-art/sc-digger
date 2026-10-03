@@ -153,7 +153,8 @@ Copilot, Recommender und Dashboard.
 * Gescheiterte Original-Downloads werden bis zu 3-mal nachgeholt (#50).
 * Engagement-Tempo (Likes pro Stunde seit Upload) als eigenes Gewicht im Scoring (#106, #51).
 * `/stats [Tage]` im Bot: Läufe, Scans, Inbox, Ablehnungen, Feedback, Top-Artists (#108).
-* Offen: Sonntags-Digest mit Trend-Grafik (#116, Teil 2 von #55).
+* Sonntags-Digest mit Trend-Grafik (#116, Teil 2 von #55).
+* Offen: Vorperioden-Vergleich der Kernkennzahlen in der Statistik (#165, Teil 3 von #55).
 
 ---
 
