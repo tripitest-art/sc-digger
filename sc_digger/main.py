@@ -709,17 +709,21 @@ def run_stats(cfg: Config, *, days: int = 7, chart_path: str | None = None,
 
 
 def run_scout(cfg: Config, *, dry_run: bool = False) -> int:
-    """Lädt Bandcamp-Feeds und Beatport-Charts aus der Config,
-    schreibt neue Tracks via TrackDB.upsert_store_item() in die DB.
+    """Führt Bandcamp- und Beatport-Scout aus.
+
+    Liest Tracks über fetch_bandcamp_feeds und fetch_beatport_charts,
+    markiert Duplikate über Collection.mark_duplicates mit dem Pfad aus
+    cfg["download"]["collection_dir"], zählt Duplikate, loggt sie und
+    schreibt nur Nicht-Duplikate in store_items (außer bei dry_run=True).
 
     Args:
-        cfg: Config mit scout-Abschnitt
+        cfg: Config mit scout- und download-Abschnitt
         dry_run: Wenn True, nur Anzeigen was geschrieben würde, keine DB-Änderung
 
     Returns:
-        Anzahl neu geschriebener Store-Items (0 bei dry_run).
+        Anzahl der geschriebenen Store-Items (bei dry_run: 0).
 
-    Fehler einzelner Scouts werden geloggt, blockieren aber nicht den jeweils anderen.
+    Ein Fehler in einem Scout verhindert den anderen nicht.
     """
     scout_cfg = cfg.raw.get("scout", {}) or {}
     feed_urls = list((scout_cfg.get("bandcamp", {}) or {}).get("feeds", []) or [])
@@ -736,14 +740,26 @@ def run_scout(cfg: Config, *, dry_run: bool = False) -> int:
         except Exception as exc:  # noqa: BLE001 – ein Scout darf den anderen nicht stoppen
             log.warning("%s-Scout fehlgeschlagen: %s", name, exc)
 
+    # Duplikat-Abgleich gegen die lokale Sammlung. Fehlt der Ordner, warnt Collection
+    # und findet nichts. Duplikate werden nur gezählt/geloggt, nicht gespeichert.
+    coll = Collection(cfg["download"]["collection_dir"])
+    coll.mark_duplicates(tracks)
+    duplicates = [t for t in tracks if t.duplicate_of]
+    fresh = [t for t in tracks if not t.duplicate_of]
+    for t in duplicates:
+        log.info("Scout: Duplikat übersprungen: %s – %s (vorhanden als %s)",
+                 t.artist, t.title, t.duplicate_of)
+
     if dry_run:
-        for t in tracks:
+        for t in fresh:
             log.info("[dry-run] Store-Item: %s – %s (%s)", t.artist, t.title, t.purchase_url)
+        log.info("Scout: %d Duplikate übersprungen, %d Store-Items (dry-run, nicht geschrieben)",
+                 len(duplicates), len(fresh))
         return 0
 
     written = 0
     with TrackDB(cfg["state"]["track_db_path"]) as db:
-        for t in tracks:
+        for t in fresh:
             db.upsert_store_item(
                 sc_id=t.id,
                 title=t.title,
@@ -752,7 +768,7 @@ def run_scout(cfg: Config, *, dry_run: bool = False) -> int:
                 purchase_title=t.purchase_title,
             )
             written += 1
-    log.info("Scout: %d Store-Items geschrieben", written)
+    log.info("Scout: %d Store-Items geschrieben, %d Duplikate übersprungen", written, len(duplicates))
     return written
 
 
