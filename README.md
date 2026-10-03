@@ -114,6 +114,16 @@ Ob der Container gesund ist, prüft der Healthcheck im `Dockerfile` (`HEALTHCHEC
 docker compose exec sc-digger python -m sc_digger.healthcheck
 ```
 
+## Erststart
+
+1. `.env` aus `.env.example` kopieren, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` und
+   `SC_DIGGER_WEB_PASSWORD` (frei wählbares Passwort) eintragen.
+2. `docker compose up -d --build`
+3. `http://<host>:8080/` öffnen, Passwort eingeben — Statusseite und Konfigeditor sind da.
+
+Für den Zugriff aus dem LAN in `docker-compose.yml` die vorbereitete Port-Freigabe (Port 8080)
+an die LAN-Adresse des Hosts einkommentieren.
+
 ## Konfiguration
 
 Alle Optionen stehen in `config.yaml`; die folgende Liste nennt die Werte aus dieser Datei. Fehlende optionale Schlüssel fallen auf die Defaults im Code zurück.
@@ -185,8 +195,9 @@ Alle Optionen stehen in `config.yaml`; die folgende Liste nennt die Werte aus di
 
 Die versionierte `config.yaml` bleibt die einzige Wahrheit. Änderungen ohne Git – später aus der
 Weboberfläche – legt `Config.load` per Deep-Merge aus einer optionalen lokalen Override-Datei
-darüber. Den Pfad nennt die Umgebungsvariable `SC_DIGGER_CONFIG_LOCAL` (im Container z. B.
-`/data/config.local.yaml`). Fehlt die Datei oder ist sie leer, ändert sich nichts am Betrieb.
+darüber. Den Pfad nennt die Umgebungsvariable `SC_DIGGER_CONFIG_LOCAL`; im Container setzt
+`entrypoint.sh` ihn automatisch auf `/data/config.local.yaml`. Fehlt die Datei oder ist sie leer,
+ändert sich nichts am Betrieb.
 Kaputtes YAML scheitert laut mit Dateinamen, statt still ignoriert zu werden. Listen und Skalare
 aus der Override-Datei ersetzen den Wert aus `config.yaml`, Zuordnungen werden rekursiv gemischt.
 Pflegen lässt sie sich von Hand oder über den Web-Konfigeditor (siehe „Web-Konfigeditor“).
@@ -311,7 +322,8 @@ In Rekordbox einrichten:
 
 Setzt man in `.env` ein Passwort (`SC_DIGGER_WEB_PASSWORD`, siehe `.env.example`), startet der
 Container zusätzlich einen kleinen Webserver (`python -m sc_digger.web`) auf Port `8080`. Ohne
-Passwort startet er nicht (Standard aus), es wird kein zusätzlicher Port geöffnet. Die Seite zeigt
+Passwort startet er nicht (Standard aus), es wird kein zusätzlicher Port geöffnet. Im Container
+ist der Konfigeditor dann automatisch aktiv. Die Seite zeigt
 unter HTTP-Basic-Anmeldung den Zustand: Ampel gesund/Achtung, letzter `discover`-Lauf mit Alter und
 Rohtreffern, aktiven Health-Alarm, Inbox-Größe, die letzten 10 Läufe und die Wochenstatistik –
 dieselben Daten zusätzlich als JSON unter `/api/status`. Sie ist rein lesend (nur GET) und enthält
@@ -322,8 +334,10 @@ stehen in `requirements.txt`, dafür ist ein Image-Neubau nötig.
 
 ### Web-Konfigeditor
 
-Setzt man zusätzlich `SC_DIGGER_CONFIG_LOCAL` (z. B. `/data/config.local.yaml`), erscheint unter
-`/config` ein Formular für die Einstellungen aus `config.yaml`. Es zeigt je Feld den aktuellen Wert
+Im Container aktiviert `entrypoint.sh` den Editor automatisch über die Override-Datei
+`/data/config.local.yaml`; die Statusseite verlinkt ihn dann unter `/config`. Nur für einen
+abweichenden Pfad setzt man `SC_DIGGER_CONFIG_LOCAL` (leer = Editor aus). Unter
+`/config` liegt ein Formular für die Einstellungen aus `config.yaml`. Es zeigt je Feld den aktuellen Wert
 (aus Basis- und lokaler Datei zusammengeführt), den Standardwert und einen Hinweis, wenn der Wert
 aus der lokalen Datei stammt; ein „Zurücksetzen“ entfernt genau diesen Eintrag wieder. „Vorschau“
 (`/config/preview`) zeigt den Diff und die Warnungen, ohne etwas zu schreiben; „Speichern“
