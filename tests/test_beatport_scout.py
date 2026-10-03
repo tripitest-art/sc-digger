@@ -30,7 +30,22 @@ def test_parse_ignores_non_beatport_links():
     from sc_digger.scout.beatport import _parse_chart_html
 
     tracks = _parse_chart_html(html, chart_url="https://www.beatport.com/chart")
-    assert len(tracks) == 2  # Fremd-Links werden nicht als Beatport-Track geladen
+    assert len(tracks) == 1  # Fremd-Links werden nicht als Beatport-Track geladen
+    assert tracks[0].purchase_url == "https://www.beatport.com/track/echt/1"
+
+
+def test_parse_resolves_relative_link_against_chart_url():
+    html = """<html><body><div class="tracks">
+      <div class="bucket-item track"><a href="/track/relativ/7">Relativ</a></div>
+    </div></body></html>"""
+    from sc_digger.scout.beatport import _parse_chart_html
+
+    tracks = _parse_chart_html(
+        html, chart_url="https://www.beatport.com/genre/hard-techno/2/top-100"
+    )
+    assert len(tracks) == 1
+    assert tracks[0].purchase_url == "https://www.beatport.com/track/relativ/7"
+    assert tracks[0].url == tracks[0].purchase_url
 
 
 def test_parse_without_title_and_artist_is_empty_not_crash():

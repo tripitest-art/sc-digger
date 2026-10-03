@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import logging
 from datetime import date
+from urllib.parse import urljoin, urlparse
 
 import requests
 from bs4 import BeautifulSoup
@@ -20,16 +21,26 @@ from sc_digger.models import DownloadKind, Track
 
 log = logging.getLogger(__name__)
 
-# Beatport liefert Chrome keinen Track-Link als Text, daher holen wir uns die
-# URL aus dem umschließenden <a>. Die Zeilen tragen die Klasse `track`.
+# Die Track-Zeilen tragen die Klasse `track`; den Link holen wir aus dem
+# umschließenden <a>, weil der Titel-Text kein Link ist.
 _TRACK_SELECTOR = "div.bucket-item.track, div.track"
+
+
+def _is_beatport_url(url: str) -> bool:
+    """True, wenn der Link auf Beatport selbst zeigt (Host oder Subdomain).
+
+    Fremd-Links aus Chartseiten sollen nicht als Kaufempfehlung in den Digest
+    gelangen (Regel 6/9): es wird nur verlinkt, was wirklich bei Beatport liegt.
+    """
+    host = urlparse(url).netloc.lower()
+    return host == "beatport.com" or host.endswith(".beatport.com")
 
 
 def _track_id(purchase_url: str) -> int:
     """Stabile ID aus der Beatport-URL, da es keine SoundCloud-ID gibt.
 
     SoundCloud-IDs sind große Ganzzahlen; der Sha1-Ausschnitt bleibt im
-    positiven 63-Bit-Bereich, damit sich die Werte nicht beißen.
+    positiven 60-Bit-Bereich, damit sich die Werte nicht beißen.
     """
     digest = hashlib.sha1(purchase_url.encode("utf-8")).hexdigest()
     return int(digest[:15], 16)
@@ -47,8 +58,8 @@ def _parse_chart_html(html: str, chart_url: str) -> list[Track]:
         link = item.find("a", href=True)
         if link is None:
             continue
-        purchase_url = link["href"].strip()
-        if not purchase_url:
+        purchase_url = urljoin(chart_url, link["href"].strip())
+        if not purchase_url or not _is_beatport_url(purchase_url):
             continue
         title_el = item.select_one(".buk-track-title")
         artist_el = item.select_one(".buk-track-artists")
