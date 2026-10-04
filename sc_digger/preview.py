@@ -141,6 +141,51 @@ def find_loudest_segment(
         return 0.0
 
 
+def extract_preview_from_url(
+    source_url: str,
+    output_path: Path,
+    *,
+    start_s: float = 0.0,
+    duration_s: float = 20.0,
+    bitrate_kbps: int = 64,
+) -> bool:
+    """Erzeugt aus source_url ein OGG-Opus-Snippet (max. duration_s, ab start_s)
+    an output_path per ffmpeg (-ss/-t). Wirft nie; bei fehlendem ffmpeg, Abbruch
+    oder leerer Datei False und räumt eine evtl. angelegte Datei wieder weg.
+    """
+    out = Path(output_path)
+    try:
+        out.parent.mkdir(parents=True, exist_ok=True)
+        result = subprocess.run(
+            [
+                "ffmpeg", "-y", "-v", "error",
+                "-ss", f"{float(start_s):.3f}",
+                "-t", f"{float(duration_s):g}",
+                "-i", str(source_url),
+                "-vn", "-c:a", "libopus", "-b:a", f"{int(bitrate_kbps)}k",
+                str(out),
+            ],
+            capture_output=True,
+            timeout=_EXTRACT_TIMEOUT_S,
+        )
+        if result.returncode != 0:
+            log.warning(
+                "Stream-Preview-Extraktion fehlgeschlagen: %s",
+                result.stderr.decode(errors="replace").strip()[:200],
+            )
+            _remove(out)
+            return False
+
+        if not out.is_file() or out.stat().st_size <= 0:
+            _remove(out)
+            return False
+        return True
+    except Exception as e:
+        log.warning("Stream-Preview-Extraktion fehlgeschlagen: %s", e)
+        _remove(out)
+        return False
+
+
 def extract_preview(
     input_path: Path,
     output_path: Path,

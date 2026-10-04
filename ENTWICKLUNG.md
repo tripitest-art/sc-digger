@@ -34,7 +34,7 @@ Modul anlegt, trägt es in die Tabelle ein.
 | `sc_digger/web/__main__.py` | Startbefehl `python -m sc_digger.web`; startet ohne `SC_DIGGER_WEB_PASSWORD` nicht, schaltet den Editor nur mit `SC_DIGGER_CONFIG_LOCAL` ein |
 | `sc_digger/stats.py` | Statistikberechnung für Telegram-Digest und /stats-Bot-Befehl, Vorperioden-Vergleich der Kernkennzahlen, `render_stats_chart`, `send_weekly_digest`, `_trend_section` (Trend-Abschnitt) |
 | `sc_digger/trends.py` | Trend-Radar (Phase 4): Wachstumsanalyse historischer Engagement-Snapshots (`track_snapshots`) je Track und Artist |
-| `sc_digger/preview.py` | Live-Preview (Phase 3): energiereichstes Segment einer Audiodatei per ffmpeg finden und als OGG-Opus-Snippet extrahieren (`find_loudest_segment`, `extract_preview`) |
+| `sc_digger/preview.py` | Live-Preview (Phase 3): energiereichstes Segment einer Audiodatei per ffmpeg finden und als OGG-Opus-Snippet extrahieren (`find_loudest_segment`, `extract_preview`); `extract_preview_from_url` für die Stream-Preview nicht heruntergeladener Tracks (`/preview sc:<id>`, seit #168, Schalter `preview.stream_enabled`) |
 | `sc_digger/schema.py` | Config-Schema: `FIELDS`/`SECTION_TITLES`, `validate_config` (Typen, Wertebereiche, Warnungen), `deep_merge` für die lokale Override-Datei, Prüfbefehl `python -m sc_digger.schema` |
 | `config.yaml` | Einzige Konfiguration (Tags, Referenz-Accounts, Schwellwerte). Ist die Produktivkonfiguration. |
 | `entrypoint.sh` | Schreibt `cron.env` (Cron hat sonst weder PATH noch Secrets), startet cron und Bot |
