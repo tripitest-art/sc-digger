@@ -10,7 +10,8 @@ import sqlite3
 from .db import TrackDB
 from .models import Config
 from .output import TelegramError, send_telegram_photo
-from .trends import calculate_artist_trends, calculate_track_growth, format_trend_report
+from .trends import (calculate_artist_trends, calculate_tag_trends, calculate_track_growth,
+                     format_trend_report)
 
 log = logging.getLogger(__name__)
 
@@ -331,9 +332,12 @@ def _trend_section(cfg: Config, days: int = 7) -> str:
         track_trends = calculate_track_growth(
             track_db_path, days=trend_days, min_initial_likes=10, limit=10
         )
-        if not artist_trends and not track_trends:
+        tag_trends = calculate_tag_trends(track_db_path, days=trend_days, limit=5)
+        if not artist_trends and not track_trends and not tag_trends:
             return ""
-        report = format_trend_report(artist_trends, track_trends, days=trend_days)
+        report = format_trend_report(
+            artist_trends, track_trends, days=trend_days, tag_trends=tag_trends
+        )
         return "\n\n" + report
     except Exception as e:
         log.warning("Trend-Radar nicht verfügbar: %s", e)
