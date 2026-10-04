@@ -287,6 +287,13 @@ MIGRATIONS: list[tuple[int, str, str]] = [
         );
         """,
     ),
+    (
+        6,
+        "0006_track_snapshots_tags",
+        """
+        ALTER TABLE track_snapshots ADD COLUMN tags TEXT;
+        """,
+    ),
 ]
 
 
@@ -698,24 +705,31 @@ class TrackDB:
         reposts: int = 0,
         comments: int = 0,
         recorded_at: str | None = None,
+        tags: list[str] | None = None,
     ) -> None:
-        """Speichert einen historischen Engagement-Snapshot für einen SoundCloud-Track."""
+        """Speichert einen historischen Engagement-Snapshot für einen SoundCloud-Track.
+
+        Tags werden als JSON-Liste (ensure_ascii=False) abgelegt, damit Tags mit
+        Komma verlustfrei bleiben; leer oder None ergibt NULL.
+        """
+        tags_json = json.dumps(tags, ensure_ascii=False) if tags else None
         if recorded_at is None:
             self.db.execute(
                 """
-                INSERT INTO track_snapshots (sc_id, artist, title, plays, likes, reposts, comments)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO track_snapshots
+                    (sc_id, artist, title, plays, likes, reposts, comments, tags)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (sc_id, artist, title, plays, likes, reposts, comments),
+                (sc_id, artist, title, plays, likes, reposts, comments, tags_json),
             )
         else:
             self.db.execute(
                 """
                 INSERT INTO track_snapshots
-                    (sc_id, artist, title, plays, likes, reposts, comments, recorded_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    (sc_id, artist, title, plays, likes, reposts, comments, recorded_at, tags)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (sc_id, artist, title, plays, likes, reposts, comments, recorded_at),
+                (sc_id, artist, title, plays, likes, reposts, comments, recorded_at, tags_json),
             )
         self.db.commit()
 
@@ -746,6 +760,51 @@ class TrackDB:
                 reposts=int(getattr(t, "reposts", 0) or 0),
                 comments=int(getattr(t, "comments", 0) or 0),
                 recorded_at=recorded_at,
+                tags=list(getattr(t, "tags", None) or []),
+            )
+            stored += 1
+        return stored
+
+    def record_track_snapshots_daily(
+        self,
+        tracks: Sequence[Any],
+        recorded_at: str | None = None,
+    ) -> int:
+        """Speichert Snapshots nur für Tracks ohne Snapshot am selben UTC-Kalendertag.
+
+        Der Vergleich läuft über `date(recorded_at)`. `recorded_at` None bedeutet
+        jetzt (UTC). Objekte ohne sc_id / id werden ignoriert. Liefert die Zahl neu
+        gespeicherter Snapshots.
+        """
+        if recorded_at is None:
+            recorded_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        day = recorded_at[:10]
+        stored = 0
+        for t in tracks:
+            sc_id = getattr(t, "sc_id", None)
+            if sc_id is None:
+                sc_id = getattr(t, "id", None)
+            if sc_id is None:
+                continue
+            exists = self.db.execute(
+                "SELECT 1 FROM track_snapshots "
+                "WHERE sc_id = ? AND date(recorded_at) = ? LIMIT 1",
+                (int(sc_id), day),
+            ).fetchone()
+            if exists is not None:
+                continue
+            artist = getattr(t, "artist", None) or ""
+            title = getattr(t, "title", None)
+            self.record_track_snapshot(
+                sc_id=int(sc_id),
+                artist=str(artist),
+                title=title,
+                plays=int(getattr(t, "plays", 0) or 0),
+                likes=int(getattr(t, "likes", 0) or 0),
+                reposts=int(getattr(t, "reposts", 0) or 0),
+                comments=int(getattr(t, "comments", 0) or 0),
+                recorded_at=recorded_at,
+                tags=list(getattr(t, "tags", None) or []),
             )
             stored += 1
         return stored

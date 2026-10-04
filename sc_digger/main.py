@@ -552,6 +552,24 @@ def is_sunday(now: datetime | None = None) -> bool:
     return now.weekday() == 6
 
 
+def snapshot_tracks(cfg: Config, tracks: list[Track], *, dry_run: bool = False,
+                    recorded_at: str | None = None) -> int:
+    """Speichert Engagement-Snapshots für den gescorten Pool (höchstens einer je Track/Tag).
+
+    Bewusst vor dem `is_seen`-Filter aufgerufen: sonst gäbe es pro Track nur am Tag der
+    ersten Meldung einen Snapshot und nie ein Wachstum zu messen. `dry_run` schreibt
+    nichts; jeder Fehler wird geloggt, aber nie weitergeworfen (Regel 7), Rückgabe dann 0.
+    """
+    if dry_run:
+        return 0
+    try:
+        with TrackDB(cfg["state"]["track_db_path"]) as db:
+            return db.record_track_snapshots_daily(tracks, recorded_at=recorded_at)
+    except Exception:
+        log.exception("Engagement-Snapshots fehlgeschlagen")
+        return 0
+
+
 def _discover(cfg: Config, dry_run: bool, no_telegram: bool) -> int:
     """Führt die Discovery aus und gibt die Zahl der Rohtreffer (vor Filtern) zurück."""
     sc, s = SoundCloudClient(), cfg["search"]
@@ -573,6 +591,10 @@ def _discover(cfg: Config, dry_run: bool, no_telegram: bool) -> int:
 
     tracks = score_tracks(filter_bpm(filter_sets(tracks, cfg), cfg), cfg)
     log.info("Nach Filter/Scoring: %d Tracks", len(tracks))
+    # Vor dem is_seen-Filter und außerhalb des State-Blocks: so bekommt auch bereits
+    # gemeldeter Pool jeden Tag genau einen Snapshot (Grundlage für den Trend-Radar).
+    if not dry_run:
+        snapshot_tracks(cfg, tracks)
     with State(cfg["state"]["db_path"]) as state:
         tracks = [t for t in tracks if not state.is_seen(t.id)]
         fresh, dupes = process(tracks, cfg, dry_run=dry_run)
