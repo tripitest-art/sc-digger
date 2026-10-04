@@ -25,7 +25,9 @@ from .harmonic import compatible_keys, find_mix_candidates, format_mix_list
 from .main import run_link
 from .models import Config
 from .output import TelegramError, parse_feedback_callback, telegram_call
+from .output import send_telegram_voice
 from . import output, preview
+from .preview import extract_preview_from_url
 from .redact import install_redacting_logging
 from .soundcloud import SoundCloudClient, SoundCloudError
 from .stats import calculate_stats, format_stats
@@ -36,7 +38,7 @@ URL_RE = re.compile(r"https?://(?:on\.)?(?:www\.|m\.)?soundcloud\.com/\S+", re.I
 
 MIX_USAGE = "Aufruf: /mix <Camelot-Key> <BPM> [Toleranz], z. B. /mix 5A 155 oder /mix 8B 160 2"
 STATS_USAGE = "Aufruf: /stats [Tage (1–365, Standard: 7)]"
-PREVIEW_USAGE = "Aufruf: /preview <Suchtext oder id>"
+PREVIEW_USAGE = "Aufruf: /preview <Suchtext oder id oder sc:<SoundCloud-ID>>"
 
 HELP_TEXT = (
     "sc-digger Bot\n\n"
@@ -49,6 +51,7 @@ HELP_TEXT = (
     "• /curator_mining -> Profile aus 👍-Tracks vorschlagen\n"
     "• /mix 5A 155 -> harmonisch passende Tracks aus der Sammlung (±3 BPM)\n"
     "• /preview <Suchtext oder id> -> 20s-Snippet eines heruntergeladenen Tracks als Sprachnachricht\n"
+    "• /preview sc:<SoundCloud-ID> -> 20s-Snippet direkt aus dem SoundCloud-Stream (nicht heruntergeladen)\n"
     "• /stats [Tage] -> Statistiken über Scans, Inbox und Feedback\n\n"
     "Kein täglicher Filter, du bekommst die volle Liste mit Stats und Download-Einordnung."
 )
@@ -191,6 +194,49 @@ def mix_reply(cfg: Config, text: str) -> str:
     return html.escape(result, quote=False)
 
 
+def preview_stream_reply(cfg: Config, sc_id: int) -> str | None:
+    """Stream-Preview für einen SoundCloud-Track senden. Wirft nie.
+
+    Aktiv nur, wenn cfg preview.stream_enabled. Bei Erfolg wird send_telegram_voice
+    mit einer temporären OGG-Datei aufgerufen (tempfile, danach immer löschen) und
+    None zurückgegeben. Sonst eine Klartext-Fehlermeldung: deaktiviert, kein
+    Stream-Preview verfügbar, Verarbeitung fehlgeschlagen. Keine Exception in den
+    Bot-Loop, keine Secrets in den Texten.
+    """
+    try:
+        if not cfg["preview"]["stream_enabled"]:
+            return "Stream-Preview ist deaktiviert (preview.stream_enabled: false)."
+
+        try:
+            stream_url = SoundCloudClient().preview_url(int(sc_id))
+        except Exception as e:
+            log.warning("Stream-Preview-URL für %s nicht ermittelbar: %s", sc_id, e)
+            return "Stream-Preview konnte nicht ermittelt werden."
+
+        if not stream_url:
+            return f"kein Stream-Preview für SoundCloud-ID {sc_id} verfügbar."
+
+        out_ogg = Path(tempfile.gettempdir()) / f"sc-digger-stream-{int(sc_id)}.ogg"
+        try:
+            if not extract_preview_from_url(
+                stream_url, out_ogg, start_s=0.0, duration_s=20.0, bitrate_kbps=64
+            ):
+                return "Stream-Preview konnte nicht erstellt werden (ffmpeg-Fehler)."
+            send_telegram_voice(cfg, out_ogg, caption=f"SoundCloud {sc_id}")
+            return None
+        except TelegramError as e:
+            return f"Stream-Preview konnte nicht gesendet werden: {e}."
+        finally:
+            try:
+                if out_ogg.is_file():
+                    out_ogg.unlink()
+            except OSError:
+                pass
+    except Exception:
+        log.exception("Unerwarteter Fehler bei der Stream-Preview")
+        return "Stream-Preview fehlgeschlagen, siehe Container-Log."
+
+
 def preview_reply(cfg: Config, text: str, chat_id: str | None = None) -> str | None:
     """Antwort auf '/preview <Argument>'. Muster: stats_reply. Sendet NIE selbst
     Textnachrichten; Rückgabe ist der Text, den handle_message per _send_text
@@ -221,6 +267,12 @@ def preview_reply(cfg: Config, text: str, chat_id: str | None = None) -> str | N
         arg = " ".join(parts[1:]).strip() if len(parts) > 1 else ""
         if not arg:
             return PREVIEW_USAGE
+
+        if arg.startswith("sc:"):
+            digits = arg[3:]
+            if not digits.isdigit():
+                return PREVIEW_USAGE
+            return preview_stream_reply(cfg, int(digits))
 
         track_db_path = cfg["state"]["track_db_path"]
         try:

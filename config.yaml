@@ -188,6 +188,12 @@ state:
   db_path: /data/seen.sqlite
   track_db_path: /data/tracks.sqlite  # Lokale SQLite-DB (nie auf NFS, da WAL-Modus)
 
+preview:
+  # /preview sc:<SoundCloud-ID> sendet ein 20s-Snippet direkt aus dem SoundCloud-Stream,
+  # auch für Tracks, die nicht in der Track-DB liegen. Standard aus wegen offener
+  # rechtlicher Bewertung (#53).
+  stream_enabled: false
+
 retry:
   # Fehlgeschlagene Original-Downloads beim nächsten discover-Lauf erneut versuchen (Versuche gesamt)
   max_attempts: 3

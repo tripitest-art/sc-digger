@@ -84,6 +84,8 @@ Der Bot läuft dauerhaft (Hauptprozess des Containers) und antwortet nur im Chat
 | `/curator_mining` (auch `/curator-mining`) | Profile, die eigene Like-Tracks auffällig oft geliked oder repostet haben, als Kandidaten für `search.reference_accounts` |
 | `/mix <Key> <BPM> [Toleranz]` | Harmonisch und tempomäßig passende Tracks aus der Track-DB, mit Camelot-Abstand; Toleranz in BPM, Standard 3.0 |
 | `/stats [Tage]` | Statistik der letzten 1–365 Tage (Standard 7) |
+| `/preview <Suchtext oder id>` | 20s-Sprachnachricht eines heruntergeladenen Tracks (Track-DB, seit #147) |
+| `/preview sc:<SoundCloud-ID>` | 20s-Sprachnachricht direkt aus dem SoundCloud-Stream, auch für nicht heruntergeladene Tracks (Schalter `preview.stream_enabled`, Standard aus, seit #168) |
 
 Zum Digest gehören Inline-Buttons pro Track (Like, Dislike, Später). Die Wahl landet in `sc_feedback` in `tracks.sqlite` und wird von `/mix` und `/curator_mining` ausgewertet. Die Kaufliste kommt zusätzlich sonntags um 20:00 (`0 20 * * 0`, aus `entrypoint.sh`).
 
@@ -311,7 +313,7 @@ In Rekordbox einrichten:
 | `healthcheck.py` | Container-Healthcheck: Cron, letzter Lauf, DB-Integrität |
 | `stats.py` | Statistikberechnung für Digest und `/stats`, Vorperioden-Vergleich der Kernkennzahlen, Diagramm (`render_stats_chart`), Wochen-Digest inkl. Trend-Abschnitt |
 | `trends.py` | Trend-Radar: Wachstumsanalyse historischer Engagement-Snapshots; im Wochen-Digest über `stats.send_weekly_digest` eingebunden. |
-| `preview.py` | Live-Preview: energiereichstes Segment per ffmpeg, OGG-Opus-Snippet (`find_loudest_segment`, `extract_preview`). Eingebunden über den Bot-Befehl `/preview` (`bot.py`, seit #147). |
+| `preview.py` | Live-Preview: energiereichstes Segment per ffmpeg, OGG-Opus-Snippet (`find_loudest_segment`, `extract_preview`). Eingebunden über den Bot-Befehl `/preview` (`bot.py`, seit #147). Seit #168 zusätzlich `extract_preview_from_url` für `/preview sc:<SoundCloud-ID>` direkt aus dem Stream. |
 | `redact.py` | Zugangsdaten aus Texten, Logs und Fehlermeldungen entfernen |
 | `models.py` | Datenmodelle (`Track`, `Config`) und Config-Loader |
 

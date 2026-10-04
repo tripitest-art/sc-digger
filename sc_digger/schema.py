@@ -178,6 +178,10 @@ FIELDS: tuple[Field, ...] = (
     _f("state.db_path", "str", "State-DB", "Pfad zur Seen-SQLite-Datenbank.", editable=False),
     _f("state.track_db_path", "str", "Track-DB",
        "Pfad zur Track-SQLite-Datenbank (nie auf NFS, da WAL-Modus).", editable=False),
+    # --- preview ---
+    _f("preview.stream_enabled", "bool", "Stream-Preview",
+       "/preview sc:<SoundCloud-ID>: Snippet direkt aus dem SoundCloud-Stream.",
+       editable=False),
     # --- retry ---
     _f("retry.max_attempts", "int", "Download-Versuche",
        "Fehlgeschlagene Original-Downloads beim nächsten Lauf erneut versuchen (Versuche gesamt).",

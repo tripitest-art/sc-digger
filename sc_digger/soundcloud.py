@@ -143,6 +143,48 @@ class SoundCloudClient:
             purchase_title=d.get("purchase_title"),
         )
 
+    # ---------- Stream-Preview ----------
+    @staticmethod
+    def _transcoding_url(raw: dict) -> str | None:
+        """Wählt aus raw["media"]["transcodings"] die progressive URL, sonst die
+        erste URL mit format.protocol == "hls". Kein media, leere Liste oder
+        keine passende URL -> None. ANNAHME (nicht im Repo belegt): das
+        api-v2-Track-Dict enthält media.transcodings[] mit url und format.protocol.
+        """
+        media = raw.get("media") or {}
+        transcodings = media.get("transcodings") or []
+        hls = None
+        for tc in transcodings:
+            url = tc.get("url")
+            if not url:
+                continue
+            protocol = (tc.get("format") or {}).get("protocol")
+            if protocol == "progressive":
+                return url
+            if protocol == "hls" and hls is None:
+                hls = url
+        return hls
+
+    def preview_url(self, track_id: int) -> str | None:
+        """Liefert die eigentliche Stream-Preview-URL oder None.
+
+        Zwei Stufen (ANNAHME, nicht im Repo belegt):
+        1. Track-Dict über _get holen und per _transcoding_url die transcoding.url
+           wählen (progressive bevorzugt). Ohne URL -> None.
+        2. Diese transcoding.url mit angehängter client_id erneut via _get laden;
+           die Antwort ist JSON und enthält {"url": "<stream-url>"}. Fehlt "url"
+           oder ist es leer -> None.
+
+        SoundCloudError aus _get wird propagiert.
+        """
+        raw = self._get(f"/tracks/{int(track_id)}")
+        transcoding_url = self._transcoding_url(raw)
+        if not transcoding_url:
+            return None
+        resolved = self._get(transcoding_url)
+        stream_url = resolved.get("url") if isinstance(resolved, dict) else None
+        return stream_url or None
+
     # ---------- öffentliche API ----------
     def search_tag(self, tag: str, max_age_days: int, limit: int) -> list[Track]:
         """Neueste Tracks zu einem Tag. Filter created_at.to/from serverseitig."""
