@@ -1,38 +1,48 @@
-<!DOCTYPE html>
-<html lang="de">
-<head>
-<meta charset="utf-8">
-<title>sc-digger Konfiguration: Vorschau</title>
-<style>
-  body { font-family: sans-serif; margin: 2rem; color: #222; }
-  table { border-collapse: collapse; margin-top: 1rem; }
-  th, td { border: 1px solid #ccc; padding: 0.35rem 0.5rem; text-align: left; }
-  th { background: #f0f0f0; }
-  .problem-warning { color: #8a6d00; font-weight: bold; }
-</style>
-</head>
-<body>
-<h1>Vorschau</h1>
-{% if changes %}
-<table>
-<tr><th>Pfad</th><th>alt</th><th>neu</th></tr>
-{% for change in changes %}
-<tr><td>{{ change.path }}</td><td>{{ change.old }}</td><td>{{ change.new }}</td></tr>
-{% endfor %}
-</table>
-{% else %}
-<p>Keine Änderungen</p>
-{% endif %}
+{% extends "base.html" %}
+
+{% block title %}sc-digger Konfiguration: Vorschau{% endblock %}
+{% block nav_config %}active{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-header">
+    <h1 style="margin: 0; font-size: 1.5rem;">Vorschau der Änderungen</h1>
+    <a href="{{ config_action }}" style="font-size: 0.9rem;">&larr; Zurück zum Formular</a>
+  </div>
+
+  {% if changes %}
+  <p class="meta">Folgende Werte werden in der lokalen Konfigurationsdatei überschrieben:</p>
+  <table>
+    <tr>
+      <th>Pfad</th>
+      <th>alt</th>
+      <th>neu</th>
+    </tr>
+    {% for change in changes %}
+    <tr>
+      <td class="mono" style="font-weight: 600;">{{ change.path }}</td>
+      <td class="mono warn">{{ change.old }}</td>
+      <td class="mono ok">{{ change.new }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p class="meta">Keine Änderungen</p>
+  {% endif %}
+</div>
 
 {% if warnings %}
-<h2>Warnungen</h2>
-<ul>
-{% for problem in warnings %}
-<li class="problem-warning">{{ problem.path }}: {{ problem.message }}</li>
-{% endfor %}
-</ul>
+<div class="card">
+  <div class="card-header">
+    <h2 style="margin: 0; font-size: 1.15rem; color: var(--accent-warn);">Warnungen</h2>
+  </div>
+  <ul>
+  {% for problem in warnings %}
+    <li class="problem-warning" style="margin: 0.35rem 0;">{{ problem.path }}: {{ problem.message }}</li>
+  {% endfor %}
+  </ul>
+</div>
 {% endif %}
 
-<p><a href="{{ config_action }}">Zurück zum Formular</a></p>
-</body>
-</html>
+<p style="margin-top: 1.5rem;"><a href="{{ config_action }}">&larr; Zurück zum Formular</a></p>
+{% endblock %}

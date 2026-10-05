@@ -1,76 +1,75 @@
-<!DOCTYPE html>
-<html lang="de">
-<head>
-<meta charset="utf-8">
-<title>sc-digger Konfiguration</title>
-<style>
-  body { font-family: sans-serif; margin: 2rem; color: #222; }
-  h1 { margin-bottom: 0.2rem; }
-  h2 { margin-top: 1.5rem; border-bottom: 1px solid #ccc; }
-  .field { margin: 0.6rem 0; }
-  label { display: block; font-weight: bold; }
-  .help { color: #666; font-size: 0.9rem; }
-  input[type=text], textarea, select { width: 32rem; max-width: 100%; }
-  .default { color: #666; font-size: 0.9rem; }
-  .from-local { color: #b00020; font-size: 0.9rem; }
-  .problem-error { color: #b00020; font-weight: bold; }
-  .problem-warning { color: #8a6d00; font-weight: bold; }
-  table { border-collapse: collapse; margin-top: 1rem; }
-  th, td { border: 1px solid #ccc; padding: 0.35rem 0.5rem; text-align: left; }
-  th { background: #f0f0f0; }
-</style>
-</head>
-<body>
-<h1>sc-digger Konfiguration</h1>
-<p class="help">Änderungen werden nur in die lokale Override-Datei geschrieben und gelten ab dem
+{% extends "base.html" %}
+
+{% block title %}sc-digger Konfiguration{% endblock %}
+{% block nav_config %}active{% endblock %}
+
+{% block content %}
+<div class="card">
+  <h1>sc-digger Konfiguration</h1>
+  <p class="help" style="margin-bottom: 0;">Änderungen werden nur in die lokale Override-Datei geschrieben und gelten ab dem
 nächsten Lauf. Der laufende Telegram-Bot liest die Datei erst nach einem Neustart. Die versionierte
 <code>config.yaml</code> wird nie verändert; Betriebspfade und Zugangsdaten sind hier nicht änderbar.</p>
+</div>
 
-{% if saved %}<p class="from-local">Gespeichert.</p>{% endif %}
+{% if saved %}
+<div class="alert-box info" style="margin-bottom: 1.5rem;">
+  <p class="from-local" style="margin: 0; color: #93c5fd; font-weight: 600;">Gespeichert.</p>
+</div>
+{% endif %}
 
 {% if problems %}
-<ul>
-{% for problem in problems %}
-  <li class="problem-{{ problem.level }}">{{ problem.path }}: {{ problem.message }}</li>
-{% endfor %}
-</ul>
+<div class="alert-box warn" style="margin-bottom: 1.5rem;">
+  <ul style="margin: 0; padding-left: 1.25rem;">
+  {% for problem in problems %}
+    <li class="problem-{{ problem.level }}">{{ problem.path }}: {{ problem.message }}</li>
+  {% endfor %}
+  </ul>
+</div>
 {% endif %}
 
 <form method="post" action="{{ save_action }}">
 {% for section, fields in groups %}
-  <h2>{{ section }}</h2>
-  {% for field in fields %}
-  <div class="field">
-    <label for="f-{{ field.path }}">{{ field.label }}</label>
-    <span class="help">{{ field.help }}</span>
-    {% if field.kind in ("bool", "choice") %}
-    <select id="f-{{ field.path }}" name="{{ field.path }}">
-      {% if field.kind == "bool" %}
-      <option value="true" {% if values[field.path] == "true" %}selected{% endif %}>true</option>
-      <option value="false" {% if values[field.path] == "false" %}selected{% endif %}>false</option>
-      {% else %}
-      {% for choice in field.choices %}
-      <option value="{{ choice }}" {% if values[field.path] == choice %}selected{% endif %}>{{ choice }}</option>
-      {% endfor %}
-      {% endif %}
-    </select>
-    {% elif field.kind == "list" %}
-    <textarea id="f-{{ field.path }}" name="{{ field.path }}" rows="3">{{ values[field.path] }}</textarea>
-    {% else %}
-    <input type="text" id="f-{{ field.path }}" name="{{ field.path }}" value="{{ values[field.path] }}">
-    {% endif %}
-    <div class="default">Standard aus config.yaml: {{ defaults[field.path] }}</div>
-    {% if field.path in local_paths %}
-    <div class="from-local">Wert stammt aus der lokalen Datei.
-      <button type="submit" formaction="{{ reset_action }}" formmethod="post"
-              name="path" value="{{ field.path }}">Zurücksetzen</button>
+  <div class="card">
+    <div class="card-header">
+      <h2 style="margin: 0;">{{ section }}</h2>
     </div>
-    {% endif %}
+    {% for field in fields %}
+    <div class="field">
+      <label for="f-{{ field.path }}">{{ field.label }}</label>
+      <span class="help">{{ field.help }}</span>
+      {% if field.kind in ("bool", "choice") %}
+      <select id="f-{{ field.path }}" name="{{ field.path }}">
+        {% if field.kind == "bool" %}
+        <option value="true" {% if values[field.path] == "true" %}selected{% endif %}>true</option>
+        <option value="false" {% if values[field.path] == "false" %}selected{% endif %}>false</option>
+        {% else %}
+        {% for choice in field.choices %}
+        <option value="{{ choice }}" {% if values[field.path] == choice %}selected{% endif %}>{{ choice }}</option>
+        {% endfor %}
+        {% endif %}
+      </select>
+      {% elif field.kind == "list" %}
+      <textarea id="f-{{ field.path }}" name="{{ field.path }}" rows="3">{{ values[field.path] }}</textarea>
+      {% else %}
+      <input type="text" id="f-{{ field.path }}" name="{{ field.path }}" value="{{ values[field.path] }}">
+      {% endif %}
+      <div class="default">Standard aus config.yaml: {{ defaults[field.path] }}</div>
+      {% if field.path in local_paths %}
+      <div class="from-local">Wert stammt aus der lokalen Datei.
+        <button type="submit" formaction="{{ reset_action }}" formmethod="post"
+                name="path" value="{{ field.path }}">Zurücksetzen</button>
+      </div>
+      {% endif %}
+    </div>
+    {% endfor %}
   </div>
-  {% endfor %}
 {% endfor %}
-<p><button type="submit" formaction="{{ preview_action }}" formmethod="post">Vorschau</button>
-<button type="submit">Speichern</button></p>
+
+  <div class="card" style="position: sticky; bottom: 1rem; z-index: 10; box-shadow: 0 4px 20px rgba(0,0,0,0.5);">
+    <div style="display: flex; justify-content: flex-end; gap: 0.75rem;">
+      <button type="submit" formaction="{{ preview_action }}" formmethod="post">Vorschau</button>
+      <button type="submit">Speichern</button>
+    </div>
+  </div>
 </form>
-</body>
-</html>
+{% endblock %}
