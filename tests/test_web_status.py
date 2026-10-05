@@ -58,3 +58,14 @@ def test_snapshot_to_dict_has_all_fields(tmp_path):
 def test_healthz_works_even_anonymous_disabled(tmp_path):
     c = TestClient(create_app(make_cfg(tmp_path), password=PASSWORD))
     assert c.get("/healthz").status_code == 200
+
+
+def test_index_renders_base_layout_and_navigation(tmp_path):
+    r = client_for(tmp_path).get("/", auth=("sc", PASSWORD))
+    assert r.status_code == 200
+    assert "site-header" in r.text
+    assert "brand-title" in r.text
+    assert "nav-tabs" in r.text
+    assert "--bg-app" in r.text
+    assert "status-pill" in r.text
+
