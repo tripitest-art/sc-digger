@@ -104,6 +104,35 @@ def _audio_files(root: Path) -> set[Path]:
     return {p for p in root.rglob("*") if p.is_file() and p.suffix.lower() in _AUDIO_EXTS}
 
 
+def find_in_inbox(inbox: Path, track_id: int) -> Path | None:
+    """Erste Audio-Datei (Endungen wie _AUDIO_EXTS) unterhalb von inbox, deren Dateiname mit
+    f"[{track_id}]" beginnt. Rekursiv, sortiert nach Pfad. Ausgenommen sind Pfade, bei denen ein
+    Teil unterhalb der Inbox mit "_rejected", ".", "_dl_", ".cloud-tmp" oder "_eingang" beginnt.
+    Inbox fehlt oder kein Treffer -> None. Wirft nie."""
+    try:
+        if not inbox.is_dir():
+            return None
+        prefix = f"[{track_id}]"
+        hits = []
+        for p in sorted(inbox.rglob("*")):
+            if not p.is_file():
+                continue
+            if p.suffix.lower() not in _AUDIO_EXTS:
+                continue
+            if not p.name.startswith(prefix):
+                continue
+            try:
+                parts = p.relative_to(inbox).parts[:-1]
+            except ValueError:
+                continue
+            if any(part.startswith(("_rejected", ".", "_dl_", ".cloud-tmp", "_eingang")) for part in parts):
+                continue
+            hits.append(p)
+        return hits[0] if hits else None
+    except Exception:
+        return None
+
+
 def download_native(t: Track, inbox: Path, auth_token: str | None = None) -> Path | None:
     """Lädt die vom Uploader freigegebene Original-Datei über scdl.
 

@@ -35,7 +35,8 @@ from .models import Config, DownloadKind, Track
 from .organize import organize, write_tags
 from .redact import install_redacting_logging, redact
 from .output import (DigestMessage, State, TelegramError, build_digest, build_digest_messages, build_export_txt, download_native,
-                     finalize_quality, send_digest, send_scout_digest, send_scout_error, send_telegram, send_telegram_document)
+                     finalize_quality, find_in_inbox, send_digest, send_scout_digest, send_scout_error, send_telegram,
+                     send_telegram_document)
 from .pipeline import (classify_download, dedupe, estimate_bpm, filter_bpm, filter_sets,
                        genre_relevant, mark_sets, score_tracks)
 from .rekordbox import write_rekordbox_xml
@@ -76,6 +77,9 @@ def process(tracks: list[Track], cfg: Config, *, dry_run: bool,
     retry_q: RetryQueue | None = None
     try:
         for t in fresh:
+            if t.download_kind in (DownloadKind.NATIVE, DownloadKind.CLOUD) and find_in_inbox(inbox, t.id):
+                log.info("Schon in der Inbox, nicht erneut geladen: %s", t.title)
+                continue
             if t.download_kind == DownloadKind.NATIVE:
                 path = download_native(t, inbox, token)
                 if token:
