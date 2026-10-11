@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import tempfile
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
@@ -11,6 +12,7 @@ from pathlib import Path
 from urllib.parse import quote
 from typing import Any
 
+from sc_digger import organize
 from sc_digger.models import Config
 
 log = logging.getLogger(__name__)
@@ -257,16 +259,60 @@ def scan_inbox(inbox: Path) -> list[InboxTrack]:
     return [_read_track(p) for p in valid_paths]
 
 
-def build_xml(tracks: list[InboxTrack], path_map: dict[str, str], now: datetime | None = None) -> str:
+_CAMELOT_RE = re.compile(r"^(?:[1-9]|1[0-2])[AB]$")
+
+
+def _camelot_sort_key(name: str) -> tuple[int, str]:
+    """Sortierschlüssel für Camelot-Playlist-Namen: Zahl, dann Buchstabe; "unbekannt" zuletzt."""
+    if name == "unbekannt":
+        return (999, name)
+    return (int(name[:-1]), name[-1])
+
+
+def _bpm_sort_key(name: str) -> tuple[int, int]:
+    """Sortierschlüssel für BPM-Playlist-Namen: untere Grenze als Zahl; "unbekannt" zuletzt."""
+    if name == "unbekannt":
+        return (1, 0)
+    return (0, int(name.split("-", 1)[0]))
+
+
+def _playlist_folder(parent: ET.Element, name: str,
+                      groups: list[tuple[str, list[str]]]) -> None:
+    """Ordner (Type="0") mit Playlists (Type="1" KeyType="0") an parent anhängen.
+
+    groups ist eine Liste (Playlist-Name, Liste von TrackIDs) in gewünschter Reihenfolge.
+    """
+    folder_node = ET.SubElement(parent, "NODE", {
+        "Type": "0",
+        "Name": name,
+        "Count": str(len(groups)),
+    })
+    for pl_name, t_ids in groups:
+        pl_node = ET.SubElement(folder_node, "NODE", {
+            "Name": pl_name,
+            "Type": "1",
+            "KeyType": "0",
+            "Entries": str(len(t_ids)),
+        })
+        for tid in t_ids:
+            ET.SubElement(pl_node, "TRACK", {"Key": tid})
+
+
+def build_xml(tracks: list[InboxTrack], path_map: dict[str, str], now: datetime | None = None,
+              *, bpm_bucket_size: int | None = None, by_key: bool = False) -> str:
     """<?xml version="1.0" encoding="UTF-8"?> + DJ_PLAYLISTS Version="1.0.0" mit PRODUCT,
     COLLECTION und PLAYLISTS. Tracks ohne Location (nicht gemappt) werden weggelassen.
     COLLECTION Entries = Anzahl; TRACK-Attribute: TrackID (1, 2, … in Eingabereihenfolge), Name,
     Artist, Genre, Kind, Size, TotalTime (ganze Sekunden, gerundet), DateAdded (YYYY-MM-DD),
     Comments, Tonality, Location, AverageBpm (f"{bpm:.2f}", nur wenn bpm nicht None).
-    PLAYLISTS: NODE Type="0" Name="ROOT" Count="1" > NODE Type="0" Name="sc-digger" Count=<Wochen>
+    PLAYLISTS: NODE Type="0" Name="ROOT" Count="1" > NODE Type="0" Name="sc-digger" Count=<Kinder>
     > je Woche NODE Name="KW {Woche:02d}/{Jahr}" Type="1" KeyType="0" Entries=<n> mit
     ``<TRACK Key="<TrackID>"/>`` in Eingabereihenfolge. Woche/Jahr = ISO-Kalenderwoche von added,
     neueste Woche zuerst. Alle Attributwerte korrekt XML-maskiert. now: optional, derzeit ungenutzt.
+
+    Bisheriges Verhalten unverändert, solange bpm_bucket_size None/0 und by_key False ist.
+    Zusätzlich, nach den Wochen: Ordner "BPM" (falls bpm_bucket_size gesetzt) und "Key" (falls
+    by_key). Nur gemappte Tracks kommen vor; ohne Tracks wird der jeweilige Ordner weggelassen.
     """
     mapped: list[tuple[str, InboxTrack, str]] = []
     for t in tracks:
@@ -324,15 +370,46 @@ def build_xml(tracks: list[InboxTrack], path_map: dict[str, str], now: datetime 
         for tid in t_ids:
             ET.SubElement(week_node, "TRACK", {"Key": tid})
 
+    extra_folders = 0
+
+    if bpm_bucket_size:
+        bpm_dict: dict[str, list[str]] = {}
+        for track_id, t, _ in mapped:
+            label = organize._bpm_bucket(t.bpm, bpm_bucket_size)
+            if label == organize._bpm_bucket(None, bpm_bucket_size):
+                label = "unbekannt"
+            bpm_dict.setdefault(label, []).append(track_id)
+        if bpm_dict:
+            groups = sorted(bpm_dict.items(), key=lambda kv: _bpm_sort_key(kv[0]))
+            _playlist_folder(folder, "BPM", groups)
+            extra_folders += 1
+
+    if by_key:
+        key_dict: dict[str, list[str]] = {}
+        for track_id, t, _ in mapped:
+            name = t.key.strip().upper()
+            label = name if _CAMELOT_RE.match(name) else "unbekannt"
+            key_dict.setdefault(label, []).append(track_id)
+        if key_dict:
+            groups = sorted(key_dict.items(), key=lambda kv: _camelot_sort_key(kv[0]))
+            _playlist_folder(folder, "Key", groups)
+            extra_folders += 1
+
+    folder.set("Count", str(len(sorted_weeks) + extra_folders))
+
     return '<?xml version="1.0" encoding="UTF-8"?>\n' + ET.tostring(root, encoding="unicode")
 
 
 def write_rekordbox_xml(cfg: Config) -> Path | None:
-    """Liest cfg["rekordbox"] (xml_enabled, xml_path, path_map) und download.inbox_dir.
+    """Liest cfg["rekordbox"] (xml_enabled, xml_path, path_map, playlists_by_bpm, playlists_by_key)
+    und download.inbox_dir.
 
     xml_enabled falsch/fehlt -> None. xml_path innerhalb von download.collection_dir -> log.warning,
     None, nichts geschrieben (Goldene Regel 4). Sonst scan_inbox + build_xml und atomar schreiben:
     Temp-Datei im Zielordner (Name beginnt mit ".") + os.replace, UTF-8. Rückgabe: Zielpfad.
+    playlists_by_bpm (bool, fehlt -> False): build_xml mit bpm_bucket_size = organize.bpm_bucket_size;
+    ist der Wert kein int >= 1 (oder fehlt der Abschnitt), gilt 5. playlists_by_key (bool, fehlt ->
+    False): by_key=True.
     Jeder Fehler -> log.warning, Temp-Datei entfernen, None. Wirft nie.
     """
     tmp_path: Path | None = None
@@ -380,7 +457,21 @@ def write_rekordbox_xml(cfg: Config) -> Path | None:
 
         path_map = rb_cfg.get("path_map", {})
         tracks = scan_inbox(inbox_dir)
-        xml_content = build_xml(tracks, path_map)
+
+        bpm_bucket_size: int | None = None
+        if rb_cfg.get("playlists_by_bpm"):
+            raw_size: Any = None
+            try:
+                raw_size = cfg["organize"].get("bpm_bucket_size")
+            except (KeyError, TypeError, AttributeError):
+                raw_size = None
+            if isinstance(raw_size, bool) or not isinstance(raw_size, int) or raw_size < 1:
+                raw_size = organize._BPM_BUCKET_SIZE
+            bpm_bucket_size = raw_size
+
+        by_key = bool(rb_cfg.get("playlists_by_key"))
+
+        xml_content = build_xml(tracks, path_map, bpm_bucket_size=bpm_bucket_size, by_key=by_key)
 
         target_dir = xml_path.parent
         target_dir.mkdir(parents=True, exist_ok=True)
