@@ -12,7 +12,7 @@ from pathlib import Path
 from urllib.parse import quote
 from typing import Any
 
-from sc_digger import organize
+from sc_digger import cues, organize
 from sc_digger.models import Config
 
 log = logging.getLogger(__name__)
@@ -41,6 +41,7 @@ class InboxTrack:
     duration_s: float
     size: int
     added: datetime  # added = mtime (lokale Zeit)
+    first_kick_s: float | None = None
 
 
 def laptop_location(server_path: str | Path, path_map: dict[str, str]) -> str | None:
@@ -256,7 +257,10 @@ def scan_inbox(inbox: Path) -> list[InboxTrack]:
                 valid_paths.append(file_path)
 
     valid_paths.sort(key=lambda p: p.relative_to(inbox).as_posix())
-    return [_read_track(p) for p in valid_paths]
+    tracks = [_read_track(p) for p in valid_paths]
+    for t in tracks:
+        t.first_kick_s = cues.read_first_kick_tag(t.path)
+    return tracks
 
 
 _CAMELOT_RE = re.compile(r"^(?:[1-9]|1[0-2])[AB]$")
@@ -341,7 +345,14 @@ def build_xml(tracks: list[InboxTrack], path_map: dict[str, str], now: datetime 
         }
         if t.bpm is not None:
             attr["AverageBpm"] = f"{t.bpm:.2f}"
-        ET.SubElement(coll, "TRACK", attr)
+        track_node = ET.SubElement(coll, "TRACK", attr)
+        if t.first_kick_s is not None:
+            ET.SubElement(track_node, "POSITION_MARK", {
+                "Name": "First Kick",
+                "Type": "0",
+                "Start": f"{t.first_kick_s:.3f}",
+                "Num": "-1",
+            })
 
     playlists = ET.SubElement(root, "PLAYLISTS")
     top = ET.SubElement(playlists, "NODE", {"Type": "0", "Name": "ROOT", "Count": "1"})
@@ -457,6 +468,10 @@ def write_rekordbox_xml(cfg: Config) -> Path | None:
 
         path_map = rb_cfg.get("path_map", {})
         tracks = scan_inbox(inbox_dir)
+
+        if not rb_cfg.get("cues_enabled"):
+            for t in tracks:
+                t.first_kick_s = None
 
         bpm_bucket_size: int | None = None
         if rb_cfg.get("playlists_by_bpm"):

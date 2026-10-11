@@ -204,6 +204,8 @@ FIELDS: tuple[Field, ...] = (
        "Zielpfad der Rekordbox-XML.", editable=False),
     _f("rekordbox.path_map", "map", "Pfad-Zuordnung",
        "Server-Pfad -> Laptop-Pfad (aus Sicht von Rekordbox).", editable=False),
+    _f("rekordbox.cues_enabled", "bool", "Cues exportieren",
+       "Memory Cue First Kick aus dem Tag SCDIGGER_FIRST_KICK in die Rekordbox-XML schreiben."),
     _f("rekordbox.playlists_by_bpm", "bool", "Playlists nach BPM",
        "Zusätzlich Playlists pro BPM-Bereich (Ordner BPM) in die Rekordbox-XML schreiben."),
     _f("rekordbox.playlists_by_key", "bool", "Playlists nach Key",

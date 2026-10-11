@@ -23,6 +23,7 @@ Modul anlegt, trägt es in die Tabelle ein.
 | `sc_digger/harmonic.py` | Harmonische Kompatibilität (Camelot-Wheel), Suche passender Tracks nach Key und BPM |
 | `sc_digger/organize.py` | Inbox-Sortierung `<BPM>/<Camelot>/`, Tags schreiben |
 | `sc_digger/rekordbox.py` | Rekordbox-XML: eine Playlist pro Woche aus der Inbox |
+| `sc_digger/cues.py` | Cue-Tag `SCDIGGER_FIRST_KICK` (Sekunden) lesen und schreiben |
 | `sc_digger/db.py` | Zentrale Track-DB (Phase 2), Metadaten-Index, Audio-Fingerprints, Jobs-Queue, versionierte Migrationen |
 | `sc_digger/audit.py` | Read-only Library Audit (Phase 2.2), Fake-Erkennung, HTML-Dashboard |
 | `sc_digger/health.py` | Laufprotokoll, Alarm bei wiederholt leeren/fehlerhaften Läufen |
