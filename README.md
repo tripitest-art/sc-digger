@@ -186,6 +186,8 @@ Alle Optionen stehen in `config.yaml`; die folgende Liste nennt die Werte aus di
 | `rekordbox.xml_enabled` | Rekordbox-XML schreiben | `true` |
 | `rekordbox.xml_path` | Zielpfad der XML | `/music/inbox/sc-digger.xml` |
 | `rekordbox.path_map` | Mapping Server-Pfad zu Laptop-Pfad | `/music/inbox` → `Z:/Highres/_sc-digger-inbox` |
+| `rekordbox.playlists_by_bpm` | Zusätzliche Playlists pro BPM-Bereich (Ordner BPM) | `true` |
+| `rekordbox.playlists_by_key` | Zusätzliche Playlists pro Camelot-Key (Ordner Key) | `true` |
 | `digest.kaufliste_max_items` | Obergrenze der Kaufliste | `30` |
 | `digest.sunday_summary` | Wochenstatistik im Sonntagslauf senden | `false` |
 | `digest.stats_chart` | Balkendiagramm zum Wochen-Digest | `false` |
@@ -281,6 +283,8 @@ Der zweite Mechanismus ist der Container-Healthcheck (`sc_digger.healthcheck`): 
 ### Rekordbox
 
 `rekordbox.write_rekordbox_xml` läuft nach jedem `discover`-Lauf. `scan_inbox` liest die Inbox und überspringt alles, dessen Pfadteil mit `_rejected`, `.`, `_dl_` oder `.cloud-tmp` beginnt, sowie `_eingang`. `build_xml` erzeugt `PRODUCT`, `COLLECTION` und eine Playlist pro ISO-Kalenderwoche im Ordner `sc-digger` (neueste Woche zuerst, z. B. `KW 40/2026`). Pfade werden über `rekordbox.path_map` vom Server- auf den Laptop-Pfad umgeschrieben; Tracks ohne Mapping werden weggelassen. Die XML wird atomar geschrieben; liegt `xml_path` innerhalb `download.collection_dir`, wird der Lauf abgebrochen.
+
+Zusätzlich zu den Wochen-Playlists können zwei Ordner angelegt werden: `sc-digger/BPM/<Bereich>` (Breite aus `organize.bpm_bucket_size`, z. B. `150-155`) und `sc-digger/Key/<Camelot>` (z. B. `5A`). Tracks ohne BPM bzw. ohne gültigen Camelot-Key landen in `unbekannt`. Eingeschaltet wird das über `rekordbox.playlists_by_bpm` und `rekordbox.playlists_by_key` (Standard in `config.yaml`: `true`); fehlen die Optionen, bleibt die XML wie bisher. Nach dem Einschalten die XML in Rekordbox neu einlesen („rekordbox xml“ neu laden).
 
 In Rekordbox einrichten:
 

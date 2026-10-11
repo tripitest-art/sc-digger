@@ -204,6 +204,10 @@ FIELDS: tuple[Field, ...] = (
        "Zielpfad der Rekordbox-XML.", editable=False),
     _f("rekordbox.path_map", "map", "Pfad-Zuordnung",
        "Server-Pfad -> Laptop-Pfad (aus Sicht von Rekordbox).", editable=False),
+    _f("rekordbox.playlists_by_bpm", "bool", "Playlists nach BPM",
+       "Zusätzlich Playlists pro BPM-Bereich (Ordner BPM) in die Rekordbox-XML schreiben."),
+    _f("rekordbox.playlists_by_key", "bool", "Playlists nach Key",
+       "Zusätzlich Playlists pro Camelot-Key (Ordner Key) in die Rekordbox-XML schreiben."),
     # --- digest ---
     _f("digest.kaufliste_max_items", "int", "Max. Kaufliste",
        "Maximale Einträge in der wöchentlichen Kaufliste.", min=0),

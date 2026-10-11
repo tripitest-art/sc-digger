@@ -219,6 +219,10 @@ rekordbox:
   # Pfad-Mapping: Server-Pfad -> Laptop-Pfad (aus Sicht von Rekordbox)
   path_map:
     /music/inbox: "Z:/Highres/_sc-digger-inbox"
+  # Zusätzliche Playlist-Ordner neben den Wochen: sc-digger/BPM/<Bereich> (Breite aus organize.bpm_bucket_size)
+  # und sc-digger/Key/<Camelot>. Tracks ohne BPM bzw. Key landen in "unbekannt".
+  playlists_by_bpm: true
+  playlists_by_key: true
 
 digest:
   kaufliste_max_items: 30   # Maximale Einträge in der wöchentlichen Kaufliste
