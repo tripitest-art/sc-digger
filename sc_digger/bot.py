@@ -17,7 +17,9 @@ import logging
 import re
 import tempfile
 import time
+import xml.etree.ElementTree as ET
 from collections import Counter
+from datetime import datetime
 from pathlib import Path
 
 from .db import TrackDB
@@ -26,7 +28,7 @@ from .main import run_link
 from .models import Config
 from .output import TelegramError, parse_feedback_callback, telegram_call
 from .output import send_telegram_voice
-from . import output, preview
+from . import output, preview, rekordbox
 from .preview import extract_preview_from_url
 from .redact import install_redacting_logging
 from .soundcloud import SoundCloudClient, SoundCloudError
@@ -40,6 +42,9 @@ MIX_USAGE = "Aufruf: /mix <Camelot-Key> <BPM> [Toleranz], z. B. /mix 5A 155 oder
 STATS_USAGE = "Aufruf: /stats [Tage (1–365, Standard: 7)]"
 PREVIEW_USAGE = "Aufruf: /preview <Suchtext oder id oder sc:<SoundCloud-ID>>"
 
+SYNC_XML_DISABLED = "Rekordbox-XML ist abgeschaltet (rekordbox.xml_enabled)."
+SYNC_XML_FAILED = "Rekordbox-XML konnte nicht geschrieben werden, siehe Container-Log."
+
 HELP_TEXT = (
     "sc-digger Bot\n\n"
     "Schick mir einen SoundCloud-Link:\n"
@@ -52,7 +57,8 @@ HELP_TEXT = (
     "• /mix 5A 155 -> harmonisch passende Tracks aus der Sammlung (±3 BPM)\n"
     "• /preview <Suchtext oder id> -> 20s-Snippet eines heruntergeladenen Tracks als Sprachnachricht\n"
     "• /preview sc:<SoundCloud-ID> -> 20s-Snippet direkt aus dem SoundCloud-Stream (nicht heruntergeladen)\n"
-    "• /stats [Tage] -> Statistiken über Scans, Inbox und Feedback\n\n"
+    "• /stats [Tage] -> Statistiken über Scans, Inbox und Feedback\n"
+    "• /sync_xml -> Rekordbox-XML der Inbox sofort neu schreiben\n\n"
     "Kein täglicher Filter, du bekommst die volle Liste mit Stats und Download-Einordnung."
 )
 
@@ -327,6 +333,35 @@ def preview_reply(cfg: Config, text: str, chat_id: str | None = None) -> str | N
         return "Preview fehlgeschlagen, siehe Container-Log."
 
 
+def sync_xml_reply(cfg: Config, now: datetime | None = None) -> str:
+    """Schreibt die Rekordbox-XML über rekordbox.write_rekordbox_xml(cfg) neu und gibt die Antwort zurück.
+
+    - Fehlt cfg["rekordbox"] oder ist xml_enabled falsch: SYNC_XML_DISABLED, es wird nichts geschrieben.
+    - write_rekordbox_xml liefert None (z. B. Ziel in der Sammlung): SYNC_XML_FAILED.
+    - Sonst die Zahl der Tracks aus dem Attribut Entries des Knotens COLLECTION der geschriebenen Datei
+      lesen und f"✅ Rekordbox-XML neu geschrieben: {n} Tracks ({stamp})" zurückgeben,
+      stamp = (now or datetime.now()).strftime("%d.%m.%Y %H:%M"). Immer "Tracks", auch bei 0 oder 1.
+    - Jede Ausnahme (auch beim Lesen der Datei): log.exception, SYNC_XML_FAILED. Wirft nie.
+    """
+    try:
+        rb_cfg = cfg.raw.get("rekordbox") if isinstance(cfg.raw, dict) else None
+        if not rb_cfg or not isinstance(rb_cfg, dict) or not rb_cfg.get("xml_enabled"):
+            return SYNC_XML_DISABLED
+
+        xml_path = rekordbox.write_rekordbox_xml(cfg)
+        if xml_path is None:
+            return SYNC_XML_FAILED
+
+        root = ET.parse(xml_path).getroot()
+        collection = root.find("COLLECTION")
+        n = collection.get("Entries") if collection is not None else None
+        stamp = (now or datetime.now()).strftime("%d.%m.%Y %H:%M")
+        return f"✅ Rekordbox-XML neu geschrieben: {n} Tracks ({stamp})"
+    except Exception:
+        log.exception("Fehler beim Neuschreiben der Rekordbox-XML")
+        return SYNC_XML_FAILED
+
+
 def handle_message(cfg: Config, sc: SoundCloudClient, chat_id: str, text: str) -> None:
     text = text.strip()
     if text in ("/start", "/help"):
@@ -361,6 +396,14 @@ def handle_message(cfg: Config, sc: SoundCloudClient, chat_id: str, text: str) -
         except Exception:
             log.exception("Fehler bei /stats-Befehl")
             _send_text(cfg, chat_id, "Statistikabfrage fehlgeschlagen, siehe Container-Log.")
+        return
+
+    if first_word == "/sync_xml":
+        try:
+            _send_text(cfg, chat_id, sync_xml_reply(cfg))
+        except Exception:
+            log.exception("Fehler beim /sync_xml-Befehl")
+            _send_text(cfg, chat_id, "XML-Sync fehlgeschlagen, siehe Container-Log.")
         return
 
     if first_word == "/preview":
