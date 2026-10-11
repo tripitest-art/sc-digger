@@ -86,9 +86,9 @@ flowchart TD
 | **Phase 1** | Basis & DJ-Ready Pipeline | ✅ **Abgeschlossen** | Native Downloads, FFT-Fake-Check, BPM/Key, Tagging, Inbox-Organize, Modi discover/playlist/similar |
 | **Phase 1.5** | Robustheit | ✅ **Abgeschlossen** | BPM-Oktav-Korrektur, Health-Alarm |
 | **Phase 2** | Track-DB & Library Audit | 🟡 **Fast fertig** | Zentrale DB ✅, `audit` ✅, Fingerprint-Duplikate ✅, LUFS-Tags ✅, Container-Healthcheck ✅, Inbox-Normalisierung ✅, robuste Discovery ✅, Retry-Queue ✅, Engagement-Tempo ✅, `/stats` ✅; offen: Sonntags-Digest mit Grafik (#116) |
-| **Phase 3** | Feedback & Smart Ingestion | 🟡 **Laufend** | 👍/👎 ✅, Cloud-Downloads ✅, DJ-Sets inkl. kurzer Mixe ✅, Rekordbox-Wochen-XML ✅, Curator-Mining 🟡 (Vorschläge ✅), Cloud-Quellen erweitern ✅, Kaufliste ✅, Eingangsordner ✅, Promo-Abzug und Sperrliste ✅, Tag-Rotation/Exploration ✅ (#135, #141), Artist-Reputation ✅ (#140), Live-Preview 🟡 (Snippet #132 ✅, `/preview` #147 ✅; offen: Stream-Preview #168) |
+| **Phase 3** | Feedback & Smart Ingestion | 🟡 **Laufend** | 👍/👎 ✅, Cloud-Downloads ✅, DJ-Sets inkl. kurzer Mixe ✅, Rekordbox-Wochen-XML ✅, Curator-Mining 🟡 (Vorschläge ✅), Cloud-Quellen erweitern ✅, Kaufliste ✅, Eingangsordner ✅, Promo-Abzug und Sperrliste ✅, Tag-Rotation/Exploration ✅ (#135, #141), Artist-Reputation ✅ (#140), Live-Preview 🟡 (Snippet #132 ✅, `/preview` #147 ✅; offen: Stream-Preview #168), Rekordbox-Komfort 🔵 (3.11), Status „übernommen“ 🔵 (3.12) |
 | **Phase 4** | Geschmacksmodell & KI-Copilot | 🔵 Geplant | Audio-Embeddings, persönlicher Taste-Score, Qwen-Copilot via Tool-Calling; begonnen: Trend-Radar (#122) |
-| **Phase 5** | DJ-Performance & Set-Tools | 🟣 Vision | Harmonic Mixing per `/mix` ✅; Rekordbox-Cues, Embedding-Recommender, Web-Dashboard, Stem-Extraktion |
+| **Phase 5** | DJ-Performance & Set-Tools | 🔵 5.1–5.4 geplant, Rest 🟣 Vision | Harmonic Mixing per `/mix` ✅; Strukturanalyse, Auto-Cues, Drop-Preview, Breakdown-Anteil; später Embedding-Recommender, Web-Dashboard, Stem-Extraktion |
 
 ---
 
@@ -179,6 +179,12 @@ Copilot, Recommender und Dashboard.
 * ✅ Umgesetzt: `soundcloud.py` (`get_likers`, `get_reposters`), `db.py` (`get_liked_sc_ids`),
   Bot-Befehl `/curator_mining` mit Vorschlagsliste, `config.yaml` → `curator_mining`.
 * Offen: Inline-Button „✅ Hinzufügen" (Bot ergänzt `config.yaml`) und wöchentlicher Cron.
+* Offen, zweite Kandidatenquelle: Artists, die in der Track-DB (aus `audit`) häufig vorkommen, werden mit
+  SoundCloud-Profilen abgeglichen und als Kandidaten für `followed_users` vorgeschlagen. Grundlage ist die
+  Häufigkeit in der Sammlung (Abspielzahlen kennt die DB nicht); `curator_mining.min_collection_tracks`
+  (default: 3). **Kein automatischer Eintrag**, auch diese Kandidaten laufen über den Button „✅ Hinzufügen":
+  automatisch gesetzte Referenz-Accounts bekämen den Score-Bonus und würden sich selbst verstärken.
+  Sobald 3.12 fertig ist, zählen übernommene Tracks zusätzlich zu den 👍-Tracks als Ausgangsmenge.
 
 Ursprünglicher Plan:
 * `soundcloud.py`: `get_likers(track_id)` und `get_reposters(track_id)` über api-v2 (paginiert, konfigurierbar).
@@ -219,6 +225,27 @@ Ursprünglicher Plan:
 * Artist-Reputation: Bonus/Malus aus Track-DB und Feedback (✅ #140, zu #57).
 * Live-Preview: Snippet-Extraktion (✅ #132) und `/preview` für heruntergeladene Tracks (✅ #147); offen: Stream-Preview für Digest-Tracks (#168).
 
+### 3.11 Rekordbox-Komfort (🔵 Geplant)
+Zwei kleine Erweiterungen der bestehenden XML, ohne neue Analyse.
+
+* **Playlists nach Tempo und Tonart:** `rekordbox.py` legt neben den Wochen-Playlists zwei weitere Ordner an:
+  `sc-digger/BPM/<Bereich>` und `sc-digger/Key/<Camelot>`. Jeder Track steht weiterhin in seiner Kalenderwoche
+  und zusätzlich in genau einer BPM- und einer Key-Playlist. Die BPM-Bereiche folgen `organize.bpm_bucket_size`,
+  damit die Playlists zu den Inbox-Ordnern passen. Abschaltbar über `rekordbox.playlists_by_bpm` und
+  `rekordbox.playlists_by_key`. Tracks ohne BPM oder Key landen in `BPM/unbekannt` bzw. `Key/unbekannt`.
+* **Bot-Befehl `/sync_xml`:** schreibt die XML sofort neu (wie `python -m sc_digger.main rekordbox`), z. B. nach
+  dem Befüllen von `_eingang/`. Antwort: Anzahl der Tracks in der XML und Zeitpunkt.
+
+### 3.12 Implizites Feedback: Status „übernommen“ (🔵 Geplant)
+Ein Track, der aus der Inbox in die Sammlung gewandert ist, ist das stärkste Positiv-Signal, das es gibt.
+
+* Beim täglichen Lauf bzw. beim `audit`: Tracks, die sc-digger in die Inbox geliefert hat und die jetzt in
+  `/music/Schranz` liegen, werden in der Track-DB als **übernommen** markiert (mit Datum).
+* **Abgleich per Audio-Fingerprint**, nicht per Dateiname: Beim Übernehmen werden Dateien meist umbenannt.
+* Ein explizites 👎 wird nicht überschrieben. Rein lesend auf der Sammlung, geschrieben wird nur in die DB.
+* Verwendung: Ausgangsmenge für Curator-Mining (3.5) und Positivbeispiel für den Taste-Score (4.2). Kein fester
+  Punktebonus pro Artist; die Gewichtung übernimmt das jeweilige Modell.
+
 ---
 
 ## 🔵 Phase 4: Geschmacksmodell & KI-Copilot
@@ -230,9 +257,15 @@ Ursprünglicher Plan:
 ### 4.1 Audio-Embeddings (Workstation)
 * Embeddings über Essentia (Discogs-EffNet / MAEST) oder CLAP, als Job aus der Track-DB.
 * Zusätzliche Features: Energie, Perkussions-/Harmonie-Verhältnis, spektrale Rauheit.
+* Rohmerkmale vom Server (spektrale Flachheit, Zero-Crossing-Rate im Hauptteil, Breakdown-Anteil aus 5.4)
+  werden als Zahlen in der Track-DB abgelegt und stehen dem Modell als Features zur Verfügung.
+* **Stil-Etikett erst nach Kalibrierung.** Ein Tag wie `Loop/Roller`, `Industrial` oder `Melodic/Vocal` wird erst
+  geschrieben, wenn genug 👍/👎 und übernommene Tracks vorliegen, um die Grenzen zu prüfen. Zwei Messwerte ohne
+  Trainingsdaten reichen nicht: Brickwall-Master haben fast alle eine hohe Flachheit, und Gesang lässt sich daran
+  nicht erkennen. Abstimmen mit Issue #52 (Energie-Klassifizierung).
 
 ### 4.2 Persönlicher Taste-Score (Anti-TikTok-Filter)
-* Kleiner Klassifikator: deine Sammlung + 👍 als Positive, 👎 + aussortierte Tracks als Negative.
+* Kleiner Klassifikator: deine Sammlung + 👍 + übernommene Tracks (3.12) als Positive, 👎 + aussortierte Tracks als Negative.
 * Ergänzt das Engagement-Scoring im Digest; filtert Pop-EDM/TikTok-Bounce aus `#hardtechno`
   anhand des Klangs statt anhand von Titeln.
 * Nur für Tracks mit verfügbarem Audio (native/Cloud-Downloads) oder über die 30-s-Stream-Preview
@@ -248,10 +281,47 @@ Ursprünglicher Plan:
 
 ---
 
-## 🟣 Phase 5: DJ-Performance & Set-Tools (Vision)
+## 🔵 Phase 5: DJ-Performance & Set-Tools
 
+5.1 bis 5.4 laufen mit `librosa` auf dem Server, brauchen keine Workstation und sparen bei jedem neuen Track
+Vorbereitungszeit. 5.5 bleibt Vision.
+
+### 5.1 Strukturanalyse (🔵 Geplant)
+Gemeinsamer Baustein für Auto-Cues, Drop-Preview und Breakdown-Anteil. Wird einmal gebaut und einmal pro Track gerechnet.
+
+* `analysis.py`: Kick-Präsenz-Kurve aus der Energie im Bassband (ca. 40–120 Hz), taktweise über die ganze Spieldauer.
+  Daraus Segmente `intro`, `main`, `breakdown`, `outro` mit Start und Ende in Sekunden.
+* **Schwellen relativ zum Track** (Anteil am Median der Bassband-Energie), keine absoluten Pegel. Inbox-Tracks sind seit
+  #74 auf −8,5 LUFS normalisiert, Tracks der Sammlung (`audit`) nicht.
+* Speicherung in neuer Tabelle `track_segments` (Migration): Track, Typ, Start, Ende. Alle Abnehmer lesen von dort.
+* Umfang: zunächst neu geladene Tracks in der Inbox; die Sammlung kann später über `audit` nachgezogen werden, rein lesend.
+
+### 5.2 Auto-Cues (🔵 Geplant)
+* **Stufe 1, First Kick:** erster Kick-Einsatz im Bassband, nicht der erste beliebige Transient (Intros beginnen oft mit
+  Hi-Hat, Sweep oder FX). Suchfenster konfigurierbar, default 60 s. Ohne erkennbaren Kick gibt es keinen Cue statt eines falschen.
+* **Stufe 2, Drop und Outro:** Wiedereinsatz der Kick nach dem ersten Haupt-Breakdown sowie Outro-Start, aus den
+  Segmenten von 5.1 und auf den Taktanfang eingerastet.
+* **Format:** `POSITION_MARK` im Track-Knoten der Rekordbox-XML, `Type="0"`. Memory Cues haben `Num="-1"`, Hot Cues
+  `Num="0"` bis `"7"` (A–H). Standard sind Memory Cues; Hot Cues optional über `rekordbox.cues_as_hotcues`.
+* **Kein Beatgrid schreiben.** Die BPM-Messung ist für ein Grid über sechs Minuten nicht genau genug; das Raster legt
+  Rekordbox an. Geschrieben wird nur in die XML.
+* **Vorab von Hand prüfen:** wie Rekordbox Cues aus der XML übernimmt, vor allem bei schon importierten Tracks.
+* Traktor-NML folgt später nach demselben Muster.
+
+### 5.3 Drop-Preview (🔵 Geplant)
+* `preview.find_loudest_segment` wählt bisher den lautesten Abschnitt. Neu: Start 5 s vor dem ersten Wiedereinsatz der
+  Kick nach dem ersten Breakdown (aus 5.1), Länge wie bisher. Fallback ohne Breakdown: bisheriges Verhalten.
+* Gilt für `/preview` bei heruntergeladenen Tracks. Die Stream-Preview (#168) hat kein Audio der Struktur und bleibt unverändert.
+
+### 5.4 Breakdown-Anteil als Messwert (🔵 Geplant)
+* `breakdown_ratio`: Anteil kickloser Zeit zwischen Intro-Ende und Outro-Start. Intro und Outro zählen nicht mit.
+* Gespeichert in der Track-DB und im Digest angezeigt (z. B. „Breakdown 34 %“).
+* **Zunächst kein Malus.** `scoring.breakdown_penalty` mit default 0 kann nur die Reihenfolge geladener Tracks im Digest
+  beeinflussen: Das Perzentil-Scoring läuft vor dem Download, für Gate-, Store- und Stream-Tracks gibt es kein Audio.
+* Der Wert geht als Feature in 4.1/4.2.
+
+### 5.5 Vision (🟣)
 - [x] **Rekordbox-XML-Export:** wöchentliche Playlist „sc-digger KW xx“ aus der Inbox, ohne manuellen Import (siehe 3.4).
-- [ ] **Auto-Cue-Points:** Intro-Ende, Drop, Outro-Start als `POSITION_MARK` im Rekordbox-XML / Traktor-NML.
 - [x] **Harmonic Mixing:** `/mix <Key> <BPM>` im Bot listet harmonisch (Camelot-Nachbarn, mit Abstand)
   und tempomäßig passende Tracks aus der Sammlung (#76, #94, #103).
 - [ ] **Next-Track-Recommender per Embedding-Ähnlichkeit** (braucht Phase 4.1).
@@ -276,5 +346,8 @@ Ursprünglicher Plan:
 11. ~~Phase 3.8: Eingangsordner (#70)~~ ✅
 12. ~~Promo-Abzug (#77), Sperrliste (#95), kurze Mixe (#84), `/mix` (#94), Engagement-Tempo (#106), `/stats` (#108)~~ ✅
 13. **Laufend:** Sonntags-Digest (#116); Trend-Radar (#122); Live-Preview, Stream-Preview (#168)
-14. Phase 4: Embeddings → Taste-Score → Copilot
-15. Phase 5: Rekordbox-Cues, Embedding-Recommender, Dashboard, Stems
+14. **Als Nächstes:** Phase 3.11 (Rekordbox-Komfort, klein) und Phase 3.5 Rest (Button, Wochen-Cron, Sammlungs-Kandidaten)
+    → Phase 5.1 + 5.2 Stufe 1 (Strukturanalyse, First-Kick-Cue; vorher Rekordbox-Import von Hand testen)
+    → Phase 5.2 Stufe 2, 5.3, 5.4 → Phase 3.12 (Status „übernommen“)
+15. Phase 4: Embeddings → Taste-Score → Copilot
+16. Phase 5.5: Embedding-Recommender, Dashboard, Stems
