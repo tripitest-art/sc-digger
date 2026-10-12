@@ -17,7 +17,13 @@ from pathlib import Path
 
 import numpy as np
 
+from sc_digger import structure
+
 log = logging.getLogger(__name__)
+
+# Standarddauer eines Vorschau-Schnipsels und Vorlaufzeit vor dem ersten Drop.
+DEFAULT_PREVIEW_DURATION_S: float = 20.0
+DEFAULT_RISER_S: float = 5.0
 
 # Analyse auf 8 kHz Mono: reicht für eine RMS-Energie-Kurve und hält das Dekodieren
 # langer Tracks schnell und speicherarm.
@@ -186,17 +192,49 @@ def extract_preview_from_url(
         return False
 
 
+def find_preview_start(
+    audio_path: Path,
+    segment_duration_s: float = DEFAULT_PREVIEW_DURATION_S,
+    *,
+    riser_s: float = DEFAULT_RISER_S,
+) -> float:
+    """Start-Offset in Sekunden für das Vorschau-Snippet.
+
+    - Ermittelt die Track-Struktur via structure.analyze_structure(audio_path).
+    - Ermittelt den ersten Drop via structure.find_drop_start(segments).
+    - Bei erkanntem Drop: max(0.0, drop_start - riser_s), auf Millisekunden gerundet.
+    - Fallback (kein Breakdown, keine Kick, Datei nicht lesbar oder Fehler):
+      find_loudest_segment(audio_path, segment_duration_s).
+    Wirft nie.
+    """
+    try:
+        path = Path(audio_path)
+        segments = structure.analyze_structure(path)
+        drop_start = structure.find_drop_start(segments)
+        if drop_start is not None:
+            return round(max(0.0, float(drop_start) - float(riser_s)), 3)
+        return find_loudest_segment(path, segment_duration_s)
+    except Exception as e:
+        log.warning("Preview-Start für %s nicht ermittelbar: %s", audio_path, e)
+        try:
+            return find_loudest_segment(Path(audio_path), segment_duration_s)
+        except Exception:
+            return 0.0
+
+
 def extract_preview(
     input_path: Path,
     output_path: Path,
     *,
     start_s: float | None = None,
-    duration_s: float = 20.0,
+    duration_s: float = DEFAULT_PREVIEW_DURATION_S,
+    riser_s: float = DEFAULT_RISER_S,
     bitrate_kbps: int = 64,
 ) -> bool:
     """Schneidet ein Opus-Snippet aus input_path nach output_path.
 
-    Ohne start_s wird das energiereichste Segment (find_loudest_segment) verwendet.
+    Ohne start_s (start_s is None) wird der Startpunkt dynamisch über find_preview_start
+    ermittelt (riser_s vor dem ersten Drop, Fallback auf das lauteste Segment).
     Zielverzeichnisse werden bei Bedarf erstellt. True, wenn die Zieldatei existiert,
     größer als 0 Bytes ist und einen Audio-Stream enthält, sonst False (halbfertige
     Dateien werden entfernt). Wirft nie.
@@ -208,7 +246,10 @@ def extract_preview(
             log.warning("Preview nicht möglich, Datei fehlt: %s", source)
             return False
 
-        start = find_loudest_segment(source, duration_s) if start_s is None else float(start_s)
+        if start_s is None:
+            start = find_preview_start(source, duration_s, riser_s=riser_s)
+        else:
+            start = float(start_s)
         out.parent.mkdir(parents=True, exist_ok=True)
 
         result = subprocess.run(

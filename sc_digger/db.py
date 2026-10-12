@@ -89,6 +89,7 @@ class TrackRecord:
     status: TrackStatus | str | None = None
     feedback: str | None = None  # 'like', 'dislike', 'later'
     adopted_at: str | None = None  # Zeitstempel der Übernahme in die Sammlung (Format: YYYY-MM-DD HH:MM:SS)
+    breakdown_ratio: float | None = None
     created_at: str | None = None
     updated_at: str | None = None
 
@@ -293,6 +294,13 @@ MIGRATIONS: list[tuple[int, str, str]] = [
         "0006_track_snapshots_tags",
         """
         ALTER TABLE track_snapshots ADD COLUMN tags TEXT;
+        """,
+    ),
+    (
+        7,
+        "0007_tracks_breakdown_ratio",
+        """
+        ALTER TABLE tracks ADD COLUMN breakdown_ratio REAL;
         """,
     ),
     (

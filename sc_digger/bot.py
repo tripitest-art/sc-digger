@@ -312,8 +312,16 @@ def preview_reply(cfg: Config, text: str, chat_id: str | None = None) -> str | N
 
         out_ogg = Path(tempfile.gettempdir()) / f"sc-digger-preview-{rec.id}.ogg"
         try:
+            prev_cfg = cfg.raw.get("preview") or {}
+            duration_s = float(prev_cfg.get("duration_s", 20.0))
+            riser_s = float(prev_cfg.get("riser_s", 5.0))
             ok = preview.extract_preview(
-                audio_path, out_ogg, start_s=None, duration_s=20.0, bitrate_kbps=64
+                audio_path,
+                out_ogg,
+                start_s=None,
+                duration_s=duration_s,
+                riser_s=riser_s,
+                bitrate_kbps=64,
             )
             if not ok:
                 return "Preview konnte nicht erstellt werden (ffmpeg-Fehler)."

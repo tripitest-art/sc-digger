@@ -12,7 +12,13 @@ from pathlib import Path
 import pytest
 
 from sc_digger import preview
-from sc_digger.preview import extract_preview, find_loudest_segment
+from sc_digger.preview import (
+    DEFAULT_PREVIEW_DURATION_S,
+    DEFAULT_RISER_S,
+    extract_preview,
+    find_loudest_segment,
+    find_preview_start,
+)
 
 
 def _run_ffmpeg(args: list[str]) -> None:
@@ -191,3 +197,55 @@ def test_extract_preview_uses_loudest_segment_by_default(tmp_path):
 
     assert extract_preview(wav, out_ogg, start_s=None, duration_s=5.0) is True
     assert out_ogg.stat().st_size > 500
+
+
+# --- Drop-Preview: find_preview_start / extract_preview (Issue #202) ---
+
+def test_find_preview_start_beginnt_riser_vor_dem_drop(tmp_path, monkeypatch):
+    wav = _make_burst(tmp_path / "src.wav")
+
+    def fake_analyze(path):
+        return [
+            preview.structure.Segment("intro", 0.0, 10.0),
+            preview.structure.Segment("main", 10.0, 30.0),
+            preview.structure.Segment("breakdown", 30.0, 45.0),
+            preview.structure.Segment("main", 45.0, 70.0),
+            preview.structure.Segment("outro", 70.0, 80.0),
+        ]
+
+    monkeypatch.setattr(preview.structure, "analyze_structure", fake_analyze)
+
+    assert find_preview_start(wav, 20.0, riser_s=5.0) == 40.0
+    assert find_preview_start(wav, 20.0, riser_s=3.0) == 42.0
+
+
+def test_find_preview_start_klemmt_negativen_start_auf_null(tmp_path, monkeypatch):
+    wav = _make_burst(tmp_path / "src.wav")
+
+    def fake_analyze(path):
+        return [
+            preview.structure.Segment("breakdown", 0.0, 2.0),
+            preview.structure.Segment("main", 2.0, 40.0),
+            preview.structure.Segment("outro", 40.0, 50.0),
+        ]
+
+    monkeypatch.setattr(preview.structure, "analyze_structure", fake_analyze)
+
+    assert find_preview_start(wav, 20.0, riser_s=5.0) == 0.0
+
+
+def test_find_preview_start_fallback_ohne_breakdown(tmp_path, monkeypatch):
+    wav = _make_burst(tmp_path / "src.wav")
+    monkeypatch.setattr(preview.structure, "analyze_structure", lambda path: [])
+    monkeypatch.setattr(preview, "find_loudest_segment", lambda path, dur: 7.0)
+
+    assert find_preview_start(wav, 20.0) == 7.0
+
+
+def test_preview_konstanten_haben_standardwerte():
+    assert DEFAULT_PREVIEW_DURATION_S == 20.0
+    assert DEFAULT_RISER_S == 5.0
+
+
+def test_extract_preview_bei_fehlender_datei_liefert_false(tmp_path):
+    assert extract_preview(tmp_path / "gibt-es-nicht.wav", tmp_path / "out.ogg") is False

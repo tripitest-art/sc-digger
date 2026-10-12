@@ -61,6 +61,7 @@ class Track:
     reference_hit: bool = False  # von einem reference_accounts-Profil gerepostet/geliked
     velocity: float = 0.0  # Likes pro Stunde seit Upload, gefüllt in score_tracks()
     exploration_tag: str | None = None  # Tag, falls Track über einen Explorations-Suchlauf entdeckt wurde
+    breakdown_ratio: float | None = None  # Anteil kickloser Zeit zwischen Intro und Outro (0.0 bis 1.0)
 
     @property
     def like_ratio(self) -> float:

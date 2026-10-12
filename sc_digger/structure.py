@@ -8,6 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import logging
 from pathlib import Path
+from typing import Sequence
 import subprocess
 import sys
 
@@ -194,6 +195,83 @@ def analyze_structure(path: Path) -> list[Segment]:
             current_time = break_end
 
     return segments
+
+
+def _resolve_segments(
+    source: Sequence[Segment] | Path | str,
+) -> list[Segment]:
+    """Ermittelt Segmentketten aus einer Sequenz von Segmenten oder einem Dateipfad.
+
+    Eine Sequenz wird unverändert (als Liste) übernommen; ein Pfad/Text wird per
+    analyze_structure() analysiert. Ob eine Zeichenkette ein Pfad oder eine
+    Segmentliste ist, entscheidet das erste Element: Strings sind Pfade. Bei Fehlern
+    oder leeren Quellen kommt [] zurück.
+    """
+    if isinstance(source, (str, Path)):
+        try:
+            return analyze_structure(Path(source))
+        except Exception as e:
+            log.warning("Struktur-Analyse fehlgeschlagen für %s: %s", source, e)
+            return []
+    try:
+        return list(source)
+    except Exception as e:
+        log.warning("Segment-Quelle nicht lesbar: %s", e)
+        return []
+
+
+def find_drop_start(source: Sequence[Segment] | Path | str) -> float | None:
+    """Zeitpunkt des Kick-Wiedereinsatzes nach dem ersten Breakdown in Sekunden.
+    - source kann eine Sequenz von Segmenten (aus analyze_structure) oder ein Dateipfad sein.
+    - Sucht das erste Segment mit kind == 'breakdown'.
+    - Gibt dessen end_s zurück (auf Millisekunden gerundet), an dem die Kick wieder einsetzt.
+    - Gibt None zurück, wenn kein Breakdown existiert, keine Segmente vorhanden sind oder die
+      Datei nicht lesbar ist. Wirft nie.
+    """
+    try:
+        for seg in _resolve_segments(source):
+            if seg.kind == "breakdown":
+                return round(float(seg.end_s), 3)
+        return None
+    except Exception as e:
+        log.warning("Drop-Start für %s nicht ermittelbar: %s", source, e)
+        return None
+
+
+def calculate_breakdown_ratio(source: Sequence[Segment] | Path | str) -> float:
+    """Anteil kickloser Zeit zwischen Intro-Ende und Outro-Start als float von 0.0 bis 1.0.
+    - source kann eine Sequenz von Segmenten (aus analyze_structure) oder ein Dateipfad sein.
+    - Intro-Ende: end_s des ersten Segments, wenn kind == 'intro', sonst start_s des ersten Segments.
+    - Outro-Start: start_s des letzten Segments, wenn kind == 'outro', sonst end_s des letzten Segments.
+    - Hauptteil-Dauer = Outro-Start - Intro-Ende.
+    - Summiert die Dauern aller Segmente mit kind == 'breakdown' innerhalb des Hauptteils.
+    - Ergebnis = sum(breakdown_dauern) / Hauptteil-Dauer, gerundet auf 4 Nachkommastellen.
+    - Ist Hauptteil-Dauer <= 0: 0.0. Wirft nie.
+    """
+    try:
+        segments = _resolve_segments(source)
+        if not segments:
+            return 0.0
+
+        erste = segments[0]
+        intro_end = float(erste.end_s) if erste.kind == "intro" else float(erste.start_s)
+
+        letzte = segments[-1]
+        outro_start = float(letzte.start_s) if letzte.kind == "outro" else float(letzte.end_s)
+
+        main_duration = outro_start - intro_end
+        if main_duration <= 0:
+            return 0.0
+
+        breakdown_duration = sum(
+            float(s.end_s) - float(s.start_s)
+            for s in segments
+            if s.kind == "breakdown" and float(s.start_s) >= intro_end and float(s.end_s) <= outro_start
+        )
+        return round(breakdown_duration / main_duration, 4)
+    except Exception as e:
+        log.warning("Breakdown-Anteil für %s nicht ermittelbar: %s", source, e)
+        return 0.0
 
 
 def main(argv: list[str] | None = None) -> int:
