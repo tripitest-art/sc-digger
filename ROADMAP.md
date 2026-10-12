@@ -345,9 +345,26 @@ Gemeinsamer Baustein für Auto-Cues, Drop-Preview und Breakdown-Anteil. Wird ein
 10. ~~Phase 3.6: Kaufliste (#47)~~ ✅ → ~~Inbox-Normalisierung −8,5 LUFS (#74)~~ ✅
 11. ~~Phase 3.8: Eingangsordner (#70)~~ ✅
 12. ~~Promo-Abzug (#77), Sperrliste (#95), kurze Mixe (#84), `/mix` (#94), Engagement-Tempo (#106), `/stats` (#108)~~ ✅
-13. **Laufend:** Sonntags-Digest (#116); Trend-Radar (#122); Live-Preview, Stream-Preview (#168)
-14. **Als Nächstes:** Phase 3.11 (Rekordbox-Komfort, klein) und Phase 3.5 Rest (Button, Wochen-Cron, Sammlungs-Kandidaten)
-    → Phase 5.1 + 5.2 Stufe 1 (Strukturanalyse, First-Kick-Cue; vorher Rekordbox-Import von Hand testen)
-    → Phase 5.2 Stufe 2, 5.3, 5.4 → Phase 3.12 (Status „übernommen“)
+13. **Jetzt (Rekordbox-Neuaufbau):** Strukturanalyse (#189) → Phrasen-Raster und Cue-Liste → Cues beim Download und in der Inbox-XML → Strukturanalyse der Sammlung (nur lesend) → Sammlungs-XML. Dazu die Korrekturen #198 (getaggte Datei bei Dubletten) und #199 (NFC-Dateinamen).
+    Daneben laufend: Sonntags-Digest (#116), Trend-Radar (#122), Stream-Preview (#168).
+14. **Als Nächstes:** Rekordbox-Export lesend einlesen (#201), Phase 3.5 Rest (Button, Wochen-Cron, Sammlungs-Kandidaten)
+    → Phase 5.3, 5.4 (#202) → Phase 3.12 (Status „übernommen“, #205)
+    → Stil und Energie sortieren (#203), Aufräumliste für Kopien (#204)
 15. Phase 4: Embeddings → Taste-Score → Copilot
 16. Phase 5.5: Embedding-Recommender, Dashboard, Stems
+
+---
+
+## 🗂️ Backlog und Arbeitsweise
+
+GitHub Issues sind das Backlog. Es gibt drei Zustände:
+
+| Zustand | Label | Bedeutung |
+|---|---|---|
+| Idee | `idee` | Noch nicht umsetzbar: Fachfrage offen, kein Akzeptanztest. Kein Agent holt sie. Kurzer Text mit Idee, Nutzen und offenen Fragen. |
+| Bereit | `worker-task` + `bereit` + `agent-<familie>` | Vertrag mit Schnittstellen und Akzeptanztests. Ein Worker holt es. |
+| Wartend | `worker-task` + `blockiert` | Wartet auf andere PRs (`Wartet auf: #X`). Der Reviewer gibt es nach dem Merge frei. |
+
+Aus einer `idee` macht der Planer ein `worker-task`, sobald Stephan die offenen Fragen beantwortet hat (Issue
+umschreiben, Label `idee` entfernen). Reihenfolge steht oben unter „Reihenfolge“: **Jetzt**, **Als Nächstes**, dann der Rest.
+Ein Project-Board gibt es bewusst nicht; die Labels zeigen den Stand.
