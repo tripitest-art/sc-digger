@@ -863,6 +863,8 @@ def cli() -> None:
     aud.add_argument("--report", help="Dateipfad für den HTML-Report (z.B. report.html)")
     aud.add_argument("--force", action="store_true",
                      help="Alle Dateien neu analysieren (inkrementellen Cache ignorieren)")
+    aud.add_argument("--export-xml",
+                     help="Archivierte Tracks der TrackDB als Rekordbox-XML in diese Datei exportieren")
 
     sub.add_parser("rekordbox", parents=[common], help="Rekordbox-XML der Inbox neu schreiben")
 
@@ -896,6 +898,7 @@ def cli() -> None:
                 force=a.force,
                 dry_run=a.dry_run,
                 no_telegram=a.no_telegram,
+                export_xml_path=a.export_xml,
             )
         elif a.mode == "rekordbox":
             write_rekordbox_xml(cfg)
