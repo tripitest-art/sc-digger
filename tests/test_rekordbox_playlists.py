@@ -161,3 +161,69 @@ def test_schreiben_by_key_true_mit_camelot_key(tmp_path):
     )
     root = ET.parse(rb.write_rekordbox_xml(cfg)).getroot()
     assert sorted(n.get("Name") for n in _folder(root, "Key")) == ["5A", "unbekannt"]
+
+
+def _t_style(name, bpm, key, genre="", comment="", added=datetime(2026, 10, 5, 12, 0)):
+    return rb.InboxTrack(
+        path=Path("/music/inbox") / "x" / f"{name}.mp3", title=name, artist="A",
+        genre=genre, bpm=bpm, key=key, comment=comment, duration_s=300.0, size=1000,
+        added=added,
+    )
+
+
+def test_by_version_ordner_fehlt_bei_leerer_inbox():
+    root = _parse(rb.build_xml([], PATH_MAP, by_version=True, style_colors=True))
+    assert _folder(root, "Versionen") is None
+    assert root.find("PLAYLISTS/NODE/NODE").get("Count") == "0"
+
+
+def test_by_subgenre_nur_leere_playlists_werden_weggelassen():
+    """Nur Subgenres mit Track erscheinen; leere Subgenres (z. B. Terror) fehlen."""
+    tracks = [_t_style("a", 142.0, "11A", genre="tribal")]
+    root = _parse(rb.build_xml(tracks, PATH_MAP, by_subgenre=True))
+    folder = _folder(root, "Subgenres")
+    assert folder.get("Count") == "1"
+    assert _lists(folder, _ids(root)) == [("Tribal", ["a"])]
+
+
+def test_versionen_ohne_matching_genre_faellt_auf_originale():
+    """Titel ohne Versionsmuster landen in Originale, auch ohne Tags."""
+    tracks = [_t_style("Irgendein Track", 150.0, "5A")]
+    root = _parse(rb.build_xml(tracks, PATH_MAP, by_version=True))
+    folder = _folder(root, "Versionen")
+    assert _lists(folder, _ids(root)) == [("Originale", ["Irgendein Track"])]
+
+
+def test_style_colors_und_versionen_unabhaengig_voneinander():
+    """style_colors setzt Farbe, erzeugt aber keinen Versionen-Ordner und umgekehrt."""
+    tracks = [_t_style("Loop (DJ Tool)", 150.0, "5A")]
+    root = _parse(rb.build_xml(tracks, PATH_MAP, style_colors=True))
+    assert root.find("COLLECTION/TRACK").get("Colour") == "Blue"
+    assert _folder(root, "Versionen") is None
+
+
+def test_schreiben_mit_stil_optionen_erzeugt_ordner(tmp_path):
+    cfg = _cfg(tmp_path, playlists_by_style=True, playlists_by_subgenre=True,
+               playlists_by_version=True, style_colors=True, style_comments=True)
+    _audio(
+        Path(cfg["download"]["inbox_dir"]) / "150-155" / "5A" / "tool.mp3",
+        artist="A", title="Loop (DJ Tool)", bpm=150.0, key_name="5A",
+    )
+    root = ET.parse(rb.write_rekordbox_xml(cfg)).getroot()
+    assert _folder(root, "Stile") is not None
+    assert _folder(root, "Subgenres") is not None
+    assert _folder(root, "Versionen") is not None
+    tool = next(t for t in root.find("COLLECTION") if t.get("Name") == "Loop (DJ Tool)")
+    assert tool.get("Colour") == "Blue"
+    assert tool.get("Comments").startswith("[TOOL]")
+
+
+def test_schreiben_ohne_stil_optionen_keine_farben_und_ordner(tmp_path):
+    """Ohne die neuen Optionen bleibt der bestehende Kommentar erhalten, keine Ordner."""
+    cfg = _cfg(tmp_path)
+    root = ET.parse(rb.write_rekordbox_xml(cfg)).getroot()
+    assert _folder(root, "Stile") is None
+    assert _folder(root, "Subgenres") is None
+    assert _folder(root, "Versionen") is None
+    track = root.find("COLLECTION/TRACK")
+    assert "Colour" not in track.attrib
