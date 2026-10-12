@@ -58,6 +58,8 @@ docker compose exec sc-digger python -m sc_digger.main <modus> [...]
 | `intake` | Verarbeitet Dateien aus `download.intake_dir`. `--dry-run` listet sie nur auf, ohne sie zu verschieben. |
 | `stats` | Zeigt die Wochenstatistik auf der Konsole. `--days` (Standard 7) setzt das Fenster, `--chart <datei.png>` speichert ein Balkendiagramm, `--send` schickt die Statistik zusätzlich per Telegram. |
 
+Zur Strukturanalyse (erster Kick und Segmente) einer einzelnen Audiodatei dient `python -m sc_digger.structure <datei>`.
+
 Beispiele (ohne den `docker compose exec`-Präfix):
 
 ```bash
