@@ -44,6 +44,56 @@ class InboxTrack:
     first_kick_s: float | None = None
 
 
+_SCID_RE = re.compile(r"^\[(\d+)\]")
+_SCID_SUFFIX_RE = re.compile(r"_\d+$")
+
+
+def soundcloud_id_from_name(name: str) -> str | None:
+    """ID aus einem Dateinamen, der mit "[<Ziffern>]" beginnt, sonst None. Eine "_<n>"-Endung
+    vor der Dateiendung ändert nichts."""
+    m = _SCID_RE.match(name)
+    if m is None:
+        return None
+    return m.group(1)
+
+
+def _dedupe_sort_key(path: Path) -> tuple[int, int, str]:
+    """Sortierschlüssel für dedupe_by_soundcloud_id (kleiner = bevorzugt):
+    0. Stem ohne "_<Ziffern>"-Endung (Original vor Kopie) -> 0, sonst 1,
+    1. tieferer Pfad zuerst -> negative Anzahl der Pfadteile,
+    2. kleinster path.as_posix()."""
+    stem = path.stem
+    is_copy = 1 if _SCID_SUFFIX_RE.search(stem) else 0
+    depth = -len(path.parts)
+    return (is_copy, depth, path.as_posix())
+
+
+def dedupe_by_soundcloud_id(tracks: list[InboxTrack]) -> list[InboxTrack]:
+    """Behält pro SoundCloud-ID (aus path.name) genau einen Track. Gewinner, in dieser Reihenfolge:
+    1. Stem ohne Endung "_<Ziffern>" (Original vor Kopie),
+    2. tieferer Pfad (sortierte Datei <BPM>/<Key>/ vor loser Datei im Inbox-Root),
+    3. kleinster path.as_posix().
+    Tracks ohne ID bleiben unverändert. Die Reihenfolge der übrigen Tracks bleibt erhalten.
+    Leere Liste -> leere Liste. Dateien werden nicht gelesen, verschoben oder gelöscht."""
+    winners: dict[str, InboxTrack] = {}
+    for t in tracks:
+        sc_id = soundcloud_id_from_name(t.path.name)
+        if sc_id is None:
+            continue
+        current = winners.get(sc_id)
+        if current is None or _dedupe_sort_key(t.path) < _dedupe_sort_key(current.path):
+            winners[sc_id] = t
+
+    out: list[InboxTrack] = []
+    for t in tracks:
+        sc_id = soundcloud_id_from_name(t.path.name)
+        if sc_id is None:
+            out.append(t)
+        elif winners[sc_id] is t:
+            out.append(t)
+    return out
+
+
 def laptop_location(server_path: str | Path, path_map: dict[str, str]) -> str | None:
     """Rekordbox-Location: "file://localhost/" + quote(<Laptop-Pfad>, safe="/:").
 
@@ -319,7 +369,7 @@ def build_xml(tracks: list[InboxTrack], path_map: dict[str, str], now: datetime 
     by_key). Nur gemappte Tracks kommen vor; ohne Tracks wird der jeweilige Ordner weggelassen.
     """
     mapped: list[tuple[str, InboxTrack, str]] = []
-    for t in tracks:
+    for t in dedupe_by_soundcloud_id(tracks):
         loc = laptop_location(t.path, path_map)
         if loc is not None:
             track_id = str(len(mapped) + 1)
