@@ -69,6 +69,7 @@ umsetzen kann. Agenten ohne Shell folgen dem Skill `skills/sc-digger-planner/SKI
 
 Der Planer schreibt Issues, keinen Code: keine Branches, keine Commits, keine PRs, kein Merge.
 
+0. **Backlog:** Ideen ohne Akzeptanztest stehen als Issue mit Label `idee` (`ROADMAP.md`, „Backlog und Arbeitsweise“). Der Planer macht daraus erst dann ein `worker-task`, wenn die offenen Fragen beantwortet sind.
 1. **Auftrag klären.** Aus dem Gespräch mit Stephan oder aus `ROADMAP.md`. Ein Thema pro
    Issue; ist es größer als ein PR, in Teile schneiden („Teil 1 von #58“, wie #77 und #95).
    Offene Fachfragen (Schwellwerte, Verhalten im Fehlerfall) Stephan stellen, nicht raten.
