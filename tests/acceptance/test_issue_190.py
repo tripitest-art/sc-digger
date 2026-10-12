@@ -119,15 +119,18 @@ def test_build_xml_schreibt_position_mark_als_memory_cue():
     tracks = {t.get("Name"): t for t in root.find("COLLECTION")}
     assert set(tracks) == {"a", "b"}  # "c" ist nicht gemappt
     marks = tracks["a"].findall("POSITION_MARK")
-    assert len(marks) == 1
-    assert dict(marks[0].attrib) == {"Name": "First Kick", "Type": "0", "Start": "6.400", "Num": "-1"}
+    assert len(marks) == 2
+    assert dict(marks[0].attrib) == {
+        "Name": "First Kick", "Type": "0", "Start": "6.400", "Num": "0",
+        "Red": "0", "Green": "255", "Blue": "0",
+    }
+    assert dict(marks[1].attrib) == {"Name": "First Kick", "Type": "0", "Start": "6.400", "Num": "-1"}
     assert tracks["b"].findall("POSITION_MARK") == []
 
 
 def test_build_xml_rundet_start_auf_millisekunden():
     root = _parse(rb.build_xml([_t("a", 12.34567)], PATH_MAP))
     assert root.find("COLLECTION/TRACK/POSITION_MARK").get("Start") == "12.346"
-
 
 def _cfg(tmp_path, **rekordbox_opts):
     inbox = tmp_path / "inbox"
