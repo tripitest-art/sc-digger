@@ -229,6 +229,16 @@ rekordbox:
   # und sc-digger/Key/<Camelot>. Tracks ohne BPM bzw. Key landen in "unbekannt".
   playlists_by_bpm: true
   playlists_by_key: true
+  # Zusätzliche Playlist-Ordner nach der Schranz-Matrix (sc_digger.style):
+  # sc-digger/Stile/<Cluster>, sc-digger/Subgenres/<Subgenre>, sc-digger/Versionen/<Versionstyp>.
+  # Nur Playlists mit mindestens einem Track; leere Ordner entfallen.
+  playlists_by_style: false
+  playlists_by_subgenre: false
+  playlists_by_version: false
+  # Track-Farbe (Colour) anhand des Versionstyps setzen (Tool=Blue, Edit=Green, Bootleg/Mashup/Flip=Red, VIP/Rework=Yellow)
+  style_colors: false
+  # Track-Kommentar (Comments) im Stil-Format überschreiben (Stil, Tempo, Tonart, Flussachse, DJ-Notiz)
+  style_comments: false
 
 digest:
   kaufliste_max_items: 30   # Maximale Einträge in der wöchentlichen Kaufliste

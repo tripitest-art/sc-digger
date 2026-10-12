@@ -15,8 +15,51 @@ from typing import Any
 
 from sc_digger import cues, organize
 from sc_digger.models import Config
+from sc_digger.style import (
+    StyleCluster,
+    Subgenre,
+    VersionType,
+    classify_track,
+    format_rekordbox_comment,
+    recommend_rekordbox_color,
+)
 
 log = logging.getLogger(__name__)
+
+STYLE_CLUSTER_PLAYLISTS: list[tuple[StyleCluster, str]] = [
+    (StyleCluster.FUNDAMENT, "Fundament & Tools"),
+    (StyleCluster.NOISE, "Noise & Extremhärte"),
+    (StyleCluster.EMOTION, "Emotion & Dramaturgie"),
+    (StyleCluster.CROSSOVER, "Rhythmus-Crossover"),
+]
+
+SUBGENRE_PLAYLISTS: list[tuple[Subgenre, str]] = [
+    (Subgenre.TRIBAL, "Tribal"),
+    (Subgenre.HARDGROOVE, "Hardgroove"),
+    (Subgenre.CLASSIC, "Classic"),
+    (Subgenre.INDUSTRIAL, "Industrial"),
+    (Subgenre.ACID, "Acid"),
+    (Subgenre.TERROR, "Terror"),
+    (Subgenre.NEO, "Neo"),
+    (Subgenre.MELODIC, "Melodic"),
+    (Subgenre.BOUNCE, "Bounce"),
+    (Subgenre.PSY, "Psy"),
+    (Subgenre.REVERSE_BASS, "Reverse Bass"),
+    (Subgenre.EBM, "EBM"),
+    (Subgenre.CROSSBREED, "Crossbreed"),
+]
+
+VERSION_TYPE_PLAYLISTS: list[tuple[VersionType, str]] = [
+    (VersionType.TOOL, "Tools"),
+    (VersionType.EDIT, "Edits"),
+    (VersionType.BOOTLEG, "Bootlegs"),
+    (VersionType.REMIX, "Remixe"),
+    (VersionType.VIP, "VIPs"),
+    (VersionType.MASHUP, "Mashups"),
+    (VersionType.FLIP, "Flips"),
+    (VersionType.REWORK, "Reworks"),
+    (VersionType.ORIGINAL, "Originale"),
+]
 
 KINDS = {
     ".wav": "WAV File",
@@ -361,7 +404,9 @@ def _playlist_folder(parent: ET.Element, name: str,
 
 def build_xml(tracks: list[InboxTrack], path_map: dict[str, str], now: datetime | None = None,
               *, bpm_bucket_size: int | None = None, by_key: bool = False,
-              hot_cues: bool = True, memory_cues: bool = True) -> str:
+              hot_cues: bool = True, memory_cues: bool = True,
+              by_style: bool = False, by_subgenre: bool = False, by_version: bool = False,
+              style_colors: bool = False, style_comments: bool = False) -> str:
     """<?xml version="1.0" encoding="UTF-8"?> + DJ_PLAYLISTS Version="1.0.0" mit PRODUCT,
     COLLECTION und PLAYLISTS. Tracks ohne Location (nicht gemappt) werden weggelassen.
     COLLECTION Entries = Anzahl; TRACK-Attribute: TrackID (1, 2, … in Eingabereihenfolge), Name,
@@ -379,6 +424,13 @@ def build_xml(tracks: list[InboxTrack], path_map: dict[str, str], now: datetime 
     Cues aus first_kick_s: hot_cues=True schreibt einen Hot Cue (Pad A, Num="0", grün
     Red="0" Green="255" Blue="0"); memory_cues=True schreibt einen Memory Cue (Num="-1").
     Sind beide True, wird der Hot Cue zuerst angehängt. Ohne first_kick_s keine Cues.
+
+    Schranz-Matrix (sc_digger.style), optional: style_colors=True setzt am TRACK-Knoten das
+    Colour-Attribut aus recommend_rekordbox_color (ausser "None"); style_comments=True
+    überschreibt Comments mit format_rekordbox_comment. by_style/by_subgenre/by_version
+    ergänzen nach den Wochen und BPM/Key die Ordner "Stile", "Subgenres" und "Versionen"
+    mit je einer Playlist pro nicht leerem Cluster/Subgenre/Versionstyp in fester
+    Reihenfolge; leere Ordner entfallen.
     """
     mapped: list[tuple[str, InboxTrack, str]] = []
     for t in dedupe_by_soundcloud_id(tracks):
@@ -407,6 +459,20 @@ def build_xml(tracks: list[InboxTrack], path_map: dict[str, str], now: datetime 
         }
         if t.bpm is not None:
             attr["AverageBpm"] = f"{t.bpm:.2f}"
+        if style_colors or style_comments:
+            analysis = classify_track(
+                bpm=t.bpm,
+                title=t.title,
+                tags=[t.genre] if t.genre else None,
+            )
+            if style_colors:
+                color = recommend_rekordbox_color(analysis)
+                if color != "None":
+                    attr["Colour"] = color
+            if style_comments:
+                attr["Comments"] = format_rekordbox_comment(
+                    analysis, bpm=t.bpm, key_camelot=t.key or None
+                )
         track_node = ET.SubElement(coll, "TRACK", attr)
         if t.first_kick_s is not None:
             start = f"{t.first_kick_s:.3f}"
@@ -478,6 +544,45 @@ def build_xml(tracks: list[InboxTrack], path_map: dict[str, str], now: datetime 
         if key_dict:
             groups = sorted(key_dict.items(), key=lambda kv: _camelot_sort_key(kv[0]))
             _playlist_folder(folder, "Key", groups)
+            extra_folders += 1
+
+    if by_style or by_subgenre or by_version:
+        analyses: dict[str, Any] = {}
+        for track_id, t, _ in mapped:
+            analyses[track_id] = classify_track(
+                bpm=t.bpm,
+                title=t.title,
+                tags=[t.genre] if t.genre else None,
+            )
+
+    if by_style:
+        cluster_dict: dict[StyleCluster, list[str]] = {}
+        for track_id, t, _ in mapped:
+            cluster_dict.setdefault(analyses[track_id].cluster, []).append(track_id)
+        groups = [(name, cluster_dict[cluster]) for cluster, name in STYLE_CLUSTER_PLAYLISTS
+                  if cluster_dict.get(cluster)]
+        if groups:
+            _playlist_folder(folder, "Stile", groups)
+            extra_folders += 1
+
+    if by_subgenre:
+        subgenre_dict: dict[Subgenre, list[str]] = {}
+        for track_id, t, _ in mapped:
+            subgenre_dict.setdefault(analyses[track_id].subgenre, []).append(track_id)
+        groups = [(name, subgenre_dict[subgenre]) for subgenre, name in SUBGENRE_PLAYLISTS
+                  if subgenre_dict.get(subgenre)]
+        if groups:
+            _playlist_folder(folder, "Subgenres", groups)
+            extra_folders += 1
+
+    if by_version:
+        version_dict: dict[VersionType, list[str]] = {}
+        for track_id, t, _ in mapped:
+            version_dict.setdefault(analyses[track_id].version_type, []).append(track_id)
+        groups = [(name, version_dict[vt]) for vt, name in VERSION_TYPE_PLAYLISTS
+                  if version_dict.get(vt)]
+        if groups:
+            _playlist_folder(folder, "Versionen", groups)
             extra_folders += 1
 
     folder.set("Count", str(len(sorted_weeks) + extra_folders))
@@ -561,13 +666,21 @@ def write_rekordbox_xml(cfg: Config) -> Path | None:
 
         by_key = bool(rb_cfg.get("playlists_by_key"))
 
+        by_style = bool(rb_cfg.get("playlists_by_style"))
+        by_subgenre = bool(rb_cfg.get("playlists_by_subgenre"))
+        by_version = bool(rb_cfg.get("playlists_by_version"))
+        style_colors = bool(rb_cfg.get("style_colors"))
+        style_comments = bool(rb_cfg.get("style_comments"))
+
         hot_cues = rb_cfg.get("cues_as_hotcues", True)
         memory_cues = rb_cfg.get("cues_as_memory", True)
         hot_cues = True if hot_cues is None else bool(hot_cues)
         memory_cues = True if memory_cues is None else bool(memory_cues)
 
         xml_content = build_xml(tracks, path_map, bpm_bucket_size=bpm_bucket_size, by_key=by_key,
-                                hot_cues=hot_cues, memory_cues=memory_cues)
+                                hot_cues=hot_cues, memory_cues=memory_cues,
+                                by_style=by_style, by_subgenre=by_subgenre, by_version=by_version,
+                                style_colors=style_colors, style_comments=style_comments)
 
         target_dir = xml_path.parent
         target_dir.mkdir(parents=True, exist_ok=True)
