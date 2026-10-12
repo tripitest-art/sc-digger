@@ -18,6 +18,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 from ..models import Config
 from ..schema import FIELDS, SECTION_TITLES, Problem, deep_merge, get_field
 from .configedit import apply_form, diff_config, format_form_value, get_path, remove_key, save_local
+from .database import DEFAULT_LIMIT, get_collection_overview, query_tracks
 from .status import collect_status
 
 _TEMPLATES = Path(__file__).parent / "templates"
@@ -74,6 +75,42 @@ def _load_yaml(path: Path) -> dict:
     return data if isinstance(data, dict) else {}
 
 
+_TRUES = {"1", "true", "yes", "ja", "on"}
+_FALSES = {"0", "false", "no", "nein", "off"}
+
+
+def _query_float(value: str | None) -> float | None:
+    """Query-Parameter als float; leer oder ungültig -> None (kein Filter)."""
+    if value is None or value == "":
+        return None
+    try:
+        return float(value)
+    except ValueError:
+        return None
+
+
+def _query_int(value: str | None, default: int) -> int:
+    """Query-Parameter als int; leer oder ungültig -> default."""
+    if value is None or value == "":
+        return default
+    try:
+        return int(value)
+    except ValueError:
+        return default
+
+
+def _query_bool(value: str | None) -> bool | None:
+    """Query-Parameter als bool; leer oder unbekannt -> None (kein Filter)."""
+    if value is None or value == "":
+        return None
+    lowered = value.strip().lower()
+    if lowered in _TRUES:
+        return True
+    if lowered in _FALSES:
+        return False
+    return None
+
+
 def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = False,
                base_path: Path | None = None, local_path: Path | None = None) -> FastAPI:
     """Erzeugt die Status-App.
@@ -110,6 +147,33 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
         if not _check_auth(request, password, allow_anonymous):
             return _unauthorized()
         return JSONResponse(collect_status(cfg).to_dict())
+
+    # Rein lesende Track-Abfragen für den Explorer (Teil 1 des Dashboards): nur die
+    # Track-DB, ausschließlich `mode=ro`, keine Schreibpfade.
+    @app.get("/api/database/overview")
+    def api_database_overview(request: Request):
+        if not _check_auth(request, password, allow_anonymous):
+            return _unauthorized()
+        return JSONResponse(get_collection_overview(cfg["state"]["track_db_path"]).to_dict())
+
+    @app.get("/api/tracks")
+    def api_tracks(request: Request):
+        if not _check_auth(request, password, allow_anonymous):
+            return _unauthorized()
+        params = request.query_params
+        result = query_tracks(
+            cfg["state"]["track_db_path"],
+            status=params.get("status") or None,
+            search=params.get("q") or None,
+            bpm_min=_query_float(params.get("bpm_min")),
+            bpm_max=_query_float(params.get("bpm_max")),
+            key_camelot=params.get("key_camelot") or None,
+            quality_status=params.get("quality") or None,
+            adopted=_query_bool(params.get("adopted")),
+            limit=_query_int(params.get("limit"), DEFAULT_LIMIT),
+            offset=_query_int(params.get("offset"), 0),
+        )
+        return JSONResponse(result.to_dict())
 
     if base_path is None or local_path is None:
         return app
