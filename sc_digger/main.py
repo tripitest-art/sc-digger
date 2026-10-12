@@ -26,6 +26,7 @@ from zoneinfo import ZoneInfo
 
 from .analysis import analyze_track, resolve_bpm
 from .audit import run_audit
+from .cleanup import audit_inbox_duplicates, format_duplicate_report, move_duplicates
 from .cloud import download_cloud
 from .collection import Collection
 from .db import TrackDB
@@ -735,6 +736,29 @@ def run_stats(cfg: Config, *, days: int = 7, chart_path: str | None = None,
             print(f"Diagramm gespeichert: {chart_path}")
 
 
+def run_cleanup_inbox(
+    cfg: Config,
+    *,
+    move: bool = False,
+    inbox_path: str | Path | None = None,
+    dry_run: bool = False,
+    no_telegram: bool = True,
+) -> int:
+    """Führt das Inbox-Cleanup aus.
+    inbox = Path(inbox_path) if inbox_path else Path(cfg["download"]["inbox_dir"])
+    Ermittelt groups = audit_inbox_duplicates(inbox).
+    Gibt format_duplicate_report(groups, inbox=inbox) via print aus.
+    Falls move=True und nicht dry_run: verschiebt Dateien via move_duplicates(groups, inbox).
+    Rückgabe: Anzahl gefundener überzähliger Dateien.
+    """
+    inbox = Path(inbox_path) if inbox_path else Path(cfg["download"]["inbox_dir"])
+    groups = audit_inbox_duplicates(inbox)
+    print(format_duplicate_report(groups, inbox=inbox))
+    if move and not dry_run:
+        move_duplicates(groups, inbox)
+    return sum(len(g.duplicates) for g in groups)
+
+
 def run_scout(cfg: Config, *, dry_run: bool = False) -> int:
     """Führt Bandcamp- und Beatport-Scout aus.
 
@@ -880,6 +904,12 @@ def cli() -> None:
     sub.add_parser("scout", parents=[common],
                    help="Bandcamp-Feeds und Beatport-Charts in store_items schreiben")
 
+    ci = sub.add_parser("cleanup-inbox", parents=[common],
+                        help="Dubletten derselben SoundCloud-ID in der Inbox auflisten (optional verschieben)")
+    ci.add_argument("--move", action="store_true",
+                    help="Überzählige Dateien nach <inbox>/_rejected/duplicate/ verschieben")
+    ci.add_argument("--inbox", help="Inbox-Pfad (Standard: aus config.yaml)")
+
     a = ap.parse_args()
     install_redacting_logging(logging.DEBUG if a.verbose else logging.INFO)
     cfg = Config.load(a.config)
@@ -917,6 +947,9 @@ def cli() -> None:
                       dry_run=a.dry_run, no_telegram=a.no_telegram)
         elif a.mode == "scout":
             run_scout(cfg, dry_run=a.dry_run)
+        elif a.mode == "cleanup-inbox":
+            run_cleanup_inbox(cfg, move=a.move, inbox_path=a.inbox,
+                              dry_run=a.dry_run, no_telegram=a.no_telegram)
         else:
             run_discover(cfg, a.dry_run, a.no_telegram)
     except Exception:
