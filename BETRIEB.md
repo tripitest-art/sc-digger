@@ -43,3 +43,85 @@ scheitert Build oder Start, meldet das Skript `FEHLER` und versucht es beim näc
 Schlüssel liegt auf dem Server unter `/home/claude/.ssh/sc_digger_deploy` und ist per
 `core.sshCommand` in der Repo-Konfiguration hinterlegt; eingetragen ist er auf GitHub unter
 *Settings → Deploy keys* (ohne Schreibrecht).
+
+## Inbox auf den Laptop syncen (Syncthing)
+
+Die Inbox (`/music/inbox`) wird per Syncthing auf den Laptop gespiegelt, damit Rekordbox die
+Dateien unter dem Laptop-Pfad findet. Einrichtung und Betrieb stehen nur hier; Zugangsdaten,
+GUI-Passwort und Geräte-IDs gehören nicht ins Repo.
+
+**Grundregeln**
+
+- Nur `/music/inbox` wird geteilt. **Nie** `/music/Schranz` (Regel 4: Sammlung bleibt unverändert).
+- Richtung: Server-Ordner „Nur senden“, Laptop-Ordner „Nur empfangen“. Änderungen am Laptop
+  fließen nie zurück in die Inbox.
+- Nur im LAN: in beiden Geräten NAT-Traversal, globale Erkennung und Relaying aus.
+- `.stignore` im Inbox-Ordner: `_rejected` und `.cloud-tmp`.
+
+**Server (Container im LXC, unabhängig vom sc-digger-Stack)**
+
+`/root/syncthing/docker-compose.yml`:
+
+```yaml
+services:
+  syncthing:
+    image: syncthing/syncthing:latest
+    container_name: syncthing
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      - PUID=0
+      - PGID=0
+    volumes:
+      - /root/syncthing/config:/var/syncthing/config
+      - /music/inbox:/var/syncthing/inbox
+```
+
+Start: `cd /root/syncthing && docker compose up -d`. GUI: `http://<server>:8384` (nur LAN,
+Passwort setzen, Wert nicht ins Repo). Ordner-Pfad im Container: `/var/syncthing/inbox`.
+
+**Laptop (Windows, natives Syncthing)**
+
+- Installation: `winget install Syncthing.Syncthing` (neues PowerShell-Fenster öffnen, damit
+  `syncthing` im PATH ist).
+- Start ohne Fenster: `Start-Process syncthing -ArgumentList "--no-browser --no-console" -WindowStyle Hidden`
+- Autostart per Verknüpfung im Startup-Ordner (ein geplanter Task scheitert ohne Adminrechte):
+
+```powershell
+$p = (Get-Command syncthing).Source
+$s = (New-Object -ComObject WScript.Shell).CreateShortcut("$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup\Syncthing.lnk")
+$s.TargetPath = $p; $s.Arguments = "--no-browser --no-console"; $s.WindowStyle = 7; $s.Save()
+```
+
+- Ziel: `C:\Users\user\Music\Highres\_sc-digger-inbox`. GUI: `http://127.0.0.1:8384`.
+- SyncTrayzor wird von der Windows-Smart-App-Control blockiert. Smart App Control nicht
+  abschalten, stattdessen das native Syncthing nehmen.
+
+**Rekordbox-Pfad (lokale Überschreibung)**
+
+Der Laptop-Pfad steht nicht in `config.yaml` (dort bleibt `Z:/Highres/_sc-digger-inbox`,
+`tests/acceptance/test_issue_37.py` prüft das), sondern in der lokalen Override-Datei auf dem
+Server (`SC_DIGGER_CONFIG_LOCAL`, Standard `/data/config.local.yaml`):
+
+```yaml
+rekordbox:
+  path_map:
+    /music/inbox: "C:/Users/user/Music/Highres/_sc-digger-inbox"
+```
+
+Prüfen: `docker compose exec sc-digger python -m sc_digger.schema --local /data/config.local.yaml`
+
+**Ablauf im Alltag**
+
+1. Der Lauf legt neue Tracks in die Inbox; Syncthing überträgt sie.
+2. In Telegram `/sync_xml` senden: der Bot schickt die aktuelle Rekordbox-XML.
+3. In Rekordbox die XML neu laden und den Import-Dialog mit „Ja“ bestätigen (nur dann werden
+   Cues aus der XML übernommen).
+
+**Stolperfallen**
+
+- Erst Syncthing-Status „Aktuell“ abwarten, dann XML laden, sonst fehlen Dateien.
+- Dateinamen mit NFD-Umlauten (getrennte Zeichen) findet Rekordbox unter Windows nicht;
+  Abhilfe ist Issue #199 (NFC beim Sortieren und in der XML).
+- Ist das Web-GUI nicht erreichbar (`ERR_CONNECTION_REFUSED`), läuft Syncthing nicht;
+  „Failed to acquire lock“ heißt, dass noch eine alte Instanz läuft.
