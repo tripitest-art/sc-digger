@@ -11,8 +11,12 @@ from __future__ import annotations
 
 import html
 import logging
+import os
+import tempfile
 import time
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Sequence
 
@@ -22,7 +26,17 @@ if TYPE_CHECKING:
 from .analysis import analyze_track
 from .db import QualityStatus, TrackDB, TrackRecord, TrackStatus
 from .models import Config
+from .organize import _BPM_BUCKET_SIZE, _bpm_bucket
 from .quality import check_file
+from .rekordbox import (
+    _CAMELOT_RE,
+    KINDS,
+    InboxTrack,
+    _bpm_sort_key,
+    _camelot_sort_key,
+    _playlist_folder,
+    laptop_location,
+)
 
 log = logging.getLogger(__name__)
 
@@ -544,6 +558,150 @@ def fill_fingerprints(
     return new_count, failed_count
 
 
+def _record_to_inbox_track(rec: TrackRecord) -> InboxTrack:
+    """Wandelt einen TrackRecord aus der TrackDB in eine InboxTrack für den XML-Export um.
+
+    Pfad bleibt der Server-Pfad; die Übersetzung auf die Laptop-Location passiert später
+    über laptop_location(path_map). Die Dauer ist nicht in der TrackDB gespeichert und wird
+    als 0.0 übernommen (Rekordbox akzeptiert das).
+    """
+    p = Path(rec.path)
+    return InboxTrack(
+        path=p,
+        title=rec.title or p.stem,
+        artist=rec.artist or "",
+        genre="",
+        bpm=rec.bpm,
+        key=rec.key_camelot or rec.key_name or "",
+        comment="",
+        duration_s=0.0,
+        size=int(rec.size) if rec.size else 0,
+        added=datetime.fromtimestamp(rec.mtime) if rec.mtime else datetime.fromtimestamp(0),
+    )
+
+
+def export_collection_xml(
+    db: TrackDB,
+    xml_path: str | Path,
+    path_map: dict[str, str],
+    *,
+    collection_dir: str | Path | None = None,
+    playlists_by_bpm: bool = True,
+    playlists_by_key: bool = True,
+    hot_cues: bool = True,
+    memory_cues: bool = True,
+) -> int:
+    """Liest TrackRecords mit status='archive' aus db.
+
+    Überspringt Records mit quality_status in ('fake_transcode', 'corrupt').
+    Wandelt gültige Records in InboxTrack-Instanzen um (Pfade, Metadaten, BPM, Key).
+    Liegt xml_path innerhalb von collection_dir: wirft ValueError (Goldene Regel 4).
+    Schreibt die Rekordbox-XML atomar (wie write_rekordbox_xml).
+    Gibt die Anzahl der erfolgreich in die XML geschriebenen Tracks zurück.
+    """
+    target = Path(xml_path)
+
+    # Die bestehende Sammlung bleibt streng read-only: kein Schreiben in collection_dir.
+    if collection_dir is not None:
+        coll_dir = Path(collection_dir).resolve()
+        target_resolved = target.resolve()
+        if target_resolved == coll_dir or target_resolved.is_relative_to(coll_dir):
+            raise ValueError(
+                f"XML-Pfad darf nicht im Sammlungsordner liegen: {xml_path} liegt in {coll_dir}"
+            )
+
+    records = db.list_tracks(status=TrackStatus.ARCHIVE)
+    skip_quality = {QualityStatus.FAKE_TRANSCODE.value, QualityStatus.CORRUPT.value}
+
+    tracks: list[InboxTrack] = []
+    for rec in records:
+        q = rec.quality_status.value if hasattr(rec.quality_status, "value") else rec.quality_status
+        if q in skip_quality:
+            continue
+        tracks.append(_record_to_inbox_track(rec))
+
+    # Gruppierung/Export über dieselbe Logik wie build_xml, aber ohne Wochen-Playlists.
+    mapped: list[tuple[str, InboxTrack, str]] = []
+    for t in tracks:
+        loc = laptop_location(t.path, path_map)
+        if loc is not None:
+            track_id = str(len(mapped) + 1)
+            mapped.append((track_id, t, loc))
+
+    root = ET.Element("DJ_PLAYLISTS", {"Version": "1.0.0"})
+    ET.SubElement(root, "PRODUCT", {"Name": "rekordbox", "Version": "6.0.0", "Company": "Pioneer DJ"})
+
+    coll = ET.SubElement(root, "COLLECTION", {"Entries": str(len(mapped))})
+    for track_id, t, loc in mapped:
+        attr = {
+            "TrackID": track_id,
+            "Name": t.title,
+            "Artist": t.artist,
+            "Genre": t.genre,
+            "Kind": KINDS.get(t.path.suffix.lower(), ""),
+            "Size": str(t.size),
+            "TotalTime": str(int(round(t.duration_s))),
+            "DateAdded": t.added.strftime("%Y-%m-%d"),
+            "Comments": t.comment,
+            "Tonality": t.key,
+            "Location": loc,
+        }
+        if t.bpm is not None:
+            attr["AverageBpm"] = f"{t.bpm:.2f}"
+        ET.SubElement(coll, "TRACK", attr)
+
+    playlists = ET.SubElement(root, "PLAYLISTS")
+    top = ET.SubElement(playlists, "NODE", {"Type": "0", "Name": "ROOT", "Count": "1"})
+    folder = ET.SubElement(top, "NODE", {"Type": "0", "Name": "sc-digger", "Count": "0"})
+
+    extra_folders = 0
+
+    if playlists_by_bpm:
+        bpm_dict: dict[str, list[str]] = {}
+        for track_id, t, _ in mapped:
+            label = _bpm_bucket(t.bpm, _BPM_BUCKET_SIZE)
+            if label == _bpm_bucket(None, _BPM_BUCKET_SIZE):
+                label = "unbekannt"
+            bpm_dict.setdefault(label, []).append(track_id)
+        if bpm_dict:
+            groups = sorted(bpm_dict.items(), key=lambda kv: _bpm_sort_key(kv[0]))
+            _playlist_folder(folder, "BPM", groups)
+            extra_folders += 1
+
+    if playlists_by_key:
+        key_dict: dict[str, list[str]] = {}
+        for track_id, t, _ in mapped:
+            name = t.key.strip().upper()
+            label = name if _CAMELOT_RE.match(name) else "unbekannt"
+            key_dict.setdefault(label, []).append(track_id)
+        if key_dict:
+            groups = sorted(key_dict.items(), key=lambda kv: _camelot_sort_key(kv[0]))
+            _playlist_folder(folder, "Key", groups)
+            extra_folders += 1
+
+    folder.set("Count", str(extra_folders))
+
+    xml_content = '<?xml version="1.0" encoding="UTF-8"?>\n' + ET.tostring(root, encoding="unicode")
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(dir=target.parent, prefix=".", suffix=".xml.tmp")
+    tmp_path = Path(tmp_name)
+    try:
+        with open(fd, "w", encoding="utf-8") as f:
+            f.write(xml_content)
+        os.replace(tmp_path, target)
+    except Exception:
+        if tmp_path.exists():
+            try:
+                tmp_path.unlink()
+            except OSError:
+                pass
+        raise
+
+    log.info("Sammlungs-XML geschrieben: %s (%d Tracks)", target, len(mapped))
+    return len(mapped)
+
+
 def run_audit(
     cfg: Config,
     path: str | Path | None = None,
@@ -552,6 +710,7 @@ def run_audit(
     force: bool = False,
     dry_run: bool = False,
     no_telegram: bool = True,
+    export_xml_path: str | Path | None = None,
 ) -> AuditSummary:
     """Einstiegspunkt für den CLI-Befehl `audit`."""
     target_dir = Path(path or cfg["download"]["collection_dir"]).resolve()
@@ -591,6 +750,20 @@ def run_audit(
             [r.path for r in g]
             for g in duplicate_groups(db.tracks_with_fingerprint())
         ]
+
+        if export_xml_path:
+            coll_dir: str | None = None
+            try:
+                coll_dir = cfg["download"]["collection_dir"]
+            except (KeyError, TypeError):
+                coll_dir = None
+            count = export_collection_xml(
+                db,
+                export_xml_path,
+                cfg["rekordbox"].get("path_map", {}) if "rekordbox" in cfg.raw else {},
+                collection_dir=coll_dir,
+            )
+            print(f"\n🎛️  Sammlungs-XML geschrieben: {Path(export_xml_path).resolve()} ({count} Tracks)")
 
     # Terminal-Ausgabe
     print("\n" + "=" * 60)
