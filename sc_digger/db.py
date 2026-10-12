@@ -88,6 +88,7 @@ class TrackRecord:
     fingerprint_duration: float | None = None
     status: TrackStatus | str | None = None
     feedback: str | None = None  # 'like', 'dislike', 'later'
+    adopted_at: str | None = None  # Zeitstempel der Übernahme in die Sammlung (Format: YYYY-MM-DD HH:MM:SS)
     created_at: str | None = None
     updated_at: str | None = None
 
@@ -292,6 +293,14 @@ MIGRATIONS: list[tuple[int, str, str]] = [
         "0006_track_snapshots_tags",
         """
         ALTER TABLE track_snapshots ADD COLUMN tags TEXT;
+        """,
+    ),
+    (
+        8,
+        "0008_tracks_adopted_at",
+        """
+        ALTER TABLE tracks ADD COLUMN adopted_at TEXT;
+        CREATE INDEX IF NOT EXISTS idx_tracks_adopted_at ON tracks(adopted_at);
         """,
     ),
 ]
@@ -526,6 +535,45 @@ class TrackDB:
             )
         self.db.commit()
         return cur.rowcount > 0
+
+    def mark_adopted(
+        self,
+        track_id: int,
+        adopted_at: str,
+        *,
+        feedback: str = "like",
+    ) -> bool:
+        """Markiert den Track mit ID track_id als übernommen (adopted_at = adopted_at).
+        Ein bestehendes feedback='dislike' wird NIEMALS überschrieben.
+        Falls feedback != 'dislike', wird feedback auf den übergebenen Wert (Standard 'like') gesetzt.
+        Aktualisiert updated_at = CURRENT_TIMESTAMP.
+        Gibt True zurück, wenn der Track existiert und aktualisiert wurde, sonst False.
+        """
+        # feedback nur setzen, wenn der Track nicht bereits ein 'dislike' trägt:
+        # Übernahme ist ein Positivsignal, darf ein explizites 👎 aber nie überstimmen.
+        cur = self.db.execute(
+            """
+            UPDATE tracks
+            SET adopted_at = ?,
+                feedback = CASE
+                    WHEN feedback = 'dislike' THEN feedback
+                    ELSE ?
+                END,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (adopted_at, feedback, track_id),
+        )
+        self.db.commit()
+        return cur.rowcount > 0
+
+    def get_adopted_tracks(self) -> list[TrackRecord]:
+        """Gibt alle Tracks mit adopted_at IS NOT NULL zurück, sortiert nach adopted_at DESC, id ASC."""
+        rows = self.db.execute(
+            "SELECT * FROM tracks WHERE adopted_at IS NOT NULL "
+            "ORDER BY adopted_at DESC, id ASC"
+        ).fetchall()
+        return [TrackRecord.from_row(r) for r in rows]
 
     def set_sc_feedback(self, sc_id: int, value: str, url: str | None = None) -> None:
         """Upsert je SoundCloud-ID, letzte Wahl gewinnt, updated_at = jetzt.

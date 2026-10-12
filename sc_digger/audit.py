@@ -76,6 +76,7 @@ class AuditSummary:
     fingerprints_new: int = 0
     fingerprints_failed: int = 0
     duplicate_groups: list[list[str]] = field(default_factory=list)  # Pfade wie in der DB
+    adopted_tracks: list[tuple[str, str]] = field(default_factory=list)  # [(inbox_path, archive_path), ...]
 
 
 # ================================================================= Tag-Inspektion
@@ -558,6 +559,81 @@ def fill_fingerprints(
     return new_count, failed_count
 
 
+def mark_adopted_tracks(
+    db: TrackDB,
+    *,
+    now: datetime | str | None = None,
+) -> list[tuple[TrackRecord, TrackRecord]]:
+    """Gleicht nicht-übernommene Inbox-Tracks (status='inbox', adopted_at IS NULL)
+    per Audio-Fingerprint gegen archivierte Tracks (status='archive') ab.
+
+    - Verwendet sc_digger.fingerprint.same_recording zur Erkennung gleicher Aufnahmen.
+    - Kandidatensuche in der DB per db.fingerprint_candidates(duration, MAX_DURATION_DIFF_S),
+      gefiltert auf status in (TrackStatus.ARCHIVE, 'archive').
+    - Bei Treffer: Zeitstempel setzen, db.mark_adopted(inbox_rec.id, ts) aufrufen
+      (überschreibt ein dislike nicht) und das Paar (inbox_rec, archive_rec) merken.
+    - Bereits übernommene Tracks (adopted_at IS NOT NULL) werden ignoriert (idempotent).
+    - Berührt Dateien auf der Festplatte nicht (weder Inbox noch Sammlung; Goldene Regel 4).
+    - Rückgabe: Liste von Tupeln (inbox_rec, archive_rec) aller in diesem Aufruf neu
+      übernommenen Tracks.
+    """
+    from . import fingerprint as fpm
+    from .fingerprint import Fingerprint, MAX_DURATION_DIFF_S
+
+    # Zeitstempel einmal bestimmen: now (str) unverändert, datetime formatiert, sonst UTC-jetzt.
+    if isinstance(now, str):
+        ts = now
+    elif isinstance(now, datetime):
+        ts = now.strftime("%Y-%m-%d %H:%M:%S")
+    else:
+        ts = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+
+    # same_recording zur Laufzeit nachschlagen, damit Tests es ersetzen können.
+    same_fn = getattr(fpm, "same_recording", fpm.same_recording)
+
+    # Nur unübernommene Inbox-Tracks betrachten (idempotent gegenüber adopted_at IS NOT NULL).
+    candidates = db.list_tracks(status=TrackStatus.INBOX)
+    inbox_records = [r for r in candidates if r.adopted_at is None]
+
+    adopted: list[tuple[TrackRecord, TrackRecord]] = []
+    for inbox_rec in inbox_records:
+        if not inbox_rec.fingerprint or inbox_rec.fingerprint_duration is None:
+            continue
+
+        inbox_fp = Fingerprint(
+            values=fpm.decode_fingerprint(inbox_rec.fingerprint),
+            duration=inbox_rec.fingerprint_duration,
+        )
+
+        match: TrackRecord | None = None
+        for cand in db.fingerprint_candidates(
+            inbox_rec.fingerprint_duration, MAX_DURATION_DIFF_S
+        ):
+            cand_status = cand.status.value if hasattr(cand.status, "value") else cand.status
+            if cand_status != TrackStatus.ARCHIVE.value:
+                continue
+            if cand.id == inbox_rec.id:
+                continue
+            if not cand.fingerprint or cand.fingerprint_duration is None:
+                continue
+            cand_fp = Fingerprint(
+                values=fpm.decode_fingerprint(cand.fingerprint),
+                duration=cand.fingerprint_duration,
+            )
+            if same_fn(inbox_fp, cand_fp):
+                match = cand
+                break
+
+        if match is None:
+            continue
+
+        db.mark_adopted(inbox_rec.id, ts)
+        refreshed = db.get_track_by_id(inbox_rec.id)
+        adopted.append((refreshed or inbox_rec, match))
+
+    return adopted
+
+
 def _record_to_inbox_track(rec: TrackRecord) -> InboxTrack:
     """Wandelt einen TrackRecord aus der TrackDB in eine InboxTrack für den XML-Export um.
 
@@ -711,6 +787,7 @@ def run_audit(
     dry_run: bool = False,
     no_telegram: bool = True,
     export_xml_path: str | Path | None = None,
+    check_adopted: bool = False,
 ) -> AuditSummary:
     """Einstiegspunkt für den CLI-Befehl `audit`."""
     target_dir = Path(path or cfg["download"]["collection_dir"]).resolve()
@@ -750,6 +827,10 @@ def run_audit(
             [r.path for r in g]
             for g in duplicate_groups(db.tracks_with_fingerprint())
         ]
+
+        if check_adopted:
+            pairs = mark_adopted_tracks(db)
+            summary.adopted_tracks = [(inb.path, arc.path) for inb, arc in pairs]
 
         if export_xml_path:
             coll_dir: str | None = None
@@ -800,6 +881,13 @@ def run_audit(
             print(f" Gruppe {idx} ({len(group)} Dateien):")
             for p in group:
                 print(f"  - {p}")
+
+    # Übernommene Inbox-Tracks (ROADMAP 3.12)
+    if check_adopted:
+        print(f"\n✅ ÜBERNOMMENE TRACKS: {len(summary.adopted_tracks)} neu in der Sammlung erkannt")
+        for inbox_path, archive_path in summary.adopted_tracks:
+            print(f" - {inbox_path}")
+            print(f"   -> {archive_path}")
 
     # HTML-Report speichern, falls Pfad angegeben
     if report_path:
