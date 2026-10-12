@@ -889,6 +889,8 @@ def cli() -> None:
                      help="Alle Dateien neu analysieren (inkrementellen Cache ignorieren)")
     aud.add_argument("--export-xml",
                      help="Archivierte Tracks der TrackDB als Rekordbox-XML in diese Datei exportieren")
+    aud.add_argument("--check-adopted", action="store_true",
+                     help="Inbox-Tracks per Fingerprint gegen die Sammlung abgleichen und als übernommen markieren")
 
     sub.add_parser("rekordbox", parents=[common], help="Rekordbox-XML der Inbox neu schreiben")
 
@@ -929,6 +931,7 @@ def cli() -> None:
                 dry_run=a.dry_run,
                 no_telegram=a.no_telegram,
                 export_xml_path=a.export_xml,
+                check_adopted=a.check_adopted,
             )
         elif a.mode == "rekordbox":
             write_rekordbox_xml(cfg)

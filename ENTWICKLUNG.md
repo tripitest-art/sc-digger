@@ -27,7 +27,7 @@ Modul anlegt, trägt es in die Tabelle ein.
 | `sc_digger/cleanup.py` | Inbox-Dubletten per SoundCloud-ID finden, auflisten und optional nach `_rejected/duplicate/` verschieben |
 | `sc_digger/cues.py` | Cue-Tag `SCDIGGER_FIRST_KICK` (Sekunden) lesen und schreiben |
 | `sc_digger/db.py` | Zentrale Track-DB (Phase 2), Metadaten-Index, Audio-Fingerprints, Jobs-Queue, versionierte Migrationen |
-| `sc_digger/audit.py` | Read-only Library Audit (Phase 2.2), Fake-Erkennung, HTML-Dashboard |
+| `sc_digger/audit.py` | Read-only Library Audit (Phase 2.2), Fake-Erkennung, HTML-Dashboard, Rückmeldung „übernommen“ per Fingerprint (`mark_adopted_tracks`, `audit --check-adopted`, ROADMAP 3.12) |
 | `sc_digger/health.py` | Laufprotokoll, Alarm bei wiederholt leeren/fehlerhaften Läufen |
 | `sc_digger/healthcheck.py` | Container-Healthcheck: Cron, letzter Lauf, DB-Integrität |
 | `sc_digger/redact.py` | Zugangsdaten aus Texten und Logs entfernen |
