@@ -29,6 +29,7 @@ from .models import Config
 from .output import TelegramError, parse_feedback_callback, telegram_call
 from .output import send_telegram_voice
 from . import output, preview, rekordbox
+from .cleanup import audit_inbox_duplicates, format_duplicate_report
 from .preview import extract_preview_from_url
 from .redact import install_redacting_logging
 from .soundcloud import SoundCloudClient, SoundCloudError
@@ -58,6 +59,7 @@ HELP_TEXT = (
     "• /preview <Suchtext oder id> -> 20s-Snippet eines heruntergeladenen Tracks als Sprachnachricht\n"
     "• /preview sc:<SoundCloud-ID> -> 20s-Snippet direkt aus dem SoundCloud-Stream (nicht heruntergeladen)\n"
     "• /stats [Tage] -> Statistiken über Scans, Inbox und Feedback\n"
+    "• /cleanup_inbox -> Dubletten in der Inbox auflisten (nur lesend)\n"
     "• /sync_xml -> Rekordbox-XML der Inbox sofort neu schreiben\n\n"
     "Kein täglicher Filter, du bekommst die volle Liste mit Stats und Download-Einordnung."
 )
@@ -362,6 +364,28 @@ def sync_xml_reply(cfg: Config, now: datetime | None = None) -> str:
         return SYNC_XML_FAILED
 
 
+def cleanup_inbox_reply(cfg: Config) -> str:
+    """Antwort auf '/cleanup_inbox'. Read-only Übersicht über Dubletten in der Inbox.
+    Liest inbox_dir aus cfg["download"], scannt via audit_inbox_duplicates und
+    formatiert via format_duplicate_report.
+    Bei Textlänge > 3800 Zeichen wird gekürzt mit Hinweis auf CLI 'cleanup-inbox'.
+    Wirft nie."""
+    try:
+        dl_cfg = cfg.raw.get("download") if isinstance(cfg.raw, dict) else None
+        inbox_dir = dl_cfg.get("inbox_dir") if isinstance(dl_cfg, dict) else None
+        if not inbox_dir:
+            return "Kein inbox_dir in config konfiguriert."
+        inbox = Path(inbox_dir)
+        groups = audit_inbox_duplicates(inbox)
+        report = format_duplicate_report(groups, inbox=inbox)
+        if len(report) > 3800:
+            report = report[:3800] + "\n\n… gekürzt. Vollständige Liste per CLI: cleanup-inbox"
+        return report
+    except Exception:
+        log.exception("Fehler beim /cleanup_inbox-Befehl")
+        return "Inbox-Cleanup fehlgeschlagen, siehe Container-Log."
+
+
 def handle_message(cfg: Config, sc: SoundCloudClient, chat_id: str, text: str) -> None:
     text = text.strip()
     if text in ("/start", "/help"):
@@ -404,6 +428,14 @@ def handle_message(cfg: Config, sc: SoundCloudClient, chat_id: str, text: str) -
         except Exception:
             log.exception("Fehler beim /sync_xml-Befehl")
             _send_text(cfg, chat_id, "XML-Sync fehlgeschlagen, siehe Container-Log.")
+        return
+
+    if first_word == "/cleanup_inbox":
+        try:
+            _send_text(cfg, chat_id, cleanup_inbox_reply(cfg))
+        except Exception:
+            log.exception("Fehler beim /cleanup_inbox-Befehl")
+            _send_text(cfg, chat_id, "Inbox-Cleanup fehlgeschlagen, siehe Container-Log.")
         return
 
     if first_word == "/preview":
