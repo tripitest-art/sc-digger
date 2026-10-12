@@ -57,22 +57,25 @@ def soundcloud_id_from_name(name: str) -> str | None:
     return m.group(1)
 
 
-def _dedupe_sort_key(path: Path) -> tuple[int, int, str]:
+def _dedupe_sort_key(t: InboxTrack) -> tuple[int, int, int, str]:
     """Sortierschlüssel für dedupe_by_soundcloud_id (kleiner = bevorzugt):
-    0. Stem ohne "_<Ziffern>"-Endung (Original vor Kopie) -> 0, sonst 1,
-    1. tieferer Pfad zuerst -> negative Anzahl der Pfadteile,
-    2. kleinster path.as_posix()."""
-    stem = path.stem
+    0. getaggt (t.key.strip() nicht leer ODER t.bpm is not None) -> 0, sonst 1,
+    1. Stem ohne "_<Ziffern>"-Endung (Original vor Kopie) -> 0, sonst 1,
+    2. tieferer Pfad zuerst -> negative Anzahl der Pfadteile,
+    3. kleinster path.as_posix()."""
+    is_untagged = 0 if (t.key.strip() or t.bpm is not None) else 1
+    stem = t.path.stem
     is_copy = 1 if _SCID_SUFFIX_RE.search(stem) else 0
-    depth = -len(path.parts)
-    return (is_copy, depth, path.as_posix())
+    depth = -len(t.path.parts)
+    return (is_untagged, is_copy, depth, t.path.as_posix())
 
 
 def dedupe_by_soundcloud_id(tracks: list[InboxTrack]) -> list[InboxTrack]:
     """Behält pro SoundCloud-ID (aus path.name) genau einen Track. Gewinner, in dieser Reihenfolge:
-    1. Stem ohne Endung "_<Ziffern>" (Original vor Kopie),
-    2. tieferer Pfad (sortierte Datei <BPM>/<Key>/ vor loser Datei im Inbox-Root),
-    3. kleinster path.as_posix().
+    1. getaggt (Key oder BPM vorhanden) vor ungetaggt,
+    2. Stem ohne Endung "_<Ziffern>" (Original vor Kopie),
+    3. tieferer Pfad (sortierte Datei <BPM>/<Key>/ vor loser Datei im Inbox-Root),
+    4. kleinster path.as_posix().
     Tracks ohne ID bleiben unverändert. Die Reihenfolge der übrigen Tracks bleibt erhalten.
     Leere Liste -> leere Liste. Dateien werden nicht gelesen, verschoben oder gelöscht."""
     winners: dict[str, InboxTrack] = {}
@@ -81,7 +84,7 @@ def dedupe_by_soundcloud_id(tracks: list[InboxTrack]) -> list[InboxTrack]:
         if sc_id is None:
             continue
         current = winners.get(sc_id)
-        if current is None or _dedupe_sort_key(t.path) < _dedupe_sort_key(current.path):
+        if current is None or _dedupe_sort_key(t) < _dedupe_sort_key(current):
             winners[sc_id] = t
 
     out: list[InboxTrack] = []
