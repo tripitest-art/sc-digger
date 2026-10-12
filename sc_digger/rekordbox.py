@@ -353,7 +353,8 @@ def _playlist_folder(parent: ET.Element, name: str,
 
 
 def build_xml(tracks: list[InboxTrack], path_map: dict[str, str], now: datetime | None = None,
-              *, bpm_bucket_size: int | None = None, by_key: bool = False) -> str:
+              *, bpm_bucket_size: int | None = None, by_key: bool = False,
+              hot_cues: bool = True, memory_cues: bool = True) -> str:
     """<?xml version="1.0" encoding="UTF-8"?> + DJ_PLAYLISTS Version="1.0.0" mit PRODUCT,
     COLLECTION und PLAYLISTS. Tracks ohne Location (nicht gemappt) werden weggelassen.
     COLLECTION Entries = Anzahl; TRACK-Attribute: TrackID (1, 2, … in Eingabereihenfolge), Name,
@@ -367,6 +368,10 @@ def build_xml(tracks: list[InboxTrack], path_map: dict[str, str], now: datetime 
     Bisheriges Verhalten unverändert, solange bpm_bucket_size None/0 und by_key False ist.
     Zusätzlich, nach den Wochen: Ordner "BPM" (falls bpm_bucket_size gesetzt) und "Key" (falls
     by_key). Nur gemappte Tracks kommen vor; ohne Tracks wird der jeweilige Ordner weggelassen.
+
+    Cues aus first_kick_s: hot_cues=True schreibt einen Hot Cue (Pad A, Num="0", grün
+    Red="0" Green="255" Blue="0"); memory_cues=True schreibt einen Memory Cue (Num="-1").
+    Sind beide True, wird der Hot Cue zuerst angehängt. Ohne first_kick_s keine Cues.
     """
     mapped: list[tuple[str, InboxTrack, str]] = []
     for t in dedupe_by_soundcloud_id(tracks):
@@ -397,12 +402,24 @@ def build_xml(tracks: list[InboxTrack], path_map: dict[str, str], now: datetime 
             attr["AverageBpm"] = f"{t.bpm:.2f}"
         track_node = ET.SubElement(coll, "TRACK", attr)
         if t.first_kick_s is not None:
-            ET.SubElement(track_node, "POSITION_MARK", {
-                "Name": "First Kick",
-                "Type": "0",
-                "Start": f"{t.first_kick_s:.3f}",
-                "Num": "-1",
-            })
+            start = f"{t.first_kick_s:.3f}"
+            if hot_cues:
+                ET.SubElement(track_node, "POSITION_MARK", {
+                    "Name": "First Kick",
+                    "Type": "0",
+                    "Start": start,
+                    "Num": "0",
+                    "Red": "0",
+                    "Green": "255",
+                    "Blue": "0",
+                })
+            if memory_cues:
+                ET.SubElement(track_node, "POSITION_MARK", {
+                    "Name": "First Kick",
+                    "Type": "0",
+                    "Start": start,
+                    "Num": "-1",
+                })
 
     playlists = ET.SubElement(root, "PLAYLISTS")
     top = ET.SubElement(playlists, "NODE", {"Type": "0", "Name": "ROOT", "Count": "1"})
@@ -470,7 +487,8 @@ def write_rekordbox_xml(cfg: Config) -> Path | None:
     Temp-Datei im Zielordner (Name beginnt mit ".") + os.replace, UTF-8. Rückgabe: Zielpfad.
     playlists_by_bpm (bool, fehlt -> False): build_xml mit bpm_bucket_size = organize.bpm_bucket_size;
     ist der Wert kein int >= 1 (oder fehlt der Abschnitt), gilt 5. playlists_by_key (bool, fehlt ->
-    False): by_key=True.
+    False): by_key=True. cues_as_hotcues (bool, fehlt -> True): Hot Cues schreiben; cues_as_memory
+    (bool, fehlt -> True): Memory Cues schreiben. cues_enabled False -> gar keine Cues.
     Jeder Fehler -> log.warning, Temp-Datei entfernen, None. Wirft nie.
     """
     tmp_path: Path | None = None
@@ -536,7 +554,13 @@ def write_rekordbox_xml(cfg: Config) -> Path | None:
 
         by_key = bool(rb_cfg.get("playlists_by_key"))
 
-        xml_content = build_xml(tracks, path_map, bpm_bucket_size=bpm_bucket_size, by_key=by_key)
+        hot_cues = rb_cfg.get("cues_as_hotcues", True)
+        memory_cues = rb_cfg.get("cues_as_memory", True)
+        hot_cues = True if hot_cues is None else bool(hot_cues)
+        memory_cues = True if memory_cues is None else bool(memory_cues)
+
+        xml_content = build_xml(tracks, path_map, bpm_bucket_size=bpm_bucket_size, by_key=by_key,
+                                hot_cues=hot_cues, memory_cues=memory_cues)
 
         target_dir = xml_path.parent
         target_dir.mkdir(parents=True, exist_ok=True)

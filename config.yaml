@@ -221,6 +221,10 @@ rekordbox:
     /music/inbox: "Z:/Highres/_sc-digger-inbox"
   # Memory Cue "First Kick" aus dem Tag SCDIGGER_FIRST_KICK in die XML übernehmen
   cues_enabled: true
+  # Cues als Hot Cues (Rekordbox-Pads A–H, Startpad A "First Kick" grün, Num="0")
+  cues_as_hotcues: true
+  # Cues zusätzlich/alternativ als Memory Cues (Num="-1") schreiben
+  cues_as_memory: true
   # Zusätzliche Playlist-Ordner neben den Wochen: sc-digger/BPM/<Bereich> (Breite aus organize.bpm_bucket_size)
   # und sc-digger/Key/<Camelot>. Tracks ohne BPM bzw. Key landen in "unbekannt".
   playlists_by_bpm: true
