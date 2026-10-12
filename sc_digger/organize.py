@@ -11,6 +11,7 @@ import re
 import shutil
 import struct
 import tempfile
+import unicodedata
 from pathlib import Path
 from typing import Any, BinaryIO
 
@@ -46,17 +47,20 @@ def organize(path: Path, inbox: Path, *, bpm: float | None = None,
     target_dir = inbox / bpm_dir / key_dir
     target_dir.mkdir(parents=True, exist_ok=True)
 
-    target = target_dir / path.name
-    # Namenskollision vermeiden
+    # Zielname in NFC (zusammengesetzte Umlaute): Rekordbox findet NFD-Namen
+    # (SoundCloud liefert "u" + separates Trema) sonst nicht wieder.
+    name = unicodedata.normalize("NFC", path.name)
+    target = target_dir / name
+    # Namenskollision vermeiden; Kollisionsendung auf dem NFC-Stem
     if target.exists() and target != path:
-        stem = path.stem
+        stem = unicodedata.normalize("NFC", path.stem)
         suffix = path.suffix
         n = 1
         while target.exists():
             target = target_dir / f"{stem}_{n}{suffix}"
             n += 1
 
-    if path.parent != target_dir:
+    if path.parent != target_dir or path.name != target.name:
         shutil.move(str(path), str(target))
         log.info("Organisiert: %s -> %s", path.name, target.relative_to(inbox))
     return target
