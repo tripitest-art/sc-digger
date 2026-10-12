@@ -5,6 +5,7 @@ import logging
 import os
 import re
 import tempfile
+import unicodedata
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from datetime import datetime
@@ -133,6 +134,9 @@ def laptop_location(server_path: str | Path, path_map: dict[str, str]) -> str | 
         rel = s[len(p_clean):]
 
     laptop_path = target + rel
+    # NFC (zusammengesetzte Umlaute): Rekordbox findet die Datei sonst nicht wieder,
+    # wenn SoundCloud den Namen in NFD geliefert hat ("u" + separates Trema).
+    laptop_path = unicodedata.normalize("NFC", laptop_path)
     return "file://localhost/" + quote(laptop_path, safe="/:")
 
 
