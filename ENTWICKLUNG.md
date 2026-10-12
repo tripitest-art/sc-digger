@@ -19,6 +19,7 @@ Modul anlegt, trägt es in die Tabelle ein.
 | `sc_digger/quality.py` | ffprobe, Spektrum-Cutoff (Fake-Erkennung), EBU R128 / LRA (Brickwall) |
 | `sc_digger/loudness.py` | Pegel-Normalisierung neuer Inbox-Downloads (-8.5 LUFS, samplegenau, Metadaten-Erhalt) |
 | `sc_digger/analysis.py` | BPM/Key per librosa, BPM-Oktav-Korrektur `resolve_bpm` |
+| `sc_digger/structure.py` | Strukturanalyse: Kick-Erkennung, Segmente (`intro`, `main`, `breakdown`, `outro`), erster Kick |
 | `sc_digger/fingerprint.py` | Audio-Fingerprints (Chromaprint/fpcalc), gleiche Aufnahme erkennen |
 | `sc_digger/harmonic.py` | Harmonische Kompatibilität (Camelot-Wheel), Suche passender Tracks nach Key und BPM |
 | `sc_digger/organize.py` | Inbox-Sortierung `<BPM>/<Camelot>/`, Tags schreiben, Dateinamen in NFC-Namen |
