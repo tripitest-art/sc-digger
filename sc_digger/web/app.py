@@ -1,8 +1,11 @@
 """FastAPI-App der Statusseite: HTTP-Basic geschützt, ohne API-Dokumentation.
 
-Die Status- und Explorer-Routen sind rein lesend (GET). Genau einen schreibenden Pfad gibt
-es seit Issue #229: ``POST /api/feedback`` legt die Bewertung eines Tracks in
-``sc_feedback`` der Track-DB ab (wie die Telegram-Buttons, siehe ``bot.py``).
+Die Status- und Explorer-Routen sind rein lesend (GET). Schreibende Pfade gibt es beim
+Feedback (``POST /api/feedback``, Issue #229) und beim Upload (``POST /api/upload-intake``,
+Issue #230). Der Mix-Finder (``GET /mix``) und der On-Demand-URL-Scanner
+(``POST /api/check-url``, Issue #231) lesen nur: sie öffnen die Track-DB über ``mode=ro``
+und ändern weder State noch Sammlung – anders als ``main.run_link``, das dieselbe Auswahl
+verschickt und als gesehen markiert.
 
 Ist zusätzlich ein Pfad zur lokalen Override-Datei gesetzt (Issue #145), kommen die schreibenden
 Editor-Routen unter `/config` dazu. Dann wird bei jeder Anfrage die Basis- und die lokale Datei
@@ -10,7 +13,10 @@ frisch gelesen; die versionierte `config.yaml` bleibt unangetastet.
 """
 from __future__ import annotations
 
+import logging
 import secrets
+import sqlite3
+from contextlib import closing
 from dataclasses import asdict
 from pathlib import Path
 from urllib.parse import urlencode, urlparse
@@ -21,12 +27,17 @@ from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Red
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from ..db import FEEDBACK_VALUES
+from ..harmonic import find_mix_candidates
 from ..models import Config
+from ..pipeline import classify_download, dedupe, estimate_bpm
 from ..schema import FIELDS, SECTION_TITLES, Problem, deep_merge, get_field
+from ..soundcloud import SoundCloudClient, SoundCloudError
 from .configedit import apply_form, diff_config, format_form_value, get_path, remove_key, save_local
 from .database import (
     DEFAULT_LIMIT,
     MAX_LIMIT,
+    _connect_readonly,
+    _sc_id_from_path,
     get_collection_overview,
     query_digest,
     query_tracks,
@@ -40,6 +51,7 @@ _env = Environment(
     loader=FileSystemLoader(str(_TEMPLATES)),
     autoescape=select_autoescape(("html", "xml")),
 )
+log = logging.getLogger(__name__)
 
 
 def _unauthorized() -> PlainTextResponse:
@@ -123,6 +135,80 @@ def _query_bool(value: str | None) -> bool | None:
     if lowered in _FALSES:
         return False
     return None
+
+
+class _ReadOnlyTrackDB:
+    """Hülle, die dem Mix-Finder nur ``db.db`` (die ro-Verbindung) durchreicht.
+
+    ``TrackDB.__init__`` legt fehlende Dateien und das Schema an (Schreibzugriff), deshalb
+    darf die lesende GET-Route keine echte ``TrackDB`` benutzen. ``find_mix_candidates`` braucht
+    lediglich ein Objekt mit einem ``db``-Attribut (``sqlite3.Connection``).
+    """
+
+    def __init__(self, connection: sqlite3.Connection):
+        self.db = connection
+
+
+def _known_sc_statuses(cfg: Config) -> dict[int, str]:
+    """SoundCloud-ID -> Status, rein lesend aus Track- und State-DB.
+
+    Sammlung/Inbox/abgelehnt kommen aus dem Status der Track-DB (``[<sc_id>]`` im Dateinamen),
+    „gesehen“ aus der seen-Tabelle der State-DB. Fehlt eine Datei oder Tabelle, wird sie
+    übersprungen; der Rest bleibt nutzbar.
+    """
+    statuses: dict[int, str] = {}
+    labels = {"archive": "in Sammlung", "inbox": "in Inbox", "rejected": "abgelehnt"}
+    try:
+        with closing(_connect_readonly(cfg["state"]["track_db_path"])) as db:
+            for path, status in db.execute("SELECT path, status FROM tracks"):
+                sc_id = _sc_id_from_path(path)
+                if sc_id is not None and status in labels:
+                    statuses[sc_id] = labels[status]
+    except sqlite3.Error:
+        pass
+    try:
+        with closing(_connect_readonly(cfg["state"]["db_path"])) as db:
+            for (sc_id,) in db.execute("SELECT id FROM seen"):
+                statuses.setdefault(int(sc_id), "gesehen")
+    except sqlite3.Error:
+        pass
+    return statuses
+
+
+def _scan_url(cfg: Config, url: str) -> dict:
+    """On-Demand-Check eines SoundCloud-Links für den Browser.
+
+    Playlist-Link -> enthaltene Tracks, Track-Link -> Track-Station (wie ``main.run_link``).
+    Rein lesend: kein Download, kein Telegram, kein Eintrag in der seen-DB.
+    """
+    sc = SoundCloudClient()
+    kind = sc.resolve_kind(url)
+    if kind == "playlist":
+        label, tracks = sc.playlist_tracks(url, limit=200)
+        source = f"Playlist: {label}"
+    elif kind == "track":
+        label, tracks = sc.track_station(url, limit=50)
+        source = f"Station zu: {label}"
+    else:
+        raise SoundCloudError("Das ist weder ein Track- noch ein Playlist-Link.")
+
+    statuses = _known_sc_statuses(cfg)
+    items = []
+    for track in dedupe(tracks):
+        track.bpm = estimate_bpm(track)
+        classify_download(track)
+        items.append({
+            "id": track.id,
+            "artist": track.artist,
+            "title": track.title,
+            "url": track.url,
+            "bpm": track.bpm,
+            "duration_ms": track.duration_ms,
+            "download_kind": track.download_kind.value,
+            "download_link": track.download_link,
+            "status": statuses.get(track.id, "neu"),
+        })
+    return {"source": source, "kind": kind, "total": len(items), "tracks": items}
 
 
 def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = False,
@@ -243,6 +329,74 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
             prev_url=page_url(max(0, offset - page_size)) if offset > 0 else None,
             next_url=page_url(offset + page_size) if offset + page_size < result.total else None,
         ))
+
+    @app.get("/mix", response_class=HTMLResponse)
+    def mix_page(request: Request):
+        # Harmonic Mix Finder (Issue #231): dieselbe Auswahl wie der Telegram-Befehl /mix,
+        # aber als Formular. Nur lesend – die Track-DB wird über mode=ro geöffnet, damit ein
+        # GET keine Datei und kein Schema anlegt.
+        if not _check_auth(request, password, allow_anonymous):
+            return _unauthorized()
+        params = request.query_params
+        key = (params.get("key") or "").strip()
+        bpm_raw = (params.get("bpm") or "").strip()
+        tol_raw = (params.get("tol") or "").strip()
+        bpm = _query_float(bpm_raw)
+        tolerance = _query_float(tol_raw)
+        candidates: list = []
+        error: str | None = None
+        searched = bool(key)
+        if searched:
+            if bpm is None:
+                error = "Bitte eine Ziel-BPM angeben."
+            else:
+                if tolerance is None or tolerance <= 0:
+                    tolerance = 3.0
+                try:
+                    with closing(_connect_readonly(cfg["state"]["track_db_path"])) as db:
+                        candidates = find_mix_candidates(
+                            _ReadOnlyTrackDB(db), key, bpm,
+                            bpm_tolerance=tolerance, limit=30,
+                        )
+                except ValueError as exc:
+                    error = str(exc)
+                except sqlite3.Error:
+                    error = "Track-Datenbank nicht lesbar."
+        template = _env.get_template("mix.html")
+        return HTMLResponse(template.render(
+            key=key, bpm=bpm_raw, tol=tol_raw,
+            candidates=candidates, error=error, searched=searched,
+        ))
+
+    @app.post("/api/check-url")
+    async def api_check_url(request: Request):
+        # On-Demand-URL-Scanner (Issue #231): beliebiger SoundCloud-Link -> Trefferliste als JSON.
+        # Origin-Prüfung wie bei den übrigen POST-Routen, obwohl hier nichts geschrieben wird.
+        if not _check_auth(request, password, allow_anonymous):
+            return _unauthorized()
+        if not _same_origin(request):
+            return JSONResponse({"ok": False, "error": "Ungültige Herkunft"}, status_code=403)
+        try:
+            payload = await request.json()
+        except Exception:
+            return JSONResponse({"ok": False, "error": "Ungültiges JSON"}, status_code=400)
+        if not isinstance(payload, dict):
+            return JSONResponse({"ok": False, "error": "Ungültiger Payload"}, status_code=400)
+        url = str(payload.get("url") or "").strip()
+        if not url:
+            return JSONResponse(
+                {"ok": False, "error": "Kein SoundCloud-Link angegeben"}, status_code=400
+            )
+        try:
+            result = _scan_url(cfg, url)
+        except SoundCloudError as exc:
+            return JSONResponse({"ok": False, "error": str(exc)}, status_code=422)
+        except Exception as exc:  # Netz/Client-ID/…: dem Browser eine Meldung geben (Regel 7)
+            log.warning("URL-Scanner fehlgeschlagen: %s", exc)
+            return JSONResponse(
+                {"ok": False, "error": "SoundCloud-Abfrage fehlgeschlagen"}, status_code=502
+            )
+        return JSONResponse({"ok": True, **result})
 
     @app.get("/api/digest")
     def api_digest(request: Request):
