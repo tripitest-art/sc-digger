@@ -30,6 +30,7 @@ Modul anlegt, trägt es in die Tabelle ein.
 | `sc_digger/audit.py` | Read-only Library Audit (Phase 2.2), Fake-Erkennung, HTML-Dashboard, Rückmeldung „übernommen“ per Fingerprint (`mark_adopted_tracks`, `audit --check-adopted`, ROADMAP 3.12) |
 | `sc_digger/health.py` | Laufprotokoll, Alarm bei wiederholt leeren/fehlerhaften Läufen |
 | `sc_digger/healthcheck.py` | Container-Healthcheck: Cron, letzter Lauf, DB-Integrität |
+| `sc_digger/autodeploy.py` | Auto-Deploy per systemd-Timer auf dem Host: neuen `main`-Stand von `update.sh` ausrollen, Healthcheck prüfen, bei Fehlschlag automatisch zurückrollen; Einrichtung in `BETRIEB.md` |
 | `sc_digger/redact.py` | Zugangsdaten aus Texten und Logs entfernen |
 | `sc_digger/web/status.py` | Statusseite (Phase 5): `collect_status` liest Läufe, Health-Alarm, Inbox-Größe und Wochenstatistik nur lesend zusammen |
 | `sc_digger/web/app.py` | FastAPI-App der Statusseite (HTTP-Basic, `docs_url=None`), HTML-Vorlage unter `sc_digger/web/templates/`; mit `base_path`/`local_path` zusätzlich die Editor-Routen `/config`, `/config/preview`, `/config/save`, `/config/reset` inkl. Origin-/Referer-Schutz |
