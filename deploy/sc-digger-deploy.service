@@ -1,0 +1,6 @@
+[Unit]
+Description=sc-digger Auto-Deploy
+[Service]
+Type=oneshot
+WorkingDirectory=/root/sc-digger
+ExecStart=/usr/bin/flock -n /run/sc-digger-deploy.lock /usr/bin/python3 -m sc_digger.autodeploy

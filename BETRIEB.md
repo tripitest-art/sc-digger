@@ -44,6 +44,48 @@ Schlüssel liegt auf dem Server unter `/home/claude/.ssh/sc_digger_deploy` und i
 `core.sshCommand` in der Repo-Konfiguration hinterlegt; eingetragen ist er auf GitHub unter
 *Settings → Deploy keys* (ohne Schreibrecht).
 
+## Auto-Deploy
+
+Ein systemd-Timer rollt neue Stände von `main` selbst aus: `./update.sh`, danach den
+Container-Healthcheck, bei Fehlschlag automatisch `git reset --hard` auf den letzten guten
+Stand und erneut `./update.sh --force`. Das Ergebnis geht per Telegram an Stephan. Ohne den
+Timer blieb ein gemergter PR liegen, bis jemand von Hand `./update.sh` aufrief.
+
+**Was der Timer tut**
+
+- Läuft nur auf `main` (nie auf Branches) und nur, wenn das Repo keine lokalen Änderungen an
+  versionierten Dateien hat. Lokale Änderungen werden **nie** per `reset --hard` überschrieben;
+  stattdessen einmal je Ziel-Hash eine Warnung per Telegram.
+- Merkt sich den zuletzt erfolgreich ausgerollten Stand und einen als fehlerhaft erkannten
+  Commit. Ein `bad`-Commit wird nicht erneut versucht, erst ein neuerer `main`-Stand wieder.
+- Ein `git fetch`-Fehler ist kein Deploy-Fehler (kein Rollback, keine Meldung). Ein Fehlschlag
+  von Build oder Healthcheck dagegen schon: dann Rollback auf den letzten guten Stand.
+- Ist kein früherer Stand bekannt (kein `.last-build`), gibt es keinen Rollback; die Meldung
+  verlangt manuelles Prüfen.
+- Der Stand steht in `/root/sc-digger/.deploy-state.json` (atomar geschrieben),
+  `docker compose exec` reicht die Telegram-Meldung in den Container.
+
+**Einrichtung (einmalig, nach dem Merge)**
+
+```bash
+cd /root/sc-digger && git pull
+cp deploy/sc-digger-deploy.service deploy/sc-digger-deploy.timer /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now sc-digger-deploy.timer
+```
+
+**Prüfen und Stoppen**
+
+```bash
+systemctl list-timers sc-digger-deploy.timer      # nächster Lauf
+systemctl status sc-digger-deploy.service         # letzter Lauf
+journalctl -u sc-digger-deploy.service -n 50      # Ausgabe des letzten Laufs
+systemctl disable --now sc-digger-deploy.timer    # Auto-Deploy wieder aus
+```
+
+Der Timer ist durch `flock /run/sc-digger-deploy.lock` gegen Überholung geschützt; ein
+laufender Deploy wird nicht von einem zweiten überholt.
+
 ## Inbox auf den Laptop syncen (Syncthing)
 
 Die Inbox (`/music/inbox`) wird per Syncthing auf den Laptop gespiegelt, damit Rekordbox die
