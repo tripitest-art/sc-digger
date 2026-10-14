@@ -231,6 +231,9 @@ rekordbox:
   cues_as_memory: true
   # Drop und Breakdown auf das 16/32-Beat-Phrasengitter (sc_digger/phrase.py) ausrichten
   cues_phrase_align: true
+  # Beatgrid-Anker <TEMPO> an first_kick_s schreiben: Takt 1/Beat 1 liegt dann exakt auf der
+  # Kick-Transient (verlässliches Beatgrid bei 150+ BPM). Wirkt auch bei cues_enabled: false.
+  grid_anchor: true
   # Zusätzliche Playlist-Ordner neben den Wochen: sc-digger/BPM/<Bereich> (Breite aus organize.bpm_bucket_size)
   # und sc-digger/Key/<Camelot>. Tracks ohne BPM bzw. Key landen in "unbekannt".
   playlists_by_bpm: true
