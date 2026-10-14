@@ -14,6 +14,8 @@ import sys
 
 import numpy as np
 
+from sc_digger import phrase
+
 log = logging.getLogger(__name__)
 
 MIN_BREAKDOWN_S = 6.0   # kickloser Abschnitt in der Mitte ab dieser Länge ist ein Breakdown
@@ -220,18 +222,30 @@ def _resolve_segments(
         return []
 
 
-def find_drop_start(source: Sequence[Segment] | Path | str) -> float | None:
+def find_drop_start(
+    source: Sequence[Segment] | Path | str,
+    *,
+    bpm: float | None = None,
+    first_kick_s: float | None = None,
+    phrase_align: bool = False,
+    downbeats: Sequence[float] | None = None,
+) -> float | None:
     """Zeitpunkt des Kick-Wiedereinsatzes nach dem ersten Breakdown in Sekunden.
     - source kann eine Sequenz von Segmenten (aus analyze_structure) oder ein Dateipfad sein.
     - Sucht das erste Segment mit kind == 'breakdown'.
     - Gibt dessen end_s zurück (auf Millisekunden gerundet), an dem die Kick wieder einsetzt.
+    - Ist phrase_align=True, bpm > 0 und first_kick_s vorhanden, wird der gefundene Zeitpunkt
+      per phrase.quantize_to_phrase auf das 16/32-Beat-Phrasengitter ausgerichtet.
     - Gibt None zurück, wenn kein Breakdown existiert, keine Segmente vorhanden sind oder die
       Datei nicht lesbar ist. Wirft nie.
     """
     try:
         for seg in _resolve_segments(source):
             if seg.kind == "breakdown":
-                return round(float(seg.end_s), 3)
+                drop = round(float(seg.end_s), 3)
+                if phrase_align and bpm is not None and bpm > 0 and first_kick_s is not None:
+                    drop = phrase.quantize_to_phrase(drop, first_kick_s, bpm, downbeats=downbeats)
+                return drop
         return None
     except Exception as e:
         log.warning("Drop-Start für %s nicht ermittelbar: %s", source, e)

@@ -229,6 +229,8 @@ rekordbox:
   cues_as_hotcues: true
   # Cues zusätzlich/alternativ als Memory Cues (Num="-1") schreiben
   cues_as_memory: true
+  # Drop und Breakdown auf das 16/32-Beat-Phrasengitter (sc_digger/phrase.py) ausrichten
+  cues_phrase_align: true
   # Zusätzliche Playlist-Ordner neben den Wochen: sc-digger/BPM/<Bereich> (Breite aus organize.bpm_bucket_size)
   # und sc-digger/Key/<Camelot>. Tracks ohne BPM bzw. Key landen in "unbekannt".
   playlists_by_bpm: true

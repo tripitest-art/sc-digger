@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import quote, unquote
 
-from sc_digger import cues, organize
+from sc_digger import cues, organize, phrase
 from sc_digger.db import TrackDB
 from sc_digger.models import Config
 from sc_digger.style import (
@@ -416,7 +416,8 @@ def build_xml(tracks: list[InboxTrack], path_map: dict[str, str], now: datetime 
               *, bpm_bucket_size: int | None = None, by_key: bool = False,
               hot_cues: bool = True, memory_cues: bool = True,
               by_style: bool = False, by_subgenre: bool = False, by_version: bool = False,
-              style_colors: bool = False, style_comments: bool = False) -> str:
+              style_colors: bool = False, style_comments: bool = False,
+              phrase_align_cues: bool = False) -> str:
     """<?xml version="1.0" encoding="UTF-8"?> + DJ_PLAYLISTS Version="1.0.0" mit PRODUCT,
     COLLECTION und PLAYLISTS. Tracks ohne Location (nicht gemappt) werden weggelassen.
     COLLECTION Entries = Anzahl; TRACK-Attribute: TrackID (1, 2, … in Eingabereihenfolge), Name,
@@ -436,7 +437,10 @@ def build_xml(tracks: list[InboxTrack], path_map: dict[str, str], now: datetime 
     gelb); memory_cues=True schreibt zusätzlich je Punkt einen Memory Cue (Num="-1") mit
     gleichem Namen. Die Marken stehen chronologisch nach Start, bei gleichem Zeitstempel zuerst
     der Hot Cue. Fehlende Cue-Zeitpunkte entfallen; breakdown_kind "groove" ergibt den Namen
-    "Break (Groove)", sonst "Break (Silence)".
+    "Break (Groove)", sonst "Break (Silence)". phrase_align_cues=True richtet Drop und Breakdown
+    vor dem Erzeugen der POSITION_MARK-Elemente per phrase.quantize_to_phrase am 16/32-Beat-
+    Phrasengitter relativ zu first_kick_s aus (nur wenn first_kick_s und bpm vorhanden sind;
+    erster Kick und Standardwert False bleiben unverändert).
 
     Schranz-Matrix (sc_digger.style), optional: style_colors=True setzt am TRACK-Knoten das
     Colour-Attribut aus recommend_rekordbox_color (ausser "None"); style_comments=True
@@ -493,15 +497,25 @@ def build_xml(tracks: list[InboxTrack], path_map: dict[str, str], now: datetime 
                     attr["Comments"] = f"{attr['Comments']} · Break: {kind_label}"
         track_node = ET.SubElement(coll, "TRACK", attr)
         # Ein Cue-Punkt je vorhandener Zeit: (Start, Hot-Cue-Pad, Name, Farbe).
+        drop_s = t.drop_s
+        breakdown_s = t.breakdown_s
+        if phrase_align_cues and t.first_kick_s is not None and t.bpm is not None:
+            kick = float(t.first_kick_s)
+            bpm = float(t.bpm)
+            if drop_s is not None:
+                drop_s = phrase.quantize_to_phrase(float(drop_s), kick, bpm)
+            if breakdown_s is not None:
+                breakdown_s = phrase.quantize_to_phrase(float(breakdown_s), kick, bpm)
+
         cue_points: list[tuple[float, str, str, tuple[str, str, str]]] = []
         if t.first_kick_s is not None:
             cue_points.append((float(t.first_kick_s), "0", "First Kick", ("0", "255", "0")))
-        if t.drop_s is not None:
-            cue_points.append((float(t.drop_s), "1", "Drop", ("255", "165", "0")))
-        if t.breakdown_s is not None:
+        if drop_s is not None:
+            cue_points.append((float(drop_s), "1", "Drop", ("255", "165", "0")))
+        if breakdown_s is not None:
             kind = (t.breakdown_kind or "").strip().lower()
             break_name = "Break (Groove)" if kind == "groove" else "Break (Silence)"
-            cue_points.append((float(t.breakdown_s), "3", break_name, ("255", "255", "0")))
+            cue_points.append((float(breakdown_s), "3", break_name, ("255", "255", "0")))
 
         # Chronologisch nach Start; bei gleichem Zeitstempel steht der Hot Cue vor dem Memory Cue.
         marks: list[tuple[float, int, str, str, tuple[str, str, str] | None]] = []
@@ -626,6 +640,8 @@ def write_rekordbox_xml(cfg: Config) -> Path | None:
     False): by_key=True. cues_as_hotcues (bool, fehlt -> True): Hot Cues schreiben; cues_as_memory
     (bool, fehlt -> True): Memory Cues schreiben. cues_enabled False -> gar keine Cues
     (first_kick_s, drop_s, breakdown_s und breakdown_kind werden verworfen).
+    cues_phrase_align (bool, fehlt -> False): Drop und Breakdown vor dem Export auf das
+    16/32-Beat-Phrasengitter ausrichten (build_xml phrase_align_cues).
     Jeder Fehler -> log.warning, Temp-Datei entfernen, None. Wirft nie.
     """
     tmp_path: Path | None = None
@@ -704,11 +720,13 @@ def write_rekordbox_xml(cfg: Config) -> Path | None:
         memory_cues = rb_cfg.get("cues_as_memory", True)
         hot_cues = True if hot_cues is None else bool(hot_cues)
         memory_cues = True if memory_cues is None else bool(memory_cues)
+        phrase_align_cues = bool(rb_cfg.get("cues_phrase_align", False))
 
         xml_content = build_xml(tracks, path_map, bpm_bucket_size=bpm_bucket_size, by_key=by_key,
                                 hot_cues=hot_cues, memory_cues=memory_cues,
                                 by_style=by_style, by_subgenre=by_subgenre, by_version=by_version,
-                                style_colors=style_colors, style_comments=style_comments)
+                                style_colors=style_colors, style_comments=style_comments,
+                                phrase_align_cues=phrase_align_cues)
 
         target_dir = xml_path.parent
         target_dir.mkdir(parents=True, exist_ok=True)

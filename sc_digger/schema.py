@@ -215,6 +215,8 @@ FIELDS: tuple[Field, ...] = (
        "First Kick zusätzlich als Hot Cue (Pad A, Num=0, grün) in die Rekordbox-XML schreiben."),
     _f("rekordbox.cues_as_memory", "bool", "Cues als Memory Cues",
        "First Kick als Memory Cue (Num=-1) in die Rekordbox-XML schreiben."),
+    _f("rekordbox.cues_phrase_align", "bool", "Cues auf Phrasenraster",
+       "Drop und Breakdown im Rekordbox-Export auf das 16/32-Beat-Phrasengitter ausrichten."),
     _f("rekordbox.playlists_by_bpm", "bool", "Playlists nach BPM",
        "Zusätzlich Playlists pro BPM-Bereich (Ordner BPM) in die Rekordbox-XML schreiben."),
     _f("rekordbox.playlists_by_key", "bool", "Playlists nach Key",
