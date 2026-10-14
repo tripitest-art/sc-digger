@@ -308,25 +308,18 @@ Gemeinsamer Baustein für Auto-Cues, Drop-Preview und Breakdown-Anteil. Wird ein
 * **Vorab von Hand prüfen:** wie Rekordbox Cues aus der XML übernimmt, vor allem bei schon importierten Tracks.
 * Traktor-NML folgt später nach demselben Muster.
 
-### 5.3 Drop-Preview (🔵 Geplant)
-* `preview.find_loudest_segment` wählt bisher den lautesten Abschnitt. Neu: Start 5 s vor dem ersten Wiedereinsatz der
-  Kick nach dem ersten Breakdown (aus 5.1), Länge wie bisher. Fallback ohne Breakdown: bisheriges Verhalten.
-* Gilt für `/preview` bei heruntergeladenen Tracks. Die Stream-Preview (#168) hat kein Audio der Struktur und bleibt unverändert.
+### 5.3 Drop-Preview (✅ Abgeschlossen)
+* `preview.find_preview_start` startet `preview.riser_s` vor dem ersten Drop (aus 5.1). Fallback ohne Breakdown: `find_loudest_segment`. Umgesetzt in #202 / PR #235.
+* Gilt für `/preview` bei heruntergeladenen Tracks.
 
-### 5.4 Breakdown-Anteil als Messwert (🔵 Geplant)
-* `breakdown_ratio`: Anteil kickloser Zeit zwischen Intro-Ende und Outro-Start. Intro und Outro zählen nicht mit.
-* Gespeichert in der Track-DB und im Digest angezeigt (z. B. „Breakdown 34 %“).
-* **Zunächst kein Malus.** `scoring.breakdown_penalty` mit default 0 kann nur die Reihenfolge geladener Tracks im Digest
-  beeinflussen: Das Perzentil-Scoring läuft vor dem Download, für Gate-, Store- und Stream-Tracks gibt es kein Audio.
-* Der Wert geht als Feature in 4.1/4.2.
+### 5.4 Breakdown-Anteil als Messwert (✅ Abgeschlossen)
+* `breakdown_ratio`: Anteil kickloser Zeit zwischen Intro-Ende und Outro-Start (`calculate_breakdown_ratio`). Gespeichert in der Track-DB (Migration 7) und am Track-Modell. Umgesetzt in #202 / PR #235.
 
-### 5.5 Vision (🟣)
+### 5.5 Set-Tools & Web-Dashboard (🟣 / 🟡 Teilweise umgesetzt)
 - [x] **Rekordbox-XML-Export:** wöchentliche Playlist „sc-digger KW xx“ aus der Inbox, ohne manuellen Import (siehe 3.4).
-- [x] **Harmonic Mixing:** `/mix <Key> <BPM>` im Bot listet harmonisch (Camelot-Nachbarn, mit Abstand)
-  und tempomäßig passende Tracks aus der Sammlung (#76, #94, #103).
+- [x] **Harmonic Mixing:** `/mix <Key> <BPM>` im Bot listet harmonisch und tempomäßig passende Tracks (#76, #94, #103) sowie Web-Interface unter `/mix` (#231).
+- [x] **Web-Curation-Dashboard (Phase 1):** FastAPI + Dark Theme mit Live-Status (`/`), Digest-Explorer mit Multi-DB-Query (`/digest`), interaktivem Feedback (👍/👎), Kaufliste (`/kaufliste`), Harmonic Mix Finder & URL-Scanner (`/mix`) und Gate-Assistent Drag & Drop Upload (`/intake`).
 - [ ] **Next-Track-Recommender per Embedding-Ähnlichkeit** (braucht Phase 4.1).
-- [ ] **Web-Curation-Dashboard:** FastAPI + HTMX zum Vorhören, Bewerten, Sortieren mit Waveform;
-  nutzt dieselbe Track-DB und dieselben Feedback-Felder wie Telegram.
 - [ ] **Stem-Extraktion via Demucs:** Kicks und Percussion-Loops für 3-Deck-Tools (nur eigene Sammlung).
 
 ---

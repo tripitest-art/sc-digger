@@ -23,7 +23,7 @@ Modul anlegt, trägt es in die Tabelle ein.
 | `sc_digger/fingerprint.py` | Audio-Fingerprints (Chromaprint/fpcalc), gleiche Aufnahme erkennen |
 | `sc_digger/harmonic.py` | Harmonische Kompatibilität (Camelot-Wheel), Suche passender Tracks nach Key und BPM |
 | `sc_digger/organize.py` | Inbox-Sortierung `<BPM>/<Camelot>/`, Tags schreiben, Dateinamen in NFC-Namen |
-| `sc_digger/rekordbox.py` | Rekordbox-XML: eine Playlist pro Woche aus der Inbox, Dubletten per SoundCloud-ID, Locations in NFC-Namen |
+| `sc_digger/rekordbox.py` | Rekordbox-XML: Playlists pro Woche aus der Inbox, Locations in NFC-Namen; lesender XML-Import (`parse_rekordbox_xml`, `import_rekordbox_xml`, Migration 9) für Ratings, Plays und Cues |
 | `sc_digger/cleanup.py` | Inbox-Dubletten per SoundCloud-ID finden, auflisten und optional nach `_rejected/duplicate/` verschieben |
 | `sc_digger/cues.py` | Cue-Tag `SCDIGGER_FIRST_KICK` (Sekunden) lesen und schreiben |
 | `sc_digger/db.py` | Zentrale Track-DB (Phase 2), Metadaten-Index, Audio-Fingerprints, Jobs-Queue, versionierte Migrationen |
@@ -33,9 +33,12 @@ Modul anlegt, trägt es in die Tabelle ein.
 | `sc_digger/autodeploy.py` | Auto-Deploy per systemd-Timer auf dem Host: neuen `main`-Stand von `update.sh` ausrollen, Healthcheck prüfen, bei Fehlschlag automatisch zurückrollen; Einrichtung in `BETRIEB.md` |
 | `sc_digger/redact.py` | Zugangsdaten aus Texten und Logs entfernen |
 | `sc_digger/web/status.py` | Statusseite (Phase 5): `collect_status` liest Läufe, Health-Alarm, Inbox-Größe und Wochenstatistik nur lesend zusammen |
-| `sc_digger/web/app.py` | FastAPI-App der Statusseite (HTTP-Basic, `docs_url=None`), HTML-Vorlage unter `sc_digger/web/templates/`; mit `base_path`/`local_path` zusätzlich die Editor-Routen `/config`, `/config/preview`, `/config/save`, `/config/reset` inkl. Origin-/Referer-Schutz |
+| `sc_digger/web/database.py` | Multi-DB-Query für das Web-Dashboard: `query_digest` (joint `seen.sqlite` und `tracks.sqlite` für Status, Feedback, Gate-/Store-Links), `query_store_items`, `query_mix_candidates` |
+| `sc_digger/web/intake.py` | Web-Upload & Gate-Assistent: `save_intake_upload` speichert Uploads sicher im Intake-Ordner, `process_intake_file` führt die reguläre Pipeline (Qualitätsprüfung, Normalisierung, BPM/Key, Tags, Rekordbox) aus |
+| `sc_digger/web/app.py` | FastAPI-App des Web-Dashboards (HTTP-Basic, Dark Theme): Status (`/`), Digest-Explorer (`/digest`), Kaufliste (`/kaufliste`), Mix & URL-Scanner (`/mix`), Drag & Drop Upload (`/intake`), Konfigeditor (`/config`) |
 | `sc_digger/web/configedit.py` | Reine Logik des Konfigeditors (ohne Webframework): Formularwert parsen/formatieren, minimaler Override, Diff, Schlüssel entfernen, atomares Schreiben der lokalen Datei mit Backup |
 | `sc_digger/web/__main__.py` | Startbefehl `python -m sc_digger.web`; startet ohne `SC_DIGGER_WEB_PASSWORD` nicht, schaltet den Editor nur mit `SC_DIGGER_CONFIG_LOCAL` ein |
+| `scripts/backfill_gates.py` | Wartungsskript: liest historische Digest-Tracks aus `seen.sqlite`, fragt SoundCloud api-v2 in Batches ab und trägt erkannte Gate-/Store-Links in `tracks.sqlite` ein |
 | `sc_digger/stats.py` | Statistikberechnung für Telegram-Digest und /stats-Bot-Befehl, Vorperioden-Vergleich der Kernkennzahlen, `render_stats_chart`, `send_weekly_digest`, `_trend_section` (Trend-Abschnitt) |
 | `sc_digger/trends.py` | Trend-Radar (Phase 4): Wachstumsanalyse historischer Engagement-Snapshots (`track_snapshots`) je Track und Artist |
 | `sc_digger/preview.py` | Live-Preview (Phase 3): energiereichstes Segment einer Audiodatei per ffmpeg finden und als OGG-Opus-Snippet extrahieren (`find_loudest_segment`, `extract_preview`); Drop-Preview `find_preview_start` startet `preview.riser_s` vor dem ersten Drop (Fallback `find_loudest_segment`); `extract_preview_from_url` für die Stream-Preview nicht heruntergeladener Tracks (`/preview sc:<id>`, seit #168, Schalter `preview.stream_enabled`) |

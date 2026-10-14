@@ -327,34 +327,30 @@ In Rekordbox einrichten:
 | `redact.py` | Zugangsdaten aus Texten, Logs und Fehlermeldungen entfernen |
 | `models.py` | Datenmodelle (`Track`, `Config`) und Config-Loader |
 
-### Web-Statusseite (nur lesend)
+### Web-Dashboard (Live-Cockpit, Digest-Explorer, Gate-Assistent)
 
 Setzt man in `.env` ein Passwort (`SC_DIGGER_WEB_PASSWORD`, siehe `.env.example`), startet der
-Container zusätzlich einen kleinen Webserver (`python -m sc_digger.web`) auf Port `8080`. Ohne
-Passwort startet er nicht (Standard aus), es wird kein zusätzlicher Port geöffnet. Die Seite zeigt
-unter HTTP-Basic-Anmeldung den Zustand: Ampel gesund/Achtung, letzter `discover`-Lauf mit Alter und
-Rohtreffern, aktiven Health-Alarm, Inbox-Größe, die letzten 10 Läufe und die Wochenstatistik –
-dieselben Daten zusätzlich als JSON unter `/api/status`. Sie ist rein lesend (nur GET) und enthält
-kein JavaScript. Für den Zugriff aus dem LAN ist in `docker-compose.yml` eine auskommentierte
-Port-Freigabe an die LAN-Adresse vorbereitet; die Bindung im Container ist `0.0.0.0`, die
-Erreichbarkeit regelt die Port-Freigabe. Neue Pakete (`fastapi`, `uvicorn`, `jinja2`, `httpx`)
-stehen in `requirements.txt`, dafür ist ein Image-Neubau nötig.
+Container zusätzlich einen FastAPI-Webserver (`python -m sc_digger.web`) auf Port `8080`. Ohne
+Passwort startet er nicht (Standard aus), es wird kein zusätzlicher Port geöffnet. Die Seiten sind
+im modernen Dark-Theme gestaltet und per HTTP-Basic-Auth geschützt:
 
-### Web-Konfigeditor
+- **Status (`/` & `/api/status`):** Ampel gesund/Achtung, letzter `discover`-Lauf mit Alter und Rohtreffern, aktiver Health-Alarm, Inbox-Größe, die letzten 10 Läufe und die Wochenstatistik.
+- **Digest-Explorer (`/digest` & `/api/digest`):** Historische Digest-Tracks aus `seen.sqlite` durchsuchen und nach Download-Weg (`Alle`, `Geladen`, `Gate`, `Store`, `Stream`), Zeitraum (`7d`, `14d`, `30d`, `Alle`) oder Text filtern. Ermöglicht direktes Track-Feedback (👍/👎/⏳) und enthält den direkten Link `[🌐 Gate öffnen ↗]` für Fangates (Hypeddit, Droploud etc.).
+- **Kaufliste (`/kaufliste`):** Übersicht aller Store-Tracks (Bandcamp, Beatport etc.) mit Filter auf gelikte Tracks.
+- **Gate-Assistent & Drag & Drop Upload (`/intake` & `POST /api/upload-intake`):** Manuell am PC gelöste Gate-Tracks (WAV, FLAC, AIFF, MP3) einfach per Drag & Drop im Browser hochladen. Der Server übernimmt die Datei, prüft Audioqualität/Clipping, normalisiert den Pegel, analysiert BPM/Key, schreibt ID3/Vorbis-Tags und sortiert sie in die Rekordbox-Inbox ein.
+- **Mix & URL-Scanner (`/mix` & `POST /api/scan`):** Harmonic Mix Finder nach Camelot-Key und BPM sowie On-Demand-Analyse beliebiger SoundCloud-Links (Tracks, Playlists, Artist-Likes) direkt im Browser.
+- **Konfigeditor (`/config`):** Formular für Einstellungen aus `config.yaml` mit Diff-Vorschau (`/config/preview`) und sicherem Schreiben in die lokale Override-Datei (`SC_DIGGER_CONFIG_LOCAL`, z. B. `/data/config.local.yaml`).
 
-Setzt man zusätzlich `SC_DIGGER_CONFIG_LOCAL` (z. B. `/data/config.local.yaml`), erscheint unter
-`/config` ein Formular für die Einstellungen aus `config.yaml`. Es zeigt je Feld den aktuellen Wert
-(aus Basis- und lokaler Datei zusammengeführt), den Standardwert und einen Hinweis, wenn der Wert
-aus der lokalen Datei stammt; ein „Zurücksetzen“ entfernt genau diesen Eintrag wieder. „Vorschau“
-(`/config/preview`) zeigt den Diff und die Warnungen, ohne etwas zu schreiben; „Speichern“
-(`/config/save`) schreibt **nur** in die lokale Override-Datei und legt vorher ein Backup
-(`config.local.yaml.bak-JJJJMMDD-HHMMSS`, die letzten 10 bleiben) an. Die versionierte
-`config.yaml` wird nie verändert. Änderungen gelten ab dem nächsten Lauf; der Telegram-Bot liest
-die Datei erst nach einem Neustart. Betriebspfade (`editable=False`) und Zugangsdaten (Telegram-/
-SoundCloud-Token, Web-Passwort) sind nicht änderbar. Jede POST-Anfrage wird per Origin-/Referer-
-Abgleich gegen fremde Seiten geschützt. Ohne `SC_DIGGER_CONFIG_LOCAL` gibt es keine Editor-Routen,
-und es wird nichts geschrieben. Das Formular braucht `python-multipart` (siehe
-`requirements.txt`) – dafür ist ein Image-Neubau nötig.
+Für den Zugriff aus dem LAN ist in `docker-compose.yml` eine Port-Freigabe vorbereitet.
+
+### Wartung: Gate-Backfill
+
+Wurden in früheren Läufen Gated Tracks im Telegram-Digest gemeldet, bevor die Tabelle `gate_items` existierte, können deren Gate-Links mit dem Wartungsskript nachträglich per SoundCloud-Batch-Abfrage in wenigen Sekunden nachgeladen werden:
+
+```bash
+docker compose exec -T sc-digger python - < scripts/backfill_gates.py
+```
+*(Mit `--dry-run` kann der Lauf vorab ohne Schreibzugriff simuliert werden).*
 
 ## Grenzen
 
