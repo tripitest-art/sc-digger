@@ -11,6 +11,7 @@ frisch gelesen; die versionierte `config.yaml` bleibt unangetastet.
 from __future__ import annotations
 
 import secrets
+from dataclasses import asdict
 from pathlib import Path
 from urllib.parse import urlencode, urlparse
 
@@ -31,6 +32,7 @@ from .database import (
     query_tracks,
     save_track_feedback,
 )
+from .intake import process_uploaded_audio
 from .status import collect_status
 
 _TEMPLATES = Path(__file__).parent / "templates"
@@ -334,6 +336,32 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
                 {"ok": False, "sc_id": sc_id_int, "value": str(value)}, status_code=500
             )
         return JSONResponse({"ok": True, "sc_id": sc_id_int, "value": str(value)})
+
+    # Datei-Upload in den Eingangsordner (Issue #230, Gate-Assistent): Stephan legt Dateien
+    # ab, die er nach einem Gate (Hypeddit, Droploud, …) selbst am PC geholt hat. Der Upload
+    # umgeht das Gate nicht, er ersetzt nur das Kopieren in den Eingangsordner; die Prüfung
+    # läuft danach wie beim täglichen Lauf über main.finish_file. Origin-Prüfung wie beim
+    # Feedback, weil die Route schreibt (CSRF).
+    @app.post("/api/upload-intake")
+    async def api_upload_intake(request: Request):
+        if not _check_auth(request, password, allow_anonymous):
+            return _unauthorized()
+        if not _same_origin(request):
+            return JSONResponse({"ok": False, "error": "Ungültige Herkunft"}, status_code=403)
+        try:
+            form = await request.form()
+        except Exception:
+            return JSONResponse({"ok": False, "error": "Kein Multipart-Formular"}, status_code=400)
+        upload = form.get("file")
+        # Ein Textfeld namens „file“ ist kein Datei-Upload; nur UploadFile hat .file.
+        if upload is None or not hasattr(upload, "file"):
+            return JSONResponse(
+                {"ok": False, "error": "Feld 'file' mit einer Audiodatei fehlt"}, status_code=400
+            )
+        result = process_uploaded_audio(upload.file, upload.filename or "", cfg)
+        # 200 nur, wenn die Datei wirklich in der Inbox liegt; abgelehnt/fehlgeschlagen ist 422,
+        # damit ein Upload-Skript den Unterschied sieht, ohne den Text zu lesen.
+        return JSONResponse(asdict(result), status_code=200 if result.ok else 422)
 
     if base_path is None or local_path is None:
         return app

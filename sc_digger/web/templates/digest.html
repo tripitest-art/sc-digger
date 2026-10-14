@@ -146,6 +146,42 @@
     opacity: 0.4;
     pointer-events: none;
   }
+  /* Upload in den Eingangsordner (Issue #230): Ablagefläche, Zustand und Rückmeldung. */
+  .upload-zone {
+    padding: 1.5rem 1rem;
+    border: 2px dashed var(--border);
+    border-radius: 8px;
+    background-color: var(--bg-card-subtle);
+    text-align: center;
+    color: var(--text-muted);
+    cursor: pointer;
+  }
+  .upload-zone:hover,
+  .upload-zone:focus-visible {
+    border-color: var(--accent-primary);
+    color: var(--text-main);
+    outline: none;
+  }
+  .upload-zone.dragover {
+    border-color: var(--accent-primary);
+    background-color: rgba(59, 130, 246, 0.12);
+    color: var(--text-main);
+  }
+  .upload-zone.busy {
+    opacity: 0.6;
+    cursor: progress;
+  }
+  .upload-status {
+    margin: 0.75rem 0 0;
+    min-height: 1.2em;
+    font-size: 0.85rem;
+  }
+  .upload-status.ok {
+    color: var(--accent-ok);
+  }
+  .upload-status.err {
+    color: var(--accent-err);
+  }
 </style>
 {% endblock %}
 
@@ -204,6 +240,27 @@
       <a href="/digest" class="meta">Zurücksetzen</a>
     </div>
   </form>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h2 class="card-title" style="margin: 0;">Gate-Datei in die Inbox</h2>
+  </div>
+  <p class="meta" style="margin-top: 0;">
+    Datei nach einem Gate (Hypeddit, Droploud, …) hier ablegen. Sie läuft durch dieselbe
+    Prüfung wie der tägliche Eingang: Format- und Fake-Check, BPM/Key-Analyse, Tagging und
+    Sortierung in die Inbox. Gates werden nicht umgangen, der Upload ersetzt nur das Kopieren.
+  </p>
+  <div id="upload-zone" class="upload-zone" role="button" tabindex="0"
+       aria-label="Audiodatei in die Inbox hochladen">
+    <strong>Audiodatei hierher ziehen</strong>
+    <div class="meta" style="font-size: 0.8rem; margin-top: 0.25rem;">
+      oder klicken zum Auswählen · wav, aiff, aif, flac, mp3, m4a
+    </div>
+    <input type="file" id="upload-input" hidden
+           accept=".wav,.aiff,.aif,.flac,.mp3,.m4a,audio/*">
+  </div>
+  <p id="upload-status" class="upload-status" role="status" aria-live="polite"></p>
 </div>
 
 <div class="card">
@@ -333,5 +390,69 @@
       buttons.forEach((b) => { b.disabled = false; });
     }
   }
+
+  // Drag & Drop in den Eingangsordner (Issue #230). Der Upload geht als Multipart an
+  // POST /api/upload-intake; die Antwort nennt status (inbox/rejected/error) und message.
+  // Klick und Tastatur öffnen denselben Dateidialog, damit es ohne Maus geht.
+  document.addEventListener('DOMContentLoaded', () => {
+    const zone = document.getElementById('upload-zone');
+    const input = document.getElementById('upload-input');
+    const status = document.getElementById('upload-status');
+    if (!zone || !input || !status) { return; }
+
+    function show(text, kind) {
+      status.textContent = text;
+      status.classList.toggle('ok', kind === 'ok');
+      status.classList.toggle('err', kind === 'err');
+    }
+
+    async function upload(file) {
+      show('Verarbeite ' + file.name + ' …', '');
+      zone.classList.add('busy');
+      const body = new FormData();
+      body.append('file', file, file.name);
+      try {
+        const response = await fetch('/api/upload-intake', { method: 'POST', body: body });
+        let data = {};
+        try { data = await response.json(); } catch (ignored) { data = {}; }
+        show(data.message || ('HTTP ' + response.status),
+             response.ok && data.ok ? 'ok' : 'err');
+      } catch (error) {
+        show('Upload fehlgeschlagen: ' + error, 'err');
+      } finally {
+        zone.classList.remove('busy');
+        input.value = '';
+      }
+    }
+
+    zone.addEventListener('click', () => { input.click(); });
+    zone.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        input.click();
+      }
+    });
+    ['dragenter', 'dragover'].forEach((name) => {
+      zone.addEventListener(name, (event) => {
+        event.preventDefault();
+        zone.classList.add('dragover');
+      });
+    });
+    ['dragleave', 'drop'].forEach((name) => {
+      zone.addEventListener(name, (event) => {
+        event.preventDefault();
+        zone.classList.remove('dragover');
+      });
+    });
+    // Nur die erste Datei: jede Datei ist ein eigener Upload mit eigener Rückmeldung.
+    zone.addEventListener('drop', (event) => {
+      const file = event.dataTransfer && event.dataTransfer.files[0];
+      if (file) { upload(file); }
+    });
+    input.addEventListener('change', () => {
+      const file = input.files && input.files[0];
+      if (file) { upload(file); }
+    });
+  });
 </script>
 {% endblock %}
