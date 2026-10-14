@@ -197,7 +197,7 @@ def resolve_paths(
     if (not seen_path or not track_path) and config_path.is_file():
         try:
             cfg = Config.load(config_path)
-            state_cfg = cfg.get("state") or {}
+            state_cfg = cfg.raw.get("state") or {}
             if not seen_path and "db_path" in state_cfg:
                 seen_path = Path(state_cfg["db_path"])
             if not track_path and "track_db_path" in state_cfg:
