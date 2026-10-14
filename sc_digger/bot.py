@@ -57,8 +57,8 @@ HELP_TEXT = (
     "• /kaufliste -> zeigt die aktuelle Kaufliste offener Store-Tracks\n"
     "• /curator_mining -> Profile aus 👍-Tracks vorschlagen\n"
     "• /mix 5A 155 -> harmonisch passende Tracks aus der Sammlung (±3 BPM)\n"
-    "• /preview <Suchtext oder id> -> 20s-Snippet eines heruntergeladenen Tracks als Sprachnachricht\n"
-    "• /preview sc:<SoundCloud-ID> -> 20s-Snippet direkt aus dem SoundCloud-Stream (nicht heruntergeladen)\n"
+    "• /preview &lt;Suchtext oder id&gt; -> 20s-Snippet eines heruntergeladenen Tracks als Sprachnachricht\n"
+    "• /preview sc:&lt;SoundCloud-ID&gt; -> 20s-Snippet direkt aus dem SoundCloud-Stream (nicht heruntergeladen)\n"
     "• /stats [Tage] -> Statistiken über Scans, Inbox und Feedback\n"
     "• /cleanup_inbox -> Dubletten in der Inbox auflisten (nur lesend)\n"
     "• /sync_xml -> Rekordbox-XML der Inbox sofort neu schreiben\n\n"
@@ -67,9 +67,20 @@ HELP_TEXT = (
 
 
 def _send_text(cfg: Config, chat_id: str, text: str) -> None:
-    telegram_call(cfg.telegram_token, "sendMessage",
-                  json={"chat_id": chat_id, "text": text, "parse_mode": "HTML",
-                        "disable_web_page_preview": True})
+    """Sendet text per sendMessage an chat_id, zunächst mit parse_mode='HTML'.
+    Scheitert Telegram am HTML (Status 400 bzw. Entity-Parsing-Fehler), wird die Nachricht
+    ohne parse_mode als reiner Text erneut gesendet, damit der Bot nie stumm bleibt."""
+    try:
+        telegram_call(cfg.telegram_token, "sendMessage",
+                      json={"chat_id": chat_id, "text": text, "parse_mode": "HTML",
+                            "disable_web_page_preview": True})
+    except TelegramError as e:
+        if "400" not in str(e) and "parse entities" not in str(e):
+            raise
+        log.warning("HTML-Versand fehlgeschlagen (%s), sende als Klartext erneut", e)
+        telegram_call(cfg.telegram_token, "sendMessage",
+                      json={"chat_id": chat_id, "text": text,
+                            "disable_web_page_preview": True})
 
 
 def handle_kaufliste_command(cfg: Config, chat_id: str | None = None) -> None:
@@ -401,11 +412,12 @@ def cleanup_inbox_reply(cfg: Config) -> str:
 
 def handle_message(cfg: Config, sc: SoundCloudClient, chat_id: str, text: str) -> None:
     text = text.strip()
-    if text in ("/start", "/help"):
+    # Erstes Wort bereinigt um einen angehängten Bot-Namen (/help@bot bzw. "/help @bot")
+    first_word = text.split()[0].split("@")[0].lower() if text else ""
+    if first_word in ("/start", "/help"):
         _send_text(cfg, chat_id, HELP_TEXT)
         return
 
-    first_word = text.split()[0].split("@")[0].lower() if text else ""
     if first_word == "/kaufliste":
         handle_kaufliste_command(cfg, chat_id=chat_id)
         return
