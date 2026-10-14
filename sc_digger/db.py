@@ -311,6 +311,24 @@ MIGRATIONS: list[tuple[int, str, str]] = [
         CREATE INDEX IF NOT EXISTS idx_tracks_adopted_at ON tracks(adopted_at);
         """,
     ),
+    (
+        10,
+        "0010_gate_items",
+        """
+        CREATE TABLE IF NOT EXISTS gate_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sc_id INTEGER UNIQUE NOT NULL,
+            title TEXT NOT NULL,
+            artist TEXT NOT NULL,
+            gate_url TEXT NOT NULL,
+            gate_type TEXT,
+            first_seen TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            last_seen TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_gate_items_last_seen ON gate_items(last_seen);
+        """,
+    ),
 ]
 
 
@@ -680,6 +698,37 @@ class TrackDB:
             ORDER BY store_items.last_seen DESC, store_items.id DESC
         """
         rows = self.db.execute(query, params).fetchall()
+        return [dict(r) for r in rows]
+
+    def upsert_gate_item(
+        self,
+        sc_id: int,
+        title: str,
+        artist: str,
+        gate_url: str,
+        gate_type: str | None = None,
+    ) -> None:
+        """Fügt ein Gate-Item (Hypeddit, Droploud, etc.) in gate_items ein oder aktualisiert last_seen."""
+        self.db.execute(
+            """
+            INSERT INTO gate_items (sc_id, title, artist, gate_url, gate_type, first_seen, last_seen)
+            VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            ON CONFLICT(sc_id) DO UPDATE SET
+                title = excluded.title,
+                artist = excluded.artist,
+                gate_url = excluded.gate_url,
+                gate_type = COALESCE(excluded.gate_type, gate_items.gate_type),
+                last_seen = CURRENT_TIMESTAMP
+            """,
+            (sc_id, title, artist, gate_url, gate_type),
+        )
+        self.db.commit()
+
+    def get_gate_items(self) -> list[dict[str, Any]]:
+        """Gibt alle gate_items sortiert nach last_seen DESC zurück."""
+        rows = self.db.execute(
+            "SELECT * FROM gate_items ORDER BY last_seen DESC, id DESC"
+        ).fetchall()
         return [dict(r) for r in rows]
 
     def get_liked_sc_ids(self) -> list[int]:
