@@ -133,6 +133,44 @@ def quantize_to_phrase(
     return _round3(first_kick_s + bar_index * bar_beats * beat_s)
 
 
+def is_off_phrase(
+    event_s: float,
+    first_kick_s: float,
+    bpm: float,
+    *,
+    phrase_beats: int = 32,
+    secondary_phrase_beats: int = 16,
+    tolerance_beats: float = 1.75,
+) -> bool:
+    """True, wenn event_s außerhalb der Toleranz um das 16/32-Beat-Phrasengitter liegt.
+
+    Gibt False zurück, wenn event_s innerhalb von ±(tolerance_beats * beat_s) um ein
+    Vielfaches von phrase_beats (Standard 32) oder secondary_phrase_beats (Standard 16) liegt.
+    Gibt False zurück bei ungültigen Werten, bpm <= 0, first_kick_s < 0 oder event_s < first_kick_s.
+    Wirft nie.
+    """
+    if not (
+        _is_finite(event_s)
+        and _is_finite(first_kick_s)
+        and _is_finite(bpm)
+        and _is_finite(tolerance_beats)
+    ):
+        return False
+    if bpm <= 0 or first_kick_s < 0 or event_s < first_kick_s:
+        return False
+    if phrase_beats <= 0 and secondary_phrase_beats <= 0:
+        return False
+
+    beat_s = 60.0 / bpm
+    offset_beats = (event_s - first_kick_s) / beat_s
+
+    if _snap_to_grid(offset_beats, phrase_beats, tolerance_beats) is not None:
+        return False
+    if _snap_to_grid(offset_beats, secondary_phrase_beats, tolerance_beats) is not None:
+        return False
+    return True
+
+
 def align_cues(
     cues: dict[str, float | None],
     first_kick_s: float,
