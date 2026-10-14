@@ -19,7 +19,39 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+from ..collection import is_match, normalize, remixer_tokens
 from ..db import FEEDBACK_VALUES
+
+_AUDIO_EXT = {".wav", ".aiff", ".aif", ".flac", ".mp3", ".m4a"}
+
+
+class _FuzzyMatcher:
+    def __init__(self, entries: list[tuple[set[str], set[str]]]):
+        self.entries = entries
+        self.index: dict[str, list[int]] = {}
+        for idx, (tokens, _) in enumerate(entries):
+            for word in tokens:
+                self.index.setdefault(word, []).append(idx)
+
+    def matches(self, a_tokens: set[str], a_remix: set[str]) -> bool:
+        if not a_tokens:
+            return False
+        candidate_indices: set[int] = set()
+        for word in a_tokens:
+            if word in self.index:
+                candidate_indices.update(self.index[word])
+        for idx in candidate_indices:
+            b_tokens, b_remix = self.entries[idx]
+            if not is_match(a_tokens, b_tokens):
+                continue
+            if a_remix and b_remix and not (a_remix & b_remix):
+                continue
+            if a_remix and not b_remix and not (a_remix & b_tokens):
+                continue
+            if b_remix and not a_remix and not (b_remix & a_tokens):
+                continue
+            return True
+        return False
 
 # Spalten, die ein Suchtreffer an die Oberfläche liefert (bewusst ohne Audio-Fingerprint
 # und Qualitätsdetails; die gehören nicht in eine Listenansicht).
@@ -302,6 +334,7 @@ def query_digest(
     state_db_path: str | Path,
     track_db_path: str | Path,
     *,
+    inbox_dir: str | Path | None = None,
     search: str = "",
     status_filter: str = "",  # '', 'collection', 'inbox', 'open'
     download_kind: str = "",  # '', 'native', 'gate', 'store', 'stream'
@@ -311,6 +344,10 @@ def query_digest(
 ) -> DigestSearchResult:
     """Liest chronologisch (neueste zuerst) aus seen.sqlite (seen-Tabelle) und joint
     Informationen aus track_db (tracks, sc_feedback, store_items, gate_items).
+    Gleicht den Status (in_inbox, in_collection) primär per SoundCloud-ID ([<sc_id>])
+    und als Fallback per Fuzzy-Match auf Artist & Title (unter Beachtung von Remixer-Tokens)
+    ab. Ist inbox_dir übergeben und vorhanden, werden dortige Audio-Dateien ebenfalls
+    berücksichtigt.
     Fehlt eine DB-Datei oder Tabelle, wirft die Funktion nicht, sondern liefert leere/partielle Ergebnisse.
     Nur lesend; limit wird auf max. 200 begrenzt.
     """
@@ -324,6 +361,30 @@ def query_digest(
     snapshot_map: dict[int, dict[str, int]] = {}
     inbox_ids: set[int] = set()
     archive_ids: set[int] = set()
+    inbox_file_entries: list[tuple[set[str], set[str]]] = []
+    inbox_track_entries: list[tuple[set[str], set[str]]] = []
+    archive_track_entries: list[tuple[set[str], set[str]]] = []
+
+    if inbox_dir:
+        inbox_p = Path(inbox_dir)
+        if inbox_p.is_dir():
+            for p in inbox_p.rglob("*"):
+                if not p.is_file() or p.suffix.lower() not in _AUDIO_EXT:
+                    continue
+                try:
+                    rel = p.relative_to(inbox_p)
+                except ValueError:
+                    continue
+                if any(part.startswith(("_", ".")) for part in rel.parts):
+                    continue
+                m = re.match(r"^\[(\d+)\]", p.name)
+                if m:
+                    inbox_ids.add(int(m.group(1)))
+                stem = re.sub(r"^\[\d+\]\s*", "", p.stem)
+                toks = set(normalize(stem))
+                remix = remixer_tokens(p.stem)
+                if toks:
+                    inbox_file_entries.append((toks, remix))
 
     track_path = Path(track_db_path)
     if track_path.is_file():
@@ -342,7 +403,9 @@ def query_digest(
                         if row["sc_id"] is not None and row["gate_url"]:
                             gate_map[int(row["sc_id"])] = str(row["gate_url"])
                 if _table_exists(tdb, "tracks"):
-                    for row in tdb.execute("SELECT path, status FROM tracks"):
+                    cols = {col["name"] for col in tdb.execute("PRAGMA table_info(tracks)").fetchall()}
+                    has_artist_title = "artist" in cols and "title" in cols
+                    for row in tdb.execute("SELECT * FROM tracks"):
                         p_str = str(row["path"] or "")
                         st_str = str(row["status"] or "").lower()
                         m = re.search(r"\[(\d+)\]", p_str)
@@ -350,8 +413,25 @@ def query_digest(
                             tid = int(m.group(1))
                             if st_str == "inbox":
                                 inbox_ids.add(tid)
-                            elif st_str == "archive":
+                            elif st_str in ("archive", "adopted"):
                                 archive_ids.add(tid)
+                        artist = str(row["artist"] or "") if has_artist_title and "artist" in row.keys() else ""
+                        title = str(row["title"] or "") if has_artist_title and "title" in row.keys() else ""
+                        if not artist and not title and p_str:
+                            stem = Path(p_str).stem
+                            stem = re.sub(r"^\[\d+\]\s*", "", stem)
+                            full = stem
+                            remix_text = stem
+                        else:
+                            full = f"{artist} {title}".strip()
+                            remix_text = title
+                        toks = set(normalize(full))
+                        remix = remixer_tokens(remix_text)
+                        if toks:
+                            if st_str == "inbox":
+                                inbox_track_entries.append((toks, remix))
+                            elif st_str in ("archive", "adopted"):
+                                archive_track_entries.append((toks, remix))
                 # Neuesten Engagement-Snapshot je Track ergänzen (Issue #257). Die Abfrage steht
                 # zuletzt, damit eine minimale Fremd-Tabelle ohne diese Spalten die übrigen Maps
                 # nicht verwirft; ORDER BY liefert je sc_id den jüngsten Snapshot zuerst.
@@ -374,6 +454,9 @@ def query_digest(
         except sqlite3.Error:
             pass
 
+    inbox_matcher = _FuzzyMatcher(inbox_track_entries + inbox_file_entries)
+    archive_matcher = _FuzzyMatcher(archive_track_entries)
+
     try:
         with closing(_connect_readonly(state_path)) as sdb:
             if not _table_exists(sdb, "seen"):
@@ -392,8 +475,12 @@ def query_digest(
         url = str(r["url"] or "")
         reported_at = str(r["reported_at"] or "")
 
-        in_inbox = sc_id in inbox_ids
-        in_coll = sc_id in archive_ids
+        full_title = f"{artist} {title}".strip() if artist else title
+        q_tokens = set(normalize(full_title))
+        q_remix = remixer_tokens(title)
+
+        in_inbox = (sc_id in inbox_ids) or inbox_matcher.matches(q_tokens, q_remix)
+        in_coll = (sc_id in archive_ids) or archive_matcher.matches(q_tokens, q_remix)
 
         purchase_url = store_map.get(sc_id)
         gate_url = gate_map.get(sc_id)

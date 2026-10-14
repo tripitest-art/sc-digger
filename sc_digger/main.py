@@ -164,6 +164,35 @@ def finish_file(t: Track, path: Path, inbox: Path, cfg: Config) -> Path | None:
         except Exception as e:
             t.notes.append(f"Organize fehlgeschlagen: {e}")
 
+    # Track in TrackDB mit status=inbox persistieren (Issue #259)
+    track_db_path = (cfg.raw.get("state") or {}).get("track_db_path")
+    if track_db_path:
+        try:
+            from .db import TrackDB, TrackRecord, TrackStatus, QualityStatus
+            stat = path.stat()
+            q_rep = t.quality_report or {}
+            q_status = QualityStatus.OK if q_rep.get("ok") else QualityStatus.UNKNOWN
+            rec = TrackRecord(
+                path=str(path),
+                mtime=stat.st_mtime,
+                size=stat.st_size,
+                artist=t.artist,
+                title=t.title,
+                bpm=t.bpm,
+                key_camelot=t.key_camelot,
+                key_name=t.key_name,
+                source_url=t.url,
+                status=TrackStatus.INBOX,
+                format=q_rep.get("ext") or (path.suffix[1:].lower() if path.suffix else None),
+                bitrate_kbps=q_rep.get("bitrate_kbps"),
+                cutoff_hz=q_rep.get("cutoff_hz"),
+                quality_status=q_status,
+            )
+            with TrackDB(track_db_path) as db:
+                db.upsert_track(rec)
+        except Exception as e:
+            log.warning("Persistieren in TrackDB fehlgeschlagen: %s", e)
+
     return path
 
 
