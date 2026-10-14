@@ -20,13 +20,13 @@ Modul anlegt, trägt es in die Tabelle ein.
 | `sc_digger/loudness.py` | Pegel-Normalisierung neuer Inbox-Downloads (-8.5 LUFS, samplegenau, Metadaten-Erhalt) |
 | `sc_digger/analysis.py` | BPM/Key per librosa, BPM-Oktav-Korrektur `resolve_bpm` |
 | `sc_digger/structure.py` | Strukturanalyse: Kick-Erkennung, Segmente (`intro`, `main`, `breakdown`, `outro`), erster Kick, Drop-Start (`find_drop_start`) und Breakdown-Anteil (`calculate_breakdown_ratio`) |
-| `sc_digger/phrase.py` | Phrasen-Quantisierung: 16/32-Beat-Gitter aus `first_kick` und BPM (`calculate_phrase_grid`), Cue-Alignment mit Toleranzfenster und Taktanfang-/Downbeat-Fallback (`quantize_to_phrase`, `align_cues`) |
+| `sc_digger/phrase.py` | Phrasen-Quantisierung: 16/32-Beat-Gitter aus `first_kick` und BPM (`calculate_phrase_grid`), Cue-Alignment mit Toleranzfenster und Taktanfang-/Downbeat-Fallback (`quantize_to_phrase`, `align_cues`); in `structure.find_drop_start`, `cues.write_stem_cues` und `rekordbox.build_xml` optional eingebunden (`phrase_align`/`phrase_align_cues`, Config `rekordbox.cues_phrase_align`) |
 | `sc_digger/fingerprint.py` | Audio-Fingerprints (Chromaprint/fpcalc), gleiche Aufnahme erkennen |
 | `sc_digger/harmonic.py` | Harmonische Kompatibilität (Camelot-Wheel), Suche passender Tracks nach Key und BPM |
 | `sc_digger/organize.py` | Inbox-Sortierung `<BPM>/<Camelot>/`, Tags schreiben, Dateinamen in NFC-Namen |
 | `sc_digger/rekordbox.py` | Rekordbox-XML: Playlists pro Woche aus der Inbox, Locations in NFC-Namen; lesender XML-Import (`parse_rekordbox_xml`, `import_rekordbox_xml`, Migration 9) für Ratings, Plays und Cues |
 | `sc_digger/cleanup.py` | Inbox-Dubletten per SoundCloud-ID finden, auflisten und optional nach `_rejected/duplicate/` verschieben |
-| `sc_digger/cues.py` | Cue-Tag `SCDIGGER_FIRST_KICK` (Sekunden) lesen und schreiben |
+| `sc_digger/cues.py` | Cue-Tags `SCDIGGER_FIRST_KICK`, `SCDIGGER_DROP`, `SCDIGGER_BREAKDOWN`, `SCDIGGER_BREAKDOWN_KIND` (Sekunden) lesen und schreiben; `write_stem_cues` schreibt First Kick, Drop und Breakdown und richtet Drop/Breakdown optional per `phrase_align` am Phrasengitter aus |
 | `sc_digger/db.py` | Zentrale Track-DB (Phase 2), Metadaten-Index, Audio-Fingerprints, Jobs-Queue, versionierte Migrationen |
 | `sc_digger/audit.py` | Read-only Library Audit (Phase 2.2), Fake-Erkennung, HTML-Dashboard, Rückmeldung „übernommen“ per Fingerprint (`mark_adopted_tracks`, `audit --check-adopted`, ROADMAP 3.12) |
 | `sc_digger/health.py` | Laufprotokoll, Alarm bei wiederholt leeren/fehlerhaften Läufen |

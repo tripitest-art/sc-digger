@@ -12,7 +12,9 @@ from __future__ import annotations
 import logging
 import math
 from pathlib import Path
+from typing import Sequence
 
+from sc_digger import phrase
 from sc_digger.stems import StemAnalysisResult
 
 log = logging.getLogger(__name__)
@@ -259,23 +261,38 @@ def read_breakdown_kind_tag(path: Path) -> str | None:
     return raw or None
 
 
-def write_stem_cues(path: Path, result: StemAnalysisResult) -> bool:
+def write_stem_cues(path: Path, result: StemAnalysisResult, *, bpm: float | None = None,
+                    downbeats: Sequence[float] | None = None,
+                    phrase_align: bool = False) -> bool:
     """Schreibt first_kick_s, den ersten Drop und den ersten Breakdown aus result in path.
 
-    Nutzt write_first_kick_tag, write_drop_tag und write_breakdown_tag. True, wenn alle
-    tatsächlich geschriebenen Tags erfolgreich waren; False, wenn nichts zu schreiben war oder
-    ein Schreibvorgang fehlschlägt. Wirft nie.
+    Nutzt write_first_kick_tag, write_drop_tag und write_breakdown_tag. Ist phrase_align=True,
+    bpm > 0 und result.first_kick_s vorhanden, werden Drop und Breakdown vor dem Schreiben per
+    phrase.quantize_to_phrase auf das 16/32-Beat-Phrasengitter ausgerichtet; der erste Kick
+    bleibt unverändert. True, wenn alle tatsächlich geschriebenen Tags erfolgreich waren;
+    False, wenn nichts zu schreiben war oder ein Schreibvorgang fehlschlägt. Wirft nie.
     """
+    first_kick = result.first_kick_s
+    drop_s: float | None = result.drops[0].start_s if result.drops else None
+    breakdown = result.breakdowns[0] if result.breakdowns else None
+    breakdown_s: float | None = breakdown.start_s if breakdown is not None else None
+
+    if phrase_align and bpm is not None and bpm > 0 and first_kick is not None:
+        if drop_s is not None:
+            drop_s = phrase.quantize_to_phrase(drop_s, first_kick, bpm, downbeats=downbeats)
+        if breakdown_s is not None:
+            breakdown_s = phrase.quantize_to_phrase(breakdown_s, first_kick, bpm,
+                                                    downbeats=downbeats)
+
     wrote = False
     ok = True
-    if result.first_kick_s is not None:
+    if first_kick is not None:
         wrote = True
-        ok = write_first_kick_tag(path, result.first_kick_s) and ok
-    if result.drops:
+        ok = write_first_kick_tag(path, first_kick) and ok
+    if result.drops and drop_s is not None:
         wrote = True
-        ok = write_drop_tag(path, result.drops[0].start_s) and ok
-    if result.breakdowns:
+        ok = write_drop_tag(path, drop_s) and ok
+    if breakdown is not None and breakdown_s is not None:
         wrote = True
-        first = result.breakdowns[0]
-        ok = write_breakdown_tag(path, first.start_s, first.kind) and ok
+        ok = write_breakdown_tag(path, breakdown_s, breakdown.kind) and ok
     return wrote and ok
