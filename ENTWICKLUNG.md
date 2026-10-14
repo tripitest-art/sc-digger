@@ -20,6 +20,7 @@ Modul anlegt, trägt es in die Tabelle ein.
 | `sc_digger/loudness.py` | Pegel-Normalisierung neuer Inbox-Downloads (-8.5 LUFS, samplegenau, Metadaten-Erhalt) |
 | `sc_digger/analysis.py` | BPM/Key per librosa, BPM-Oktav-Korrektur `resolve_bpm` |
 | `sc_digger/structure.py` | Strukturanalyse: Kick-Erkennung, Segmente (`intro`, `main`, `breakdown`, `outro`), erster Kick, Drop-Start (`find_drop_start`) und Breakdown-Anteil (`calculate_breakdown_ratio`) |
+| `sc_digger/phrase.py` | Phrasen-Quantisierung: 16/32-Beat-Gitter aus `first_kick` und BPM (`calculate_phrase_grid`), Cue-Alignment mit Toleranzfenster und Taktanfang-/Downbeat-Fallback (`quantize_to_phrase`, `align_cues`) |
 | `sc_digger/fingerprint.py` | Audio-Fingerprints (Chromaprint/fpcalc), gleiche Aufnahme erkennen |
 | `sc_digger/harmonic.py` | Harmonische Kompatibilität (Camelot-Wheel), Suche passender Tracks nach Key und BPM |
 | `sc_digger/organize.py` | Inbox-Sortierung `<BPM>/<Camelot>/`, Tags schreiben, Dateinamen in NFC-Namen |
