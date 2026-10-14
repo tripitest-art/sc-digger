@@ -126,9 +126,36 @@ def detect_version_type(title: str | None, tags: Sequence[str] | None = None) ->
     return VersionType.ORIGINAL
 
 
-def recommend_rekordbox_color(analysis: StyleAnalysis) -> str:
-    """Gibt eine Rekordbox-Farbempfehlung für den Versionstyp zurück.
-    TOOL -> 'Blue', EDIT -> 'Green', BOOTLEG/MASHUP/FLIP -> 'Red', VIP/REWORK -> 'Yellow', sonst 'None'."""
+# Farbcodierung nach der Schranz-Matrix (Subgenre). Anders als die Versionstyp-Farben
+# beschreibt sie das Klangbild, nicht die Funktion des Tracks; deshalb zuschaltbar
+# (rekordbox.matrix_colors) und mit Vorrang vor style_colors.
+_MATRIX_COLORS: dict[Subgenre, str] = {
+    Subgenre.INDUSTRIAL: "Red",
+    Subgenre.TERROR: "Red",
+    Subgenre.CROSSBREED: "Red",
+    Subgenre.CLASSIC: "Blue",
+    Subgenre.TRIBAL: "Green",
+    Subgenre.HARDGROOVE: "Green",
+    Subgenre.MELODIC: "Yellow",
+    Subgenre.NEO: "Orange",
+    Subgenre.BOUNCE: "Pink",
+    Subgenre.ACID: "Purple",
+    Subgenre.PSY: "Purple",
+    Subgenre.REVERSE_BASS: "Purple",
+    Subgenre.EBM: "Purple",
+}
+
+
+def recommend_rekordbox_color(analysis: StyleAnalysis, *, by_matrix: bool = False) -> str:
+    """Gibt eine Rekordbox-Farbempfehlung zurück.
+
+    by_matrix=False (Standard): Farbe nach Versionstyp.
+    TOOL -> 'Blue', EDIT -> 'Green', BOOTLEG/MASHUP/FLIP -> 'Red', VIP/REWORK -> 'Yellow', sonst 'None'.
+    by_matrix=True: Farbe nach Subgenre (Schranz-Matrix), z. B. Industrial/Terror/Crossbreed -> 'Red',
+    Classic -> 'Blue', Tribal/Hardgroove -> 'Green', Melodic -> 'Yellow', Neo -> 'Orange',
+    Bounce -> 'Pink', Acid/Psy/Reverse Bass/EBM -> 'Purple'."""
+    if by_matrix:
+        return _MATRIX_COLORS.get(analysis.subgenre, "None")
     mapping = {
         VersionType.TOOL: "Blue",
         VersionType.EDIT: "Green",
@@ -429,3 +456,47 @@ def format_rekordbox_comment(
         tail.append(analysis.dj_note)
 
     return f"{head} | " + " · ".join(tail)
+
+
+def _format_mmss(seconds: float) -> str:
+    """Formatiert Sekunden als M:SS (Minuten ohne führende Null, Sekunden zweistellig)."""
+    total = int(seconds)
+    return f"{total // 60}:{total % 60:02d}"
+
+
+def format_compact_rekordbox_comment(
+    analysis: StyleAnalysis,
+    bpm: float | None = None,
+    key_camelot: str | None = None,
+    *,
+    drop1_s: float | None = None,
+    drop2_s: float | None = None,
+    lufs: float | None = None,
+) -> str:
+    """Erzeugt einen kompakten Rekordbox-Kommentar für kleine CDJ/XDJ-Displays.
+
+    Aufbau: '[<BPM>|<Key>|<Substil>|D1:<Drop1>|D2:<Drop2>|L<LUFS>]'. Nicht gesetzte
+    Felder entfallen, die Reihenfolge bleibt fest. Substil ist der Subgenre-Anzeigename,
+    bei Versionstypen außer ORIGINAL/REMIX das Versionskürzel (z. B. TOOL). Ohne jedes
+    Feld (kein BPM, Key, Drop, LUFS) wird nur '[<Substil>]' zurückgegeben.
+    Beispiel: '[155|9A|Hardgroove|D1:0:45|D2:2:15|L-7.5]'."""
+    if analysis.version_type in (VersionType.ORIGINAL, VersionType.REMIX):
+        label = _SUBGENRE_DISPLAY[analysis.subgenre]
+    else:
+        label = analysis.version_type.value.upper()
+
+    parts: list[str] = []
+    if bpm is not None and bpm > 0:
+        parts.append(f"{bpm:g}")
+    key = key_camelot.strip() if key_camelot else ""
+    if key:
+        parts.append(key)
+    parts.append(label)
+    if drop1_s is not None and drop1_s >= 0:
+        parts.append(f"D1:{_format_mmss(drop1_s)}")
+    if drop2_s is not None and drop2_s >= 0:
+        parts.append(f"D2:{_format_mmss(drop2_s)}")
+    if lufs is not None:
+        parts.append(f"L{lufs:.1f}")
+
+    return f"[{'|'.join(parts)}]"

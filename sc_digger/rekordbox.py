@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 import re
 import tempfile
@@ -22,6 +23,7 @@ from sc_digger.style import (
     Subgenre,
     VersionType,
     classify_track,
+    format_compact_rekordbox_comment,
     format_rekordbox_comment,
     recommend_rekordbox_color,
 )
@@ -91,6 +93,8 @@ class InboxTrack:
     drop_s: float | None = None
     breakdown_s: float | None = None
     breakdown_kind: str | None = None
+    drop2_s: float | None = None
+    lufs: float | None = None
 
 
 _SCID_RE = re.compile(r"^\[(\d+)\]")
@@ -334,7 +338,8 @@ def scan_inbox(inbox: Path) -> list[InboxTrack]:
     Tags per mutagen: ID3 (MP3/WAV/AIFF) TIT2, TPE1, TCON, TBPM, TKEY, erstes COMM;
     FLAC title, artist, genre, bpm, initialkey, comment; M4A ©nam, ©ART, ©gen, tmpo, ©cmt.
     Dazu die Cue-Tags aus cues.py: SCDIGGER_FIRST_KICK, SCDIGGER_DROP, SCDIGGER_BREAKDOWN
-    und SCDIGGER_BREAKDOWN_KIND (fehlend -> None).
+    und SCDIGGER_BREAKDOWN_KIND (fehlend -> None). Ebenso SCDIGGER_DROP2 (zweiter Drop) und
+    SCDIGGER_LUFS (integrierte Lautheit, z. B. "-7.5"; fehlend/unlesbar -> None).
     Fehlende Texte -> "", Titel fällt auf den Dateinamen ohne Endung zurück, BPM nicht lesbar -> None.
     Dauer aus mutagen info.length. Nicht lesbare Datei: log.warning, Eintrag mit Dateiname als Titel.
     """
@@ -370,7 +375,23 @@ def scan_inbox(inbox: Path) -> list[InboxTrack]:
         t.drop_s = cues.read_drop_tag(t.path)
         t.breakdown_s = cues.read_breakdown_tag(t.path)
         t.breakdown_kind = cues.read_breakdown_kind_tag(t.path)
+        # Für SCDIGGER_DROP2/SCDIGGER_LUFS gibt es keinen öffentlichen Leser in cues;
+        # die privaten Helfer dort direkt zu nutzen ist (wie organize._bpm_bucket hier) der Hausstil.
+        t.drop2_s = cues._parse_seconds(cues._read_string_tag(t.path, "SCDIGGER_DROP2"))
+        t.lufs = _parse_lufs(cues._read_string_tag(t.path, "SCDIGGER_LUFS"))
     return tracks
+
+
+def _parse_lufs(raw: str | None) -> float | None:
+    """Parst einen LUFS-Wert aus einem Tag. Anders als cues._parse_seconds sind negative
+    Werte gültig (z. B. "-7.5"); fehlend, unlesbar oder nicht-finit -> None."""
+    if raw is None:
+        return None
+    try:
+        value = float(str(raw).strip())
+    except (TypeError, ValueError):
+        return None
+    return value if math.isfinite(value) else None
 
 
 _CAMELOT_RE = re.compile(r"^(?:[1-9]|1[0-2])[AB]$")
@@ -417,7 +438,8 @@ def build_xml(tracks: list[InboxTrack], path_map: dict[str, str], now: datetime 
               hot_cues: bool = True, memory_cues: bool = True,
               by_style: bool = False, by_subgenre: bool = False, by_version: bool = False,
               style_colors: bool = False, style_comments: bool = False,
-              phrase_align_cues: bool = False, grid_anchor: bool = True) -> str:
+              phrase_align_cues: bool = False, grid_anchor: bool = True,
+              matrix_colors: bool = False, compact_style_comments: bool = False) -> str:
     """<?xml version="1.0" encoding="UTF-8"?> + DJ_PLAYLISTS Version="1.0.0" mit PRODUCT,
     COLLECTION und PLAYLISTS. Tracks ohne Location (nicht gemappt) werden weggelassen.
     COLLECTION Entries = Anzahl; TRACK-Attribute: TrackID (1, 2, … in Eingabereihenfolge), Name,
@@ -445,7 +467,11 @@ def build_xml(tracks: list[InboxTrack], path_map: dict[str, str], now: datetime 
     Schranz-Matrix (sc_digger.style), optional: style_colors=True setzt am TRACK-Knoten das
     Colour-Attribut aus recommend_rekordbox_color (ausser "None"); style_comments=True
     überschreibt Comments mit format_rekordbox_comment und ergänzt bei vorliegendem
-    breakdown_kind " · Break: <Silence|Groove>". by_style/by_subgenre/by_version
+    breakdown_kind " · Break: <Silence|Groove>". matrix_colors=True setzt die Colour nach
+    dem Subgenre (recommend_rekordbox_color(..., by_matrix=True)) und hat Vorrang vor
+    style_colors. compact_style_comments=True überschreibt Comments mit
+    format_compact_rekordbox_comment (kompakt für CDJ/XDJ-Displays, ohne Break-Zusatz) und
+    hat Vorrang vor style_comments. by_style/by_subgenre/by_version
     ergänzen nach den Wochen und BPM/Key die Ordner "Stile", "Subgenres" und "Versionen"
     mit je einer Playlist pro nicht leerem Cluster/Subgenre/Versionstyp in fester
     Reihenfolge; leere Ordner entfallen.
@@ -483,17 +509,30 @@ def build_xml(tracks: list[InboxTrack], path_map: dict[str, str], now: datetime 
         }
         if t.bpm is not None:
             attr["AverageBpm"] = f"{t.bpm:.2f}"
-        if style_colors or style_comments:
+        if style_colors or style_comments or matrix_colors or compact_style_comments:
             analysis = classify_track(
                 bpm=t.bpm,
                 title=t.title,
                 tags=[t.genre] if t.genre else None,
             )
-            if style_colors:
+            if matrix_colors:
+                color = recommend_rekordbox_color(analysis, by_matrix=True)
+            elif style_colors:
                 color = recommend_rekordbox_color(analysis)
-                if color != "None":
-                    attr["Colour"] = color
-            if style_comments:
+            else:
+                color = "None"
+            if color != "None":
+                attr["Colour"] = color
+            if compact_style_comments:
+                attr["Comments"] = format_compact_rekordbox_comment(
+                    analysis,
+                    bpm=t.bpm,
+                    key_camelot=t.key or None,
+                    drop1_s=t.drop_s,
+                    drop2_s=t.drop2_s,
+                    lufs=t.lufs,
+                )
+            elif style_comments:
                 attr["Comments"] = format_rekordbox_comment(
                     analysis, bpm=t.bpm, key_camelot=t.key or None
                 )
@@ -663,6 +702,10 @@ def write_rekordbox_xml(cfg: Config) -> Path | None:
     16/32-Beat-Phrasengitter ausrichten (build_xml phrase_align_cues).
     grid_anchor (bool, fehlt/None -> True): Beatgrid-Anker <TEMPO> an first_kick_s schreiben
     (build_xml grid_anchor).
+    style_colors/style_comments (bool, fehlt -> False): Track-Farbe bzw. -Kommentar nach
+    Versionstyp (build_xml). matrix_colors (bool, fehlt -> False): Track-Farbe nach
+    Schranz-Matrix (Vorrang vor style_colors). compact_style_comments (bool, fehlt -> False):
+    kompakter Display-Kommentar (Vorrang vor style_comments).
     Jeder Fehler -> log.warning, Temp-Datei entfernen, None. Wirft nie.
     """
     tmp_path: Path | None = None
@@ -737,6 +780,8 @@ def write_rekordbox_xml(cfg: Config) -> Path | None:
         by_version = bool(rb_cfg.get("playlists_by_version"))
         style_colors = bool(rb_cfg.get("style_colors"))
         style_comments = bool(rb_cfg.get("style_comments"))
+        matrix_colors = bool(rb_cfg.get("matrix_colors"))
+        compact_style_comments = bool(rb_cfg.get("compact_style_comments"))
 
         hot_cues = rb_cfg.get("cues_as_hotcues", True)
         memory_cues = rb_cfg.get("cues_as_memory", True)
@@ -755,7 +800,9 @@ def write_rekordbox_xml(cfg: Config) -> Path | None:
                                 hot_cues=hot_cues, memory_cues=memory_cues,
                                 by_style=by_style, by_subgenre=by_subgenre, by_version=by_version,
                                 style_colors=style_colors, style_comments=style_comments,
-                                phrase_align_cues=phrase_align_cues, grid_anchor=grid_anchor)
+                                phrase_align_cues=phrase_align_cues, grid_anchor=grid_anchor,
+                                matrix_colors=matrix_colors,
+                                compact_style_comments=compact_style_comments)
 
         target_dir = xml_path.parent
         target_dir.mkdir(parents=True, exist_ok=True)

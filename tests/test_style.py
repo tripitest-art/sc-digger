@@ -14,6 +14,7 @@ from sc_digger.style import (
     calculate_energy,
     classify_track,
     detect_version_type,
+    format_compact_rekordbox_comment,
     format_rekordbox_comment,
     recommend_rekordbox_color,
 )
@@ -164,3 +165,69 @@ def test_classify_track_default_note_nie_leer():
     res = classify_track(None)
     assert res.dj_note
     assert res.confidence <= 0.6
+
+
+def test_kompakt_kommentar_alle_felder():
+    analysis = _analysis(Subgenre.HARDGROOVE, VersionType.ORIGINAL)
+    comment = format_compact_rekordbox_comment(
+        analysis, bpm=155.0, key_camelot="9A", drop1_s=45.0, drop2_s=135.0, lufs=-7.5
+    )
+    assert comment == "[155|9A|Hardgroove|D1:0:45|D2:2:15|L-7.5]"
+
+
+def test_kompakt_kommentar_teilfelder():
+    analysis = _analysis(Subgenre.HARDGROOVE, VersionType.ORIGINAL)
+    # Nur BPM und Drop1 -> D2 und LUFS entfallen, Reihenfolge bleibt fest.
+    comment = format_compact_rekordbox_comment(analysis, bpm=155.0, key_camelot="9A", drop1_s=45.0)
+    assert comment == "[155|9A|Hardgroove|D1:0:45]"
+    # Drop bei 0 s (Trackbeginn) wird geschrieben, nicht als "fehlend" gewertet.
+    assert "D1:0:00" in format_compact_rekordbox_comment(analysis, bpm=150.0, drop1_s=0.0)
+
+
+def test_kompakt_kommentar_versionstyp_statt_subgenre():
+    analysis = _analysis(Subgenre.TRIBAL, VersionType.TOOL)
+    assert format_compact_rekordbox_comment(analysis, bpm=150.0) == "[150|TOOL]"
+
+
+def test_kompakt_kommentar_ignoriert_ungueltige_werte():
+    analysis = _analysis(Subgenre.NEO, VersionType.ORIGINAL)
+    # bpm 0, leerer Key, negativer Drop, keine LUFS -> nur der Substil bleibt.
+    comment = format_compact_rekordbox_comment(
+        analysis, bpm=0.0, key_camelot="  ", drop1_s=-1.0, drop2_s=-2.0, lufs=None
+    )
+    assert comment == "[Neo]"
+
+
+def test_kompakt_kommentar_minimal_ohne_jedes_feld():
+    analysis = _analysis(Subgenre.CLASSIC, VersionType.ORIGINAL)
+    assert format_compact_rekordbox_comment(analysis) == "[Classic]"
+
+
+def test_matrix_farbe_alle_subgenres():
+    erwartet = {
+        Subgenre.INDUSTRIAL: "Red",
+        Subgenre.TERROR: "Red",
+        Subgenre.CROSSBREED: "Red",
+        Subgenre.CLASSIC: "Blue",
+        Subgenre.TRIBAL: "Green",
+        Subgenre.HARDGROOVE: "Green",
+        Subgenre.MELODIC: "Yellow",
+        Subgenre.NEO: "Orange",
+        Subgenre.BOUNCE: "Pink",
+        Subgenre.ACID: "Purple",
+        Subgenre.PSY: "Purple",
+        Subgenre.REVERSE_BASS: "Purple",
+        Subgenre.EBM: "Purple",
+    }
+    assert set(erwartet) == set(Subgenre)
+    for subgenre, farbe in erwartet.items():
+        analysis = _analysis(subgenre, VersionType.ORIGINAL)
+        assert recommend_rekordbox_color(analysis, by_matrix=True) == farbe
+
+
+def test_matrix_farbe_hat_vorrang_bei_gesetztem_flag():
+    # Edit -> Versionstyp "Green", Matrix (Classic) -> "Blue": der Flag entscheidet.
+    analysis = _analysis(Subgenre.CLASSIC, VersionType.EDIT)
+    assert recommend_rekordbox_color(analysis) == "Green"
+    assert recommend_rekordbox_color(analysis, by_matrix=False) == "Green"
+    assert recommend_rekordbox_color(analysis, by_matrix=True) == "Blue"
