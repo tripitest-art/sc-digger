@@ -1,0 +1,323 @@
+{% extends "base.html" %}
+
+{% block title %}sc-digger Mix{% endblock %}
+{% block nav_mix %}active{% endblock %}
+
+{% block meta %}
+<style>
+  .filter-form .filter-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 0.75rem;
+    align-items: end;
+  }
+  .filter-form .filter-field label {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-weight: 600;
+  }
+  .filter-form input[type=text] {
+    max-width: none;
+  }
+  .filter-actions {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+    margin-top: 1rem;
+  }
+  .badge {
+    display: inline-block;
+    padding: 0.15rem 0.55rem;
+    border-radius: 9999px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    border: 1px solid transparent;
+    white-space: nowrap;
+  }
+  .badge-ok {
+    background-color: var(--accent-ok-bg);
+    color: var(--accent-ok);
+    border-color: rgba(16, 185, 129, 0.3);
+  }
+  .badge-warn {
+    background-color: var(--accent-warn-bg);
+    color: var(--accent-warn);
+    border-color: rgba(245, 158, 11, 0.3);
+  }
+  .badge-err {
+    background-color: var(--accent-err-bg);
+    color: var(--accent-err);
+    border-color: rgba(239, 68, 68, 0.3);
+  }
+  .badge-info {
+    background-color: rgba(59, 130, 246, 0.12);
+    color: #93c5fd;
+    border-color: rgba(59, 130, 246, 0.3);
+  }
+  .badge-purple {
+    background-color: rgba(139, 92, 246, 0.12);
+    color: #c4b5fd;
+    border-color: rgba(139, 92, 246, 0.3);
+  }
+  .badge-muted {
+    background-color: var(--bg-card-subtle);
+    color: var(--text-dim);
+    border-color: var(--border);
+  }
+  .scan-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  .scan-row input[type=text] {
+    flex: 1 1 20rem;
+    max-width: none;
+  }
+  .scan-status {
+    margin: 0.75rem 0 0;
+    min-height: 1.2em;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+  }
+  .scan-status.ok {
+    color: var(--accent-ok);
+  }
+  .scan-status.err {
+    color: var(--accent-err);
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-header">
+    <h2 class="card-title" style="margin: 0;">Harmonic Mix Finder</h2>
+  </div>
+  <p class="meta" style="margin-top: 0;">
+    Harmoniös passende Tracks aus der Sammlung: gleiche Tonart oder Nachbar im Camelot-Rad
+    innerhalb der BPM-Toleranz. Rein lesend, die Sammlung bleibt unberührt.
+  </p>
+  <form class="filter-form" method="get" action="/mix">
+    <div class="filter-grid">
+      <div class="filter-field">
+        <label for="f-key">Camelot-Key</label>
+        <input type="text" id="f-key" name="key" value="{{ key }}"
+               placeholder="8A" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="filter-field">
+        <label for="f-bpm">Ziel-BPM</label>
+        <input type="text" id="f-bpm" name="bpm" value="{{ bpm }}"
+               placeholder="150" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="filter-field">
+        <label for="f-tol">Toleranz (±BPM)</label>
+        <input type="text" id="f-tol" name="tol" value="{{ tol or '3' }}"
+               placeholder="3" autocomplete="off" spellcheck="false">
+      </div>
+    </div>
+    <div class="filter-actions">
+      <button type="submit">Passende Tracks finden</button>
+      <a href="/mix" class="meta">Zurücksetzen</a>
+    </div>
+  </form>
+
+  {% if error %}
+  <div class="alert-box warn" style="margin-top: 1.25rem;">{{ error }}</div>
+  {% endif %}
+
+  {% if searched and not error %}
+    {% if candidates %}
+    <p class="meta" style="margin-top: 1.25rem;">
+      {{ candidates|length }} Treffer für <span class="mono">{{ key }}</span>
+      bei {{ bpm }} BPM (±{{ tol or '3' }}).
+    </p>
+    <table>
+      <thead>
+        <tr>
+          <th>Artist</th>
+          <th>Titel</th>
+          <th>BPM</th>
+          <th>Key</th>
+          <th>Pfad</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in candidates %}
+        <tr>
+          <td>{{ c.artist or "—" }}</td>
+          <td><strong>{{ c.title or "—" }}</strong></td>
+          <td class="mono">{{ "%.1f"|format(c.bpm) if c.bpm is not none else "—" }}</td>
+          <td class="mono">{{ c.key_camelot or "—" }}</td>
+          <td class="mono" style="font-size: 0.78rem;">{{ c.path }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="meta" style="margin-top: 1.25rem;">
+      Keine passenden Tracks in der Sammlung gefunden.
+    </p>
+    {% endif %}
+  {% elif not searched %}
+  <p class="meta" style="margin-top: 1.25rem;">
+    Camelot-Key (z. B. <span class="mono">8A</span>) und Ziel-BPM eingeben, um harmonisch
+    passende Tracks aus der Sammlung zu finden.
+  </p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h2 class="card-title" style="margin: 0;">SoundCloud-Link prüfen</h2>
+  </div>
+  <p class="meta" style="margin-top: 0;">
+    Track-Link → Track-Station, Playlist-Link → enthaltene Tracks. Rein lesend: nichts wird
+    geladen oder verschickt, der Link erscheint nicht in der seen-Datenbank.
+  </p>
+  <div class="scan-row">
+    <input type="text" id="url-input" placeholder="https://soundcloud.com/…"
+           autocomplete="off" spellcheck="false">
+    <button type="button" id="scan-button" onclick="checkUrl()">Prüfen</button>
+  </div>
+  <p id="scan-status" class="scan-status" role="status" aria-live="polite"></p>
+  <table>
+    <thead>
+      <tr>
+        <th>Artist</th>
+        <th>Titel</th>
+        <th>BPM</th>
+        <th>Download</th>
+        <th>Status</th>
+        <th>Link</th>
+      </tr>
+    </thead>
+    <tbody id="scan-rows"></tbody>
+  </table>
+</div>
+<script>
+  // On-Demand-Link-Check (Issue #231). Titel und Artist kommen von SoundCloud und sind damit
+  // fremder Text – die Zeilen werden deshalb per DOM/textContent gebaut, nie per innerHTML.
+  const KIND_BADGES = {
+    native: ['badge-ok', '💾 Original'],
+    store: ['badge-purple', '🛒 Store'],
+    hypeddit: ['badge-warn', '⏳ Gate'],
+    droploud: ['badge-warn', '⏳ Gate'],
+    toneden: ['badge-warn', '⏳ Gate'],
+    artistunion: ['badge-warn', '⏳ Gate'],
+    wetransfer: ['badge-warn', '⬆️ WeTransfer'],
+    mega: ['badge-warn', '⬆️ MEGA'],
+    cloud: ['badge-warn', '☁️ Cloud'],
+    none: ['badge-muted', '🎧 Stream'],
+  };
+  const STATUS_BADGES = {
+    'in Sammlung': ['badge-ok', 'in Sammlung'],
+    'in Inbox': ['badge-info', 'in Inbox'],
+    'abgelehnt': ['badge-err', 'abgelehnt'],
+    'gesehen': ['badge-muted', 'gesehen'],
+    'neu': ['badge-info', 'neu'],
+  };
+
+  function makeBadge(cls, text) {
+    const span = document.createElement('span');
+    span.className = 'badge ' + cls;
+    span.textContent = text;
+    return span;
+  }
+
+  function makeCell(child) {
+    const td = document.createElement('td');
+    if (typeof child === 'string') {
+      td.textContent = child;
+    } else {
+      td.appendChild(child);
+    }
+    return td;
+  }
+
+  function renderRows(tracks) {
+    const tbody = document.getElementById('scan-rows');
+    tbody.replaceChildren();
+    tracks.forEach((track) => {
+      const tr = document.createElement('tr');
+      tr.appendChild(makeCell(track.artist || '—'));
+      const title = document.createElement('strong');
+      title.textContent = track.title || '—';
+      tr.appendChild(makeCell(title));
+      tr.appendChild(makeCell(track.bpm ? String(track.bpm) : '—'));
+      const kind = KIND_BADGES[track.download_kind] || ['badge-muted', track.download_kind];
+      tr.appendChild(makeCell(makeBadge(kind[0], kind[1])));
+      const state = STATUS_BADGES[track.status] || ['badge-muted', track.status];
+      tr.appendChild(makeCell(makeBadge(state[0], state[1])));
+      const linkCell = document.createElement('td');
+      if (track.url) {
+        const link = document.createElement('a');
+        link.href = track.url;
+        link.target = '_blank';
+        link.rel = 'noopener';
+        link.className = 'btn-page';
+        link.style.padding = '0.2rem 0.5rem';
+        link.style.fontSize = '0.75rem';
+        link.textContent = 'SoundCloud ↗';
+        linkCell.appendChild(link);
+      }
+      tr.appendChild(linkCell);
+      tbody.appendChild(tr);
+    });
+  }
+
+  function showScanStatus(text, kind) {
+    const status = document.getElementById('scan-status');
+    status.textContent = text;
+    status.classList.toggle('ok', kind === 'ok');
+    status.classList.toggle('err', kind === 'err');
+  }
+
+  async function checkUrl() {
+    const input = document.getElementById('url-input');
+    const button = document.getElementById('scan-button');
+    const url = (input.value || '').trim();
+    if (!url) {
+      showScanStatus('Bitte einen SoundCloud-Link einfügen.', 'err');
+      return;
+    }
+    showScanStatus('Prüfe Link …', '');
+    button.disabled = true;
+    try {
+      const response = await fetch('/api/check-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: url }),
+      });
+      let data = {};
+      try { data = await response.json(); } catch (ignored) { data = {}; }
+      if (!response.ok || !data.ok) {
+        renderRows([]);
+        showScanStatus(data.error || ('HTTP ' + response.status), 'err');
+        return;
+      }
+      const tracks = data.tracks || [];
+      renderRows(tracks);
+      showScanStatus(data.source + ' · ' + data.total + ' Track(s) gefunden', 'ok');
+    } catch (error) {
+      renderRows([]);
+      showScanStatus('Abfrage fehlgeschlagen: ' + error, 'err');
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    const input = document.getElementById('url-input');
+    if (!input) { return; }
+    input.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        checkUrl();
+      }
+    });
+  });
+</script>
+{% endblock %}
