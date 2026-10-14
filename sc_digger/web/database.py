@@ -306,7 +306,7 @@ def query_digest(
     offset: int = 0,
 ) -> DigestSearchResult:
     """Liest chronologisch (neueste zuerst) aus seen.sqlite (seen-Tabelle) und joint
-    Informationen aus track_db (tracks, sc_feedback, store_items).
+    Informationen aus track_db (tracks, sc_feedback, store_items, gate_items).
     Fehlt eine DB-Datei oder Tabelle, wirft die Funktion nicht, sondern liefert leere/partielle Ergebnisse.
     Nur lesend; limit wird auf max. 200 begrenzt.
     """
@@ -316,6 +316,7 @@ def query_digest(
 
     feedback_map: dict[int, str] = {}
     store_map: dict[int, str] = {}
+    gate_map: dict[int, str] = {}
     inbox_ids: set[int] = set()
     archive_ids: set[int] = set()
 
@@ -331,6 +332,10 @@ def query_digest(
                     for row in tdb.execute("SELECT sc_id, purchase_url FROM store_items"):
                         if row["sc_id"] is not None and row["purchase_url"]:
                             store_map[int(row["sc_id"])] = str(row["purchase_url"])
+                if _table_exists(tdb, "gate_items"):
+                    for row in tdb.execute("SELECT sc_id, gate_url FROM gate_items"):
+                        if row["sc_id"] is not None and row["gate_url"]:
+                            gate_map[int(row["sc_id"])] = str(row["gate_url"])
                 if _table_exists(tdb, "tracks"):
                     for row in tdb.execute("SELECT path, status FROM tracks"):
                         p_str = str(row["path"] or "")
@@ -367,8 +372,11 @@ def query_digest(
         in_coll = sc_id in archive_ids
 
         purchase_url = store_map.get(sc_id)
+        gate_url = gate_map.get(sc_id)
         if purchase_url:
             kind = "store"
+        elif gate_url:
+            kind = "gate"
         elif in_inbox or in_coll:
             kind = "native"
         else:
@@ -382,7 +390,7 @@ def query_digest(
             reported_at=reported_at,
             download_kind=kind,
             purchase_url=purchase_url,
-            gate_url=None,
+            gate_url=gate_url if kind == "gate" else None,
             feedback=feedback_map.get(sc_id),
             in_collection=in_coll,
             in_inbox=in_inbox,

@@ -244,6 +244,14 @@ _BUCKET_LABEL = {
 _ORDER = ["✅ Direkt geladen / ladbar", "🚪 Gate – manuell durchklicken",
           "🛒 Store / Cloud-Link", "🎧 Nur Stream"]
 
+# Gate-Anbieter, deren Link nur gemeldet (nie automatisch durchlaufen) wird (Regel 6).
+_GATE_KINDS = (
+    DownloadKind.HYPEDDIT,
+    DownloadKind.DROPLOUD,
+    DownloadKind.TONEDEN,
+    DownloadKind.ARTIST_UNION,
+)
+
 
 def _esc(s: str) -> str:
     return html.escape(s, quote=False)
@@ -339,12 +347,14 @@ def build_digest_messages(
     numbered=False: Text exakt wie bisher, items leer.
     Store-Tracks, die in den Nachrichten erscheinen, per upsert_store_item in store_items
     eintragen (Track-DB aus cfg["state"]["track_db_path"]).
+    Gate-Tracks (Hypeddit, Droploud, …) analog per upsert_gate_item in gate_items.
     cfg None: Config.load("config.yaml"). Scheitert das Laden oder das Eintragen: log.warning,
     Digest wird trotzdem gebaut."""
     shown = tracks if max_items is None else tracks[:max_items]
 
     store_tracks = [t for t in shown if t.download_kind == DownloadKind.STORE and t.purchase_url]
-    if store_tracks:
+    gate_tracks = [t for t in shown if t.download_kind in _GATE_KINDS and t.download_link]
+    if store_tracks or gate_tracks:
         cfg_to_use = cfg
         if cfg_to_use is None:
             from .models import Config
@@ -360,8 +370,12 @@ def build_digest_messages(
                 with TrackDB(cfg_to_use["state"]["track_db_path"]) as db:
                     for t in store_tracks:
                         db.upsert_store_item(t.id, t.title, t.artist, t.purchase_url, t.purchase_title)
+                    for t in gate_tracks:
+                        db.upsert_gate_item(
+                            t.id, t.title, t.artist, t.download_link, t.download_kind.value
+                        )
             except Exception as e:
-                log.warning("Konnte Store-Tracks nicht in DB eintragen: %s", e)
+                log.warning("Konnte Store-/Gate-Items nicht in DB eintragen: %s", e)
     groups: dict[str, list[Track]] = defaultdict(list)
     for t in shown:
         groups[_BUCKET_LABEL[t.download_kind]].append(t)
