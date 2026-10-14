@@ -13,7 +13,7 @@ from sc_digger.models import Config
 from sc_digger.organize import write_tags
 
 
-def _create_audio(path: Path, **tags) -> Path:
+def _create_audio(path: Path, *, duration_s: float = 2.0, **tags) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     args = ["-b:a", "320k"] if path.suffix == ".mp3" else []
     subprocess.run(
@@ -25,7 +25,7 @@ def _create_audio(path: Path, **tags) -> Path:
             "-f",
             "lavfi",
             "-i",
-            "anoisesrc=d=2:c=pink:r=44100:a=0.2",
+            f"anoisesrc=d={duration_s}:c=pink:r=44100:a=0.2",
             "-ac",
             "2",
             *args,
@@ -145,8 +145,11 @@ def _parse(xml_str: str) -> ET.Element:
 def _stem_track(
     name: str,
     *,
+    bpm: float = 152.0,
+    duration_s: float = 300.0,
     first_kick_s: float | None = None,
     drop_s: float | None = None,
+    drop2_s: float | None = None,
     breakdown_s: float | None = None,
     breakdown_kind: str | None = None,
 ) -> rb.InboxTrack:
@@ -155,16 +158,17 @@ def _stem_track(
         title=name,
         artist="A",
         genre="Schranz",
-        bpm=152.0,
+        bpm=bpm,
         key="5A",
         comment="",
-        duration_s=300.0,
+        duration_s=duration_s,
         size=1000,
         added=datetime(2026, 10, 14, 12, 0),
         first_kick_s=first_kick_s,
         drop_s=drop_s,
         breakdown_s=breakdown_s,
         breakdown_kind=breakdown_kind,
+        drop2_s=drop2_s,
     )
 
 
@@ -308,3 +312,105 @@ def test_write_rekordbox_xml_cues_disabled_verwirft_stem_cues(tmp_path):
     root = ET.parse(rb.write_rekordbox_xml(_cfg(tmp_path, cues_enabled=False))).getroot()
     assert root.find("COLLECTION/TRACK") is not None
     assert root.findall("COLLECTION/TRACK/POSITION_MARK") == []
+
+
+def test_scan_inbox_liest_drop2_tag(tmp_path):
+    from sc_digger import cues
+
+    inbox = tmp_path / "inbox"
+    mit = _create_audio(inbox / "a" / "mit.mp3")
+    _create_audio(inbox / "a" / "ohne.mp3")
+    assert cues.write_drop2_tag(mit, 128.0) is True
+
+    by_name = {t.path.name: t for t in rb.scan_inbox(inbox)}
+    assert by_name["mit.mp3"].drop2_s == pytest.approx(128.0, abs=0.0005)
+    assert by_name["ohne.mp3"].drop2_s is None
+
+
+def test_inboxtrack_hat_drop2_standard_none():
+    t = rb.InboxTrack(path=Path("/x.mp3"), title="t", artist="a", genre="g", bpm=None, key="",
+                      comment="", duration_s=1.0, size=1, added=datetime(2026, 10, 14))
+    assert t.drop2_s is None
+
+
+def test_build_xml_schreibt_drop2_als_hot_und_memory_cue():
+    marks = _marks(rb.build_xml([_stem_track("t", drop_s=60.0, drop2_s=120.0)], PATH_MAP))
+    hot = {m.get("Num"): m.attrib for m in marks if m.get("Num") != "-1"}
+    assert hot["2"]["Name"] == "Drop 2"
+    assert hot["2"]["Start"] == "120.000"
+    mem = [m.attrib for m in marks if m.get("Num") == "-1" and m.get("Name") == "Drop 2"]
+    assert len(mem) == 1 and mem[0]["Start"] == "120.000"
+
+
+def test_build_xml_standard_ohne_warnung_und_loop():
+    marks = _marks(rb.build_xml([_stem_track("t", first_kick_s=0.0, drop_s=22.4)], PATH_MAP))
+    assert not any(m.get("Name") == "⚠️ Off-Phrase" for m in marks)
+    assert not any(m.get("Name") == "Active Loop" for m in marks)
+
+
+def test_build_xml_phrase_warning_an_breakdown_und_drop2():
+    # 150 BPM: beat = 0.4s. 22.4s = 56 Beats, 24.4s = 61 Beats -> beide außerhalb des Gitters.
+    track = _stem_track("t", bpm=150.0, first_kick_s=0.0, breakdown_s=22.4, drop2_s=24.4)
+    marks = _marks(rb.build_xml([track], PATH_MAP, phrase_warning=True))
+    warn = [m for m in marks if m.get("Name") == "⚠️ Off-Phrase"]
+    assert sorted(m.get("Start") for m in warn) == ["22.400", "24.400"]
+    for m in warn:
+        assert m.get("Num") == "-1" and m.get("Type") == "0"
+        assert (m.get("Red"), m.get("Green"), m.get("Blue")) == ("255", "0", "0")
+
+
+def test_build_xml_phrase_warning_ohne_memory_cues_keine_warnung():
+    track = _stem_track("t", bpm=150.0, first_kick_s=0.0, drop_s=22.4)
+    marks = _marks(rb.build_xml([track], PATH_MAP, phrase_warning=True, memory_cues=False))
+    assert not any(m.get("Name") == "⚠️ Off-Phrase" for m in marks)
+
+
+def test_build_xml_active_loop_start_an_taktgrenze():
+    track = _stem_track("t", bpm=150.0, duration_s=240.0, first_kick_s=0.0)
+    marks = _marks(rb.build_xml([track], PATH_MAP, active_loop=True, active_loop_beats=16))
+    loops = [m for m in marks if m.get("Name") == "Active Loop"]
+    assert len(loops) == 1
+    lm = loops[0]
+    assert lm.get("Type") == "4" and lm.get("Num") == "-1" and lm.get("Active") == "1"
+    start_s, end_s = float(lm.get("Start")), float(lm.get("End"))
+    assert round(end_s - start_s, 3) == 6.400
+    assert end_s <= 240.0
+    # Start liegt an der 4-Beat-Taktgrenze relativ zum ersten Kick (Takt = 1.6 s bei 150 BPM).
+    assert abs(start_s - round(start_s / 1.6) * 1.6) < 1e-6
+
+
+def test_build_xml_active_loop_bei_zu_kurzem_track_kein_loop():
+    track = _stem_track("t", bpm=150.0, duration_s=5.0, first_kick_s=0.0)
+    marks = _marks(rb.build_xml([track], PATH_MAP, active_loop=True, active_loop_beats=16))
+    assert not any(m.get("Name") == "Active Loop" for m in marks)
+
+
+def test_write_rekordbox_xml_liest_phrase_warning_und_active_loop(tmp_path):
+    from sc_digger import cues
+
+    inbox = tmp_path / "inbox"
+    coll = tmp_path / "coll"
+    inbox.mkdir()
+    coll.mkdir()
+    p = _create_audio(inbox / "150" / "5A" / "a.mp3", duration_s=8, bpm=150, title="T", artist="A")
+    assert cues.write_first_kick_tag(p, 0.0) is True
+    assert cues.write_drop_tag(p, 22.4) is True
+
+    cfg = Config(dict(Config.load(ROOT / "config.yaml").raw))
+    cfg.raw["download"] = {**cfg["download"], "inbox_dir": str(inbox), "collection_dir": str(coll)}
+    cfg.raw["rekordbox"] = {
+        "xml_enabled": True,
+        "xml_path": str(tmp_path / "sc-digger.xml"),
+        "path_map": {str(inbox): "Z:/Inbox"},
+        "cues_enabled": True,
+        "phrase_warning": True,
+        "active_loop": True,
+        "active_loop_beats": 16,
+    }
+
+    root = ET.parse(rb.write_rekordbox_xml(cfg)).getroot()
+    marks = root.findall("COLLECTION/TRACK/POSITION_MARK")
+    assert any(m.get("Name") == "⚠️ Off-Phrase" for m in marks)
+    loops = [m for m in marks if m.get("Name") == "Active Loop"]
+    assert len(loops) == 1
+    assert round(float(loops[0].get("End")) - float(loops[0].get("Start")), 3) == 6.400

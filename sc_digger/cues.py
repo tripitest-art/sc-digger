@@ -4,8 +4,9 @@ Der Tag `SCDIGGER_FIRST_KICK` liegt in der Datei (Sekunden) und wird vom Rekordb
 als Memory Cue übernommen. Ablage wie die Lautheits-Tags in organize.py: MP3/WAV/AIFF als
 ID3-TXXX-Frame mit desc = Tagname, FLAC als Vorbis-Kommentar, M4A als Freeform. Audio bleibt
 unangetastet (Goldene Regel 4). Dazu kommen `SCDIGGER_DROP` (Drop-Zeitpunkt),
-`SCDIGGER_BREAKDOWN` (Beginn des Breakdowns) und `SCDIGGER_BREAKDOWN_KIND` (`silence` oder
-`groove`); write_stem_cues schreibt die primären Cues aus einem StemAnalysisResult.
+`SCDIGGER_DROP2` (zweiter Drop), `SCDIGGER_BREAKDOWN` (Beginn des Breakdowns) und
+`SCDIGGER_BREAKDOWN_KIND` (`silence` oder `groove`); write_stem_cues schreibt die primären
+Cues aus einem StemAnalysisResult.
 """
 from __future__ import annotations
 
@@ -21,6 +22,7 @@ log = logging.getLogger(__name__)
 
 FIRST_KICK_TAG = "SCDIGGER_FIRST_KICK"
 DROP_TAG = "SCDIGGER_DROP"
+DROP2_TAG = "SCDIGGER_DROP2"
 BREAKDOWN_TAG = "SCDIGGER_BREAKDOWN"
 BREAKDOWN_KIND_TAG = "SCDIGGER_BREAKDOWN_KIND"
 
@@ -222,6 +224,28 @@ def read_drop_tag(path: Path) -> float | None:
     Wirft nie.
     """
     return _parse_seconds(_read_string_tag(Path(path), DROP_TAG))
+
+
+def write_drop2_tag(path: Path, seconds: float) -> bool:
+    """Schreibt seconds als f"{seconds:.3f}" in den Tag DROP2_TAG, ersetzt einen vorhandenen Wert
+    (kein Doppel). True bei Erfolg. False (kein Fehler) bei nicht existierender Datei,
+    unbekanntem Format, seconds < 0, NaN oder inf und bei jedem Schreibfehler. Wirft nie.
+    """
+    path = Path(path)
+    if not path.is_file():
+        log.warning("Datei existiert nicht für Drop2-Tag: %s", path)
+        return False
+    if not _valid_seconds(seconds):
+        log.warning("Ungültiger Drop2-Wert für %s: %r", path, seconds)
+        return False
+    return _write_string_tag(path, DROP2_TAG, f"{float(seconds):.3f}")
+
+
+def read_drop2_tag(path: Path) -> float | None:
+    """Liest DROP2_TAG (Zweiter Drop) als Sekunden. None, wenn er fehlt oder kein endlicher
+    Wert >= 0 ist. Wirft nie.
+    """
+    return _parse_seconds(_read_string_tag(Path(path), DROP2_TAG))
 
 
 def write_breakdown_tag(path: Path, seconds: float, kind: str | None = None) -> bool:

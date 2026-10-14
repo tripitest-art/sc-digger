@@ -375,9 +375,9 @@ def scan_inbox(inbox: Path) -> list[InboxTrack]:
         t.drop_s = cues.read_drop_tag(t.path)
         t.breakdown_s = cues.read_breakdown_tag(t.path)
         t.breakdown_kind = cues.read_breakdown_kind_tag(t.path)
-        # Für SCDIGGER_DROP2/SCDIGGER_LUFS gibt es keinen öffentlichen Leser in cues;
-        # die privaten Helfer dort direkt zu nutzen ist (wie organize._bpm_bucket hier) der Hausstil.
-        t.drop2_s = cues._parse_seconds(cues._read_string_tag(t.path, "SCDIGGER_DROP2"))
+        t.drop2_s = cues.read_drop2_tag(t.path)
+        # Für SCDIGGER_LUFS gibt es keinen öffentlichen Leser in cues (negativer Wertebereich);
+        # den privaten Helfer dort direkt zu nutzen ist (wie organize._bpm_bucket hier) der Hausstil.
         t.lufs = _parse_lufs(cues._read_string_tag(t.path, "SCDIGGER_LUFS"))
     return tracks
 
@@ -439,7 +439,9 @@ def build_xml(tracks: list[InboxTrack], path_map: dict[str, str], now: datetime 
               by_style: bool = False, by_subgenre: bool = False, by_version: bool = False,
               style_colors: bool = False, style_comments: bool = False,
               phrase_align_cues: bool = False, grid_anchor: bool = True,
-              matrix_colors: bool = False, compact_style_comments: bool = False) -> str:
+              matrix_colors: bool = False, compact_style_comments: bool = False,
+              active_loop: bool = False, phrase_warning: bool = False,
+              active_loop_beats: int = 16) -> str:
     """<?xml version="1.0" encoding="UTF-8"?> + DJ_PLAYLISTS Version="1.0.0" mit PRODUCT,
     COLLECTION und PLAYLISTS. Tracks ohne Location (nicht gemappt) werden weggelassen.
     COLLECTION Entries = Anzahl; TRACK-Attribute: TrackID (1, 2, … in Eingabereihenfolge), Name,
@@ -481,6 +483,17 @@ def build_xml(tracks: list[InboxTrack], path_map: dict[str, str], now: datetime 
     Battito="1"/> vor den POSITION_MARK-Kindern: Rekordbox setzt Takt 1/Beat 1 damit exakt
     auf die Kick-Transient, statt bei 150+ BPM das Raster um ein 16tel zu versetzen.
     grid_anchor=False oder fehlender Kick/BPM: kein TEMPO-Knoten.
+
+    Strategische Memory Cues: Ist drop2_s vorhanden, wird der zweite Drop als Hot Cue
+    (Num="2", Pad C) und/oder Memory Cue (Num="-1") mit Namen "Drop 2" exportiert.
+    phrase_warning=True (und memory_cues=True) setzt für jedes vorhandene drop_s, breakdown_s
+    und drop2_s, das laut phrase.is_off_phrase() außerhalb des 16/32-Beat-Phrasengitters liegt,
+    einen roten Warn-Memory-Cue <POSITION_MARK Name="⚠️ Off-Phrase" Type="0" Num="-1"
+    Red="255" Green="0" Blue="0"/>. active_loop=True fügt bei bpm > 0 und
+    duration_s > active_loop_beats * (60/bpm) vor Track-Ende einen aktiven Memory Loop
+    <POSITION_MARK Name="Active Loop" Type="4" Start="…" End="…" Num="-1" Active="1"/>
+    der Länge active_loop_beats * (60/bpm) hinzu; der Start wird an die 4-Beat-Taktgrenze
+    relativ zu first_kick_s ausgerichtet.
     """
     mapped: list[tuple[str, InboxTrack, str]] = []
     for t in dedupe_by_soundcloud_id(tracks):
@@ -556,6 +569,7 @@ def build_xml(tracks: list[InboxTrack], path_map: dict[str, str], now: datetime 
         # Ein Cue-Punkt je vorhandener Zeit: (Start, Hot-Cue-Pad, Name, Farbe).
         drop_s = t.drop_s
         breakdown_s = t.breakdown_s
+        drop2_s = t.drop2_s
         if phrase_align_cues and t.first_kick_s is not None and t.bpm is not None:
             kick = float(t.first_kick_s)
             bpm = float(t.bpm)
@@ -569,6 +583,9 @@ def build_xml(tracks: list[InboxTrack], path_map: dict[str, str], now: datetime 
             cue_points.append((float(t.first_kick_s), "0", "First Kick", ("0", "255", "0")))
         if drop_s is not None:
             cue_points.append((float(drop_s), "1", "Drop", ("255", "165", "0")))
+        if drop2_s is not None:
+            # Zweiter Drop = Pad C (Num="2"); Rekordbox-Notlauftaste, rot markiert.
+            cue_points.append((float(drop2_s), "2", "Drop 2", ("255", "0", "0")))
         if breakdown_s is not None:
             kind = (t.breakdown_kind or "").strip().lower()
             break_name = "Break (Groove)" if kind == "groove" else "Break (Silence)"
@@ -581,6 +598,19 @@ def build_xml(tracks: list[InboxTrack], path_map: dict[str, str], now: datetime 
                 marks.append((start_s, 0, name, pad, color))
             if memory_cues:
                 marks.append((start_s, 1, name, "-1", None))
+
+        # Warn-Memory-Cues an Strukturbrüchen außerhalb des 16/32-Beat-Phrasengitters.
+        if phrase_warning and memory_cues and t.first_kick_s is not None and t.bpm is not None:
+            kick = float(t.first_kick_s)
+            bpm = float(t.bpm)
+            if bpm > 0 and kick >= 0:
+                for event_s in (drop_s, breakdown_s, drop2_s):
+                    if event_s is None:
+                        continue
+                    if phrase.is_off_phrase(float(event_s), kick, bpm):
+                        marks.append((float(event_s), 1, "⚠️ Off-Phrase", "-1",
+                                      ("255", "0", "0")))
+
         marks.sort(key=lambda m: (m[0], m[1]))
 
         for start_s, _is_memory, name, num, color in marks:
@@ -588,6 +618,29 @@ def build_xml(tracks: list[InboxTrack], path_map: dict[str, str], now: datetime 
             if color is not None:
                 mark_attr["Red"], mark_attr["Green"], mark_attr["Blue"] = color
             ET.SubElement(track_node, "POSITION_MARK", mark_attr)
+
+        # Notbremse: aktiver Memory Loop am Track-Ende, an der 4-Beat-Taktgrenze ausgerichtet.
+        if active_loop and t.bpm is not None and t.duration_s:
+            loop_bpm = float(t.bpm)
+            loop_beats = int(active_loop_beats)
+            duration_s = float(t.duration_s)
+            if loop_bpm > 0 and loop_beats > 0:
+                beat_s = 60.0 / loop_bpm
+                loop_len = loop_beats * beat_s
+                if duration_s > loop_len:
+                    kick = float(t.first_kick_s) if t.first_kick_s is not None else 0.0
+                    raw_start = duration_s - loop_len
+                    bar_index = math.floor((raw_start - kick) / (4.0 * beat_s))
+                    start_s = kick + bar_index * 4.0 * beat_s
+                    end_s = start_s + loop_len
+                    ET.SubElement(track_node, "POSITION_MARK", {
+                        "Name": "Active Loop",
+                        "Type": "4",
+                        "Start": f"{start_s:.3f}",
+                        "End": f"{end_s:.3f}",
+                        "Num": "-1",
+                        "Active": "1",
+                    })
 
     playlists = ET.SubElement(root, "PLAYLISTS")
     top = ET.SubElement(playlists, "NODE", {"Type": "0", "Name": "ROOT", "Count": "1"})
@@ -706,6 +759,10 @@ def write_rekordbox_xml(cfg: Config) -> Path | None:
     Versionstyp (build_xml). matrix_colors (bool, fehlt -> False): Track-Farbe nach
     Schranz-Matrix (Vorrang vor style_colors). compact_style_comments (bool, fehlt -> False):
     kompakter Display-Kommentar (Vorrang vor style_comments).
+    phrase_warning (bool, fehlt -> False): rote Warn-Memory-Cues "⚠️ Off-Phrase" an
+    Off-Phrase-Drops/Breakdowns (build_xml). active_loop (bool, fehlt -> False): aktiver
+    Memory Loop am Track-Ende (Notbremse). active_loop_beats (int >= 1, fehlt/ungültig -> 16):
+    Länge des Notbremsen-Loops in Beats.
     Jeder Fehler -> log.warning, Temp-Datei entfernen, None. Wirft nie.
     """
     tmp_path: Path | None = None
@@ -796,13 +853,22 @@ def write_rekordbox_xml(cfg: Config) -> Path | None:
         grid_anchor = rb_cfg.get("grid_anchor", True)
         grid_anchor = True if grid_anchor is None else bool(grid_anchor)
 
+        phrase_warning = bool(rb_cfg.get("phrase_warning", False))
+        active_loop = bool(rb_cfg.get("active_loop", False))
+        raw_loop_beats: Any = rb_cfg.get("active_loop_beats", 16)
+        if isinstance(raw_loop_beats, bool) or not isinstance(raw_loop_beats, int) \
+                or raw_loop_beats < 1:
+            raw_loop_beats = 16
+
         xml_content = build_xml(tracks, path_map, bpm_bucket_size=bpm_bucket_size, by_key=by_key,
                                 hot_cues=hot_cues, memory_cues=memory_cues,
                                 by_style=by_style, by_subgenre=by_subgenre, by_version=by_version,
                                 style_colors=style_colors, style_comments=style_comments,
                                 phrase_align_cues=phrase_align_cues, grid_anchor=grid_anchor,
                                 matrix_colors=matrix_colors,
-                                compact_style_comments=compact_style_comments)
+                                compact_style_comments=compact_style_comments,
+                                active_loop=active_loop, phrase_warning=phrase_warning,
+                                active_loop_beats=raw_loop_beats)
 
         target_dir = xml_path.parent
         target_dir.mkdir(parents=True, exist_ok=True)

@@ -234,6 +234,14 @@ rekordbox:
   # Beatgrid-Anker <TEMPO> an first_kick_s schreiben: Takt 1/Beat 1 liegt dann exakt auf der
   # Kick-Transient (verlässliches Beatgrid bei 150+ BPM). Wirkt auch bei cues_enabled: false.
   grid_anchor: true
+  # Rote Warn-Memory-Cues ("⚠️ Off-Phrase") an Drops/Breakdowns setzen, die außerhalb des
+  # 16/32-Beat-Phrasengitters liegen (Wirkung nur bei cues_as_memory: true).
+  phrase_warning: false
+  # Notbremse: aktiven Memory Loop kurz vor Track-Ende setzen, damit lange Übergänge nicht in
+  # die Stille laufen. Der Start liegt an der 4-Beat-Taktgrenze relativ zum ersten Kick.
+  active_loop: false
+  # Länge des Notbremsen-Loops in Beats (Standard 16 = 4 Takte à 4 Beats)
+  active_loop_beats: 16
   # Zusätzliche Playlist-Ordner neben den Wochen: sc-digger/BPM/<Bereich> (Breite aus organize.bpm_bucket_size)
   # und sc-digger/Key/<Camelot>. Tracks ohne BPM bzw. Key landen in "unbekannt".
   playlists_by_bpm: true
