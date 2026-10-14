@@ -243,6 +243,8 @@ rekordbox:
   style_colors: false
   # Track-Kommentar (Comments) im Stil-Format überschreiben (Stil, Tempo, Tonart, Flussachse, DJ-Notiz)
   style_comments: false
+  # Import: Pfad zur exportierten Rekordbox-XML (Rückkanal vom DJ-Laptop). Leer = kein Import.
+  import_xml_path: ""
 
 digest:
   kaufliste_max_items: 30   # Maximale Einträge in der wöchentlichen Kaufliste

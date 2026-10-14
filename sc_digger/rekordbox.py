@@ -1,6 +1,7 @@
 """Rekordbox-XML-Export: Playlists pro Woche aus der Inbox für Rekordbox generieren."""
 from __future__ import annotations
 
+import json
 import logging
 import os
 import re
@@ -10,10 +11,11 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from urllib.parse import quote
 from typing import Any
+from urllib.parse import quote, unquote
 
 from sc_digger import cues, organize
+from sc_digger.db import TrackDB
 from sc_digger.models import Config
 from sc_digger.style import (
     StyleCluster,
@@ -702,3 +704,228 @@ def write_rekordbox_xml(cfg: Config) -> Path | None:
             except OSError:
                 pass
         return None
+
+
+# ================================================================= Rekordbox-Import (nur lesend)
+# Liest einen Rekordbox-XML-Export (den Rückkanal vom DJ-Laptop) und übernimmt Rating,
+# Abspielzähler, BPM, Tonart und Cue-Punkte in die TrackDB. Die Audio-Sammlung wird nie
+# berührt (Goldene Regel 4); geschrieben wird ausschließlich in tracks.sqlite.
+
+_RATING_STEP = 51  # Rekordbox speichert Sterne als 0..255 in 51er-Schritten
+_AUTO_LIKE_MIN_RATING = 4
+_AUTO_LIKE_MIN_PLAYS = 2
+
+
+@dataclass
+class RekordboxTrackData:
+    location: str                   # Originale Location-URL (file://localhost/...)
+    local_path: str                 # Durch Reverse-Mapping aufgelöster lokaler Pfad
+    name: str                       # Track-Name
+    artist: str                     # Artist
+    rating: int | None              # 0..5 Sterne (0->0, 51->1, 102->2, 153->3, 204->4, 255->5)
+    play_count: int | None          # PlayCount als int, None falls fehlt
+    bpm: float | None               # AverageBpm als float, None falls fehlt
+    key: str | None                 # Tonality als str, None falls fehlt
+    cues: list[dict[str, Any]]      # POSITION_MARK-Liste (name, type, start, num, ggf. color)
+
+
+@dataclass
+class RekordboxImportSummary:
+    total_tracks: int = 0           # Tracks in der Rekordbox-XML
+    matched: int = 0                # In der TrackDB gefundene Tracks
+    unmatched: int = 0              # Nicht in der TrackDB gefundene Tracks
+    ratings_count: int = 0          # Gematchte Tracks mit Rating
+    played_count: int = 0           # Gematchte Tracks mit play_count > 0
+    auto_likes_count: int = 0       # Neu durch Auto-Like auf 'like' gesetzte Tracks
+
+
+def _decode_location(location: str) -> str:
+    """Dekodiert eine Rekordbox-Location-URL zu einem Dateipfad.
+
+    Entfernt das Schema ("file://localhost/" oder "file:///"), Prozent-Escapes (z. B. %20),
+    wandelt Backslashes in "/" und normalisiert nach NFC (Umlaute wie beim Export).
+    """
+    s = str(location).strip()
+    for prefix in ("file://localhost/", "file:///"):
+        if s.startswith(prefix):
+            s = s[len(prefix):]
+            break
+    return unicodedata.normalize("NFC", unquote(s).replace("\\", "/"))
+
+
+def _apply_reverse_path_map(laptop_path: str, path_map: dict[str, str]) -> str:
+    """Übersetzt einen Laptop-Pfad über die Umkehrung von path_map (Server-Pfad -> Laptop-Pfad)
+    in einen lokalen Server-Pfad. Präfixe passen nur an Pfadgrenzen; das längste gewinnt.
+    Ohne Treffer bleibt der Pfad unverändert."""
+    s = laptop_path.replace("\\", "/")
+    best_len = -1
+    best_server: str | None = None
+    for server, laptop in path_map.items():
+        prefix = str(laptop).replace("\\", "/").rstrip("/")
+        if not prefix:
+            continue
+        if s == prefix or s.startswith(prefix + "/"):
+            if len(prefix) > best_len:
+                best_len = len(prefix)
+                best_server = str(server).replace("\\", "/").rstrip("/")
+    if best_server is None:
+        return s
+    return unicodedata.normalize("NFC", best_server + s[best_len:])
+
+
+def _parse_rating(raw: Any) -> int | None:
+    """Rekordbox-Rating (0..255) auf 0..5 Sterne runden. Fehlt das Attribut oder ist es
+    ungültig -> None (nicht 0: "kein Rating" und "Bewertung 0 Sterne" sind verschieden)."""
+    if raw is None:
+        return None
+    try:
+        value = int(str(raw).strip())
+    except (TypeError, ValueError):
+        return None
+    stars = (value + _RATING_STEP // 2) // _RATING_STEP
+    return max(0, min(5, stars))
+
+
+def _parse_int_attr(raw: Any) -> int | None:
+    if raw is None:
+        return None
+    try:
+        return int(str(raw).strip())
+    except (TypeError, ValueError):
+        return None
+
+
+def _parse_float_attr(raw: Any) -> float | None:
+    if raw is None:
+        return None
+    try:
+        return float(str(raw).strip().replace(",", "."))
+    except (TypeError, ValueError):
+        return None
+
+
+def _parse_position_marks(node: ET.Element) -> list[dict[str, Any]]:
+    """Liest die POSITION_MARK-Kinder eines TRACK-Knotens als schlichte Dicts.
+
+    Farbwerte werden nur übernommen, wenn alle drei RGB-Attribute vorhanden sind
+    (Memory Cues tragen keine Farbe).
+    """
+    marks: list[dict[str, Any]] = []
+    for mark in node.findall("POSITION_MARK"):
+        cue: dict[str, Any] = {
+            "name": mark.get("Name") or "",
+            "type": _parse_int_attr(mark.get("Type")) or 0,
+            "start": _parse_float_attr(mark.get("Start")) or 0.0,
+            "num": _parse_int_attr(mark.get("Num")) or 0,
+        }
+        red = _parse_int_attr(mark.get("Red"))
+        green = _parse_int_attr(mark.get("Green"))
+        blue = _parse_int_attr(mark.get("Blue"))
+        if red is not None and green is not None and blue is not None:
+            cue["color"] = {"red": red, "green": green, "blue": blue}
+        marks.append(cue)
+    return marks
+
+
+def parse_rekordbox_xml(
+    xml_content_or_path: str | Path,
+    path_map: dict[str, str] | None = None,
+) -> list[RekordboxTrackData]:
+    """Parst eine Rekordbox-XML und extrahiert Metadaten aller COLLECTION-Tracks.
+
+    Akzeptiert den XML-Inhalt als String (beginnt nach Leerraum mit "<") oder einen Pfad.
+    Dekodiert file://localhost/..., normalisiert Windows/Posix-Pfade und NFC und wendet
+    das Reverse-Mapping von path_map an (Laptop-Pfad -> Server-Pfad). Ohne COLLECTION
+    oder ohne TRACK-Einträge -> leere Liste. Liest nur, schreibt nie.
+    """
+    if isinstance(xml_content_or_path, Path):
+        content = xml_content_or_path.read_text(encoding="utf-8")
+    elif isinstance(xml_content_or_path, str) and not xml_content_or_path.lstrip().startswith("<"):
+        content = Path(xml_content_or_path).read_text(encoding="utf-8")
+    else:
+        content = str(xml_content_or_path)
+
+    root = ET.fromstring(content)
+    collection = root.find("COLLECTION")
+    if collection is None:
+        return []
+
+    mapping = path_map or {}
+    tracks: list[RekordboxTrackData] = []
+    for node in collection.findall("TRACK"):
+        location = node.get("Location") or ""
+        local_path = _decode_location(location)
+        if mapping:
+            local_path = _apply_reverse_path_map(local_path, mapping)
+        tracks.append(RekordboxTrackData(
+            location=location,
+            local_path=local_path,
+            name=node.get("Name") or "",
+            artist=node.get("Artist") or "",
+            rating=_parse_rating(node.get("Rating")),
+            play_count=_parse_int_attr(node.get("PlayCount")),
+            bpm=_parse_float_attr(node.get("AverageBpm")),
+            key=node.get("Tonality") or None,
+            cues=_parse_position_marks(node),
+        ))
+    return tracks
+
+
+def import_rekordbox_xml(
+    db: TrackDB,
+    xml_path: str | Path,
+    path_map: dict[str, str],
+    *,
+    auto_like: bool = True,
+) -> RekordboxImportSummary:
+    """Importiert Metadaten aus einer Rekordbox-XML in die TrackDB.
+
+    Matching-Reihenfolge je Track:
+    1. Direkt über db.get_track_by_path(local_path)
+    2. Fallback über den Dateinamen: Path(local_path).name via db.get_track_by_filename(...)
+    Bei Treffer werden Rating, PlayCount, BPM, Key und Cues gespeichert; auto_like=True
+    setzt bei hoher Bewertung (Rating >= 4 oder Plays >= 2) ein noch leeres Feedback auf
+    'like' (nie ein bestehendes). Nicht gefundene Tracks zählen als unmatched und werden
+    nicht angelegt. Wiederholtes Einlesen derselben XML ist idempotent.
+    """
+    parsed = parse_rekordbox_xml(xml_path, path_map)
+    summary = RekordboxImportSummary(total_tracks=len(parsed))
+
+    for track in parsed:
+        record = db.get_track_by_path(track.local_path)
+        if record is None:
+            record = db.get_track_by_filename(Path(track.local_path).name)
+        if record is None or record.id is None:
+            summary.unmatched += 1
+            continue
+
+        summary.matched += 1
+        if track.rating is not None:
+            summary.ratings_count += 1
+        if track.play_count is not None and track.play_count > 0:
+            summary.played_count += 1
+
+        # Dieselbe Schwelle wie update_rekordbox_metadata: zählt nur, was dort neu gesetzt wird.
+        will_auto_like = (
+            auto_like
+            and record.feedback is None
+            and (
+                (track.rating is not None and track.rating >= _AUTO_LIKE_MIN_RATING)
+                or (track.play_count is not None and track.play_count >= _AUTO_LIKE_MIN_PLAYS)
+            )
+        )
+
+        db.update_rekordbox_metadata(
+            record.id,
+            rb_rating=track.rating,
+            rb_play_count=track.play_count,
+            rb_bpm=track.bpm,
+            rb_key=track.key,
+            rb_cues=json.dumps(track.cues, ensure_ascii=False),
+            auto_like=auto_like,
+        )
+        if will_auto_like:
+            summary.auto_likes_count += 1
+
+    return summary
+
