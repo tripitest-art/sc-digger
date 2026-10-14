@@ -57,6 +57,9 @@ auf: Label `blockiert` zusätzlich setzen und im Kontext `Wartet auf: #X` eintra
 Schreib den vollständigen Issue-Text nach der Vorlage unten **in den Chat** und frag Stephan:
 „Soll ich das Issue so anlegen?“ Erst nach seinem OK weiter mit Schritt 6.
 
+Hast du eine Shell, prüf den Entwurf vorher mit `python -m sc_digger.issuecheck <issue.md>`
+(Form und Rot-Stand der Akzeptanztests) und schreib das Ergebnis in den Abschnitt „Kontext“.
+
 Regeln für die Akzeptanztests:
 - pytest, ohne Netzwerk (Fakes), keine `skip`/`xfail`.
 - Sie importieren nur die Schnittstellen aus „Schnittstellen“ und prüfen deren Verhalten.
