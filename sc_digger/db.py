@@ -96,6 +96,7 @@ class TrackRecord:
     rb_bpm: float | None = None       # Rekordbox AverageBpm
     rb_key: str | None = None         # Rekordbox Tonality
     rb_cues: str | None = None        # JSON-String der Cue-Liste
+    energy: int | None = None         # 1..5 Energie-Level (berechnet, siehe sc_digger.style)
     created_at: str | None = None
     updated_at: str | None = None
 
@@ -347,6 +348,15 @@ MIGRATIONS: list[tuple[int, str, str]] = [
         CREATE INDEX IF NOT EXISTS idx_gate_items_last_seen ON gate_items(last_seen);
         """,
     ),
+    (
+        # Nummer 11 statt der im Issue genannten 10: 10 ist bereits durch 0010_gate_items belegt.
+        11,
+        "0011_tracks_energy",
+        """
+        ALTER TABLE tracks ADD COLUMN energy INTEGER;
+        CREATE INDEX IF NOT EXISTS idx_tracks_energy ON tracks(energy);
+        """,
+    ),
 ]
 
 
@@ -513,6 +523,18 @@ class TrackDB:
         )
         self.db.commit()
         return True
+
+    def set_energy(self, track_id: int, energy: int) -> bool:
+        """Setzt die Energie-Stufe (1..5) für einen Track.
+
+        Gibt True zurück, wenn der Track existiert und aktualisiert wurde, sonst False.
+        """
+        cur = self.db.execute(
+            "UPDATE tracks SET energy = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (energy, track_id),
+        )
+        self.db.commit()
+        return cur.rowcount > 0
 
     def search_tracks(self, query: str, limit: int = 6) -> list[TrackRecord]:
         """Sucht Tracks zu einem Suchtext. Der Suchtext wird an Leerzeichen in

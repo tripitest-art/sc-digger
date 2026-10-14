@@ -74,6 +74,11 @@ _LOUDNESS_TAG_KEYS = (
     "SCDIGGER_LRA",
 )
 
+# Metadaten-Schlüssel der Energie-Stufe (1..5):
+# MP3 als TXXX-Frame, FLAC als Vorbis-Kommentar (mutagen normalisiert auf Kleinschreibung).
+_ENERGY_TAG_KEY = "SCDIGGER_ENERGY"
+_ENERGY_FLAC_KEY = "scdigger_energy"
+
 
 def loudness_tag_values(report: dict | None) -> dict[str, str]:
     """Formatierte Lautheits-Tags aus einem quality_report.
@@ -111,13 +116,15 @@ def loudness_tag_values(report: dict | None) -> dict[str, str]:
 
 def write_tags(path: Path, *, artist: str, title: str, bpm: float | None = None,
                key_name: str | None = None, genre: str = "Schranz",
-               comment: str = "", url: str = "",
-               loudness: dict | None = None) -> bool:
+               comment: str | None = None, url: str | None = None,
+               loudness: dict | None = None, energy: int | None = None) -> bool:
     """Schreibt Metadaten- und Lautheits-Tags in die Audio-Datei.
 
     Unterstützt: MP3, FLAC, AIFF, M4A, WAV.
     - loudness: quality_report; die Werte aus loudness_tag_values werden geschrieben.
       Vorhandene Felder mit diesen vier Namen werden vorher entfernt (kein Doppel).
+    - energy: Energie-Stufe (1..5); MP3 als TXXX-Frame SCDIGGER_ENERGY,
+      FLAC als Vorbis-Kommentar scdigger_energy. Bei None bleibt das Tag unberührt.
     - Ablage: ID3 (MP3, AIFF, WAV) als TXXX-Frames mit desc = Schlüsselname;
       FLAC als Vorbis-Kommentar; M4A als Freeform "----:com.apple.iTunes:<Schlüssel>" (UTF-8).
     - WAV: bekommt jetzt dieselben ID3-Tags wie AIFF (mutagen.wave.WAVE, add_tags bei Bedarf)
@@ -141,23 +148,23 @@ def write_tags(path: Path, *, artist: str, title: str, bpm: float | None = None,
         if ext == ".mp3":
             _tag_mp3(path, artist=artist, title=title, bpm=bpm,
                      key_name=key_name, genre=genre, comment=comment, url=url,
-                     loudness=loudness)
+                     loudness=loudness, energy=energy)
         elif ext == ".flac":
             _tag_flac(path, artist=artist, title=title, bpm=bpm,
                       key_name=key_name, genre=genre, comment=comment, url=url,
-                      loudness=loudness)
+                      loudness=loudness, energy=energy)
         elif ext in (".aif", ".aiff"):
             _tag_aiff(path, artist=artist, title=title, bpm=bpm,
                       key_name=key_name, genre=genre, comment=comment, url=url,
-                      loudness=loudness)
+                      loudness=loudness, energy=energy)
         elif ext == ".m4a":
             _tag_m4a(path, artist=artist, title=title, bpm=bpm,
                      key_name=key_name, genre=genre, comment=comment, url=url,
-                     loudness=loudness)
+                     loudness=loudness, energy=energy)
         elif ext == ".wav":
             _tag_wav(path, artist=artist, title=title, bpm=bpm,
                      key_name=key_name, genre=genre, comment=comment, url=url,
-                     loudness=loudness)
+                     loudness=loudness, energy=energy)
         else:
             log.debug("Unbekanntes Format für Tagging: %s", ext)
             return False
@@ -166,6 +173,66 @@ def write_tags(path: Path, *, artist: str, title: str, bpm: float | None = None,
     except Exception as e:
         log.warning("Tagging fehlgeschlagen für %s: %s", path.name, e)
         return False
+
+
+def read_energy_tag(path: Path) -> int | None:
+    """Liest das Tag SCDIGGER_ENERGY (als 1..5 int) aus MP3 und FLAC aus.
+
+    Gibt None zurück, wenn das Tag fehlt oder ungültig ist (kein Tag, kein int,
+    außerhalb 1..5, unbekanntes Format oder defekte Datei). Wirft nie.
+    """
+    try:
+        from mutagen.id3 import ID3, ID3NoHeaderError
+        from mutagen.flac import FLAC
+    except ImportError:
+        log.warning("mutagen nicht installiert – Energie-Tag nicht lesbar")
+        return None
+
+    path = Path(path)
+    ext = path.suffix.lower()
+    raw: str | None = None
+    try:
+        if ext == ".mp3":
+            try:
+                tags = ID3(str(path))
+            except ID3NoHeaderError:
+                return None
+            frame = tags.get(f"TXXX:{_ENERGY_TAG_KEY}")
+            if frame is not None and frame.text:
+                raw = str(frame.text[0])
+        elif ext == ".flac":
+            audio = FLAC(str(path))
+            vals = audio.get(_ENERGY_FLAC_KEY) or audio.get(_ENERGY_TAG_KEY)
+            if vals:
+                raw = str(vals[0])
+        else:
+            return None
+    except Exception as e:
+        log.warning("Energie-Tag konnte nicht gelesen werden für %s: %s", path.name, e)
+        return None
+
+    if raw is None:
+        return None
+    try:
+        value = int(str(raw).strip())
+    except (TypeError, ValueError):
+        return None
+    return value if 1 <= value <= 5 else None
+
+
+def _replace_id3_energy(tags: Any, energy: object) -> None:
+    """Schreibt bzw. ersetzt das Energie-Tag in einem ID3-Objekt (TXXX:SCDIGGER_ENERGY).
+
+    Bei energy=None bleibt ein vorhandenes Tag unberührt (kein Löschen ohne Ersatz).
+    """
+    if energy is None:
+        return
+    from mutagen.id3 import TXXX
+    prefix = f"TXXX:{_ENERGY_TAG_KEY}".upper()
+    for k in list(tags.keys()):
+        if k.upper() == prefix:
+            del tags[k]
+    tags.add(TXXX(encoding=3, desc=_ENERGY_TAG_KEY, text=[str(int(energy))]))
 
 
 def _replace_id3_loudness(tags: Any, loudness: object) -> None:
@@ -201,6 +268,8 @@ def _fill_id3(tags: Any, kw: dict[str, object]) -> None:
         tags.delall("WXXX")
         tags.add(WXXX(encoding=3, desc="SoundCloud", url=str(kw["url"])))
 
+    _replace_id3_energy(tags, kw.get("energy"))
+
     _replace_id3_loudness(tags, kw.get("loudness"))
 
 
@@ -230,6 +299,8 @@ def _tag_mp3(path: Path, **kw: object) -> None:
         tags.delall("WXXX")
         tags.add(WXXX(encoding=3, desc="SoundCloud", url=str(kw["url"])))
 
+    _replace_id3_energy(tags, kw.get("energy"))
+
     _replace_id3_loudness(tags, kw.get("loudness"))
 
     tags.save(str(path))
@@ -257,6 +328,11 @@ def _tag_flac(path: Path, **kw: object) -> None:
     loudness_dict = loudness_tag_values(loudness if isinstance(loudness, dict) else None)
     for name, val in loudness_dict.items():
         audio[name] = val
+
+    if kw.get("energy") is not None:
+        if _ENERGY_FLAC_KEY in audio:
+            del audio[_ENERGY_FLAC_KEY]
+        audio[_ENERGY_FLAC_KEY] = str(int(kw["energy"]))
 
     audio.save()
 

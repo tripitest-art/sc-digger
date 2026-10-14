@@ -141,35 +141,54 @@ def recommend_rekordbox_color(analysis: StyleAnalysis) -> str:
     return mapping.get(analysis.version_type, "None")
 
 
+# Schwellwerte der Energie-Berechnung (calculate_energy).
+_ENERGY_LUFS_LOUD = -6.0          # lauter als das -> +1
+_ENERGY_LRA_BRICKWALL = 3.0       # weniger Dynamik (Brickwall) -> +1
+_ENERGY_LRA_DYNAMIC = 6.5         # mehr Dynamik (Minimal) -> -1
+_ENERGY_CENTROID_BRIGHT = 3500.0  # hell / Distortion / Noise -> +1
+_ENERGY_CENTROID_DARK = 1800.0    # dunkel / warmer Sub -> -1
+
+
 def calculate_energy(
     bpm: float | None,
     lufs: float | None = None,
     lra: float | None = None,
     subgenre: Subgenre | None = None,
+    *,
+    spectral_centroid_hz: float | None = None,
+    rms: float | None = None,
 ) -> int:
     """Berechnet ein Energie-Level von 1 bis 5.
 
-    Das Tempo bestimmt die Grundstufe, lauter Pegel, geringe Dynamik (Brickwall) und
-    harte Subgenres heben an, melodische/entspannte senken leicht. Am Ende immer 1..5.
+    Das Tempo bestimmt die Grundstufe, lauter Pegel, geringe Dynamik (Brickwall),
+    ein heller/verzerrter Spektral-Schwerpunkt und harte Subgenres heben an,
+    melodische/entspannte oder sehr dynamische (Minimal) senken leicht. Am Ende immer 1..5.
+    `rms` wird derzeit nur entgegengenommen, fließt aber nicht in die Bewertung ein.
     """
     if bpm is None:
         base = 3
-    elif bpm < 135:
+    elif bpm < 138:
         base = 1
     elif bpm < 145:
         base = 2
     elif bpm < 152:
         base = 3
-    elif bpm < 165:
+    elif bpm < 160:
         base = 4
     else:
         base = 5
 
     score = base
-    if lufs is not None and lufs > -6.0:
+    if lufs is not None and lufs > _ENERGY_LUFS_LOUD:
         score += 1
-    if lra is not None and lra < 3.0:
+    if lra is not None and lra < _ENERGY_LRA_BRICKWALL:
         score += 1
+    if lra is not None and lra > _ENERGY_LRA_DYNAMIC:
+        score -= 1
+    if spectral_centroid_hz is not None and spectral_centroid_hz > _ENERGY_CENTROID_BRIGHT:
+        score += 1
+    if spectral_centroid_hz is not None and spectral_centroid_hz < _ENERGY_CENTROID_DARK:
+        score -= 1
     if subgenre in (Subgenre.TERROR, Subgenre.CROSSBREED):
         score += 1
     if subgenre in (Subgenre.MELODIC, Subgenre.EBM):
@@ -299,6 +318,8 @@ def classify_track(
     lra: float | None = None,
     breakdown_ratio: float | None = None,
     chroma_dominance: float | None = None,
+    spectral_centroid_hz: float | None = None,
+    rms: float | None = None,
 ) -> StyleAnalysis:
     """Klassifiziert einen Track anhand von BPM, Metadaten und Audio-Merkmalen. Liefert immer ein gültiges StyleAnalysis.
 
@@ -333,7 +354,14 @@ def classify_track(
     else:
         confidence = 0.4
 
-    energy = calculate_energy(bpm, lufs=None, lra=lra, subgenre=matched)
+    energy = calculate_energy(
+        bpm,
+        lufs=None,
+        lra=lra,
+        subgenre=matched,
+        spectral_centroid_hz=spectral_centroid_hz,
+        rms=rms,
+    )
 
     return StyleAnalysis(
         cluster=cluster,
