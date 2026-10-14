@@ -1,0 +1,270 @@
+{% extends "base.html" %}
+
+{% block title %}sc-digger Digest &amp; Entdeckungen{% endblock %}
+{% block nav_digest %}active{% endblock %}
+
+{% block meta %}
+<style>
+  .digest-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 0.75rem;
+  }
+  .filter-form .filter-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 0.75rem;
+    align-items: end;
+  }
+  .filter-form .filter-field label {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-weight: 600;
+  }
+  .filter-form input[type=text],
+  .filter-form select {
+    max-width: none;
+  }
+  .filter-actions {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+    margin-top: 1rem;
+  }
+  .badge {
+    display: inline-block;
+    padding: 0.15rem 0.55rem;
+    border-radius: 9999px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    border: 1px solid transparent;
+    white-space: nowrap;
+  }
+  .badge-ok {
+    background-color: var(--accent-ok-bg);
+    color: var(--accent-ok);
+    border-color: rgba(16, 185, 129, 0.3);
+  }
+  .badge-warn {
+    background-color: var(--accent-warn-bg);
+    color: var(--accent-warn);
+    border-color: rgba(245, 158, 11, 0.3);
+  }
+  .badge-err {
+    background-color: var(--accent-err-bg);
+    color: var(--accent-err);
+    border-color: rgba(239, 68, 68, 0.3);
+  }
+  .badge-info {
+    background-color: rgba(59, 130, 246, 0.12);
+    color: #93c5fd;
+    border-color: rgba(59, 130, 246, 0.3);
+  }
+  .badge-purple {
+    background-color: rgba(139, 92, 246, 0.12);
+    color: #c4b5fd;
+    border-color: rgba(139, 92, 246, 0.3);
+  }
+  .badge-muted {
+    background-color: var(--bg-card-subtle);
+    color: var(--text-dim);
+    border-color: var(--border);
+  }
+  .pager {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    margin-top: 1.25rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border);
+    font-size: 0.85rem;
+  }
+  .pager-buttons {
+    display: flex;
+    gap: 0.5rem;
+  }
+  .btn-page {
+    display: inline-block;
+    padding: 0.35rem 0.85rem;
+    border-radius: 6px;
+    background-color: var(--bg-card-subtle);
+    color: var(--text-main);
+    border: 1px solid var(--border);
+    font-size: 0.82rem;
+    font-weight: 500;
+  }
+  .btn-page:hover {
+    border-color: var(--accent-primary);
+    text-decoration: none;
+  }
+  .btn-page.disabled {
+    opacity: 0.4;
+    pointer-events: none;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="digest-toolbar">
+    <div>
+      <h1 style="margin: 0;">Digest &amp; Entdeckungen</h1>
+      <p class="meta" style="margin-top: 0.25rem;">
+        Alle bisher vorgeschlagenen Tracks aus dem täglichen Digest und On-Demand-Checks.
+        Insgesamt {{ total }} Treffer.
+      </p>
+    </div>
+  </div>
+  <form class="filter-form" method="get" action="/digest">
+    <input type="hidden" name="limit" value="{{ page_size }}">
+    <div class="filter-grid">
+      <div class="filter-field">
+        <label for="f-q">Artist / Titel</label>
+        <input type="text" id="f-q" name="q" value="{{ filters.q }}"
+               placeholder="Wortsuche über Artist und Titel">
+      </div>
+      <div class="filter-field">
+        <label for="f-status">Status</label>
+        <select id="f-status" name="status">
+          <option value="" {% if not filters.status %}selected{% endif %}>alle</option>
+          <option value="inbox" {% if filters.status == "inbox" %}selected{% endif %}>Inbox</option>
+          <option value="collection" {% if filters.status == "collection" %}selected{% endif %}>Sammlung</option>
+          <option value="open" {% if filters.status == "open" %}selected{% endif %}>Offen</option>
+        </select>
+      </div>
+      <div class="filter-field">
+        <label for="f-kind">Download-Art</label>
+        <select id="f-kind" name="download_kind">
+          <option value="" {% if not filters.download_kind %}selected{% endif %}>alle</option>
+          <option value="native" {% if filters.download_kind == "native" %}selected{% endif %}>Original</option>
+          <option value="store" {% if filters.download_kind == "store" %}selected{% endif %}>Store / Kaufen</option>
+          <option value="gate" {% if filters.download_kind == "gate" %}selected{% endif %}>Gate</option>
+          <option value="stream" {% if filters.download_kind == "stream" %}selected{% endif %}>Nur Stream</option>
+        </select>
+      </div>
+      <div class="filter-field">
+        <label for="f-feedback">Feedback</label>
+        <select id="f-feedback" name="feedback">
+          <option value="" {% if not filters.feedback %}selected{% endif %}>alle</option>
+          <option value="like" {% if filters.feedback == "like" %}selected{% endif %}>👍 Like</option>
+          <option value="dislike" {% if filters.feedback == "dislike" %}selected{% endif %}>👎 Dislike</option>
+          <option value="later" {% if filters.feedback == "later" %}selected{% endif %}>⏳ Später</option>
+          <option value="none" {% if filters.feedback == "none" %}selected{% endif %}>Ohne Bewertung</option>
+        </select>
+      </div>
+    </div>
+    <div class="filter-actions">
+      <button type="submit">Filtern</button>
+      <a href="/digest" class="meta">Zurücksetzen</a>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h2 class="card-title" style="margin: 0;">Vorschläge</h2>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>Datum</th>
+        <th>Artist</th>
+        <th>Titel</th>
+        <th>Download-Art</th>
+        <th>Status</th>
+        <th>Feedback</th>
+        <th>Links</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in items %}
+      <tr>
+        <td class="mono meta" style="white-space: nowrap; font-size: 0.78rem;">
+          {{ item.reported_at[:16] if item.reported_at else "—" }}
+        </td>
+        <td>{{ item.artist or "—" }}</td>
+        <td>
+          <strong>{{ item.title }}</strong>
+        </td>
+        <td>
+          {% if item.download_kind == "store" %}
+          <span class="badge badge-purple">🛒 Store</span>
+          {% elif item.download_kind == "native" %}
+          <span class="badge badge-ok">💾 Original</span>
+          {% elif item.download_kind == "gate" %}
+          <span class="badge badge-warn">⏳ Gate</span>
+          {% else %}
+          <span class="badge badge-muted">🎧 Stream</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if item.in_collection %}
+          <span class="badge badge-ok">Sammlung</span>
+          {% elif item.in_inbox %}
+          <span class="badge badge-info">Inbox</span>
+          {% else %}
+          <span class="badge badge-muted">Offen</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if item.feedback == "like" %}
+          <span class="badge badge-ok">👍 Like</span>
+          {% elif item.feedback == "dislike" %}
+          <span class="badge badge-err">👎 Dislike</span>
+          {% elif item.feedback == "later" %}
+          <span class="badge badge-warn">⏳ Später</span>
+          {% else %}
+          <span class="meta">—</span>
+          {% endif %}
+        </td>
+        <td style="white-space: nowrap;">
+          {% if item.url %}
+          <a href="{{ item.url }}" target="_blank" rel="noopener" class="btn-page" style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">
+            SoundCloud ↗
+          </a>
+          {% endif %}
+          {% if item.purchase_url %}
+          <a href="{{ item.purchase_url }}" target="_blank" rel="noopener" class="btn-page" style="padding: 0.2rem 0.5rem; font-size: 0.75rem; border-color: rgba(139, 92, 246, 0.4);">
+            🛒 Bandcamp / Kaufen ↗
+          </a>
+          {% elif item.gate_url %}
+          <a href="{{ item.gate_url }}" target="_blank" rel="noopener" class="btn-page" style="padding: 0.2rem 0.5rem; font-size: 0.75rem; border-color: rgba(245, 158, 11, 0.4);">
+            🌐 Gate öffnen ↗
+          </a>
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="7" style="text-align: center; padding: 2rem;" class="meta">
+          Keine Vorschläge für diese Filtereinstellungen gefunden.
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {% if total > 0 %}
+  <div class="pager">
+    <div class="meta">
+      Seite {{ page }} von {{ total_pages }} ({{ total }} Vorschläge gesamt)
+    </div>
+    <div class="pager-buttons">
+      <a href="{{ prev_url or '#' }}" class="btn-page {% if not prev_url %}disabled{% endif %}">
+        &larr; Vorherige
+      </a>
+      <a href="{{ next_url or '#' }}" class="btn-page {% if not next_url %}disabled{% endif %}">
+        Nächste &rarr;
+      </a>
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -8,6 +8,7 @@ Index nie scheitern.
 """
 from __future__ import annotations
 
+import re
 import sqlite3
 from contextlib import closing
 from dataclasses import asdict, dataclass, field
@@ -200,3 +201,178 @@ def query_tracks(
         return TrackSearchResult()
 
     return TrackSearchResult(total=total, items=[dict(row) for row in rows])
+
+
+@dataclass
+class DigestItem:
+    """Repräsentiert einen im Digest oder On-Demand vorgeschlagenen Track."""
+
+    sc_id: int
+    url: str
+    title: str
+    artist: str | None
+    reported_at: str
+    download_kind: str  # 'native', 'gate', 'store', 'stream'
+    gate_url: str | None = None
+    purchase_url: str | None = None
+    feedback: str | None = None  # 'like', 'dislike', 'later'
+    in_collection: bool = False
+    in_inbox: bool = False
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
+class DigestSearchResult:
+    """Suchergebnis für die Digest-Historie."""
+
+    total: int = 0
+    items: list[DigestItem] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"total": self.total, "items": [i.to_dict() for i in self.items]}
+
+
+def _parse_artist_title(raw: str) -> tuple[str | None, str]:
+    """Trennt 'Artist - Title' oder 'Artist – Title' sauber; sonst (None, raw)."""
+    for sep in (" - ", " – "):
+        if sep in raw:
+            parts = raw.split(sep, 1)
+            return parts[0].strip(), parts[1].strip()
+    return None, raw.strip()
+
+
+def query_digest(
+    state_db_path: str | Path,
+    track_db_path: str | Path,
+    *,
+    search: str = "",
+    status_filter: str = "",  # '', 'collection', 'inbox', 'open'
+    download_kind: str = "",  # '', 'native', 'gate', 'store', 'stream'
+    feedback: str = "",       # '', 'like', 'dislike', 'later', 'none'
+    limit: int = 50,
+    offset: int = 0,
+) -> DigestSearchResult:
+    """Liest chronologisch (neueste zuerst) aus seen.sqlite (seen-Tabelle) und joint
+    Informationen aus track_db (tracks, sc_feedback, store_items).
+    Fehlt eine DB-Datei oder Tabelle, wirft die Funktion nicht, sondern liefert leere/partielle Ergebnisse.
+    Nur lesend; limit wird auf max. 200 begrenzt.
+    """
+    state_path = Path(state_db_path)
+    if not state_path.is_file():
+        return DigestSearchResult()
+
+    feedback_map: dict[int, str] = {}
+    store_map: dict[int, str] = {}
+    inbox_ids: set[int] = set()
+    archive_ids: set[int] = set()
+
+    track_path = Path(track_db_path)
+    if track_path.is_file():
+        try:
+            with closing(_connect_readonly(track_path)) as tdb:
+                if _table_exists(tdb, "sc_feedback"):
+                    for row in tdb.execute("SELECT sc_id, value FROM sc_feedback"):
+                        if row["sc_id"] is not None:
+                            feedback_map[int(row["sc_id"])] = str(row["value"] or "")
+                if _table_exists(tdb, "store_items"):
+                    for row in tdb.execute("SELECT sc_id, purchase_url FROM store_items"):
+                        if row["sc_id"] is not None and row["purchase_url"]:
+                            store_map[int(row["sc_id"])] = str(row["purchase_url"])
+                if _table_exists(tdb, "tracks"):
+                    for row in tdb.execute("SELECT path, status FROM tracks"):
+                        p_str = str(row["path"] or "")
+                        st_str = str(row["status"] or "").lower()
+                        m = re.search(r"\[(\d+)\]", p_str)
+                        if m:
+                            tid = int(m.group(1))
+                            if st_str == "inbox":
+                                inbox_ids.add(tid)
+                            elif st_str == "archive":
+                                archive_ids.add(tid)
+        except sqlite3.Error:
+            pass
+
+    try:
+        with closing(_connect_readonly(state_path)) as sdb:
+            if not _table_exists(sdb, "seen"):
+                return DigestSearchResult()
+            rows = sdb.execute(
+                "SELECT id, url, title, reported_at FROM seen ORDER BY reported_at DESC, id DESC"
+            ).fetchall()
+    except sqlite3.Error:
+        return DigestSearchResult()
+
+    items: list[DigestItem] = []
+    for r in rows:
+        sc_id = int(r["id"])
+        raw_title = str(r["title"] or "")
+        artist, title = _parse_artist_title(raw_title)
+        url = str(r["url"] or "")
+        reported_at = str(r["reported_at"] or "")
+
+        in_inbox = sc_id in inbox_ids
+        in_coll = sc_id in archive_ids
+
+        purchase_url = store_map.get(sc_id)
+        if purchase_url:
+            kind = "store"
+        elif in_inbox or in_coll:
+            kind = "native"
+        else:
+            kind = "stream"
+
+        item = DigestItem(
+            sc_id=sc_id,
+            url=url,
+            title=title,
+            artist=artist,
+            reported_at=reported_at,
+            download_kind=kind,
+            purchase_url=purchase_url,
+            gate_url=None,
+            feedback=feedback_map.get(sc_id),
+            in_collection=in_coll,
+            in_inbox=in_inbox,
+        )
+
+        if search:
+            s_low = search.strip().lower()
+            t_low = item.title.lower()
+            a_low = (item.artist or "").lower()
+            raw_low = raw_title.lower()
+            if s_low not in t_low and s_low not in a_low and s_low not in raw_low:
+                continue
+
+        if status_filter:
+            st = status_filter.strip().lower()
+            if st == "collection" and not item.in_collection:
+                continue
+            elif st == "inbox" and not item.in_inbox:
+                continue
+            elif st == "open" and (item.in_collection or item.in_inbox):
+                continue
+
+        if download_kind:
+            dk = download_kind.strip().lower()
+            if item.download_kind != dk:
+                continue
+
+        if feedback:
+            fb = feedback.strip().lower()
+            if fb == "none":
+                if item.feedback is not None:
+                    continue
+            elif item.feedback != fb:
+                continue
+
+        items.append(item)
+
+    limit = max(0, min(int(limit), 200))
+    offset = max(0, int(offset))
+    total = len(items)
+    paged_items = items[offset : offset + limit] if limit > 0 else []
+
+    return DigestSearchResult(total=total, items=paged_items)
+

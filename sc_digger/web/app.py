@@ -18,7 +18,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 from ..models import Config
 from ..schema import FIELDS, SECTION_TITLES, Problem, deep_merge, get_field
 from .configedit import apply_form, diff_config, format_form_value, get_path, remove_key, save_local
-from .database import DEFAULT_LIMIT, MAX_LIMIT, get_collection_overview, query_tracks
+from .database import DEFAULT_LIMIT, MAX_LIMIT, get_collection_overview, query_digest, query_tracks
 from .status import collect_status
 
 _TEMPLATES = Path(__file__).parent / "templates"
@@ -221,6 +221,67 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
         template = _env.get_template("tracks.html")
         return HTMLResponse(template.render(
             tracks=result.items,
+            total=result.total,
+            page_size=page_size,
+            page=offset // page_size + 1,
+            total_pages=total_pages,
+            filters=filters,
+            prev_url=page_url(max(0, offset - page_size)) if offset > 0 else None,
+            next_url=page_url(offset + page_size) if offset + page_size < result.total else None,
+        ))
+
+    @app.get("/api/digest")
+    def api_digest(request: Request):
+        if not _check_auth(request, password, allow_anonymous):
+            return _unauthorized()
+        params = request.query_params
+        result = query_digest(
+            cfg["state"]["db_path"],
+            cfg["state"]["track_db_path"],
+            search=params.get("q") or "",
+            status_filter=params.get("status") or "",
+            download_kind=params.get("download_kind") or "",
+            feedback=params.get("feedback") or "",
+            limit=_query_int(params.get("limit"), DEFAULT_LIMIT),
+            offset=_query_int(params.get("offset"), 0),
+        )
+        return JSONResponse(result.to_dict())
+
+    @app.get("/digest", response_class=HTMLResponse)
+    def digest_page(request: Request):
+        if not _check_auth(request, password, allow_anonymous):
+            return _unauthorized()
+        params = request.query_params
+        filters = {
+            "q": params.get("q") or "",
+            "status": params.get("status") or "",
+            "download_kind": params.get("download_kind") or "",
+            "feedback": params.get("feedback") or "",
+        }
+        page_size = max(1, min(_query_int(params.get("limit"), DEFAULT_LIMIT), MAX_LIMIT))
+        offset = max(0, _query_int(params.get("offset"), 0))
+        result = query_digest(
+            cfg["state"]["db_path"],
+            cfg["state"]["track_db_path"],
+            search=filters["q"],
+            status_filter=filters["status"],
+            download_kind=filters["download_kind"],
+            feedback=filters["feedback"],
+            limit=page_size,
+            offset=offset,
+        )
+
+        def page_url(new_offset: int) -> str:
+            query = {key: value for key, value in filters.items() if value}
+            query["limit"] = str(page_size)
+            if new_offset > 0:
+                query["offset"] = str(new_offset)
+            return "/digest?" + urlencode(query)
+
+        total_pages = max(1, (result.total + page_size - 1) // page_size)
+        template = _env.get_template("digest.html")
+        return HTMLResponse(template.render(
+            items=result.items,
             total=result.total,
             page_size=page_size,
             page=offset // page_size + 1,
