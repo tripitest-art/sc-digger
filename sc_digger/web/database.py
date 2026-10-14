@@ -1,10 +1,14 @@
-"""Rein lesende Abfrage-Schicht für den Track-Explorer des Dashboards (Issue #220).
+"""Abfrage-Schicht für den Track-Explorer des Dashboards (Issue #220, #229).
 
-Öffnet die Track-Datenbank ausschließlich im Modus ``ro`` (kein Anlegen, kein Schreiben)
-und liefert zusammengefasste Kennzahlen (:func:`get_collection_overview`) sowie gefilterte
-Track-Listen (:func:`query_tracks`). Fehlt die Datei oder das Schema, kommen leere
-Ergebnisse zurück statt einer Exception – die Statusoberfläche darf an einem fehlenden
-Index nie scheitern.
+Die lesenden Abfragen öffnen die Track-Datenbank ausschließlich im Modus ``ro`` (kein
+Anlegen, kein Schreiben) und liefern zusammengefasste Kennzahlen
+(:func:`get_collection_overview`) sowie gefilterte Track-Listen (:func:`query_tracks`).
+Fehlt die Datei oder das Schema, kommen leere Ergebnisse zurück statt einer Exception –
+die Statusoberfläche darf an einem fehlenden Index nie scheitern.
+
+Seit Issue #229 gibt es genau einen schreibenden Pfad, :func:`save_track_feedback`: er
+schreibt ein Feedback in ``sc_feedback`` und wirft nie (Rückgabe ``False`` bei ungültigem
+Wert oder DB-Fehler).
 """
 from __future__ import annotations
 
@@ -14,6 +18,8 @@ from contextlib import closing
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
+
+from ..db import FEEDBACK_VALUES
 
 # Spalten, die ein Suchtreffer an die Oberfläche liefert (bewusst ohne Audio-Fingerprint
 # und Qualitätsdetails; die gehören nicht in eine Listenansicht).
@@ -73,6 +79,40 @@ def _table_exists(db: sqlite3.Connection, name: str) -> bool:
         "SELECT name FROM sqlite_master WHERE type='table' AND name=?", (name,)
     ).fetchone()
     return row is not None
+
+
+def _sc_id_from_path(path: str | None) -> int | None:
+    """SoundCloud-ID aus dem Dateinamen ``[<sc_id>] Artist - Titel.ext``.
+
+    Inbox und Sammlung benennen Dateien mit der SoundCloud-ID in eckigen Klammern
+    (siehe ``output.find_in_inbox``). Nur dieser Präfix zählt, damit Pfadbestandteile wie
+    BPM-Ordner keine Zahl liefern. Kein Präfix -> ``None``. Wirft nie.
+    """
+    if not path:
+        return None
+    match = re.match(r"\[(\d+)\]", Path(path).name)
+    return int(match.group(1)) if match else None
+
+
+def _feedback_values(db: sqlite3.Connection, paths: list[str]) -> dict[int, str]:
+    """Aktuelle ``sc_feedback``-Werte zu den SoundCloud-IDs der übergebenen Dateipfade.
+
+    Rein lesend. Fehlt die Tabelle oder schlägt die Abfrage fehl, kommt ein leeres Ergebnis
+    zurück – die Track-Liste soll an einem fehlenden Feedback-Index nicht scheitern.
+    """
+    ids = [sc for sc in (_sc_id_from_path(p) for p in paths) if sc is not None]
+    if not ids:
+        return {}
+    try:
+        if not _table_exists(db, "sc_feedback"):
+            return {}
+        placeholders = ",".join("?" for _ in ids)
+        rows = db.execute(
+            f"SELECT sc_id, value FROM sc_feedback WHERE sc_id IN ({placeholders})", ids
+        ).fetchall()
+    except sqlite3.Error:
+        return {}
+    return {int(row["sc_id"]): str(row["value"] or "") for row in rows}
 
 
 def _counts_by(db: sqlite3.Connection, column: str) -> dict[str, int]:
@@ -150,6 +190,9 @@ def query_tracks(
     Wortsuche über artist/title, ``bpm_min``/``bpm_max`` bilden einen Bereich,
     ``adopted`` filtert auf (nicht) in die Sammlung übernommene Tracks. ``limit`` wird auf
     ``MAX_LIMIT`` begrenzt, ``total`` ist die Zahl aller Treffer unabhängig von ``limit``.
+    Zusätzlich enthält jeder Treffer ``sc_id`` (aus dem Dateinamen ``[<sc_id>]``, sonst
+    ``None``) und ``sc_feedback`` (aktueller ``sc_feedback``-Wert, sonst ``None``), damit
+    die Oberfläche die Bewertung (Issue #229) anzeigen und ändern kann.
     Nur lesend; fehlt die Datei/Tabelle, kommt ein leeres Ergebnis zurück.
     """
     where: list[str] = []
@@ -197,10 +240,18 @@ def query_tracks(
                 "ORDER BY id ASC LIMIT ? OFFSET ?",
                 [*params, limit, offset],
             ).fetchall()
+            feedback_map = _feedback_values(db, [str(row["path"] or "") for row in rows])
     except sqlite3.Error:
         return TrackSearchResult()
 
-    return TrackSearchResult(total=total, items=[dict(row) for row in rows])
+    items: list[dict[str, Any]] = []
+    for row in rows:
+        item = dict(row)
+        sc_id = _sc_id_from_path(item.get("path"))
+        item["sc_id"] = sc_id
+        item["sc_feedback"] = feedback_map.get(sc_id) if sc_id is not None else None
+        items.append(item)
+    return TrackSearchResult(total=total, items=items)
 
 
 @dataclass
@@ -375,4 +426,43 @@ def query_digest(
     paged_items = items[offset : offset + limit] if limit > 0 else []
 
     return DigestSearchResult(total=total, items=paged_items)
+
+
+def save_track_feedback(
+    track_db_path: str | Path,
+    sc_id: int,
+    value: str,
+) -> bool:
+    """Speichert das Feedback eines Tracks in ``sc_feedback`` der Track-DB.
+
+    Gültige Werte: ``'like'``, ``'dislike'``, ``'later'``. Letzte Wahl gewinnt (Upsert je
+    SoundCloud-ID), ``updated_at`` wird auf jetzt gesetzt. Gibt ``True`` bei Erfolg zurück,
+    ``False`` bei ungültigem Wert, fehlender Datei/Tabelle oder DB-Fehler – wirft nie.
+
+    Die Verbindung wird im Modus ``rw`` geöffnet: ein unbekannter Pfad legt so keine leere
+    Datenbank an, sondern führt zu ``False`` (gleiches Prinzip wie die lesenden Abfragen).
+    """
+    if value not in FEEDBACK_VALUES:
+        return False
+    try:
+        sc_id_int = int(sc_id)
+    except (TypeError, ValueError):
+        return False
+    try:
+        uri = f"file:{Path(track_db_path).as_posix()}?mode=rw"
+        with closing(sqlite3.connect(uri, uri=True)) as db:
+            db.execute(
+                """
+                INSERT INTO sc_feedback (sc_id, value, updated_at)
+                VALUES (?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(sc_id) DO UPDATE SET
+                    value = excluded.value,
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                (sc_id_int, value),
+            )
+            db.commit()
+    except sqlite3.Error:
+        return False
+    return True
 
