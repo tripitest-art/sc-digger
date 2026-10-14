@@ -370,7 +370,7 @@
     {% if editor_available or save_action or config_action %}
     <a href="/config" class="nav-tab {% block nav_config %}{% endblock %}">Konfiguration</a>
     {% endif %}
-    <span class="nav-tab disabled" title="In Meilenstein 2">🎧 Digging &amp; Inbox</span>
+    <a href="/digest" class="nav-tab {% block nav_digest %}{% endblock %}">Digest</a>
     <span class="nav-tab disabled" title="In Meilenstein 3">⏳ Gates</span>
     <span class="nav-tab disabled" title="In Meilenstein 3">🛒 Kaufliste</span>
   </nav>
