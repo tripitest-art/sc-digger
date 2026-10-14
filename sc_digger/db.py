@@ -90,6 +90,12 @@ class TrackRecord:
     feedback: str | None = None  # 'like', 'dislike', 'later'
     adopted_at: str | None = None  # Zeitstempel der Übernahme in die Sammlung (Format: YYYY-MM-DD HH:MM:SS)
     breakdown_ratio: float | None = None
+    # Rekordbox-Import (nur lesend aus dem XML-Export, siehe sc_digger.rekordbox):
+    rb_rating: int | None = None      # 0..5 Sterne (berechnet aus Rekordbox Rating 0..255)
+    rb_play_count: int | None = None  # Abspielzähler aus PlayCount
+    rb_bpm: float | None = None       # Rekordbox AverageBpm
+    rb_key: str | None = None         # Rekordbox Tonality
+    rb_cues: str | None = None        # JSON-String der Cue-Liste
     created_at: str | None = None
     updated_at: str | None = None
 
@@ -312,6 +318,18 @@ MIGRATIONS: list[tuple[int, str, str]] = [
         """,
     ),
     (
+        9,
+        "0009_tracks_rekordbox_metadata",
+        """
+        ALTER TABLE tracks ADD COLUMN rb_rating INTEGER;
+        ALTER TABLE tracks ADD COLUMN rb_play_count INTEGER;
+        ALTER TABLE tracks ADD COLUMN rb_bpm REAL;
+        ALTER TABLE tracks ADD COLUMN rb_key TEXT;
+        ALTER TABLE tracks ADD COLUMN rb_cues TEXT;
+        CREATE INDEX IF NOT EXISTS idx_tracks_rb_rating ON tracks(rb_rating);
+        """,
+    ),
+    (
         10,
         "0010_gate_items",
         """
@@ -425,6 +443,76 @@ class TrackDB:
     def get_track_by_id(self, track_id: int) -> TrackRecord | None:
         row = self.db.execute("SELECT * FROM tracks WHERE id = ?", (track_id,)).fetchone()
         return TrackRecord.from_row(row) if row else None
+
+    def get_track_by_filename(self, filename: str) -> TrackRecord | None:
+        """Findet einen Track anhand seines Dateinamens (Pfad-Endung).
+
+        Nützlich, wenn die Rekordbox-XML einen anderen Ordner nennt als die eigene DB
+        (z. B. nach dem Sortieren): der reine Dateiname bleibt stabil. LIKE-Sonderzeichen
+        im Namen werden escaped, damit ein wörtlicher "_" nicht wie ein Platzhalter wirkt.
+        Bei mehreren Treffern gewinnt die kleinste id. Wirft nie (DB-Fehler -> None).
+        """
+        try:
+            escaped = (
+                str(filename).replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            )
+            row = self.db.execute(
+                "SELECT * FROM tracks WHERE path LIKE ? ESCAPE '\\' ORDER BY id ASC LIMIT 1",
+                (f"%/{escaped}",),
+            ).fetchone()
+            return TrackRecord.from_row(row) if row else None
+        except Exception as e:
+            log.warning("Track-Suche nach Dateiname fehlgeschlagen für %r: %s", filename, e)
+            return None
+
+    def update_rekordbox_metadata(
+        self,
+        track_id: int,
+        rb_rating: int | None = None,
+        rb_play_count: int | None = None,
+        rb_bpm: float | None = None,
+        rb_key: str | None = None,
+        rb_cues: str | None = None,
+        auto_like: bool = True,
+    ) -> bool:
+        """Aktualisiert Rekordbox-Metadaten für einen Track.
+
+        Falls auto_like=True und ((rb_rating is not None and rb_rating >= 4) oder
+        (rb_play_count is not None and rb_play_count >= 2)):
+        falls feedback IS NULL ist, wird feedback auf 'like' gesetzt.
+        Bestehendes feedback ('like', 'dislike', 'later') wird nie überschrieben.
+        Aktualisiert updated_at = CURRENT_TIMESTAMP.
+        Gibt True zurück, wenn der Track existiert und aktualisiert wurde, sonst False.
+        """
+        row = self.db.execute(
+            "SELECT feedback FROM tracks WHERE id = ?", (track_id,)
+        ).fetchone()
+        if row is None:
+            return False
+
+        set_parts = [
+            "rb_rating = ?",
+            "rb_play_count = ?",
+            "rb_bpm = ?",
+            "rb_key = ?",
+            "rb_cues = ?",
+            "updated_at = CURRENT_TIMESTAMP",
+        ]
+        params: list[Any] = [rb_rating, rb_play_count, rb_bpm, rb_key, rb_cues]
+
+        # Auto-Like ist ein Positivsignal und darf nur ein noch leeres Feedback füllen.
+        if auto_like and row["feedback"] is None and (
+            (rb_rating is not None and rb_rating >= 4)
+            or (rb_play_count is not None and rb_play_count >= 2)
+        ):
+            set_parts.append("feedback = 'like'")
+
+        self.db.execute(
+            f"UPDATE tracks SET {', '.join(set_parts)} WHERE id = ?",
+            (*params, track_id),
+        )
+        self.db.commit()
+        return True
 
     def search_tracks(self, query: str, limit: int = 6) -> list[TrackRecord]:
         """Sucht Tracks zu einem Suchtext. Der Suchtext wird an Leerzeichen in

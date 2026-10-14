@@ -229,6 +229,8 @@ FIELDS: tuple[Field, ...] = (
        "Rekordbox-Track-Farbe anhand des Versionstyps setzen (Colour)."),
     _f("rekordbox.style_comments", "bool", "Track-Kommentare nach Stil",
        "Rekordbox-Track-Kommentar im Stil-Format überschreiben (Comments)."),
+    _f("rekordbox.import_xml_path", "str", "Import-XML-Pfad",
+       "Optionaler Pfad zur exportierten Rekordbox-XML aus dem Syncthing-Rückkanal.", editable=False),
     # --- digest ---
     _f("digest.kaufliste_max_items", "int", "Max. Kaufliste",
        "Maximale Einträge in der wöchentlichen Kaufliste.", min=0),
