@@ -62,6 +62,7 @@ class Track:
     velocity: float = 0.0  # Likes pro Stunde seit Upload, gefüllt in score_tracks()
     exploration_tag: str | None = None  # Tag, falls Track über einen Explorations-Suchlauf entdeckt wurde
     breakdown_ratio: float | None = None  # Anteil kickloser Zeit zwischen Intro und Outro (0.0 bis 1.0)
+    energy: int | None = None  # 1..5 Energie-Level (berechnet, siehe sc_digger.style)
 
     @property
     def like_ratio(self) -> float:

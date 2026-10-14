@@ -213,6 +213,34 @@ def detect_key(path: Path) -> tuple[str, str] | None:
         return None
 
 
+def compute_energy_features(path: Path) -> dict[str, float | None]:
+    """Berechnet energiebezogene Audio-Features via librosa aus Mono-Audio (22050 Hz, 60s Offset 30s).
+
+    Rückgabe: {"spectral_centroid_hz": float | None, "rms": float | None}
+    Bei fehlendem librosa oder defekter/unlesbarer Datei: None-Werte, wirft nie.
+    """
+    leer: dict[str, float | None] = {"spectral_centroid_hz": None, "rms": None}
+    try:
+        import librosa
+    except ImportError:
+        log.warning("librosa nicht installiert – Energie-Features übersprungen")
+        return dict(leer)
+
+    try:
+        audio = _decode_audio(path, sr=22050, duration=60, offset=30)
+        if audio is None:
+            return dict(leer)
+        centroid = librosa.feature.spectral_centroid(y=audio, sr=22050)
+        rms = librosa.feature.rms(y=audio)
+        return {
+            "spectral_centroid_hz": float(np.mean(centroid)),
+            "rms": float(np.mean(rms)),
+        }
+    except Exception as e:
+        log.warning("Energie-Features fehlgeschlagen für %s: %s", path.name, e)
+        return dict(leer)
+
+
 def analyze_track(path: Path) -> dict:
     """Führt BPM- und Key-Erkennung durch und gibt ein Analyse-Dict zurück.
 
