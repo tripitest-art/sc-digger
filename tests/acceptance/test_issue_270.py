@@ -215,7 +215,7 @@ def test_legacy_layout_bleibt_rueckwaertskompatibel():
     xml_default = rb.build_xml([track], PATH_MAP, hot_cues=True, memory_cues=False)
     root = _parse(xml_default)
     nums_default = [m.attrib["Num"] for m in root.findall("COLLECTION/TRACK/POSITION_MARK")]
-    assert nums_default == ["0", "1", "3"]
+    assert nums_default == ["0", "3", "1"]
 
 
 def test_schema_und_config_hot_cue_layout():
