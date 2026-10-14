@@ -155,9 +155,11 @@ Prüfen: `docker compose exec sc-digger python -m sc_digger.schema --local /data
 
 **Ablauf im Alltag**
 
-1. Der Lauf legt neue Tracks in die Inbox; Syncthing überträgt sie.
-2. In Telegram `/sync_xml` senden: der Bot schickt die aktuelle Rekordbox-XML.
-3. In Rekordbox die XML neu laden und den Import-Dialog mit „Ja“ bestätigen (nur dann werden
+1. Der tägliche Lauf legt neue Tracks in die Inbox; Syncthing überträgt sie auf den Laptop.
+2. Im Web-Dashboard (`http://<server>:8080/digest`) neue Tracks durchhören, bewerten (👍/👎) und bei "Gate"-Tracks den Link direkt am PC öffnen/lösen.
+3. Geladene Originale unter `http://<server>:8080/intake` per Drag & Drop hochladen; sie werden automatisch geprüft, analysiert, getaggt und in die Inbox einsortiert.
+4. In Telegram `/sync_xml` senden: der Bot schickt die aktuelle Rekordbox-XML.
+5. In Rekordbox die XML neu laden und den Import-Dialog mit „Ja“ bestätigen (nur dann werden
    Cues aus der XML übernommen).
 
 **Stolperfallen**
