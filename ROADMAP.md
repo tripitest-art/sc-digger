@@ -105,6 +105,16 @@ flowchart TD
 - [x] **Referenz-Accounts:** Reposts/Likes von 28 Schranz-DJs/Labels mit Score-Bonus (Vorstufe zu Curator-Mining).
 - [x] **Lautheits-/Clipping-Check** (EBU R128, LRA): Brickwall-Master landen in `_rejected/clipped/`.
 - [x] **Nur Original-Downloads** (`--only-original`), mit `SOUNDCLOUD_AUTH_TOKEN` automatisch, sonst verlinkt.
+- [x] **Harmonische Playlist (neu):** `_eval/dj_export.py` baut aus einem Ordner eine
+      harmonisch sortierte **M3U8-Playlist** plus CSV und Report. Übergänge sind auf
+      Camelot-Nachbarschaft und ΔBPM begrenzt; wo das nicht geht, wird sichtbar geschnitten
+      statt unharmonisch gemischt. Abgesichert durch `tests/test_dj_workflow.py` (29 Tests).
+
+> **Prüfbericht zur Analyse-Pipeline:** [REVIEW-2026-10-14.md](_eval/REVIEW-2026-10-14.md).
+> Gemessen auf einem Ground-Truth-Korpus: BPM 0/29 → **29/29** exakt, Key 83 % → **100 %**;
+> zusätzlich drei konkrete Fehler in der Qualitätsprüfung (`cutoff == 0` gilt als „ok",
+> Fixed-Offset übersieht lange Intros, Lossless-Erkennung über Codec-Namen) sowie die
+> Empfehlung, Analyse-, Tagging- und Playlist-Schritt auf dem Server nachzuziehen.
 
 ## ✅ Phase 1.5: Robustheit (Abgeschlossen)
 
