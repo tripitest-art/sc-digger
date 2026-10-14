@@ -15,6 +15,7 @@ from __future__ import annotations
 import html
 import inspect
 import logging
+import os
 import re
 import tempfile
 import time
@@ -31,8 +32,10 @@ from .output import TelegramError, parse_feedback_callback, telegram_call
 from .output import send_telegram_voice
 from . import output, preview, rekordbox
 from .cleanup import audit_inbox_duplicates, format_duplicate_report
+from .fingerprint import compute_fingerprint
 from .preview import extract_preview_from_url
 from .redact import install_redacting_logging
+from .similarity import SIMILAR_FAILED, build_similar_reply
 from .soundcloud import SoundCloudClient, SoundCloudError
 from .stats import calculate_stats, format_stats
 
@@ -43,6 +46,11 @@ URL_RE = re.compile(r"https?://(?:on\.)?(?:www\.|m\.)?soundcloud\.com/\S+", re.I
 MIX_USAGE = "Aufruf: /mix <Camelot-Key> <BPM> [Toleranz], z. B. /mix 5A 155 oder /mix 8B 160 2"
 STATS_USAGE = "Aufruf: /stats [Tage (1–365, Standard: 7)]"
 PREVIEW_USAGE = "Aufruf: /preview <Suchtext oder id oder sc:<SoundCloud-ID>>"
+SIMILAR_USAGE = "Aufruf: /similar <SoundCloud-Link>"
+
+# Länge des temporären Snippets für die /similar-Suche: SoundCloud-Stream-Previews sind
+# rund 30 s lang, mehr käme aus der Download-Quelle ohnehin nicht.
+SIMILAR_FETCH_DURATION_S = 30.0
 
 SYNC_XML_DISABLED = "Rekordbox-XML ist abgeschaltet (rekordbox.xml_enabled)."
 SYNC_XML_FAILED = "Rekordbox-XML konnte nicht geschrieben werden, siehe Container-Log."
@@ -59,6 +67,7 @@ HELP_TEXT = (
     "• /mix 5A 155 -> harmonisch passende Tracks aus der Sammlung (±3 BPM)\n"
     "• /preview &lt;Suchtext oder id&gt; -> 20s-Snippet eines heruntergeladenen Tracks als Sprachnachricht\n"
     "• /preview sc:&lt;SoundCloud-ID&gt; -> 20s-Snippet direkt aus dem SoundCloud-Stream (nicht heruntergeladen)\n"
+    "• /similar &lt;SoundCloud-Link&gt; -> Top-5 ähnliche Aufnahmen aus der Sammlung\n"
     "• /stats [Tage] -> Statistiken über Scans, Inbox und Feedback\n"
     "• /cleanup_inbox -> Dubletten in der Inbox auflisten (nur lesend)\n"
     "• /sync_xml -> Rekordbox-XML der Inbox sofort neu schreiben\n\n"
@@ -359,6 +368,75 @@ def preview_reply(cfg: Config, text: str, chat_id: str | None = None) -> str | N
         return "Preview fehlgeschlagen, siehe Container-Log."
 
 
+def _fetch_audio_via_soundcloud(url: str, dest: Path) -> Path:
+    """Standard-Audiobeschaffung für /similar: Track auflösen, Stream-Quelle holen und
+    daraus ein temporäres OGG an dest schreiben. Nutzt die vorhandenen Helfer
+    (SoundCloudClient, preview.extract_preview_from_url), lädt also nichts in die Sammlung.
+    Wirft bei Fehlern; der Aufrufer loggt und antwortet mit dem Standard-Fehlertext."""
+    sc = SoundCloudClient()
+    track = sc.resolve_track(url)
+    stream_url = sc.preview_url(int(track.id))
+    if not stream_url:
+        raise SoundCloudError(f"keine Stream-Quelle für {url}")
+    if not extract_preview_from_url(
+        stream_url, dest, start_s=0.0, duration_s=SIMILAR_FETCH_DURATION_S, bitrate_kbps=64
+    ):
+        raise RuntimeError(f"Audio für {url} nicht extrahierbar")
+    return dest
+
+
+def _compute_fingerprint_values(path: Path) -> list[int] | None:
+    """Fingerprint-Rohwerte einer Datei als Liste oder None. Die Fehlerdetails (fpcalc
+    fehlt, kaputtes Audio) loggt bereits fingerprint.compute_fingerprint."""
+    fp = compute_fingerprint(Path(path))
+    return list(fp.values) if fp is not None else None
+
+
+def similar_reply_from_url(
+    cfg: Config,
+    db: TrackDB,
+    url: str,
+    *,
+    fetch_audio=None,
+    compute_fp=None,
+) -> str:
+    """„Mehr davon“ zu einem SoundCloud-Link: Audio temporär besorgen, Fingerprint rechnen,
+    Top-5 ähnliche Aufnahmen als Text liefern (gleiche Antwort wie bei einer Datei).
+
+    fetch_audio(url, dest_path) und compute_fp(path) sind injizierbar (Tests); ohne Übergabe
+    laufen die Standard-Helfer _fetch_audio_via_soundcloud und _compute_fingerprint_values.
+    Bei Download-/Fingerprint-Fehler: loggen und SIMILAR_FAILED (kein Raise). Die temporäre
+    Datei wird in jedem Fall entfernt, damit der Container nicht vollläuft.
+
+    cfg bleibt in der Signatur (Issue-Schnittstelle, einheitlich zu den anderen Bot-Antworten),
+    die Standard-Helfer kommen ohne Konfiguration aus.
+    """
+    fetch = fetch_audio if fetch_audio is not None else _fetch_audio_via_soundcloud
+    compute = compute_fp if compute_fp is not None else _compute_fingerprint_values
+
+    tmp: Path | None = None
+    try:
+        fd, tmp_name = tempfile.mkstemp(prefix="sc-digger-similar-", suffix=".audio")
+        os.close(fd)
+        tmp = Path(tmp_name)
+        fetch(url, tmp)
+        values = compute(tmp)
+        if not values:
+            log.warning("Kein Fingerprint für %s (Quelle %s)", tmp, url)
+            return SIMILAR_FAILED
+        return build_similar_reply(db, list(values), top_n=5)
+    except Exception:
+        log.exception("Ähnliche Aufnahmen zu %s nicht ermittelbar", url)
+        return SIMILAR_FAILED
+    finally:
+        if tmp is not None:
+            try:
+                if tmp.is_file():
+                    tmp.unlink()
+            except OSError:
+                pass
+
+
 def sync_xml_reply(cfg: Config, now: datetime | None = None) -> str:
     """Schreibt die Rekordbox-XML über rekordbox.write_rekordbox_xml(cfg) neu und gibt die Antwort zurück.
 
@@ -471,6 +549,22 @@ def handle_message(cfg: Config, sc: SoundCloudClient, chat_id: str, text: str) -
         except Exception:
             log.exception("Fehler bei /preview-Befehl")
             _send_text(cfg, chat_id, "Preview fehlgeschlagen, siehe Container-Log.")
+        return
+
+    if first_word == "/similar":
+        parts = text.split(maxsplit=1)
+        arg = parts[1].strip() if len(parts) > 1 else ""
+        m_similar = URL_RE.search(arg)
+        if not m_similar:
+            _send_text(cfg, chat_id, SIMILAR_USAGE)
+            return
+        try:
+            with TrackDB(cfg["state"]["track_db_path"]) as db:
+                reply = similar_reply_from_url(cfg, db, m_similar.group(0))
+            _send_text(cfg, chat_id, html.escape(reply, quote=False))
+        except Exception:
+            log.exception("Fehler beim /similar-Befehl")
+            _send_text(cfg, chat_id, SIMILAR_FAILED)
         return
 
     m = URL_RE.search(text)
