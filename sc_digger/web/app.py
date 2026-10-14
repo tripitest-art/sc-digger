@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import secrets
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urlencode, urlparse
 
 import yaml
 from fastapi import FastAPI, Request
@@ -18,7 +18,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 from ..models import Config
 from ..schema import FIELDS, SECTION_TITLES, Problem, deep_merge, get_field
 from .configedit import apply_form, diff_config, format_form_value, get_path, remove_key, save_local
-from .database import DEFAULT_LIMIT, get_collection_overview, query_tracks
+from .database import DEFAULT_LIMIT, MAX_LIMIT, get_collection_overview, query_tracks
 from .status import collect_status
 
 _TEMPLATES = Path(__file__).parent / "templates"
@@ -139,8 +139,11 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
         if not _check_auth(request, password, allow_anonymous):
             return _unauthorized()
         snap = collect_status(cfg)
+        overview = get_collection_overview(cfg["state"]["track_db_path"])
         template = _env.get_template("status.html")
-        return HTMLResponse(template.render(snap=snap, editor_available=editor_available))
+        return HTMLResponse(template.render(
+            snap=snap, overview=overview, editor_available=editor_available
+        ))
 
     @app.get("/api/status")
     def api_status(request: Request):
@@ -174,6 +177,58 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
             offset=_query_int(params.get("offset"), 0),
         )
         return JSONResponse(result.to_dict())
+
+    # DJ-Ansicht auf dieselben rein lesenden Abfragen (Teil 2 des Dashboards): Filter-Formular
+    # und Treffertabelle serverseitig gerendert, Paginierung über offset.
+    @app.get("/tracks", response_class=HTMLResponse)
+    def tracks_page(request: Request):
+        if not _check_auth(request, password, allow_anonymous):
+            return _unauthorized()
+        params = request.query_params
+        filters = {
+            "q": params.get("q") or "",
+            "status": params.get("status") or "",
+            "quality": params.get("quality") or "",
+            "key_camelot": params.get("key_camelot") or "",
+            "bpm_min": params.get("bpm_min") or "",
+            "bpm_max": params.get("bpm_max") or "",
+            "adopted": params.get("adopted") or "",
+        }
+        page_size = max(1, min(_query_int(params.get("limit"), DEFAULT_LIMIT), MAX_LIMIT))
+        offset = max(0, _query_int(params.get("offset"), 0))
+        result = query_tracks(
+            cfg["state"]["track_db_path"],
+            status=filters["status"] or None,
+            search=filters["q"] or None,
+            bpm_min=_query_float(filters["bpm_min"]),
+            bpm_max=_query_float(filters["bpm_max"]),
+            key_camelot=filters["key_camelot"] or None,
+            quality_status=filters["quality"] or None,
+            adopted=_query_bool(filters["adopted"]),
+            limit=page_size,
+            offset=offset,
+        )
+
+        def page_url(new_offset: int) -> str:
+            """Link auf eine andere Seite, aktive Filter bleiben erhalten."""
+            query = {key: value for key, value in filters.items() if value}
+            query["limit"] = str(page_size)
+            if new_offset > 0:
+                query["offset"] = str(new_offset)
+            return "/tracks?" + urlencode(query)
+
+        total_pages = max(1, (result.total + page_size - 1) // page_size)
+        template = _env.get_template("tracks.html")
+        return HTMLResponse(template.render(
+            tracks=result.items,
+            total=result.total,
+            page_size=page_size,
+            page=offset // page_size + 1,
+            total_pages=total_pages,
+            filters=filters,
+            prev_url=page_url(max(0, offset - page_size)) if offset > 0 else None,
+            next_url=page_url(offset + page_size) if offset + page_size < result.total else None,
+        ))
 
     if base_path is None or local_path is None:
         return app

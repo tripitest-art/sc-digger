@@ -1,0 +1,246 @@
+{% extends "base.html" %}
+
+{% block title %}sc-digger Tracks{% endblock %}
+{% block nav_tracks %}active{% endblock %}
+
+{% block meta %}
+<style>
+  .tracks-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 0.75rem;
+  }
+  .filter-form .filter-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 0.75rem;
+    align-items: end;
+  }
+  .filter-form .filter-field label {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-weight: 600;
+  }
+  .filter-form input[type=text],
+  .filter-form select {
+    max-width: none;
+  }
+  .filter-actions {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+    margin-top: 1rem;
+  }
+  .badge {
+    display: inline-block;
+    padding: 0.15rem 0.55rem;
+    border-radius: 9999px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    border: 1px solid transparent;
+    white-space: nowrap;
+  }
+  .badge-ok {
+    background-color: var(--accent-ok-bg);
+    color: var(--accent-ok);
+    border-color: rgba(16, 185, 129, 0.3);
+  }
+  .badge-warn {
+    background-color: var(--accent-warn-bg);
+    color: var(--accent-warn);
+    border-color: rgba(245, 158, 11, 0.3);
+  }
+  .badge-err {
+    background-color: var(--accent-err-bg);
+    color: var(--accent-err);
+    border-color: rgba(239, 68, 68, 0.3);
+  }
+  .badge-info {
+    background-color: rgba(59, 130, 246, 0.12);
+    color: #93c5fd;
+    border-color: rgba(59, 130, 246, 0.3);
+  }
+  .badge-muted {
+    background-color: var(--bg-card-subtle);
+    color: var(--text-dim);
+    border-color: var(--border);
+  }
+  .pager {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 1rem;
+    margin-top: 1.25rem;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="tracks-toolbar">
+    <div>
+      <h1 style="margin: 0;">Track-Explorer</h1>
+      <p class="meta" style="margin: 0.25rem 0 0;">
+        Gesamte Track-Datenbank &middot; <strong>{{ total }}</strong> Treffer
+        {% if total_pages > 1 %}&middot; Seite {{ page }} von {{ total_pages }}{% endif %}
+      </p>
+    </div>
+    <a href="/" style="font-size: 0.875rem; font-weight: 500;">&larr; Zurück zum Status</a>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h2 class="card-title" style="margin: 0;">Filter</h2>
+  </div>
+  <form class="filter-form" method="get" action="/tracks">
+    <input type="hidden" name="limit" value="{{ page_size }}">
+    <div class="filter-grid">
+      <div class="filter-field">
+        <label for="f-q">Artist / Titel</label>
+        <input type="text" id="f-q" name="q" value="{{ filters.q }}"
+               placeholder="Wortsuche über Artist und Titel">
+      </div>
+      <div class="filter-field">
+        <label for="f-status">Status</label>
+        <select id="f-status" name="status">
+          <option value="" {% if not filters.status %}selected{% endif %}>alle</option>
+          <option value="archive" {% if filters.status == "archive" %}selected{% endif %}>Sammlung</option>
+          <option value="inbox" {% if filters.status == "inbox" %}selected{% endif %}>Inbox</option>
+          <option value="rejected" {% if filters.status == "rejected" %}selected{% endif %}>Abgelehnt</option>
+        </select>
+      </div>
+      <div class="filter-field">
+        <label for="f-quality">Qualität</label>
+        <select id="f-quality" name="quality">
+          <option value="" {% if not filters.quality %}selected{% endif %}>alle</option>
+          <option value="ok" {% if filters.quality == "ok" %}selected{% endif %}>OK</option>
+          <option value="clipped" {% if filters.quality == "clipped" %}selected{% endif %}>Clipped</option>
+          <option value="fake_transcode" {% if filters.quality == "fake_transcode" %}selected{% endif %}>Fake-Transcode</option>
+        </select>
+      </div>
+      <div class="filter-field">
+        <label for="f-bpm-min">BPM von</label>
+        <input type="text" id="f-bpm-min" name="bpm_min" value="{{ filters.bpm_min }}" placeholder="z. B. 148">
+      </div>
+      <div class="filter-field">
+        <label for="f-bpm-max">BPM bis</label>
+        <input type="text" id="f-bpm-max" name="bpm_max" value="{{ filters.bpm_max }}" placeholder="z. B. 156">
+      </div>
+      <div class="filter-field">
+        <label for="f-key">Camelot-Key</label>
+        <input type="text" id="f-key" name="key_camelot" value="{{ filters.key_camelot }}" placeholder="z. B. 8A">
+      </div>
+      <div class="filter-field">
+        <label for="f-adopted">Übernahme</label>
+        <select id="f-adopted" name="adopted">
+          <option value="" {% if not filters.adopted %}selected{% endif %}>alle</option>
+          <option value="1" {% if filters.adopted == "1" %}selected{% endif %}>in Sammlung übernommen</option>
+          <option value="0" {% if filters.adopted == "0" %}selected{% endif %}>nicht übernommen</option>
+        </select>
+      </div>
+    </div>
+    <div class="filter-actions">
+      <button type="submit">Filtern</button>
+      <a href="/tracks" class="meta">Zurücksetzen</a>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h2 class="card-title" style="margin: 0;">Treffer</h2>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>Artist</th>
+        <th>Titel</th>
+        <th>Format</th>
+        <th>BPM</th>
+        <th>Key</th>
+        <th>Qualität</th>
+        <th>Status</th>
+        <th>Übernahme</th>
+        <th>Quelle</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for track in tracks %}
+      <tr>
+        <td>{{ track.artist or "—" }}</td>
+        <td>
+          {{ track.title or "—" }}
+          <div class="mono" style="color: var(--text-dim); font-size: 0.75rem;">{{ track.path }}</div>
+        </td>
+        <td class="mono">
+          {{ track.format or "?" }}
+          {% if track.bitrate_kbps %}<span class="meta">{{ track.bitrate_kbps | round(0) | int }} kbps</span>{% endif %}
+        </td>
+        <td class="mono">
+          {% if track.bpm is not none %}{{ track.bpm }}{% else %}—{% endif %}
+        </td>
+        <td class="mono">{{ track.key_camelot or "—" }}</td>
+        <td>
+          {% if track.quality_status == "ok" %}
+          <span class="badge badge-ok">OK</span>
+          {% elif track.quality_status == "clipped" %}
+          <span class="badge badge-warn">Clipped</span>
+          {% elif track.quality_status == "fake_transcode" %}
+          <span class="badge badge-err">Fake-Transcode</span>
+          {% else %}
+          <span class="badge badge-muted">{{ track.quality_status or "unbekannt" }}</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if track.status == "archive" %}
+          <span class="badge badge-info">Sammlung</span>
+          {% elif track.status == "inbox" %}
+          <span class="badge badge-ok">Inbox</span>
+          {% elif track.status == "rejected" %}
+          <span class="badge badge-err">Abgelehnt</span>
+          {% else %}
+          <span class="badge badge-muted">{{ track.status or "?" }}</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if track.adopted_at %}
+          <span class="badge badge-ok">übernommen</span>
+          <div class="mono" style="color: var(--text-dim); font-size: 0.75rem;">{{ track.adopted_at }}</div>
+          {% else %}
+          <span class="badge badge-muted">offen</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if track.source_url %}
+          <a href="{{ track.source_url }}" target="_blank" rel="noopener noreferrer">SoundCloud</a>
+          {% else %}—{% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="9" class="meta">Keine Treffer für diese Filter.</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="pager">
+    {% if prev_url %}
+    <a class="nav-tab" href="{{ prev_url }}">&larr; Zurück</a>
+    {% endif %}
+    <span class="meta">
+      Seite {{ page }} von {{ total_pages }} &middot; {{ total }} Treffer &middot;
+      {{ page_size }} pro Seite
+    </span>
+    {% if next_url %}
+    <a class="nav-tab" href="{{ next_url }}">Weiter &rarr;</a>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

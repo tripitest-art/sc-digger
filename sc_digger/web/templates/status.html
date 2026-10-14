@@ -95,6 +95,38 @@
     </div>
   </div>
 
+  <!-- Sammlung & Track-DB -->
+  <div class="card">
+    <div class="card-header">
+      <h2 class="card-title" style="margin: 0; font-size: 1.1rem;">Sammlung &amp; Track-DB</h2>
+      <a href="/tracks" style="font-size: 0.8rem; font-weight: 500;">Track-Explorer &rarr;</a>
+    </div>
+    <p class="meta" style="margin-bottom: 0.75rem;">
+      Alle Tracks der Sammlung und Inbox durchsuchen, filtern und prüfen.
+    </p>
+    <div class="stat-grid" style="grid-template-columns: 1fr 1fr;">
+      <div class="stat-box">
+        <div class="val">{{ overview.total_tracks }}</div>
+        <div class="lbl">Tracks gesamt</div>
+      </div>
+      <div class="stat-box">
+        <div class="val">{{ overview.archive_count }}</div>
+        <div class="lbl">in Sammlung</div>
+      </div>
+      <div class="stat-box">
+        <div class="val ok">{{ overview.adopted_count }}</div>
+        <div class="lbl">übernommen</div>
+      </div>
+      <div class="stat-box">
+        <div class="val">{{ overview.inbox_count }}</div>
+        <div class="lbl">in Inbox</div>
+      </div>
+    </div>
+    <p style="margin-top: 1rem; margin-bottom: 0;">
+      <a href="/tracks">Zum DJ Track-Explorer &rarr;</a>
+    </p>
+  </div>
+
   <!-- Wochenstatistik -->
   <div class="card">
     <div class="card-header">
