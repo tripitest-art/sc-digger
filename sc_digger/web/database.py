@@ -269,6 +269,10 @@ class DigestItem:
     feedback: str | None = None  # 'like', 'dislike', 'later'
     in_collection: bool = False
     in_inbox: bool = False
+    plays: int = 0
+    likes: int = 0
+    reposts: int = 0
+    comments: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -317,6 +321,7 @@ def query_digest(
     feedback_map: dict[int, str] = {}
     store_map: dict[int, str] = {}
     gate_map: dict[int, str] = {}
+    snapshot_map: dict[int, dict[str, int]] = {}
     inbox_ids: set[int] = set()
     archive_ids: set[int] = set()
 
@@ -347,6 +352,25 @@ def query_digest(
                                 inbox_ids.add(tid)
                             elif st_str == "archive":
                                 archive_ids.add(tid)
+                # Neuesten Engagement-Snapshot je Track ergänzen (Issue #257). Die Abfrage steht
+                # zuletzt, damit eine minimale Fremd-Tabelle ohne diese Spalten die übrigen Maps
+                # nicht verwirft; ORDER BY liefert je sc_id den jüngsten Snapshot zuerst.
+                if _table_exists(tdb, "track_snapshots"):
+                    for row in tdb.execute(
+                        "SELECT sc_id, plays, likes, reposts, comments FROM track_snapshots "
+                        "ORDER BY sc_id ASC, datetime(recorded_at) DESC, id DESC"
+                    ):
+                        if row["sc_id"] is None:
+                            continue
+                        sid = int(row["sc_id"])
+                        if sid in snapshot_map:
+                            continue
+                        snapshot_map[sid] = {
+                            "plays": int(row["plays"] or 0),
+                            "likes": int(row["likes"] or 0),
+                            "reposts": int(row["reposts"] or 0),
+                            "comments": int(row["comments"] or 0),
+                        }
         except sqlite3.Error:
             pass
 
@@ -382,6 +406,7 @@ def query_digest(
         else:
             kind = "stream"
 
+        snap = snapshot_map.get(sc_id, {})
         item = DigestItem(
             sc_id=sc_id,
             url=url,
@@ -394,6 +419,10 @@ def query_digest(
             feedback=feedback_map.get(sc_id),
             in_collection=in_coll,
             in_inbox=in_inbox,
+            plays=snap.get("plays", 0),
+            likes=snap.get("likes", 0),
+            reposts=snap.get("reposts", 0),
+            comments=snap.get("comments", 0),
         )
 
         if search:

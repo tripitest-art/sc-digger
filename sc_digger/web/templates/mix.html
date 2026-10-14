@@ -227,6 +227,22 @@
     return span;
   }
 
+  // Kompakte Engagement-Zeile analog zur Telegram-Darstellung (Issue #257): ▶ 4.2k · ♥ 310 · 🔁 45.
+  function formatCount(value) {
+    const n = Number(value) || 0;
+    if (n >= 1000000) { return (n / 1000000).toFixed(1).replace(/\.0$/, '') + 'M'; }
+    if (n >= 1000) { return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k'; }
+    return String(n);
+  }
+
+  function formatEngagement(track) {
+    const plays = Number(track.plays) || 0;
+    const likes = Number(track.likes) || 0;
+    const reposts = Number(track.reposts) || 0;
+    if (!plays && !likes && !reposts) { return ''; }
+    return '▶ ' + formatCount(plays) + ' · ♥ ' + formatCount(likes) + ' · 🔁 ' + formatCount(reposts);
+  }
+
   function makeCell(child) {
     const td = document.createElement('td');
     if (typeof child === 'string') {
@@ -243,9 +259,19 @@
     tracks.forEach((track) => {
       const tr = document.createElement('tr');
       tr.appendChild(makeCell(track.artist || '—'));
+      const titleCell = document.createElement('td');
       const title = document.createElement('strong');
       title.textContent = track.title || '—';
-      tr.appendChild(makeCell(title));
+      titleCell.appendChild(title);
+      const engagement = formatEngagement(track);
+      if (engagement) {
+        const engagementLine = document.createElement('div');
+        engagementLine.className = 'meta';
+        engagementLine.style.fontSize = '0.72rem';
+        engagementLine.textContent = engagement;
+        titleCell.appendChild(engagementLine);
+      }
+      tr.appendChild(titleCell);
       tr.appendChild(makeCell(track.bpm ? String(track.bpm) : '—'));
       const kind = KIND_BADGES[track.download_kind] || ['badge-muted', track.download_kind];
       tr.appendChild(makeCell(makeBadge(kind[0], kind[1])));

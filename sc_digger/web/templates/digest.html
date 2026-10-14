@@ -186,6 +186,20 @@
 {% endblock %}
 
 {% block content %}
+{# Kompakte Engagement-Zeile analog zur Telegram-Darstellung (Issue #257): ▶ 4.2k · ♥ 310 · 🔁 45 #}
+{% macro _compact(value) -%}
+{%- set n = value or 0 -%}
+{%- if n >= 1000000 -%}{{ '%.1f'|format(n / 1000000)|replace('.0', '') }}M
+{%- elif n >= 1000 -%}{{ '%.1f'|format(n / 1000)|replace('.0', '') }}k
+{%- else -%}{{ n }}
+{%- endif -%}
+{%- endmacro %}
+{% macro engagement_line(plays, likes, reposts) -%}
+{%- set p = plays or 0 -%}{%- set l = likes or 0 -%}{%- set r = reposts or 0 -%}
+{%- if p or l or r -%}
+▶ {{ _compact(p) }} · ♥ {{ _compact(l) }} · 🔁 {{ _compact(r) }}
+{%- endif -%}
+{%- endmacro %}
 <div class="card">
   <div class="digest-toolbar">
     <div>
@@ -288,6 +302,10 @@
         <td>{{ item.artist or "—" }}</td>
         <td>
           <strong>{{ item.title }}</strong>
+          {% set engagement = engagement_line(item.plays, item.likes, item.reposts) %}
+          {% if engagement %}
+          <div class="meta" style="font-size: 0.72rem;">{{ engagement }}</div>
+          {% endif %}
         </td>
         <td>
           {% if item.download_kind == "store" %}
