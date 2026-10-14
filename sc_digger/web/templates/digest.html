@@ -75,6 +75,44 @@
     color: var(--text-dim);
     border-color: var(--border);
   }
+  .feedback-group {
+    display: flex;
+    gap: 0.3rem;
+    align-items: center;
+  }
+  .feedback-btn {
+    padding: 0.15rem 0.5rem;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background-color: var(--bg-card-subtle);
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    line-height: 1.4;
+    cursor: pointer;
+  }
+  .feedback-btn:hover {
+    border-color: var(--accent-primary);
+  }
+  .feedback-btn:disabled {
+    opacity: 0.5;
+    cursor: progress;
+  }
+  .feedback-btn.active {
+    border-color: var(--accent-ok);
+    background-color: var(--accent-ok-bg);
+  }
+  .feedback-btn[data-value=dislike].active {
+    border-color: var(--accent-err);
+    background-color: var(--accent-err-bg);
+  }
+  .feedback-btn[data-value=later].active {
+    border-color: var(--accent-warn);
+    background-color: var(--accent-warn-bg);
+  }
+  .feedback-error {
+    color: var(--accent-err);
+    font-size: 0.72rem;
+  }
   .pager {
     display: flex;
     flex-wrap: wrap;
@@ -121,6 +159,7 @@
         Insgesamt {{ total }} Treffer.
       </p>
     </div>
+    <a href="/digest?download_kind=store" class="btn-page">🛒 Kaufliste (nur Store)</a>
   </div>
   <form class="filter-form" method="get" action="/digest">
     <input type="hidden" name="limit" value="{{ page_size }}">
@@ -214,15 +253,15 @@
           {% endif %}
         </td>
         <td>
-          {% if item.feedback == "like" %}
-          <span class="badge badge-ok">👍 Like</span>
-          {% elif item.feedback == "dislike" %}
-          <span class="badge badge-err">👎 Dislike</span>
-          {% elif item.feedback == "later" %}
-          <span class="badge badge-warn">⏳ Später</span>
-          {% else %}
-          <span class="meta">—</span>
-          {% endif %}
+          <div class="feedback-group" data-feedback-cell data-sc-id="{{ item.sc_id }}">
+            <button type="button" class="feedback-btn {% if item.feedback == 'like' %}active{% endif %}"
+                    data-value="like" title="Gefällt mir" onclick="sendFeedback(this)">👍</button>
+            <button type="button" class="feedback-btn {% if item.feedback == 'dislike' %}active{% endif %}"
+                    data-value="dislike" title="Passt nicht" onclick="sendFeedback(this)">👎</button>
+            <button type="button" class="feedback-btn {% if item.feedback == 'later' %}active{% endif %}"
+                    data-value="later" title="Später anhören" onclick="sendFeedback(this)">⏳</button>
+            <span class="feedback-error meta"></span>
+          </div>
         </td>
         <td style="white-space: nowrap;">
           {% if item.url %}
@@ -267,4 +306,32 @@
   </div>
   {% endif %}
 </div>
+<script>
+  // Bewertung ohne Seiten-Reload an POST /api/feedback (Issue #229). Bis die Antwort da ist,
+  // sind die Knöpfe gesperrt, damit kein zweiter Klick eine widersprüchliche Bewertung schickt.
+  async function sendFeedback(button) {
+    const cell = button.closest('[data-feedback-cell]');
+    if (!cell) { return; }
+    const buttons = cell.querySelectorAll('button[data-value]');
+    const errorBox = cell.querySelector('.feedback-error');
+    if (errorBox) { errorBox.textContent = ''; }
+    buttons.forEach((b) => { b.disabled = true; });
+    try {
+      const response = await fetch('/api/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sc_id: parseInt(cell.dataset.scId, 10),
+          value: button.dataset.value,
+        }),
+      });
+      if (!response.ok) { throw new Error('HTTP ' + response.status); }
+      buttons.forEach((b) => { b.classList.toggle('active', b === button); });
+    } catch (error) {
+      if (errorBox) { errorBox.textContent = 'nicht gespeichert'; }
+    } finally {
+      buttons.forEach((b) => { b.disabled = false; });
+    }
+  }
+</script>
 {% endblock %}

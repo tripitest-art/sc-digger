@@ -1,4 +1,8 @@
-"""FastAPI-App der Statusseite: nur lesend, HTTP-Basic geschützt, ohne API-Dokumentation.
+"""FastAPI-App der Statusseite: HTTP-Basic geschützt, ohne API-Dokumentation.
+
+Die Status- und Explorer-Routen sind rein lesend (GET). Genau einen schreibenden Pfad gibt
+es seit Issue #229: ``POST /api/feedback`` legt die Bewertung eines Tracks in
+``sc_feedback`` der Track-DB ab (wie die Telegram-Buttons, siehe ``bot.py``).
 
 Ist zusätzlich ein Pfad zur lokalen Override-Datei gesetzt (Issue #145), kommen die schreibenden
 Editor-Routen unter `/config` dazu. Dann wird bei jeder Anfrage die Basis- und die lokale Datei
@@ -15,10 +19,18 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
+from ..db import FEEDBACK_VALUES
 from ..models import Config
 from ..schema import FIELDS, SECTION_TITLES, Problem, deep_merge, get_field
 from .configedit import apply_form, diff_config, format_form_value, get_path, remove_key, save_local
-from .database import DEFAULT_LIMIT, MAX_LIMIT, get_collection_overview, query_digest, query_tracks
+from .database import (
+    DEFAULT_LIMIT,
+    MAX_LIMIT,
+    get_collection_overview,
+    query_digest,
+    query_tracks,
+    save_track_feedback,
+)
 from .status import collect_status
 
 _TEMPLATES = Path(__file__).parent / "templates"
@@ -290,6 +302,38 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
             prev_url=page_url(max(0, offset - page_size)) if offset > 0 else None,
             next_url=page_url(offset + page_size) if offset + page_size < result.total else None,
         ))
+
+    # Interaktive Bewertung aus dem Web (Issue #229): derselbe Speicherpfad wie die
+    # Telegram-Buttons (bot.py), damit Digest-Historie, /mix und Statistik dasselbe Feedback
+    # sehen. Origin-Prüfung wie beim Konfigeditor, weil die Route schreibt (CSRF).
+    @app.post("/api/feedback")
+    async def api_feedback(request: Request):
+        if not _check_auth(request, password, allow_anonymous):
+            return _unauthorized()
+        if not _same_origin(request):
+            return JSONResponse({"ok": False, "error": "Ungültige Herkunft"}, status_code=403)
+        try:
+            payload = await request.json()
+        except Exception:
+            return JSONResponse({"ok": False, "error": "Ungültiges JSON"}, status_code=400)
+        if not isinstance(payload, dict):
+            return JSONResponse({"ok": False, "error": "Ungültiger Payload"}, status_code=400)
+        value = payload.get("value")
+        sc_id = payload.get("sc_id")
+        if value not in FEEDBACK_VALUES or isinstance(sc_id, bool):
+            return JSONResponse(
+                {"ok": False, "error": "value muss like/dislike/later sein, sc_id eine Zahl"},
+                status_code=400,
+            )
+        try:
+            sc_id_int = int(sc_id)
+        except (TypeError, ValueError):
+            return JSONResponse({"ok": False, "error": "Ungültige sc_id"}, status_code=400)
+        if not save_track_feedback(cfg["state"]["track_db_path"], sc_id_int, str(value)):
+            return JSONResponse(
+                {"ok": False, "sc_id": sc_id_int, "value": str(value)}, status_code=500
+            )
+        return JSONResponse({"ok": True, "sc_id": sc_id_int, "value": str(value)})
 
     if base_path is None or local_path is None:
         return app
