@@ -13,6 +13,7 @@ auch nicht bei fehlenden Zugangsdaten oder Telegram-Ausfällen.
 from __future__ import annotations
 
 import html
+import inspect
 import logging
 import re
 import tempfile
@@ -315,14 +316,18 @@ def preview_reply(cfg: Config, text: str, chat_id: str | None = None) -> str | N
             prev_cfg = cfg.raw.get("preview") or {}
             duration_s = float(prev_cfg.get("duration_s", 20.0))
             riser_s = float(prev_cfg.get("riser_s", 5.0))
-            ok = preview.extract_preview(
-                audio_path,
-                out_ogg,
-                start_s=None,
-                duration_s=duration_s,
-                riser_s=riser_s,
-                bitrate_kbps=64,
-            )
+            kwargs = {
+                "start_s": None,
+                "duration_s": duration_s,
+                "bitrate_kbps": 64,
+            }
+            sig = inspect.signature(preview.extract_preview)
+            if "riser_s" in sig.parameters or any(
+                p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()
+            ):
+                kwargs["riser_s"] = riser_s
+
+            ok = preview.extract_preview(audio_path, out_ogg, **kwargs)
             if not ok:
                 return "Preview konnte nicht erstellt werden (ffmpeg-Fehler)."
             try:
