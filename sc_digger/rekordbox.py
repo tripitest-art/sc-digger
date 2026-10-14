@@ -88,6 +88,9 @@ class InboxTrack:
     size: int
     added: datetime  # added = mtime (lokale Zeit)
     first_kick_s: float | None = None
+    drop_s: float | None = None
+    breakdown_s: float | None = None
+    breakdown_kind: str | None = None
 
 
 _SCID_RE = re.compile(r"^\[(\d+)\]")
@@ -330,6 +333,8 @@ def scan_inbox(inbox: Path) -> list[InboxTrack]:
     "_dl_" oder ".cloud-tmp" beginnt (Abgelehntes, Temp-Dateien und -Ordner).
     Tags per mutagen: ID3 (MP3/WAV/AIFF) TIT2, TPE1, TCON, TBPM, TKEY, erstes COMM;
     FLAC title, artist, genre, bpm, initialkey, comment; M4A ©nam, ©ART, ©gen, tmpo, ©cmt.
+    Dazu die Cue-Tags aus cues.py: SCDIGGER_FIRST_KICK, SCDIGGER_DROP, SCDIGGER_BREAKDOWN
+    und SCDIGGER_BREAKDOWN_KIND (fehlend -> None).
     Fehlende Texte -> "", Titel fällt auf den Dateinamen ohne Endung zurück, BPM nicht lesbar -> None.
     Dauer aus mutagen info.length. Nicht lesbare Datei: log.warning, Eintrag mit Dateiname als Titel.
     """
@@ -362,6 +367,9 @@ def scan_inbox(inbox: Path) -> list[InboxTrack]:
     tracks = [_read_track(p) for p in valid_paths]
     for t in tracks:
         t.first_kick_s = cues.read_first_kick_tag(t.path)
+        t.drop_s = cues.read_drop_tag(t.path)
+        t.breakdown_s = cues.read_breakdown_tag(t.path)
+        t.breakdown_kind = cues.read_breakdown_kind_tag(t.path)
     return tracks
 
 
@@ -423,13 +431,17 @@ def build_xml(tracks: list[InboxTrack], path_map: dict[str, str], now: datetime 
     Zusätzlich, nach den Wochen: Ordner "BPM" (falls bpm_bucket_size gesetzt) und "Key" (falls
     by_key). Nur gemappte Tracks kommen vor; ohne Tracks wird der jeweilige Ordner weggelassen.
 
-    Cues aus first_kick_s: hot_cues=True schreibt einen Hot Cue (Pad A, Num="0", grün
-    Red="0" Green="255" Blue="0"); memory_cues=True schreibt einen Memory Cue (Num="-1").
-    Sind beide True, wird der Hot Cue zuerst angehängt. Ohne first_kick_s keine Cues.
+    Cues aus first_kick_s/drop_s/breakdown_s: hot_cues=True schreibt je Punkt einen Hot Cue
+    (First Kick = Pad A Num="0" grün, Drop = Pad B Num="1" orange, Breakdown = Pad D Num="3"
+    gelb); memory_cues=True schreibt zusätzlich je Punkt einen Memory Cue (Num="-1") mit
+    gleichem Namen. Die Marken stehen chronologisch nach Start, bei gleichem Zeitstempel zuerst
+    der Hot Cue. Fehlende Cue-Zeitpunkte entfallen; breakdown_kind "groove" ergibt den Namen
+    "Break (Groove)", sonst "Break (Silence)".
 
     Schranz-Matrix (sc_digger.style), optional: style_colors=True setzt am TRACK-Knoten das
     Colour-Attribut aus recommend_rekordbox_color (ausser "None"); style_comments=True
-    überschreibt Comments mit format_rekordbox_comment. by_style/by_subgenre/by_version
+    überschreibt Comments mit format_rekordbox_comment und ergänzt bei vorliegendem
+    breakdown_kind " · Break: <Silence|Groove>". by_style/by_subgenre/by_version
     ergänzen nach den Wochen und BPM/Key die Ordner "Stile", "Subgenres" und "Versionen"
     mit je einer Playlist pro nicht leerem Cluster/Subgenre/Versionstyp in fester
     Reihenfolge; leere Ordner entfallen.
@@ -475,26 +487,36 @@ def build_xml(tracks: list[InboxTrack], path_map: dict[str, str], now: datetime 
                 attr["Comments"] = format_rekordbox_comment(
                     analysis, bpm=t.bpm, key_camelot=t.key or None
                 )
+                if t.breakdown_kind:
+                    kind = t.breakdown_kind.strip().lower()
+                    kind_label = "Groove" if kind == "groove" else "Silence"
+                    attr["Comments"] = f"{attr['Comments']} · Break: {kind_label}"
         track_node = ET.SubElement(coll, "TRACK", attr)
+        # Ein Cue-Punkt je vorhandener Zeit: (Start, Hot-Cue-Pad, Name, Farbe).
+        cue_points: list[tuple[float, str, str, tuple[str, str, str]]] = []
         if t.first_kick_s is not None:
-            start = f"{t.first_kick_s:.3f}"
+            cue_points.append((float(t.first_kick_s), "0", "First Kick", ("0", "255", "0")))
+        if t.drop_s is not None:
+            cue_points.append((float(t.drop_s), "1", "Drop", ("255", "165", "0")))
+        if t.breakdown_s is not None:
+            kind = (t.breakdown_kind or "").strip().lower()
+            break_name = "Break (Groove)" if kind == "groove" else "Break (Silence)"
+            cue_points.append((float(t.breakdown_s), "3", break_name, ("255", "255", "0")))
+
+        # Chronologisch nach Start; bei gleichem Zeitstempel steht der Hot Cue vor dem Memory Cue.
+        marks: list[tuple[float, int, str, str, tuple[str, str, str] | None]] = []
+        for start_s, pad, name, color in cue_points:
             if hot_cues:
-                ET.SubElement(track_node, "POSITION_MARK", {
-                    "Name": "First Kick",
-                    "Type": "0",
-                    "Start": start,
-                    "Num": "0",
-                    "Red": "0",
-                    "Green": "255",
-                    "Blue": "0",
-                })
+                marks.append((start_s, 0, name, pad, color))
             if memory_cues:
-                ET.SubElement(track_node, "POSITION_MARK", {
-                    "Name": "First Kick",
-                    "Type": "0",
-                    "Start": start,
-                    "Num": "-1",
-                })
+                marks.append((start_s, 1, name, "-1", None))
+        marks.sort(key=lambda m: (m[0], m[1]))
+
+        for start_s, _is_memory, name, num, color in marks:
+            mark_attr = {"Name": name, "Type": "0", "Start": f"{start_s:.3f}", "Num": num}
+            if color is not None:
+                mark_attr["Red"], mark_attr["Green"], mark_attr["Blue"] = color
+            ET.SubElement(track_node, "POSITION_MARK", mark_attr)
 
     playlists = ET.SubElement(root, "PLAYLISTS")
     top = ET.SubElement(playlists, "NODE", {"Type": "0", "Name": "ROOT", "Count": "1"})
@@ -602,7 +624,8 @@ def write_rekordbox_xml(cfg: Config) -> Path | None:
     playlists_by_bpm (bool, fehlt -> False): build_xml mit bpm_bucket_size = organize.bpm_bucket_size;
     ist der Wert kein int >= 1 (oder fehlt der Abschnitt), gilt 5. playlists_by_key (bool, fehlt ->
     False): by_key=True. cues_as_hotcues (bool, fehlt -> True): Hot Cues schreiben; cues_as_memory
-    (bool, fehlt -> True): Memory Cues schreiben. cues_enabled False -> gar keine Cues.
+    (bool, fehlt -> True): Memory Cues schreiben. cues_enabled False -> gar keine Cues
+    (first_kick_s, drop_s, breakdown_s und breakdown_kind werden verworfen).
     Jeder Fehler -> log.warning, Temp-Datei entfernen, None. Wirft nie.
     """
     tmp_path: Path | None = None
@@ -654,6 +677,9 @@ def write_rekordbox_xml(cfg: Config) -> Path | None:
         if not rb_cfg.get("cues_enabled"):
             for t in tracks:
                 t.first_kick_s = None
+                t.drop_s = None
+                t.breakdown_s = None
+                t.breakdown_kind = None
 
         bpm_bucket_size: int | None = None
         if rb_cfg.get("playlists_by_bpm"):
