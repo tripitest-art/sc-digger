@@ -226,6 +226,9 @@ FIELDS: tuple[Field, ...] = (
        "Cues zusätzlich oder alternativ als klassische Rekordbox Memory Cues (Num=-1) schreiben."),
     _f("rekordbox.cues_phrase_align", "bool", "Cues auf Phrasenraster",
        "Drop- und Breakdown-Cues im Rekordbox-Export exakt auf das 16/32-Beat-Phrasengitter ausrichten."),
+    _f("rekordbox.hot_cue_layout", "str", "Hot-Cue-Layout (Pads A–H)",
+       "Pad-Layout der Hot Cues: 'legacy' (First Kick, Drop, Drop 2, Breakdown) oder 'standard_8pad' "
+       "(feste Pads A–H: Main/Late Entry, Drop 1, Percussion Loop bzw. Breakdown, Breakdown, Drop 2, Snare Fill, Outro)."),
     _f("rekordbox.grid_anchor", "bool", "Beatgrid-Anker",
        "Mathematisch exakten Beatgrid-Anker (<TEMPO>) an first_kick_s in die Rekordbox-XML schreiben."),
     _f("rekordbox.phrase_warning", "bool", "Warn-Cue bei Off-Phrase",

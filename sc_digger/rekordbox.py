@@ -94,6 +94,9 @@ class InboxTrack:
     breakdown_s: float | None = None
     breakdown_kind: str | None = None
     drop2_s: float | None = None
+    outro_s: float | None = None
+    percussion_loop_s: float | None = None
+    snare_fill_s: float | None = None
     lufs: float | None = None
 
 
@@ -433,6 +436,167 @@ def _playlist_folder(parent: ET.Element, name: str,
             ET.SubElement(pl_node, "TRACK", {"Key": tid})
 
 
+HOT_CUE_LAYOUT_LEGACY = "legacy"
+HOT_CUE_LAYOUT_STANDARD_8PAD = "standard_8pad"
+
+
+def _beat_s(track: InboxTrack) -> float | None:
+    """Beatlänge in Sekunden aus bpm; None, wenn bpm fehlt oder <= 0 ist."""
+    if track.bpm is None:
+        return None
+    bpm = float(track.bpm)
+    if bpm <= 0:
+        return None
+    return 60.0 / bpm
+
+
+def _break_name(track: InboxTrack) -> str:
+    """Cue-Name für den Breakdown: "Break (Groove)" bzw. "Break (Silence)"."""
+    kind = (track.breakdown_kind or "").strip().lower()
+    return "Break (Groove)" if kind == "groove" else "Break (Silence)"
+
+
+def _phrase_aligned(value: float, track: InboxTrack) -> float:
+    """Zeitpunkt auf das 16/32-Beat-Phrasengitter ausrichten. Ohne first_kick_s oder bpm
+    bleibt der Wert unverändert (quantize_to_phrase fällt dann auf den Ausgangswert zurück)."""
+    if track.first_kick_s is None or track.bpm is None:
+        return float(value)
+    return phrase.quantize_to_phrase(float(value), float(track.first_kick_s), float(track.bpm))
+
+
+def _legacy_hot_cues(
+    track: InboxTrack,
+    *,
+    phrase_align: bool,
+) -> list[tuple[float, str, str, tuple[str, str, str]]]:
+    """Bisheriges Cue-Verhalten: Pad A First Kick, Pad B Drop, Pad C Drop 2, Pad D Breakdown.
+    Bei phrase_align werden Drop und Breakdown wie bisher auf das Phrasengitter gezogen."""
+    first_kick = track.first_kick_s
+    drop_s = track.drop_s
+    breakdown_s = track.breakdown_s
+    if phrase_align and first_kick is not None and track.bpm is not None:
+        if drop_s is not None:
+            drop_s = _phrase_aligned(float(drop_s), track)
+        if breakdown_s is not None:
+            breakdown_s = _phrase_aligned(float(breakdown_s), track)
+
+    cues: list[tuple[float, str, str, tuple[str, str, str]]] = []
+    if first_kick is not None:
+        cues.append((float(first_kick), "0", "First Kick", ("0", "255", "0")))
+    if drop_s is not None:
+        cues.append((float(drop_s), "1", "Drop", ("255", "165", "0")))
+    if track.drop2_s is not None:
+        # Zweiter Drop = Pad C (Num="2"); Rekordbox-Notlauftaste, rot markiert.
+        cues.append((float(track.drop2_s), "2", "Drop 2", ("255", "0", "0")))
+    if breakdown_s is not None:
+        cues.append((float(breakdown_s), "3", _break_name(track), ("255", "255", "0")))
+    return cues
+
+
+def _standard_8pad_hot_cues(
+    track: InboxTrack,
+    *,
+    phrase_align: bool,
+) -> list[tuple[float, str, str, tuple[str, str, str]]]:
+    """Standardisiertes 8-Pad-Layout A–H mit fester Farbcodierung und semantischen Positionen.
+
+    Damit navigiert der DJ an CDJs/XDJs blind: A/B sind Mix-Einstiege (128 bzw. 64 Beats vor
+    Drop 1), C/F die Drops, D ein Loop (Fallback Breakdown), E der Breakdown, G ein Fill und
+    H der Mix-Ausstieg. Fehlende Sektionen werden nach fester Hierarchie ersetzt oder das Pad
+    entfällt.
+    """
+    beat_s = _beat_s(track)
+    first_kick = float(track.first_kick_s) if track.first_kick_s is not None else None
+    kick_floor = first_kick if first_kick is not None else 0.0
+    drop_s = float(track.drop_s) if track.drop_s is not None else None
+
+    def aligned(value: float) -> float:
+        return _phrase_aligned(value, track) if phrase_align else float(value)
+
+    cues: list[tuple[float, str, str, tuple[str, str, str]]] = []
+
+    # Pad A – Main Entry: 128 Beats vor Drop 1; fehlt die Vorlaufstrecke, tritt der erste
+    # Kick an seine Stelle. Entfällt, wenn weder Drop noch erster Kick bekannt sind.
+    main_entry: float | None = None
+    if drop_s is not None and beat_s is not None:
+        main_entry = drop_s - 128.0 * beat_s
+    if main_entry is None or (first_kick is not None and main_entry < first_kick):
+        main_entry = first_kick
+    if main_entry is not None:
+        cues.append((max(main_entry, 0.0), "0", "Main Entry", ("0", "255", "0")))
+
+    # Pad B – Late Entry: 64 Beats vor Drop 1, aber nie vor dem ersten Kick.
+    if drop_s is not None and beat_s is not None:
+        late_entry = drop_s - 64.0 * beat_s
+        if late_entry >= kick_floor:
+            cues.append((late_entry, "1", "Late Entry", ("255", "255", "0")))
+
+    # Pad C – Drop 1.
+    if drop_s is not None:
+        cues.append((aligned(drop_s), "2", "Drop 1", ("255", "0", "0")))
+
+    # Pad D – Percussion Loop; ohne Loop übernimmt der Breakdown das Pad (Farbe bleibt Cyan).
+    if track.percussion_loop_s is not None:
+        cues.append((aligned(float(track.percussion_loop_s)), "3", "Percussion Loop",
+                     ("0", "255", "255")))
+        # Pad E – Breakdown, nur wenn Pad D den Loop trägt.
+        if track.breakdown_s is not None:
+            cues.append((aligned(float(track.breakdown_s)), "4", _break_name(track),
+                         ("255", "165", "0")))
+    elif track.breakdown_s is not None:
+        cues.append((aligned(float(track.breakdown_s)), "3", _break_name(track),
+                     ("0", "255", "255")))
+
+    # Pad F – Drop 2.
+    if track.drop2_s is not None:
+        cues.append((aligned(float(track.drop2_s)), "5", "Drop 2", ("255", "0", "0")))
+
+    # Pad G – Snare Fill: fester Zeitpunkt oder 1 Beat vor Drop 1, nie vor dem ersten Kick.
+    if drop_s is not None and beat_s is not None:
+        snare_fill = (float(track.snare_fill_s) if track.snare_fill_s is not None
+                      else drop_s - beat_s)
+        if snare_fill >= kick_floor:
+            cues.append((aligned(snare_fill), "6", "Snare Fill", ("255", "0", "255")))
+
+    # Pad H – Outro: fester Zeitpunkt oder 64 Beats vor Track-Ende (dann nur, wenn das
+    # Track-Ende über allen bekannten Sektionen liegt).
+    if track.duration_s and float(track.duration_s) > 0 and beat_s is not None:
+        outro: float | None = float(track.outro_s) if track.outro_s is not None else None
+        if outro is None:
+            candidate = float(track.duration_s) - 64.0 * beat_s
+            ceiling = max(drop_s or 0.0, float(track.breakdown_s or 0.0), kick_floor, 0.0)
+            if candidate > ceiling:
+                outro = candidate
+        if outro is not None:
+            cues.append((aligned(outro), "7", "Outro", ("255", "255", "255")))
+
+    return cues
+
+
+def generate_hot_cues(
+    track: InboxTrack,
+    *,
+    layout: str = HOT_CUE_LAYOUT_STANDARD_8PAD,
+    phrase_align: bool = False,
+) -> list[tuple[float, str, str, tuple[str, str, str]]]:
+    """Erzeugt die Hot-Cue-Punkte eines Tracks als Liste (start_s, pad_num, name, color_rgb).
+
+    start_s: Zeitstempel in Sekunden; pad_num: Num-Attribut ("0" bis "7" = Pad A bis H);
+    name: Beschriftung; color_rgb: RGB-Tripel als Strings.
+    layout="legacy" behält das bisherige Verhalten (First Kick, Drop, Drop 2, Breakdown),
+    layout="standard_8pad" das standardisierte 8-Pad-Layout A–H. Ein unbekanntes layout loggt
+    eine Warnung und fällt auf "legacy" zurück. phrase_align=True richtet die Sektions-Cues auf
+    das 16/32-Beat-Phrasengitter aus (nur wirksam mit first_kick_s und bpm).
+    """
+    if layout == HOT_CUE_LAYOUT_LEGACY:
+        return _legacy_hot_cues(track, phrase_align=phrase_align)
+    if layout == HOT_CUE_LAYOUT_STANDARD_8PAD:
+        return _standard_8pad_hot_cues(track, phrase_align=phrase_align)
+    log.warning("Unbekanntes hot_cue_layout %r – fällt auf %r zurück",
+                layout, HOT_CUE_LAYOUT_LEGACY)
+    return _legacy_hot_cues(track, phrase_align=phrase_align)
+
+
 def build_xml(tracks: list[InboxTrack], path_map: dict[str, str], now: datetime | None = None,
               *, bpm_bucket_size: int | None = None, by_key: bool = False,
               hot_cues: bool = True, memory_cues: bool = True,
@@ -441,7 +605,7 @@ def build_xml(tracks: list[InboxTrack], path_map: dict[str, str], now: datetime 
               phrase_align_cues: bool = False, grid_anchor: bool = True,
               matrix_colors: bool = False, compact_style_comments: bool = False,
               active_loop: bool = False, phrase_warning: bool = False,
-              active_loop_beats: int = 16) -> str:
+              active_loop_beats: int = 16, hot_cue_layout: str = "legacy") -> str:
     """<?xml version="1.0" encoding="UTF-8"?> + DJ_PLAYLISTS Version="1.0.0" mit PRODUCT,
     COLLECTION und PLAYLISTS. Tracks ohne Location (nicht gemappt) werden weggelassen.
     COLLECTION Entries = Anzahl; TRACK-Attribute: TrackID (1, 2, … in Eingabereihenfolge), Name,
@@ -465,6 +629,10 @@ def build_xml(tracks: list[InboxTrack], path_map: dict[str, str], now: datetime 
     vor dem Erzeugen der POSITION_MARK-Elemente per phrase.quantize_to_phrase am 16/32-Beat-
     Phrasengitter relativ zu first_kick_s aus (nur wenn first_kick_s und bpm vorhanden sind;
     erster Kick und Standardwert False bleiben unverändert).
+
+    hot_cue_layout wählt das Pad-Layout für generate_hot_cues: "legacy" (Standard, bisheriges
+    Verhalten) oder "standard_8pad" (festes Layout A–H mit Main/Late Entry, Drop 1, Percussion
+    Loop bzw. Breakdown, Breakdown, Drop 2, Snare Fill und Outro).
 
     Schranz-Matrix (sc_digger.style), optional: style_colors=True setzt am TRACK-Knoten das
     Colour-Attribut aus recommend_rekordbox_color (ausser "None"); style_comments=True
@@ -578,18 +746,9 @@ def build_xml(tracks: list[InboxTrack], path_map: dict[str, str], now: datetime 
             if breakdown_s is not None:
                 breakdown_s = phrase.quantize_to_phrase(float(breakdown_s), kick, bpm)
 
-        cue_points: list[tuple[float, str, str, tuple[str, str, str]]] = []
-        if t.first_kick_s is not None:
-            cue_points.append((float(t.first_kick_s), "0", "First Kick", ("0", "255", "0")))
-        if drop_s is not None:
-            cue_points.append((float(drop_s), "1", "Drop", ("255", "165", "0")))
-        if drop2_s is not None:
-            # Zweiter Drop = Pad C (Num="2"); Rekordbox-Notlauftaste, rot markiert.
-            cue_points.append((float(drop2_s), "2", "Drop 2", ("255", "0", "0")))
-        if breakdown_s is not None:
-            kind = (t.breakdown_kind or "").strip().lower()
-            break_name = "Break (Groove)" if kind == "groove" else "Break (Silence)"
-            cue_points.append((float(breakdown_s), "3", break_name, ("255", "255", "0")))
+        # Die Cue-Punkte selbst erzeugt generate_hot_cues: "legacy" (Standard, rückwärts-
+        # kompatibel) oder "standard_8pad" (festes Pad-Layout A–H).
+        cue_points = generate_hot_cues(t, layout=hot_cue_layout, phrase_align=phrase_align_cues)
 
         # Chronologisch nach Start; bei gleichem Zeitstempel steht der Hot Cue vor dem Memory Cue.
         marks: list[tuple[float, int, str, str, tuple[str, str, str] | None]] = []
@@ -762,7 +921,8 @@ def write_rekordbox_xml(cfg: Config) -> Path | None:
     phrase_warning (bool, fehlt -> False): rote Warn-Memory-Cues "⚠️ Off-Phrase" an
     Off-Phrase-Drops/Breakdowns (build_xml). active_loop (bool, fehlt -> False): aktiver
     Memory Loop am Track-Ende (Notbremse). active_loop_beats (int >= 1, fehlt/ungültig -> 16):
-    Länge des Notbremsen-Loops in Beats.
+    Länge des Notbremsen-Loops in Beats. hot_cue_layout (str, fehlt/leer -> "legacy"): Pad-
+    Layout der Hot Cues ("legacy" oder "standard_8pad", build_xml).
     Jeder Fehler -> log.warning, Temp-Datei entfernen, None. Wirft nie.
     """
     tmp_path: Path | None = None
@@ -860,6 +1020,12 @@ def write_rekordbox_xml(cfg: Config) -> Path | None:
                 or raw_loop_beats < 1:
             raw_loop_beats = 16
 
+        # Pad-Layout der Hot Cues: fehlt/leer -> "legacy" (rückwärtskompatibel).
+        raw_layout: Any = rb_cfg.get("hot_cue_layout", "legacy")
+        hot_cue_layout = raw_layout.strip() if isinstance(raw_layout, str) else ""
+        if not hot_cue_layout:
+            hot_cue_layout = "legacy"
+
         xml_content = build_xml(tracks, path_map, bpm_bucket_size=bpm_bucket_size, by_key=by_key,
                                 hot_cues=hot_cues, memory_cues=memory_cues,
                                 by_style=by_style, by_subgenre=by_subgenre, by_version=by_version,
@@ -868,7 +1034,8 @@ def write_rekordbox_xml(cfg: Config) -> Path | None:
                                 matrix_colors=matrix_colors,
                                 compact_style_comments=compact_style_comments,
                                 active_loop=active_loop, phrase_warning=phrase_warning,
-                                active_loop_beats=raw_loop_beats)
+                                active_loop_beats=raw_loop_beats,
+                                hot_cue_layout=hot_cue_layout)
 
         target_dir = xml_path.parent
         target_dir.mkdir(parents=True, exist_ok=True)
