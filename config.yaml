@@ -193,6 +193,10 @@ preview:
   # auch für Tracks, die nicht in der Track-DB liegen. Standard aus wegen offener
   # rechtlicher Bewertung (#53).
   stream_enabled: false
+  # Dauer des Vorschau-Schnipsels in Sekunden (Standard: 20)
+  duration_s: 20.0
+  # Vorlaufzeit vor dem ersten Drop (Riser/Spannungsaufbau) in Sekunden (Standard: 5)
+  riser_s: 5.0
 
 retry:
   # Fehlgeschlagene Original-Downloads beim nächsten discover-Lauf erneut versuchen (Versuche gesamt)

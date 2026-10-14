@@ -5,7 +5,13 @@ import numpy as np
 import pytest
 
 from sc_digger import structure as st
-from sc_digger.structure import Segment, analyze_structure, find_first_kick
+from sc_digger.structure import (
+    Segment,
+    analyze_structure,
+    calculate_breakdown_ratio,
+    find_drop_start,
+    find_first_kick,
+)
 
 SR = 44100
 BEAT = 0.4
@@ -90,3 +96,53 @@ def test_cli_track_ohne_kick(tmp_path, capsys):
     assert st.main([str(p)]) == 0
     out = capsys.readouterr().out
     assert "kein Kick gefunden" in out
+
+
+# --- find_drop_start / calculate_breakdown_ratio (Issue #202) ---
+
+def test_find_drop_start_nimmt_ersten_breakdown_ende():
+    segs = [
+        Segment("intro", 0.0, 4.0),
+        Segment("main", 4.0, 20.0),
+        Segment("breakdown", 20.0, 30.0),
+        Segment("main", 30.0, 50.0),
+        Segment("breakdown", 50.0, 60.0),
+        Segment("main", 60.0, 80.0),
+    ]
+    assert find_drop_start(segs) == 30.0
+
+
+def test_find_drop_start_akzeptiert_string_pfad(tmp_path):
+    p = _make_wav(tmp_path / "stille.wav", seconds=5.0, with_kick=False)
+    assert find_drop_start(str(p)) is None
+
+
+def test_find_drop_start_bei_kaputter_segmentquelle():
+    # Keine Sequenz, kein Pfad (z. B. int) -> defensiv None, wirft nicht.
+    assert find_drop_start(123) is None  # type: ignore[arg-type]
+
+
+def test_calculate_breakdown_ratio_rundet_auf_vier_nachkommastellen():
+    segs = [
+        Segment("intro", 0.0, 10.0),
+        Segment("main", 10.0, 40.0),
+        Segment("breakdown", 40.0, 50.0),
+        Segment("outro", 50.0, 60.0),
+    ]
+    # Hauptteil = 50 - 10 = 40, Breakdown = 10 -> 0.25
+    assert calculate_breakdown_ratio(segs) == 0.25
+
+
+def test_calculate_breakdown_ratio_ignoriert_breakdown_ausserhalb_hauptteil():
+    # Breakdown liegt vor Intro-Ende -> zählt nicht.
+    segs = [
+        Segment("intro", 0.0, 20.0),
+        Segment("breakdown", 5.0, 10.0),
+        Segment("main", 20.0, 50.0),
+        Segment("outro", 50.0, 60.0),
+    ]
+    assert calculate_breakdown_ratio(segs) == 0.0
+
+
+def test_calculate_breakdown_ratio_bei_kaputter_segmentquelle():
+    assert calculate_breakdown_ratio(123) == 0.0  # type: ignore[arg-type]
