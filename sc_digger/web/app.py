@@ -413,6 +413,7 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
         result = query_digest(
             cfg["state"]["db_path"],
             cfg["state"]["track_db_path"],
+            inbox_dir=(cfg.raw.get("download") or {}).get("inbox_dir"),
             search=params.get("q") or "",
             status_filter=params.get("status") or "",
             download_kind=params.get("download_kind") or "",
@@ -438,6 +439,7 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
         result = query_digest(
             cfg["state"]["db_path"],
             cfg["state"]["track_db_path"],
+            inbox_dir=(cfg.raw.get("download") or {}).get("inbox_dir"),
             search=filters["q"],
             status_filter=filters["status"],
             download_kind=filters["download_kind"],
