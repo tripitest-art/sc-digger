@@ -231,6 +231,11 @@ rekordbox:
   cues_as_memory: true
   # Drop und Breakdown auf das 16/32-Beat-Phrasengitter (sc_digger/phrase.py) ausrichten
   cues_phrase_align: true
+  # Pad-Layout der Hot Cues:
+  #   legacy        = First Kick (Pad A), Drop (B), Drop 2 (C), Breakdown (D) — Standard
+  #   standard_8pad = feste Pads A–H (Main Entry, Late Entry, Drop 1, Percussion Loop bzw.
+  #                   Breakdown, Breakdown, Drop 2, Snare Fill, Outro)
+  hot_cue_layout: legacy
   # Beatgrid-Anker <TEMPO> an first_kick_s schreiben: Takt 1/Beat 1 liegt dann exakt auf der
   # Kick-Transient (verlässliches Beatgrid bei 150+ BPM). Wirkt auch bei cues_enabled: false.
   grid_anchor: true
