@@ -197,6 +197,42 @@
     </div>
     <a href="/digest?download_kind=store" class="btn-page">🛒 Kaufliste (nur Store)</a>
   </div>
+
+  <details class="info-toggle" style="margin-top: 1rem;">
+    <summary>ℹ️ Erklärung: Download-Arten &amp; Feedback-Wirkung</summary>
+    <div class="info-toggle-content">
+      <div style="font-weight: 600; color: var(--text-main); margin-bottom: 0.5rem;">Download-Arten im Überblick:</div>
+      <div class="legend-grid">
+        <div class="legend-item">
+          <span class="badge badge-ok">NATIVE</span>
+          <div><strong>Original-Download:</strong> Direkt von SoundCloud geladene Originaldatei (WAV/FLAC/320k MP3).</div>
+        </div>
+        <div class="legend-item">
+          <span class="badge badge-warn">GATE</span>
+          <div><strong>Download-Gate:</strong> Artist nutzt Hypeddit/Droploud. Klick öffnet Gate im Browser; geladene Datei danach im Drag &amp; Drop Upload ablegen.</div>
+        </div>
+        <div class="legend-item">
+          <span class="badge badge-info">CLOUD</span>
+          <div><strong>Cloud-Link:</strong> Direkter Download via Dropbox oder Google Drive.</div>
+        </div>
+        <div class="legend-item">
+          <span class="badge badge-purple">STORE</span>
+          <div><strong>Kauflink:</strong> Bandcamp, Beatport, Juno oder Traxsource (landet in der Kaufliste).</div>
+        </div>
+        <div class="legend-item">
+          <span class="badge badge-muted">STREAM</span>
+          <div><strong>Nur Stream:</strong> Kein legaler Download verfügbar (sc-digger lädt keine Stream-Rips).</div>
+        </div>
+      </div>
+      <div style="margin-top: 0.75rem; font-size: 0.8rem; line-height: 1.45;">
+        <strong>Feedback:</strong> 
+        👍 <em>Gefällt mir</em> belohnt den Artist im Reputations-Scoring und schlägt Tracks in <code>/mix</code> vor. 
+        👎 <em>Aussortiert</em> führt bei mehreren Dislikes zu Punkteabzug. 
+        ⏳ <em>Später</em> merkt den Track vor.
+      </div>
+    </div>
+  </details>
+
   <form class="filter-form" method="get" action="/digest">
     <input type="hidden" name="limit" value="{{ page_size }}">
     <div class="filter-grid">

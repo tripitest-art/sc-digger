@@ -30,7 +30,7 @@ from ..db import FEEDBACK_VALUES
 from ..harmonic import find_mix_candidates
 from ..models import Config
 from ..pipeline import classify_download, dedupe, estimate_bpm
-from ..schema import FIELDS, SECTION_TITLES, Problem, deep_merge, get_field
+from ..schema import FIELDS, SECTION_DESCRIPTIONS, SECTION_TITLES, Problem, deep_merge, get_field
 from ..soundcloud import SoundCloudClient, SoundCloudError
 from .configedit import apply_form, diff_config, format_form_value, get_path, remove_key, save_local
 from .database import (
@@ -557,7 +557,7 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
         template = _env.get_template("config.html")
         return HTMLResponse(template.render(
             groups=groups, values=values, defaults=defaults, local_paths=local_paths,
-            problems=problems, saved=saved,
+            problems=problems, saved=saved, section_descriptions=SECTION_DESCRIPTIONS,
             save_action="/config/save", preview_action="/config/preview",
             reset_action="/config/reset",
         ), status_code=status_code)

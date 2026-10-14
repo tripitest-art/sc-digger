@@ -130,6 +130,31 @@
     </div>
     <a href="/" style="font-size: 0.875rem; font-weight: 500;">&larr; Zurück zum Status</a>
   </div>
+
+  <details class="info-toggle" style="margin-top: 1rem;">
+    <summary>ℹ️ Erklärung: Track-Status &amp; Sammlung</summary>
+    <div class="info-toggle-content">
+      <div style="font-weight: 600; color: var(--text-main); margin-bottom: 0.35rem;">Track-Status in der Datenbank:</div>
+      <div class="legend-grid">
+        <div class="legend-item">
+          <span class="badge badge-info">inbox</span>
+          <div><strong>Neue Inbox-Tracks:</strong> Geprüfte und getaggte Dateien in <code>/music/inbox</code>, bereit für den Rekordbox-Import.</div>
+        </div>
+        <div class="legend-item">
+          <span class="badge badge-ok">archive</span>
+          <div><strong>Master-Sammlung:</strong> Fest archivierte Tracks in <code>/music/Schranz</code> (schreibgeschützt, Pfade unveränderlich).</div>
+        </div>
+        <div class="legend-item">
+          <span class="badge badge-ok">adopted</span>
+          <div><strong>Übernommen:</strong> Per Audio-Fingerprint erkannt als aus der Inbox in die Sammlung übernommen (stärkstes Qualitätssignal).</div>
+        </div>
+        <div class="legend-item">
+          <span class="badge badge-err">rejected</span>
+          <div><strong>Aussortiert:</strong> Abgelehnte Fakes (Spektrums-Cutoff), Brickwall-Master oder Duplikate.</div>
+        </div>
+      </div>
+    </div>
+  </details>
 </div>
 
 <div class="card">

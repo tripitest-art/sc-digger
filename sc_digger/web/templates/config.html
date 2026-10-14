@@ -27,15 +27,32 @@ nächsten Lauf. Der laufende Telegram-Bot liest die Datei erst nach einem Neusta
 </div>
 {% endif %}
 
+<div class="jump-nav">
+  <span style="font-size: 0.75rem; color: var(--text-dim); text-transform: uppercase; font-weight: 700; align-self: center; margin-right: 0.25rem;">Bereiche:</span>
+  {% for section, fields in groups %}
+    {% set sec_id = "sec-" ~ section | lower | replace(' ', '-') | replace(':', '') | replace('&', '') | replace('/', '') %}
+    <a href="#{{ sec_id }}">{{ section }}</a>
+  {% endfor %}
+</div>
+
 <form method="post" action="{{ save_action }}">
 {% for section, fields in groups %}
-  <div class="card">
-    <div class="card-header">
+  {% set sec_id = "sec-" ~ section | lower | replace(' ', '-') | replace(':', '') | replace('&', '') | replace('/', '') %}
+  <div class="card" id="{{ sec_id }}">
+    <div class="card-header" style="flex-direction: column; align-items: flex-start; gap: 0.25rem;">
       <h2 style="margin: 0;">{{ section }}</h2>
+      {% if section_descriptions and section_descriptions[section] %}
+      <div class="section-desc">{{ section_descriptions[section] }}</div>
+      {% endif %}
     </div>
     {% for field in fields %}
-    <div class="field">
-      <label for="f-{{ field.path }}">{{ field.label }}</label>
+    <div class="field" {% if field.path in local_paths %}style="background: rgba(59, 130, 246, 0.04); padding: 0.85rem; border-radius: 6px; border: 1px solid rgba(59, 130, 246, 0.2); margin: 0.75rem 0;"{% endif %}>
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.25rem;">
+        <label for="f-{{ field.path }}" style="margin-bottom: 0;">{{ field.label }}</label>
+        {% if field.path in local_paths %}
+        <span class="field-badge local">Lokal geändert</span>
+        {% endif %}
+      </div>
       <span class="help">{{ field.help }}</span>
       {% if field.kind in ("bool", "choice") %}
       <select id="f-{{ field.path }}" name="{{ field.path }}">
