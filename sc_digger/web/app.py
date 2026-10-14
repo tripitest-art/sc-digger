@@ -207,6 +207,13 @@ def _scan_url(cfg: Config, url: str) -> dict:
             "download_kind": track.download_kind.value,
             "download_link": track.download_link,
             "status": statuses.get(track.id, "neu"),
+            # Engagement-Kennzahlen für die Meta-Zeile im Mix-Dashboard (Issue #257),
+            # gleiche Werte wie in der Telegram-Darstellung.
+            "plays": track.plays,
+            "likes": track.likes,
+            "reposts": track.reposts,
+            "comments": track.comments,
+            "like_ratio": track.like_ratio,
         })
     return {"source": source, "kind": kind, "total": len(items), "tracks": items}
 
