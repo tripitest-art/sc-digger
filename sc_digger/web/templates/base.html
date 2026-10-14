@@ -353,6 +353,147 @@
     text-transform: uppercase;
     letter-spacing: 0.05em;
   }
+
+  /* Info-Boxen & Akkordeons */
+  .info-card {
+    background: linear-gradient(135deg, rgba(30, 41, 59, 0.7), rgba(15, 23, 42, 0.9));
+    border: 1px solid rgba(59, 130, 246, 0.25);
+    border-radius: 8px;
+    padding: 1rem 1.25rem;
+    margin-bottom: 1.5rem;
+  }
+  .info-card-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-weight: 600;
+    color: #93c5fd;
+    font-size: 0.95rem;
+    margin-bottom: 0.35rem;
+  }
+  .info-card p {
+    margin: 0.25rem 0;
+    color: var(--text-muted);
+    font-size: 0.875rem;
+    line-height: 1.5;
+  }
+
+  /* Kategorie-Schnellnavigation für Konfiguration */
+  .jump-nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+    padding: 0.75rem;
+    background-color: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    position: sticky;
+    top: 0.5rem;
+    z-index: 20;
+    backdrop-filter: blur(8px);
+  }
+  .jump-nav a {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.35rem 0.7rem;
+    background-color: var(--bg-card-subtle);
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 0.8rem;
+    font-weight: 500;
+    text-decoration: none;
+    transition: all 0.15s ease;
+  }
+  .jump-nav a:hover {
+    color: #fff;
+    border-color: var(--accent-primary);
+    background-color: rgba(59, 130, 246, 0.15);
+  }
+
+  /* Sektionsbeschreibungen */
+  .section-desc {
+    color: var(--text-muted);
+    font-size: 0.875rem;
+    margin: 0.4rem 0 1rem 0;
+    line-height: 1.45;
+  }
+
+  /* Visuelle Badges für Felder */
+  .field-badge {
+    display: inline-block;
+    padding: 0.1rem 0.45rem;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-left: 0.5rem;
+    vertical-align: middle;
+  }
+  .field-badge.local {
+    background-color: rgba(59, 130, 246, 0.2);
+    color: #93c5fd;
+    border: 1px solid rgba(59, 130, 246, 0.4);
+  }
+  .field-badge.expert {
+    background-color: rgba(245, 158, 11, 0.15);
+    color: #fcd34d;
+    border: 1px solid rgba(245, 158, 11, 0.3);
+  }
+
+  /* Info-Legende für Download-Arten */
+  .legend-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 0.75rem;
+    margin-top: 0.5rem;
+  }
+  .legend-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    background: var(--bg-card-subtle);
+    padding: 0.5rem 0.75rem;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+  }
+  .legend-item strong {
+    color: var(--text-main);
+  }
+
+  /* Details / Summary Styling */
+  details.info-toggle {
+    margin-bottom: 1rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background-color: var(--bg-card);
+    overflow: hidden;
+  }
+  details.info-toggle summary {
+    padding: 0.6rem 1rem;
+    cursor: pointer;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #93c5fd;
+    background-color: var(--bg-card-subtle);
+    user-select: none;
+    outline: none;
+  }
+  details.info-toggle summary:hover {
+    color: #fff;
+  }
+  details.info-toggle .info-toggle-content {
+    padding: 0.85rem 1rem;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    border-top: 1px solid var(--border);
+    line-height: 1.5;
+  }
 </style>
 </head>
 <body>

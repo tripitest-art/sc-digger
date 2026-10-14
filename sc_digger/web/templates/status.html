@@ -16,12 +16,12 @@
     </div>
     <div style="display: flex; align-items: center; gap: 1rem;">
       {% if snap.healthy %}
-      <div class="status-pill ok">
+      <div class="status-pill ok" title="System läuft stabil: Letzte Läufe waren erfolgreich und die Datenbanken sind intakt.">
         <span class="dot"></span>
         <span class="ampel ok">&#9679; gesund</span>
       </div>
       {% else %}
-      <div class="status-pill warn">
+      <div class="status-pill warn" title="Achtung: Mindestens 2 Läufe in Folge fehlgeschlagen, 0 Rohtreffer oder letzter Lauf älter als 36h.">
         <span class="dot"></span>
         <span class="ampel warn">&#9679; Achtung</span>
       </div>
@@ -63,13 +63,13 @@
     </p>
 
     <div class="stat-grid" style="grid-template-columns: 1fr 1fr;">
-      <div class="stat-box">
+      <div class="stat-box" title="Rohfunde aus Tags, gefolgten Artists und Referenz-Accounts vor Filtern">
         <div class="val">{{ snap.last_discover.found }}</div>
-        <div class="lbl">Rohtreffer</div>
+        <div class="lbl">Rohtreffer <span style="font-size: 0.7rem; color: var(--text-dim);">ℹ️ vor Filtern</span></div>
       </div>
-      <div class="stat-box">
+      <div class="stat-box" title="Vergangene Stunden seit Abschluss dieses Suchlaufs">
         <div class="val">{{ snap.last_discover_age_hours }}h</div>
-        <div class="lbl">Alter</div>
+        <div class="lbl">Alter <span style="font-size: 0.7rem; color: var(--text-dim);">ℹ️ max 36h</span></div>
       </div>
     </div>
 
@@ -88,7 +88,8 @@
       <h2 class="card-title" style="margin: 0; font-size: 1.1rem;">Inbox</h2>
       <span class="status-pill ok" style="padding: 0.15rem 0.6rem; font-size: 0.75rem;">DJ Ready</span>
     </div>
-    <p>{{ snap.inbox_total }} Track(s) mit Status inbox.</p>
+    <p style="margin-bottom: 0.5rem;">{{ snap.inbox_total }} Track(s) mit Status inbox.</p>
+    <p class="meta" style="margin-bottom: 0.75rem;">Geprüfte, pegelnormalisierte und getaggte Dateien in <code>/music/inbox</code>, bereit für den Rekordbox-Import.</p>
     <div class="stat-box" style="margin-top: 0.75rem;">
       <div class="val">{{ snap.inbox_total }}</div>
       <div class="lbl">Geprüfte Tracks in /music/inbox</div>
@@ -102,22 +103,22 @@
       <a href="/tracks" style="font-size: 0.8rem; font-weight: 500;">Track-Explorer &rarr;</a>
     </div>
     <p class="meta" style="margin-bottom: 0.75rem;">
-      Alle Tracks der Sammlung und Inbox durchsuchen, filtern und prüfen.
+      Master-Archiv in <code>/music/Schranz</code> (schreibgeschützt) &amp; Inbox durchsuchen.
     </p>
     <div class="stat-grid" style="grid-template-columns: 1fr 1fr;">
-      <div class="stat-box">
+      <div class="stat-box" title="Alle in der lokalen Track-DB indexierten Musikdateien">
         <div class="val">{{ overview.total_tracks }}</div>
         <div class="lbl">Tracks gesamt</div>
       </div>
-      <div class="stat-box">
+      <div class="stat-box" title="Fester Sammlungsbestand im schreibgeschützten Archiv">
         <div class="val">{{ overview.archive_count }}</div>
         <div class="lbl">in Sammlung</div>
       </div>
-      <div class="stat-box">
+      <div class="stat-box" title="Aus der Inbox per Audio-Fingerprint in die Sammlung übernommene Tracks">
         <div class="val ok">{{ overview.adopted_count }}</div>
         <div class="lbl">übernommen</div>
       </div>
-      <div class="stat-box">
+      <div class="stat-box" title="Neue Downloads in der Inbox">
         <div class="val">{{ overview.inbox_count }}</div>
         <div class="lbl">in Inbox</div>
       </div>
