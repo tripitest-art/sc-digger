@@ -219,6 +219,8 @@ FIELDS: tuple[Field, ...] = (
        "Cues zusätzlich oder alternativ als klassische Rekordbox Memory Cues (Num=-1) schreiben."),
     _f("rekordbox.cues_phrase_align", "bool", "Cues auf Phrasenraster",
        "Drop- und Breakdown-Cues im Rekordbox-Export exakt auf das 16/32-Beat-Phrasengitter ausrichten."),
+    _f("rekordbox.grid_anchor", "bool", "Beatgrid-Anker",
+       "Mathematisch exakten Beatgrid-Anker (<TEMPO>) an first_kick_s in die Rekordbox-XML schreiben."),
     _f("rekordbox.playlists_by_bpm", "bool", "Playlists nach BPM",
        "Zusätzlich Playlists pro BPM-Bereich (Ordner sc-digger/BPM) in die Rekordbox-XML schreiben."),
     _f("rekordbox.playlists_by_key", "bool", "Playlists nach Key",

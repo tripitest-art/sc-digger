@@ -24,7 +24,7 @@ Modul anlegt, trägt es in die Tabelle ein.
 | `sc_digger/fingerprint.py` | Audio-Fingerprints (Chromaprint/fpcalc), gleiche Aufnahme erkennen |
 | `sc_digger/harmonic.py` | Harmonische Kompatibilität (Camelot-Wheel), Suche passender Tracks nach Key und BPM |
 | `sc_digger/organize.py` | Inbox-Sortierung `<BPM>/<Camelot>/`, Tags schreiben, Dateinamen in NFC-Namen |
-| `sc_digger/rekordbox.py` | Rekordbox-XML: Playlists pro Woche aus der Inbox, Locations in NFC-Namen; lesender XML-Import (`parse_rekordbox_xml`, `import_rekordbox_xml`, Migration 9) für Ratings, Plays und Cues |
+| `sc_digger/rekordbox.py` | Rekordbox-XML: Playlists pro Woche aus der Inbox, Locations in NFC-Namen, Beatgrid-Anker `<TEMPO>` an `first_kick_s` (`build_xml(grid_anchor=…)`, Konfiguration `rekordbox.grid_anchor`); lesender XML-Import (`parse_rekordbox_xml`, `import_rekordbox_xml`, Migration 9) für Ratings, Plays und Cues |
 | `sc_digger/cleanup.py` | Inbox-Dubletten per SoundCloud-ID finden, auflisten und optional nach `_rejected/duplicate/` verschieben |
 | `sc_digger/cues.py` | Cue-Tags `SCDIGGER_FIRST_KICK`, `SCDIGGER_DROP`, `SCDIGGER_BREAKDOWN`, `SCDIGGER_BREAKDOWN_KIND` (Sekunden) lesen und schreiben; `write_stem_cues` schreibt First Kick, Drop und Breakdown und richtet Drop/Breakdown optional per `phrase_align` am Phrasengitter aus |
 | `sc_digger/db.py` | Zentrale Track-DB (Phase 2), Metadaten-Index, Audio-Fingerprints, Jobs-Queue, versionierte Migrationen |

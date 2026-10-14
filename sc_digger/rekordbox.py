@@ -417,7 +417,7 @@ def build_xml(tracks: list[InboxTrack], path_map: dict[str, str], now: datetime 
               hot_cues: bool = True, memory_cues: bool = True,
               by_style: bool = False, by_subgenre: bool = False, by_version: bool = False,
               style_colors: bool = False, style_comments: bool = False,
-              phrase_align_cues: bool = False) -> str:
+              phrase_align_cues: bool = False, grid_anchor: bool = True) -> str:
     """<?xml version="1.0" encoding="UTF-8"?> + DJ_PLAYLISTS Version="1.0.0" mit PRODUCT,
     COLLECTION und PLAYLISTS. Tracks ohne Location (nicht gemappt) werden weggelassen.
     COLLECTION Entries = Anzahl; TRACK-Attribute: TrackID (1, 2, … in Eingabereihenfolge), Name,
@@ -449,6 +449,12 @@ def build_xml(tracks: list[InboxTrack], path_map: dict[str, str], now: datetime 
     ergänzen nach den Wochen und BPM/Key die Ordner "Stile", "Subgenres" und "Versionen"
     mit je einer Playlist pro nicht leerem Cluster/Subgenre/Versionstyp in fester
     Reihenfolge; leere Ordner entfallen.
+
+    grid_anchor=True schreibt in jeden TRACK mit first_kick_s >= 0 und bpm > 0 einen
+    Beatgrid-Anker <TEMPO Beginning="{first_kick_s:.3f}" Bpm="{bpm:.2f}" Metro="4/4"
+    Battito="1"/> vor den POSITION_MARK-Kindern: Rekordbox setzt Takt 1/Beat 1 damit exakt
+    auf die Kick-Transient, statt bei 150+ BPM das Raster um ein 16tel zu versetzen.
+    grid_anchor=False oder fehlender Kick/BPM: kein TEMPO-Knoten.
     """
     mapped: list[tuple[str, InboxTrack, str]] = []
     for t in dedupe_by_soundcloud_id(tracks):
@@ -496,6 +502,18 @@ def build_xml(tracks: list[InboxTrack], path_map: dict[str, str], now: datetime 
                     kind_label = "Groove" if kind == "groove" else "Silence"
                     attr["Comments"] = f"{attr['Comments']} · Break: {kind_label}"
         track_node = ET.SubElement(coll, "TRACK", attr)
+        # Beatgrid-Anker vor den Cue-Marken: Rekordbox verankert Takt 1/Beat 1 damit exakt
+        # auf der Kick-Transient (bei 150+ BPM versetzt die Transienten-Erkennung das Raster).
+        if grid_anchor and t.first_kick_s is not None and t.bpm is not None:
+            kick_s = float(t.first_kick_s)
+            anchor_bpm = float(t.bpm)
+            if kick_s >= 0 and anchor_bpm > 0:
+                ET.SubElement(track_node, "TEMPO", {
+                    "Beginning": f"{kick_s:.3f}",
+                    "Bpm": f"{anchor_bpm:.2f}",
+                    "Metro": "4/4",
+                    "Battito": "1",
+                })
         # Ein Cue-Punkt je vorhandener Zeit: (Start, Hot-Cue-Pad, Name, Farbe).
         drop_s = t.drop_s
         breakdown_s = t.breakdown_s
@@ -638,10 +656,13 @@ def write_rekordbox_xml(cfg: Config) -> Path | None:
     playlists_by_bpm (bool, fehlt -> False): build_xml mit bpm_bucket_size = organize.bpm_bucket_size;
     ist der Wert kein int >= 1 (oder fehlt der Abschnitt), gilt 5. playlists_by_key (bool, fehlt ->
     False): by_key=True. cues_as_hotcues (bool, fehlt -> True): Hot Cues schreiben; cues_as_memory
-    (bool, fehlt -> True): Memory Cues schreiben. cues_enabled False -> gar keine Cues
-    (first_kick_s, drop_s, breakdown_s und breakdown_kind werden verworfen).
+    (bool, fehlt -> True): Memory Cues schreiben. cues_enabled False -> gar keine Cue-Marken
+    (drop_s, breakdown_s und breakdown_kind werden verworfen); first_kick_s bleibt erhalten,
+    weil der Beatgrid-Anker (grid_anchor) unabhängig von den Cue-Marken gesetzt wird.
     cues_phrase_align (bool, fehlt -> False): Drop und Breakdown vor dem Export auf das
     16/32-Beat-Phrasengitter ausrichten (build_xml phrase_align_cues).
+    grid_anchor (bool, fehlt/None -> True): Beatgrid-Anker <TEMPO> an first_kick_s schreiben
+    (build_xml grid_anchor).
     Jeder Fehler -> log.warning, Temp-Datei entfernen, None. Wirft nie.
     """
     tmp_path: Path | None = None
@@ -691,8 +712,9 @@ def write_rekordbox_xml(cfg: Config) -> Path | None:
         tracks = scan_inbox(inbox_dir)
 
         if not rb_cfg.get("cues_enabled"):
+            # Kein Cue-Export: Drop/Breakdown verwerfen. first_kick_s bleibt erhalten, weil der
+            # Beatgrid-Anker (grid_anchor) unabhängig von den Cue-Marken gesetzt wird.
             for t in tracks:
-                t.first_kick_s = None
                 t.drop_s = None
                 t.breakdown_s = None
                 t.breakdown_kind = None
@@ -720,13 +742,20 @@ def write_rekordbox_xml(cfg: Config) -> Path | None:
         memory_cues = rb_cfg.get("cues_as_memory", True)
         hot_cues = True if hot_cues is None else bool(hot_cues)
         memory_cues = True if memory_cues is None else bool(memory_cues)
+        if not rb_cfg.get("cues_enabled"):
+            # cues_enabled=False schaltet alle Cue-Marken ab; der Beatgrid-Anker bleibt.
+            hot_cues = False
+            memory_cues = False
         phrase_align_cues = bool(rb_cfg.get("cues_phrase_align", False))
+
+        grid_anchor = rb_cfg.get("grid_anchor", True)
+        grid_anchor = True if grid_anchor is None else bool(grid_anchor)
 
         xml_content = build_xml(tracks, path_map, bpm_bucket_size=bpm_bucket_size, by_key=by_key,
                                 hot_cues=hot_cues, memory_cues=memory_cues,
                                 by_style=by_style, by_subgenre=by_subgenre, by_version=by_version,
                                 style_colors=style_colors, style_comments=style_comments,
-                                phrase_align_cues=phrase_align_cues)
+                                phrase_align_cues=phrase_align_cues, grid_anchor=grid_anchor)
 
         target_dir = xml_path.parent
         target_dir.mkdir(parents=True, exist_ok=True)
