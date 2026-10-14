@@ -248,6 +248,13 @@ rekordbox:
   style_colors: false
   # Track-Kommentar (Comments) im Stil-Format überschreiben (Stil, Tempo, Tonart, Flussachse, DJ-Notiz)
   style_comments: false
+  # Track-Farbe (Colour) anhand des Subgenres setzen (Schranz-Matrix: Rot=Industrial/Terror/Crossbreed,
+  # Blau=Classic, Grün=Tribal/Hardgroove, Gelb=Melodic, Orange=Neo, Pink=Bounce, Purple=Acid/Psy/Reverse Bass/EBM).
+  # Hat Vorrang vor style_colors.
+  matrix_colors: false
+  # Track-Kommentar (Comments) kompakt für kleine CDJ/XDJ-Displays überschreiben:
+  # [BPM|Key|Substil|D1:<Drop1>|D2:<Drop2>|L<LUFS>]. Hat Vorrang vor style_comments.
+  compact_style_comments: false
   # Import: Pfad zur exportierten Rekordbox-XML (Rückkanal vom DJ-Laptop). Leer = kein Import.
   import_xml_path: ""
 

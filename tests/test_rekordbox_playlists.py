@@ -6,6 +6,7 @@ import xml.etree.ElementTree as ET
 from datetime import datetime
 from pathlib import Path
 
+from sc_digger import cues
 from sc_digger import organize
 from sc_digger import rekordbox as rb
 from sc_digger.models import Config
@@ -227,3 +228,87 @@ def test_schreiben_ohne_stil_optionen_keine_farben_und_ordner(tmp_path):
     assert _folder(root, "Versionen") is None
     track = root.find("COLLECTION/TRACK")
     assert "Colour" not in track.attrib
+
+
+def _compact_track(**overrides) -> rb.InboxTrack:
+    base = dict(
+        path=Path("/music/inbox/x/hardgroove.mp3"), title="Hardgroove Hit", artist="A",
+        genre="hardgroove", bpm=155.0, key="9A", comment="Old", duration_s=240.0,
+        size=5000, added=datetime(2026, 10, 14, 12, 0),
+        drop_s=45.0, drop2_s=135.0, lufs=-7.5,
+    )
+    base.update(overrides)
+    return rb.InboxTrack(**base)
+
+
+def test_build_xml_compact_style_comments():
+    root = _parse(rb.build_xml([_compact_track()], PATH_MAP, compact_style_comments=True))
+    track = root.find("COLLECTION/TRACK")
+    assert track.get("Comments") == "[155|9A|Hardgroove|D1:0:45|D2:2:15|L-7.5]"
+    # Kompakte Kommentare setzen allein keine Farbe.
+    assert "Colour" not in track.attrib
+
+
+def test_build_xml_matrix_colors():
+    root = _parse(rb.build_xml([_compact_track()], PATH_MAP, matrix_colors=True))
+    track = root.find("COLLECTION/TRACK")
+    assert track.get("Colour") == "Green"
+    # Matrix-Farben überschreiben den Kommentar nicht.
+    assert track.get("Comments") == "Old"
+
+
+def test_build_xml_compact_hat_vorrang_vor_style_comments():
+    root = _parse(rb.build_xml(
+        [_compact_track(breakdown_kind="groove")], PATH_MAP,
+        style_comments=True, compact_style_comments=True,
+    ))
+    comment = root.find("COLLECTION/TRACK").get("Comments")
+    assert comment == "[155|9A|Hardgroove|D1:0:45|D2:2:15|L-7.5]"
+    assert "Break:" not in comment
+
+
+def test_build_xml_matrix_hat_vorrang_vor_style_colors():
+    # Bootleg -> Versionstyp-Farbe "Red"; Matrix (Classic) -> "Blue". Der Matrix-Flag gewinnt.
+    track = _compact_track(title="Classic Bootleg", genre="classic")
+    ohne = _parse(rb.build_xml([track], PATH_MAP, style_colors=True))
+    assert ohne.find("COLLECTION/TRACK").get("Colour") == "Red"
+    mit = _parse(rb.build_xml([track], PATH_MAP, style_colors=True, matrix_colors=True))
+    assert mit.find("COLLECTION/TRACK").get("Colour") == "Blue"
+
+
+def test_scan_inbox_liest_drop2_und_lufs(tmp_path):
+    inbox = tmp_path / "inbox"
+    p = _audio(inbox / "150-155" / "5A" / "a.mp3", artist="A", title="Eins", bpm=152.0)
+    cues._write_string_tag(p, "SCDIGGER_DROP2", "135.0")
+    cues._write_string_tag(p, "SCDIGGER_LUFS", "-7.5")
+    tracks = rb.scan_inbox(inbox)
+    assert len(tracks) == 1
+    assert tracks[0].drop2_s == 135.0
+    assert tracks[0].lufs == -7.5
+
+
+def test_scan_inbox_ohne_drop2_lufs_bleibt_none(tmp_path):
+    inbox = tmp_path / "inbox"
+    _audio(inbox / "150-155" / "5A" / "a.mp3", artist="A", title="Eins", bpm=152.0)
+    tracks = rb.scan_inbox(inbox)
+    assert tracks[0].drop2_s is None
+    assert tracks[0].lufs is None
+
+
+def test_scan_inbox_unlesbares_lufs_bleibt_none(tmp_path):
+    inbox = tmp_path / "inbox"
+    p = _audio(inbox / "150-155" / "5A" / "a.mp3", artist="A", title="Eins", bpm=152.0)
+    cues._write_string_tag(p, "SCDIGGER_LUFS", "laut")
+    assert rb.scan_inbox(inbox)[0].lufs is None
+
+
+def test_schreiben_matrix_und_compact_aus_config(tmp_path):
+    cfg = _cfg(tmp_path, compact_style_comments=True, matrix_colors=True)
+    _audio(
+        Path(cfg["download"]["inbox_dir"]) / "150-155" / "5A" / "tool.mp3",
+        artist="B", title="Loop (DJ Tool)", bpm=150.0, key_name="5A",
+    )
+    root = ET.parse(rb.write_rekordbox_xml(cfg)).getroot()
+    tool = next(t for t in root.find("COLLECTION") if t.get("Name") == "Loop (DJ Tool)")
+    assert tool.get("Colour") == "Blue"
+    assert tool.get("Comments") == "[150|5A|TOOL]"
