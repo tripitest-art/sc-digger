@@ -45,6 +45,7 @@ Modul anlegt, trägt es in die Tabelle ein.
 | `entrypoint.sh` | Schreibt `cron.env` (Cron hat sonst weder PATH noch Secrets), startet cron und Bot |
 | `skills/*/SKILL.md` | Abläufe für lokale Modelle in LibreChat (Review, Worker, Planer), per GitHub Skill Sync gespiegelt; Regeln bleiben in `AGENTS.md` |
 | `.github/scripts/acceptance_guard.py` | CI-Check `acceptance-guard`: Akzeptanztests = Issue, keine neuen skips, CI/Test-Konfiguration geschützt, PR-Text ausgefüllt (`Closes #N`, `Worker:`) |
+| `sc_digger/issuecheck.py` | Planer-Preflight: prüft einen Issue-Text und seine Akzeptanztests vor dem Einstellen (`python -m sc_digger.issuecheck <issue.md>`), lässt den Block mit pytest gegen ein Repo laufen; kopiert die Block-Regex aus `acceptance_guard.py`, importiert sie nicht |
 | `set-secret.sh` / `update.sh` | Zugangsdaten setzen / Update ausrollen (auf dem Server) |
 
 ## Bekannte Stolperfallen (alle schon einmal passiert)
@@ -105,9 +106,11 @@ Der Planer schreibt Issues, keinen Code: keine Branches, keine Commits, keine PR
    - laufen ohne Netzwerk, ohne Uhrzeit und Zufall, ohne `skip`/`xfail`;
    - importieren nur aus `sc_digger` und vorhandenen Test-Helfern;
    - schreiben nur in `tmp_path`, nie nach `/music` oder in die echte `config.yaml`.
-6. **Akzeptanztests prüfen (mit Shell).** Datei lokal anlegen und laufen lassen: auf `main`
-   rot (meist `ImportError`), gegen eine Probe-Umsetzung grün, und die restliche Suite
-   **mit** der Probe-Umsetzung grün (so fallen die Fälle aus Schritt 2 und 4 auf). Die
+6. **Akzeptanztests prüfen (mit Shell).** Form und Rot-Stand prüft ein Befehl:
+   `python -m sc_digger.issuecheck <issue.md>` (`sc_digger/issuecheck.py`). Datei lokal anlegen
+   und laufen lassen: auf `main` rot (meist `ImportError`), gegen eine Probe-Umsetzung grün, und
+   die restliche Suite **mit** der Probe-Umsetzung grün (so fallen die Fälle aus Schritt 2 und 4
+   auf). Die
    Probe-Umsetzung wird weder committet noch gepusht. Ergebnis mit Commit-Hash von `main` in
    den Kontext („ohne Umsetzung rot, mit Umsetzung 12 grün“).
    **Ohne Shell** geht das nicht: Label `entwurf` statt `bereit`, im Kontext „Akzeptanztests
