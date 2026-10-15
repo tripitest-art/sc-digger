@@ -175,3 +175,35 @@ def test_query_digest_rejected_duplicate_under_hidden_stays_ignored(tmp_path: Pa
     assert item.in_inbox is False
     assert item.in_collection is False
     assert item.download_kind == "stream"
+
+
+def test_query_digest_matches_inbox_and_adopted_by_source_url(tmp_path: Path):
+    """Issue #307: die gespeicherte ``source_url`` entscheidet auch bei abweichendem Dateinamen.
+
+    Eine Inbox-Zeile und eine übernommene (``adopted``) Zeile tragen die URL des Digest-
+    Eintrags, wetten aber einen ganz anderen Dateinamen. Ohne URL-Abgleich wären beide offen.
+    """
+    state_db = tmp_path / "seen.sqlite"
+    track_db = tmp_path / "tracks.sqlite"
+
+    with sqlite3.connect(state_db) as db:
+        db.execute("CREATE TABLE seen (id INTEGER PRIMARY KEY, url TEXT, title TEXT, reported_at TEXT)")
+        db.execute("INSERT INTO seen VALUES (600, 'https://soundcloud.com/dj/inbox-url', 'DJ - Inbox Url', '2026-10-14 12:00:00')")
+        db.execute("INSERT INTO seen VALUES (601, 'https://soundcloud.com/dj/adopted-url', 'DJ - Adopted Url', '2026-10-14 12:01:00')")
+
+    with sqlite3.connect(track_db) as db:
+        db.execute("CREATE TABLE tracks (id INTEGER PRIMARY KEY, path TEXT, status TEXT, source_url TEXT)")
+        db.execute("INSERT INTO tracks VALUES (1, '/eingang/150-155/voellig anderer name.wav', 'inbox', 'https://soundcloud.com/dj/inbox-url')")
+        db.execute("INSERT INTO tracks VALUES (2, '/sammlung/auch ganz anders.wav', 'adopted', 'https://soundcloud.com/dj/adopted-url')")
+
+    res = query_digest(state_db, track_db)
+
+    inbox_item = next(it for it in res.items if it.sc_id == 600)
+    assert inbox_item.in_inbox is True
+    assert inbox_item.in_collection is False
+    assert inbox_item.download_kind == "native"
+
+    adopted_item = next(it for it in res.items if it.sc_id == 601)
+    assert adopted_item.in_collection is True
+    assert adopted_item.in_inbox is False
+    assert adopted_item.download_kind == "native"
