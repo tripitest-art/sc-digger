@@ -241,6 +241,15 @@
         <td>
           {{ track.title or "—" }}
           <div class="mono" style="color: var(--text-dim); font-size: 0.75rem;">{{ track.path }}</div>
+          {# Kompakte Kennzahlen-Zeile (Issue #258): SoundCloud-Engagement aus track_snapshots. #}
+          {% if track.sc_plays is not none or track.sc_likes is not none %}
+          <div class="meta" style="font-size: 0.72rem; margin-top: 0.2rem;">
+            ▶ {{ track.sc_plays or 0 }} · ♥ {{ track.sc_likes or 0 }} · 🔁 {{ track.sc_reposts or 0 }}
+          </div>
+          {% endif %}
+          {% if track.rb_play_count and track.rb_play_count > 0 %}
+          <span class="badge badge-info" style="margin-top: 0.2rem;">🎧 {{ track.rb_play_count }}x im Set</span>
+          {% endif %}
         </td>
         <td class="mono">
           {{ track.format or "?" }}

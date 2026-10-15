@@ -58,7 +58,7 @@ class _FuzzyMatcher:
 _TRACK_COLUMNS = (
     "id", "path", "artist", "title", "format", "bitrate_kbps", "cutoff_hz",
     "quality_status", "bpm", "key_camelot", "key_name", "status", "adopted_at",
-    "feedback", "source_url", "created_at", "updated_at",
+    "feedback", "source_url", "created_at", "updated_at", "rb_play_count",
 )
 
 # Schutz vor versehentlich riesigen Antworten; das Frontend blättert über offset.
@@ -147,6 +147,45 @@ def _feedback_values(db: sqlite3.Connection, paths: list[str]) -> dict[int, str]
     return {int(row["sc_id"]): str(row["value"] or "") for row in rows}
 
 
+def _snapshot_values(db: sqlite3.Connection, sc_ids: list[int]) -> dict[int, dict[str, int]]:
+    """Neueste Engagement-Zahlen je SoundCloud-ID aus ``track_snapshots`` (Issue #258).
+
+    Rein lesend. Ein Track kann mehrere Snapshots haben; je ``sc_id`` zählt der jüngste
+    (``recorded_at``, bei Gleichstand die höchste ``id``). Fehlt die Tabelle oder schlägt die
+    Abfrage fehl, kommt ein leeres Ergebnis zurück – der Track-Explorer soll an einem fehlenden
+    Snapshot-Index nicht scheitern.
+    """
+    ids = sorted(set(sc_ids))
+    if not ids:
+        return {}
+    try:
+        if not _table_exists(db, "track_snapshots"):
+            return {}
+        placeholders = ",".join("?" for _ in ids)
+        rows = db.execute(
+            f"SELECT sc_id, plays, likes, reposts, comments FROM track_snapshots "
+            f"WHERE sc_id IN ({placeholders}) "
+            "ORDER BY sc_id ASC, datetime(recorded_at) DESC, id DESC",
+            ids,
+        ).fetchall()
+    except sqlite3.Error:
+        return {}
+    latest: dict[int, dict[str, int]] = {}
+    for row in rows:
+        if row["sc_id"] is None:
+            continue
+        sid = int(row["sc_id"])
+        if sid in latest:
+            continue
+        latest[sid] = {
+            "plays": int(row["plays"] or 0),
+            "likes": int(row["likes"] or 0),
+            "reposts": int(row["reposts"] or 0),
+            "comments": int(row["comments"] or 0),
+        }
+    return latest
+
+
 def _counts_by(db: sqlite3.Connection, column: str) -> dict[str, int]:
     """Gruppiert eine Spalte und zählt die Zeilen; leere/NULL-Werte werden übersprungen."""
     rows = db.execute(
@@ -224,7 +263,10 @@ def query_tracks(
     ``MAX_LIMIT`` begrenzt, ``total`` ist die Zahl aller Treffer unabhängig von ``limit``.
     Zusätzlich enthält jeder Treffer ``sc_id`` (aus dem Dateinamen ``[<sc_id>]``, sonst
     ``None``) und ``sc_feedback`` (aktueller ``sc_feedback``-Wert, sonst ``None``), damit
-    die Oberfläche die Bewertung (Issue #229) anzeigen und ändern kann.
+    die Oberfläche die Bewertung (Issue #229) anzeigen und ändern kann. Ebenso kommen die
+    neuesten SoundCloud-Engagement-Zahlen ``sc_plays``/``sc_likes``/``sc_reposts``/
+    ``sc_comments`` aus ``track_snapshots`` (Issue #258; ``None``, wenn keine SC-ID oder kein
+    Snapshot vorliegt) und ``rb_play_count`` (Rekordbox-Abspielzähler) mit.
     Nur lesend; fehlt die Datei/Tabelle, kommt ein leeres Ergebnis zurück.
     """
     where: list[str] = []
@@ -272,7 +314,12 @@ def query_tracks(
                 "ORDER BY id ASC LIMIT ? OFFSET ?",
                 [*params, limit, offset],
             ).fetchall()
-            feedback_map = _feedback_values(db, [str(row["path"] or "") for row in rows])
+            paths = [str(row["path"] or "") for row in rows]
+            feedback_map = _feedback_values(db, paths)
+            snapshot_map = _snapshot_values(
+                db,
+                [sc for sc in (_sc_id_from_path(p) for p in paths) if sc is not None],
+            )
     except sqlite3.Error:
         return TrackSearchResult()
 
@@ -282,6 +329,11 @@ def query_tracks(
         sc_id = _sc_id_from_path(item.get("path"))
         item["sc_id"] = sc_id
         item["sc_feedback"] = feedback_map.get(sc_id) if sc_id is not None else None
+        snapshot = snapshot_map.get(sc_id) if sc_id is not None else None
+        item["sc_plays"] = snapshot["plays"] if snapshot else None
+        item["sc_likes"] = snapshot["likes"] if snapshot else None
+        item["sc_reposts"] = snapshot["reposts"] if snapshot else None
+        item["sc_comments"] = snapshot["comments"] if snapshot else None
         items.append(item)
     return TrackSearchResult(total=total, items=items)
 
