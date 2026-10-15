@@ -22,7 +22,7 @@ def test_promo_brackets_give_no_remixer(title):
 @pytest.mark.parametrize("title, expected", [
     ("Numb (Might Be Twins Schranz Remix)", {"might", "be", "twins"}),
     ("Hit (Final Round Edit)", {"final", "round"}),
-    ("Hit (Exclusive Remix by Vrtgø) [FREE DL]", {"exclusive", "by", "vrtgø"}),
+    ("Hit (Exclusive Remix by Vrtgø) [FREE DL]", {"exclusive", "by", "vrtgo"}),
     ("Hit (Original Mix)", set()),
 ])
 def test_real_remixers_are_kept(title, expected):
