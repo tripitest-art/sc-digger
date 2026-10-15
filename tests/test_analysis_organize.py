@@ -53,10 +53,11 @@ def test_analyze_track_returns_expected_keys(tmp_path):
     p = tmp_path / "clicks.wav"
     _click_track(p, bpm=150.0)
     result = analyze_track(p)
-    assert set(result) == {"bpm", "key_camelot", "key_name"}
+    # Die Basisfelder bleiben; dazu kommen seit #283 die Konfidenzfelder.
+    assert {"bpm", "key_camelot", "key_name"} <= set(result)
 
 
-def test_analysis_missing_librosa_returns_none_not_crash(tmp_path, monkeypatch):
+def test_analysis_without_librosa_does_not_crash(tmp_path, monkeypatch):
     import sc_digger.analysis as a
     p = tmp_path / "x.wav"
     _click_track(p, bpm=150.0)
@@ -67,8 +68,11 @@ def test_analysis_missing_librosa_returns_none_not_crash(tmp_path, monkeypatch):
             raise ImportError("kein librosa")
         return real_import(name, *args, **kwargs)
     monkeypatch.setattr("builtins.__import__", fake_import)
-    assert a.detect_bpm(p) is None
-    assert a.detect_key(p) is None
+    # Seit #283 laufen BPM und Key in reinem NumPy/SciPy, ohne librosa: kein Crash,
+    # und die Erkennung liefert weiter Werte statt None.
+    bpm = a.detect_bpm(p)
+    assert bpm is not None and bpm > 0
+    a.detect_key(p)
 
 
 # ---------------- Organize ----------------
