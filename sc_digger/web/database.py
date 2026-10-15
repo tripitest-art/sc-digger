@@ -399,15 +399,27 @@ def query_digest(
                     rel = p.relative_to(inbox_p)
                 except ValueError:
                     continue
-                if any(part.startswith(("_", ".")) for part in rel.parts):
+                # Dateien unter "<Inbox>/_rejected/duplicate/" wurden geladen und als Dublette
+                # einer Sammlungsdatei aussortiert; sie zählen deshalb zur Sammlung (Issue #301).
+                # Nur dieser Präfix ist erlaubt, alles andere mit "_"/"." bleibt ausgeschlossen.
+                parts = rel.parts
+                dup_prefix = len(parts) >= 3 and parts[0] == "_rejected" and parts[1] == "duplicate"
+                rest = parts[2:] if dup_prefix else parts
+                if any(part.startswith(("_", ".")) for part in rest):
                     continue
                 m = re.match(r"^\[(\d+)\]", p.name)
                 if m:
-                    inbox_ids.add(int(m.group(1)))
+                    if dup_prefix:
+                        archive_ids.add(int(m.group(1)))
+                    else:
+                        inbox_ids.add(int(m.group(1)))
                 stem = re.sub(r"^\[\d+\]\s*", "", p.stem)
                 file_key = name_key(None, stem)
                 if file_key.tokens:
-                    inbox_index.add(str(p), file_key)
+                    if dup_prefix:
+                        archive_index.add(str(p), file_key)
+                    else:
+                        inbox_index.add(str(p), file_key)
 
     track_path = Path(track_db_path)
     if track_path.is_file():
