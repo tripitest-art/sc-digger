@@ -14,7 +14,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-EVAL = Path(__file__).resolve().parents[2] / "_eval"
+EVAL = Path(__file__).resolve().parents[1] / "_eval"
 sys.path.insert(0, str(EVAL))
 
 import analysis_v2 as A          # noqa: E402
