@@ -43,25 +43,38 @@ def probe(path: Path) -> dict:
     return json.loads(r.stdout)
 
 
-def spectral_cutoff_hz(path: Path, seconds: int = 30, offset: int = 60) -> float:
-    """Schätzt die obere Frequenzgrenze des Materials.
+# Abtastrate, auf die für die Spektrumsmessung dekodiert wird (Nyquist = 22,05 kHz).
+_SR = 44100
+# Maximalamplitude (Vollaussteuerung = 1.0), unter der nichts Messbares mehr liegt (≈ -80 dBFS).
+# Ein 16-Bit-Rauschen von ±1 LSB (≈ 3e-5) fällt ebenfalls darunter. Stille würde sonst
+# im Spektrum nur Rauschboden vergleichen und fälschlich "volle Bandbreite" melden.
+_SILENCE_PEAK = 1e-4
+# Ab dieser Dauer misst check_file an zwei Stellen statt an einer (siehe _cutoff_offsets).
+_MULTI_WINDOW_MIN_S = 150
 
-    Dekodiert einen Ausschnitt aus dem Trackinneren (offset), mittelt das Spektrum
-    und sucht die höchste Frequenz, die noch deutlich über dem Rauschboden liegt.
-    """
-    r = _run([
-        "ffmpeg", "-v", "error", "-ss", str(offset), "-t", str(seconds),
-        "-i", str(path), "-ac", "1", "-ar", "44100", "-f", "f32le", "-",
-    ], timeout=180)
-    audio = np.frombuffer(r.stdout, dtype=np.float32)
-    if audio.size < 44100 * 5:
-        # Track kürzer als offset -> vom Anfang versuchen
-        r = _run([
-            "ffmpeg", "-v", "error", "-t", str(seconds),
-            "-i", str(path), "-ac", "1", "-ar", "44100", "-f", "f32le", "-",
-        ], timeout=180)
-        audio = np.frombuffer(r.stdout, dtype=np.float32)
-    if audio.size < 44100 * 3:
+# Verlustfreie Codecs neben allen PCM-Varianten (pcm_s16le, pcm_s24le, pcm_s32le, pcm_f32le,
+# pcm_s16be, …). Die Dateiendung allein sagt nichts: ein AAC-Stream kann in .wav stecken.
+_LOSSLESS_CODECS = ("flac", "alac", "wavpack", "ape", "tta")
+
+
+def is_lossless_codec(codec: str) -> bool:
+    """True für verlustfreie Codecs: alle PCM-Formate sowie FLAC, ALAC, WavPack, APE, TTA."""
+    codec = codec or ""
+    return codec.startswith("pcm_") or codec in _LOSSLESS_CODECS
+
+
+def _decode_window(path: Path, seconds: int, offset: int | None) -> np.ndarray:
+    """Dekodiert einen Ausschnitt als Mono-float32 bei 44,1 kHz. offset=None: ab Dateianfang."""
+    cmd = ["ffmpeg", "-v", "error"]
+    if offset is not None:
+        cmd += ["-ss", str(offset)]
+    cmd += ["-t", str(seconds), "-i", str(path), "-ac", "1", "-ar", str(_SR), "-f", "f32le", "-"]
+    return np.frombuffer(_run(cmd, timeout=180).stdout, dtype=np.float32)
+
+
+def _window_cutoff_hz(audio: np.ndarray) -> float:
+    """Obere Frequenzgrenze eines dekodierten Ausschnitts; 0.0 bei Stille/nicht messbar."""
+    if not float(np.max(np.abs(audio))) >= _SILENCE_PEAK:   # fängt auch NaN ab
         return 0.0
 
     n_fft = 4096
@@ -72,13 +85,65 @@ def spectral_cutoff_hz(path: Path, seconds: int = 30, offset: int = 60) -> float
         for i in range(0, audio.size - n_fft, hop)
     ]
     spec = 20 * np.log10(np.mean(frames, axis=0) + 1e-12)
-    freqs = np.fft.rfftfreq(n_fft, 1 / 44100)
+    freqs = np.fft.rfftfreq(n_fft, 1 / _SR)
 
     # Referenzpegel: Median im Musikband 1-8 kHz. Cutoff = letzte Frequenz,
     # die noch innerhalb von 60 dB unter dieser Referenz liegt.
     ref = np.median(spec[(freqs > 1000) & (freqs < 8000)])
     active = np.where(spec > ref - 60)[0]
     return float(freqs[active[-1]]) if active.size else 0.0
+
+
+def spectral_cutoff_hz(
+    path: Path,
+    seconds: int = 30,
+    offset: int = 60,
+    offsets: tuple[int, ...] | list[int] | None = None,
+) -> float:
+    """Schätzt die obere Frequenzgrenze des Materials.
+
+    Dekodiert einen Ausschnitt aus dem Trackinneren (offset), mittelt das Spektrum
+    und sucht die höchste Frequenz, die noch deutlich über dem Rauschboden liegt.
+
+    Wird `offsets` übergeben (z. B. (30, 75)), wird an allen angegebenen Offsets gemessen
+    und das Maximum zurückgegeben. Das schützt vor langen, leisen Intros: Ein Fake ist
+    überall abgeschnitten, ein echter Track zeigt seine Bandbreite spätestens im lauten Teil.
+    Liegt keine Messung über 0.0, wird 0.0 zurückgegeben. Reine Stille liefert 0.0.
+
+    Ein Fenster, das hinter dem Dateiende liegt (zu wenig Audio), zählt nicht. Hat gar kein
+    Fenster genug Audio, wird vom Dateianfang gemessen (kurze Dateien).
+    """
+    # Mindestlänge je Fenster: 5 s bzw. 3 s ab Dateianfang; bei kurzen Fenstern (seconds < 5)
+    # entsprechend weniger, sonst könnte ein 2-s-Fenster nie als gültig durchgehen.
+    min_window = int(min(5.0, 0.9 * seconds) * _SR)
+    min_start = int(min(3.0, 0.9 * seconds) * _SR)
+
+    windows = list(dict.fromkeys(max(0, int(o)) for o in offsets)) if offsets else [offset]
+    cutoffs: list[float] = []
+    for off in windows:
+        audio = _decode_window(path, seconds, off)
+        if audio.size >= min_window:
+            cutoffs.append(_window_cutoff_hz(audio))
+    if not cutoffs:
+        # Track kürzer als alle Offsets -> vom Anfang versuchen
+        audio = _decode_window(path, seconds, None)
+        if audio.size >= min_start:
+            cutoffs.append(_window_cutoff_hz(audio))
+    return max(cutoffs, default=0.0)
+
+
+def _cutoff_offsets(duration_s: float, seconds: int = 30) -> tuple[int, ...] | None:
+    """Messfenster für check_file: zwei ab _MULTI_WINDOW_MIN_S, sonst None (ein Standardfenster).
+
+    Erstes Fenster bei 60 s wie bisher, zweites bei 60 % der Dauer (mindestens direkt hinter
+    dem ersten, höchstens so, dass es noch vollständig in den Track passt). Bei 5 Minuten
+    also (60, 180).
+    """
+    if duration_s < _MULTI_WINDOW_MIN_S:
+        return None
+    first = 60
+    second = max(first + seconds, min(int(duration_s * 0.6), int(duration_s) - seconds))
+    return (first, second)
 
 
 def loudness_report(path: Path) -> dict:
@@ -139,7 +204,17 @@ def is_vbr_mp3(path: Path) -> bool:
 
 
 def check_file(path: Path, cfg: Config) -> dict:
-    """Gibt einen Report zurück: {ok, format, bitrate_kbps, cutoff_hz, reason}."""
+    """Gibt einen Report zurück: {ok, format, bitrate_kbps, cutoff_hz, reason, ...}.
+
+    - Lossless gilt nur, wenn die Endung in accepted_lossless steht UND der Codec verlustfrei
+      ist (is_lossless_codec: alle pcm_*, flac, alac, wavpack, ape, tta). Ein Lossy-Stream
+      (z. B. AAC in .wav) wird abgewiesen, ein verlustfreier Codec hinter einer nicht
+      akzeptierten Endung ebenfalls.
+    - cutoff <= 0.0 -> ok=False, reason="Spektrum nicht messbar (Stille oder kein Signal)"
+    - cutoff < limit -> ok=False, reason="{kind}, aber Spektrum endet bei ... kHz (...)"
+    - cutoff >= limit -> ok=True, reason="echte Qualität"
+    Bei Dateien ab _MULTI_WINDOW_MIN_S wird an zwei Stellen gemessen (Maximum zählt).
+    """
     q = cfg["quality"]
     info = probe(path)
     stream = (info.get("streams") or [{}])[0]
@@ -148,6 +223,10 @@ def check_file(path: Path, cfg: Config) -> dict:
     ext = path.suffix.lower().lstrip(".")
     bitrate = int(stream.get("bit_rate") or fmt.get("bit_rate") or 0) // 1000
     sample_rate = int(stream.get("sample_rate") or 0)
+    try:
+        duration = float(fmt.get("duration") or 0)
+    except (TypeError, ValueError):   # ffprobe liefert bei manchen Containern "N/A"
+        duration = 0.0
 
     report = {
         "file": path.name, "codec": codec, "ext": ext,
@@ -155,21 +234,36 @@ def check_file(path: Path, cfg: Config) -> dict:
         "cutoff_hz": None, "ok": False, "reason": "",
     }
 
-    is_lossless = ext in q["accepted_lossless"] or codec in ("flac", "pcm_s16le", "pcm_s24le", "alac")
+    ext_lossless = ext in q["accepted_lossless"]
+    codec_lossless = is_lossless_codec(codec)
+    is_lossless = ext_lossless and codec_lossless
     is_mp3 = codec == "mp3"
     is_vbr = is_mp3 and is_vbr_mp3(path)
 
+    if ext_lossless and not codec_lossless:
+        # Endung verspricht Lossless, im Container steckt aber Lossy (z. B. AAC/MP3 in .wav)
+        report["reason"] = f"Codec {codec} nicht akzeptiert (Lossy-Stream in .{ext}-Container)"
+        return report
     if is_mp3 and not is_vbr and bitrate < q["min_mp3_bitrate_kbps"]:
         report["reason"] = f"MP3 mit nur {bitrate} kbps"
         return report
     if not is_lossless and not is_mp3:
-        report["reason"] = f"Codec {codec} nicht akzeptiert (z. B. AAC/Opus-Rip)"
+        if codec_lossless:
+            report["reason"] = (
+                f"Codec {codec} nicht akzeptiert (Endung .{ext} steht nicht in quality.accepted_lossless)"
+            )
+        else:
+            report["reason"] = f"Codec {codec} nicht akzeptiert (z. B. AAC/Opus-Rip)"
         return report
 
-    cutoff = spectral_cutoff_hz(path)
+    cutoff = spectral_cutoff_hz(path, offsets=_cutoff_offsets(duration))
     report["cutoff_hz"] = round(cutoff)
+    if cutoff <= 0.0:
+        # Stille, ultrakurzer Ausschnitt oder nicht messbar: ohne Messung keine Freigabe.
+        report["reason"] = "Spektrum nicht messbar (Stille oder kein Signal)"
+        return report
     limit = q["min_cutoff_hz_for_lossless"] if is_lossless else q["min_cutoff_hz_for_320"]
-    if cutoff and cutoff < limit:
+    if cutoff < limit:
         if is_lossless:
             kind = "Lossless-Container"
         elif is_vbr:
