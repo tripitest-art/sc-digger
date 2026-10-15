@@ -21,6 +21,7 @@ from typing import Any
 
 from ..collection import NameIndex, NameKey, name_key, normalize, remixer_tokens
 from ..db import FEEDBACK_VALUES
+from ..linksource import normalize_url
 
 _AUDIO_EXT = {".wav", ".aiff", ".aif", ".flac", ".mp3", ".m4a"}
 
@@ -369,8 +370,10 @@ def query_digest(
     Informationen aus track_db (tracks, sc_feedback, store_items, gate_items).
     Gleicht den Status (in_inbox, in_collection) primär per SoundCloud-ID ([<sc_id>])
     und als Fallback per Fuzzy-Match auf Artist & Title (unter Beachtung von Remixer-Tokens)
-    ab. Ist inbox_dir übergeben und vorhanden, werden dortige Audio-Dateien ebenfalls
-    berücksichtigt.
+    ab. Zusätzlich zählt die in ``tracks.source_url`` gespeicherte SoundCloud-URL (Issue #307,
+    Vergleichsform über ``linksource.normalize_url``): gleiche URL heißt vorhanden, auch wenn
+    die Datei anders heißt. Ist inbox_dir übergeben und vorhanden, werden dortige Audio-Dateien
+    ebenfalls berücksichtigt.
     Fehlt eine DB-Datei oder Tabelle, wirft die Funktion nicht, sondern liefert leere/partielle Ergebnisse.
     Nur lesend; limit wird auf max. 200 begrenzt.
     """
@@ -384,6 +387,10 @@ def query_digest(
     snapshot_map: dict[int, dict[str, int]] = {}
     inbox_ids: set[int] = set()
     archive_ids: set[int] = set()
+    # Vergleichsformen der gespeicherten SoundCloud-URLs je Status (Issue #307). Leere URLs
+    # werden nicht aufgenommen, sonst würde ein Eintrag ohne URL über "" fälschlich passen.
+    inbox_urls: set[str] = set()
+    archive_urls: set[str] = set()
     # Inbox-Dateien und DB-Zeilen landen im selben Namens-Index; abgefragt wird mit der
     # gemeinsamen Logik aus collection.names_match (früher ein eigener Fuzzy-Matcher).
     inbox_index = NameIndex()
@@ -440,9 +447,12 @@ def query_digest(
                 if _table_exists(tdb, "tracks"):
                     cols = {col["name"] for col in tdb.execute("PRAGMA table_info(tracks)").fetchall()}
                     has_artist_title = "artist" in cols and "title" in cols
+                    # Ältere Tabellen ohne source_url bleiben unterstützt (Issue #307).
+                    has_source_url = "source_url" in cols
                     for row in tdb.execute("SELECT * FROM tracks"):
                         p_str = str(row["path"] or "")
                         st_str = str(row["status"] or "").lower()
+                        row_url = normalize_url(row["source_url"]) if has_source_url else ""
                         m = re.search(r"\[(\d+)\]", p_str)
                         if m:
                             tid = int(m.group(1))
@@ -450,6 +460,12 @@ def query_digest(
                                 inbox_ids.add(tid)
                             elif st_str in ("archive", "adopted"):
                                 archive_ids.add(tid)
+                        # Die URL zählt unabhängig von der SoundCloud-ID im Dateinamen; nur
+                        # inbox/archive/adopted und nicht-leere URLs werden aufgenommen.
+                        if row_url and st_str == "inbox":
+                            inbox_urls.add(row_url)
+                        elif row_url and st_str in ("archive", "adopted"):
+                            archive_urls.add(row_url)
                         artist = str(row["artist"] or "") if has_artist_title and "artist" in row.keys() else ""
                         title = str(row["title"] or "") if has_artist_title and "title" in row.keys() else ""
                         if not artist and not title and p_str:
@@ -510,8 +526,19 @@ def query_digest(
             remix=frozenset(remixer_tokens(title)),
         )
 
-        in_inbox = (sc_id in inbox_ids) or inbox_index.find(q_key) is not None
-        in_coll = (sc_id in archive_ids) or archive_index.find(q_key) is not None
+        # Die gespeicherte URL des Eintrags in Vergleichsform: trifft sie eine tracks-Zeile
+        # mit passendem Status, gilt der Track als vorhanden – unabhängig vom Dateinamen.
+        digest_url = normalize_url(url)
+        in_inbox = (
+            (sc_id in inbox_ids)
+            or (digest_url in inbox_urls)
+            or inbox_index.find(q_key) is not None
+        )
+        in_coll = (
+            (sc_id in archive_ids)
+            or (digest_url in archive_urls)
+            or archive_index.find(q_key) is not None
+        )
 
         purchase_url = store_map.get(sc_id)
         gate_url = gate_map.get(sc_id)
