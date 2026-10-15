@@ -1,0 +1,8 @@
+# Muster sind relativ zu DIESEM Ordner (verschachtelte .gitignore), also ohne
+# "_eval/"-Praefix. Nur generierte Analyse-Artefakte; die Skripte bleiben versioniert.
+corpus/
+_libtest/
+_libtest_out/
+_tmp_verify/
+pt*/
+pytest-tmp/

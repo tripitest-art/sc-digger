@@ -363,6 +363,27 @@ docker compose exec -T sc-digger python - < scripts/backfill_gates.py
 - **Track-DB nicht auf NFS.** `state.track_db_path` läuft im WAL-Modus und liegt daher unter `/data/`.
 - **App-Playlists liefern Stubs.** `soundcloud.playlist_tracks` lädt Tracks ohne Titel separat nach (`_hydrate_stubs`); schlägt das fehl, fehlen sie im Ergebnis.
 
+## Projektprüfung (Trackanalyse & DJ-Workflow)
+
+Die vollständige Prüfung der Analyse-Pipeline mit Messwerten, gefundenen Fehlern und
+priorisierten Änderungsvorschlägen liegt in [`_eval/REVIEW-2026-10-14.md`](_eval/REVIEW-2026-10-14.md).
+Kernpunkte:
+
+- BPM-Erkennung auf einem Ground-Truth-Korpus (29 bekannte Tempo-/Tonart-Fälle)
+  **0/29 → 29/29** exakt, Key **83 % → 100 %** (Kandidat in `_eval/analysis_v2.py`).
+- Ein Decode statt zwei, Chroma über oktav-gemittelte Halbton-Energie statt FFT-Bin-Summen,
+  Anti-Alias-Resampling, Konfidenzwerte je BPM und Key.
+- Harmonisch sortierte Playlists sind gebaut: `_eval/dj_export.py` erzeugt M3U8 + CSV + Report.
+
+```powershell
+# Set aus einem Ordner bauen (Tempo-Fenster wie in config.yaml)
+python _eval\dj_export.py --folder "$env:USERPROFILE\Music\Schranz" --out .\sets --name peaktime --bpm 150 165
+
+# Messungen reproduzieren
+python _eval\gen_corpus.py _eval\corpus
+python _eval\bench.py mix
+```
+
 ## Mitentwickeln
 
 ```bash
