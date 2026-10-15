@@ -151,3 +151,27 @@ def test_query_digest_inbox_dir_ignores_rejected_folders(tmp_path: Path):
     res = query_digest(state_db, track_db, inbox_dir=inbox_dir)
     assert res.total == 1
     assert res.items[0].in_inbox is False
+
+
+def test_query_digest_rejected_duplicate_under_hidden_stays_ignored(tmp_path: Path):
+    """Issue #301: nur "_rejected/duplicate" direkt unter der Inbox ist erlaubt.
+
+    Liegt der Ordner unter einem versteckten Unterordner (z. B. "150-155/.hidden"),
+    bleibt die Datei ausgeschlossen.
+    """
+    state_db = tmp_path / "seen.sqlite"
+    track_db = tmp_path / "tracks.sqlite"
+    inbox_dir = tmp_path / "inbox"
+    hidden = inbox_dir / "150-155" / ".hidden" / "_rejected" / "duplicate"
+    hidden.mkdir(parents=True)
+    (hidden / "[555] Zatox - Dopamin.wav").write_bytes(b"dummy")
+
+    with sqlite3.connect(state_db) as db:
+        db.execute("CREATE TABLE seen (id INTEGER PRIMARY KEY, url TEXT, title TEXT, reported_at TEXT)")
+        db.execute("INSERT INTO seen VALUES (555, 'url555', 'Zatox - Dopamin', '2026-10-14 12:00:00')")
+
+    res = query_digest(state_db, track_db, inbox_dir=inbox_dir)
+    item = next(it for it in res.items if it.sc_id == 555)
+    assert item.in_inbox is False
+    assert item.in_collection is False
+    assert item.download_kind == "stream"
