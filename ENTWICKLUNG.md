@@ -12,7 +12,7 @@ Modul anlegt, trägt es in die Tabelle ein.
 | `sc_digger/bot.py` | Telegram-Listener; ruft `main.run_link()`; beendet sich nie selbst (sonst stirbt der Cron) |
 | `sc_digger/soundcloud.py` | Inoffizielle api-v2 (client_id aus dem Frontend), Playlists inkl. Stub-Nachladen, Station/Related, Referenz-Accounts (soundcloud-v2-Lib) |
 | `sc_digger/pipeline.py` | Text-BPM, Genre-Relevanz, Perzentil-Scoring, Download-Klassifizierung |
-| `sc_digger/collection.py` | Duplikat-Abgleich mit der Sammlung (Fuzzy-Match, Remixer beachten) |
+| `sc_digger/collection.py` | Duplikat-Abgleich mit der Sammlung (Fuzzy-Match, Remixer beachten, Unicode-Faltung); `NameKey`/`NameIndex` als gemeinsame Namenslogik für Sammlung und Web-Digest |
 | `sc_digger/output.py` | State-DB, Original-Download (scdl), `find_in_inbox` (schon in der Inbox?), `finalize_quality`, Telegram-Digest, Export-Datei, `telegram_call`, `send_telegram_photo` |
 | `sc_digger/retry.py` | Retry-Queue für fehlgeschlagene Original-Downloads |
 | `sc_digger/cloud.py` | Cloud-Downloads (Dropbox, Google Drive) |
