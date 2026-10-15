@@ -6,8 +6,10 @@ import re
 import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 
 from .models import Track
+from .quality import probe as quality_probe
 
 log = logging.getLogger(__name__)
 
@@ -156,16 +158,44 @@ class NameIndex:
         return found[0] if found else None
 
 
+# Original und Extended Edit sind bei gleichem Namen verschiedene Dateien; getrennte
+# Fassungen unterscheiden sich praktisch immer um mehr als ein paar Sekunden.
+DURATION_TOLERANCE_S = 5.0
+
+
+def probe_duration(path: Path) -> float | None:
+    """Dauer in Sekunden per ``sc_digger.quality.probe`` (``format.duration``); wirft nie.
+
+    ``None`` bei jedem Fehler (Datei fehlt, kein Audio, ffprobe fehlt) und bei einer Dauer
+    <= 0: unbekannt ist kein Ausschlussgrund, der Namens-Treffer bleibt dann gültig.
+    """
+    try:
+        info = quality_probe(Path(path))
+        duration = float(info.get("format", {}).get("duration"))
+    except Exception:
+        return None
+    return duration if duration > 0 else None
+
+
 class Collection:
     """Die lokale Sammlung als Namens-Index; Label eines Eintrags ist der Dateipfad."""
 
-    def __init__(self, folder: str | Path):
+    def __init__(
+        self,
+        folder: str | Path,
+        *,
+        duration_fn: Callable[[Path], float | None] | None = probe_duration,
+        duration_tolerance_s: float = DURATION_TOLERANCE_S,
+    ):
         self.folder = Path(folder)
+        self.duration_fn = duration_fn
+        self.duration_tolerance_s = duration_tolerance_s
         self.index = NameIndex()
         self.reload()
 
     def reload(self) -> None:
         self.index = NameIndex()
+        self._durations: dict[str, float | None] = {}
         if not self.folder.exists():
             log.warning("Sammlung nicht gefunden: %s (Duplikat-Check übersprungen)", self.folder)
             return
@@ -174,10 +204,35 @@ class Collection:
                 self.index.add(str(p), name_key(None, p.stem))
         log.info("Sammlung: %d Dateien", len(self.index))
 
+    def _duration(self, label: str) -> float | None:
+        """Dauer der Datei hinter ``label``, je Datei einmal pro Lauf; ``None`` = unbekannt."""
+        if label not in self._durations:
+            try:
+                self._durations[label] = self.duration_fn(Path(label))
+            except Exception:
+                log.debug("Dauer nicht lesbar: %s", label)
+                self._durations[label] = None
+        return self._durations[label]
+
     def find_duplicate(self, t: Track) -> str | None:
-        """Gibt den Dateinamen zurück, falls der Track vermutlich schon vorhanden ist."""
-        label = self.index.find(name_key(t.artist, t.title))
-        return Path(label).name if label else None
+        """Gibt den Dateinamen zurück, falls der Track vermutlich schon vorhanden ist.
+
+        Bei mehreren Namens-Treffern entscheidet die Länge: nur wenn ``t.duration_ms``
+        bekannt ist und die Dauer der Kandidatendatei um mehr als ``duration_tolerance_s``
+        abweicht, wird der Kandidat übersprungen.
+        """
+        track_seconds = t.duration_ms / 1000 if t.duration_ms > 0 else None
+        for label in self.index.find_all(name_key(t.artist, t.title)):
+            if track_seconds is not None and self.duration_fn is not None:
+                seconds = self._duration(label)
+                if seconds is not None and abs(seconds - track_seconds) > self.duration_tolerance_s:
+                    log.debug(
+                        "Gleicher Name, andere Länge (%.0f s statt %.0f s): %s",
+                        seconds, track_seconds, Path(label).name,
+                    )
+                    continue
+            return Path(label).name
+        return None
 
     def mark_duplicates(self, tracks: list[Track]) -> list[Track]:
         for t in tracks:
