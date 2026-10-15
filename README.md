@@ -221,14 +221,17 @@ Je Problem eine Zeile `FEHLER <pfad>: <meldung>` bzw. `WARNUNG <pfad>: <meldung>
 
 ### Qualitätsprüfung
 
-`quality.check_file` prüft jeden Download und jede Audit-Datei. `ffprobe` liefert Container, Codec, Samplerate und Bitrate; das Spektrum kommt aus einem Ausschnitt aus dem Trackinneren (30 s ab Sekunde 60, sonst von vorne).
+`quality.check_file` prüft jeden Download und jede Audit-Datei. `ffprobe` liefert Container, Codec, Samplerate und Bitrate; das Spektrum wird per FFT aus dem Audiosignal gemessen.
 
-- CBR-MP3 unter `quality.min_mp3_bitrate_kbps` (Standard 320) wird abgelehnt. VBR-MP3 wird an einem Xing-/VBRI-Kopf erkannt und nur am Spektrum bewertet.
-- Verlustfrei heißt: Endung in `quality.accepted_lossless` oder Codec `flac`, `pcm_s16le`, `pcm_s24le`, `alac`. Alles andere wird abgelehnt (z. B. AAC- oder Opus-Rip).
-- Der Spektrums-Cutoff muss bei MP3 über `min_cutoff_hz_for_320` (Standard 19000 Hz), bei Lossless über `min_cutoff_hz_for_lossless` (19500 Hz) liegen. Sonst gilt die Datei als Fake-Transcode.
-- Erst nach bestandener Bitraten-/Spektrumsprüfung wird die Lautheit mit EBU R128 gemessen. Der Report enthält `integrated_lufs`, `true_peak_dbfs` und `loudness_range_lu`; `clipped` wird gesetzt, wenn die LRA unter `min_loudness_range_lu` (2.5 LU) liegt oder der True Peak `max_true_peak_dbfs` (3.0 dBFS) erreicht.
+- **Lossless = Endung und Codec:** Eine Datei gilt nur als verlustfrei, wenn die Dateiendung in `quality.accepted_lossless` steht **und** der Codec verlustfrei ist (alle `pcm_*` inkl. 24-/32-Bit und Float, `flac`, `alac`, `wavpack`, `ape`, `tta`). Lossy-Streams hinter einer Lossless-Endung (z. B. AAC oder MP3 in einem `.wav`-Container) werden abgewiesen und landen in `inbox/_rejected/`.
+- **Stille und unmessbares Spektrum:** Reine Stille, Signale unter dem Rauschboden (Spitze < 1e-4 bzw. ca. −80 dBFS) und Dateien unter etwa 3 s gelten als „Spektrum nicht messbar“ und werden abgewiesen (`inbox/_rejected/`). Vorher kamen sie mangels Cutoff als „echte Qualität“ durch; ohne messbares Signal erfolgt nun keine Freigabe mehr.
+- **Mehrere Messfenster:** Bei Tracks ab 150 s Dauer wird das Spektrum an zwei Stellen gemessen (bei 60 s und bei 60 % der Gesamtdauer), das Maximum zählt. Damit stuft ein leises oder langes Intro einen echten Track nicht ab; ein Fake-Transcode bleibt über den gesamten Track hinweg abgeschnitten und wird weiterhin erkannt. Kürzere Tracks werden an einem Fenster gemessen (30 s ab Sekunde 60, bei sehr kurzen Dateien ab Dateianfang).
+- **ALAC in `.m4a`:** `.m4a` steht standardmäßig nicht in `quality.accepted_lossless`, ALAC in `.m4a` wird deshalb abgewiesen. Wer ALAC akzeptieren möchte, ergänzt `m4a` unter `quality.accepted_lossless` (in `config.yaml` oder im Dashboard unter Konfiguration → Qualität). AAC in `.m4a` fällt auch dann weiterhin zuverlässig an der Codec-Prüfung durch.
+- **CBR/VBR-MP3:** CBR-MP3 unter `quality.min_mp3_bitrate_kbps` (Standard 320) wird abgelehnt. VBR-MP3 wird an einem Xing-/VBRI-Kopf erkannt und ausschließlich über das Spektrum bewertet.
+- **Spektrums-Cutoff:** Der Cutoff muss bei MP3 über `min_cutoff_hz_for_320` (Standard 19000 Hz), bei Lossless über `min_cutoff_hz_for_lossless` (19500 Hz) liegen. Liegt er darunter, gilt die Datei als Fake-Transcode.
+- **Lautheit & Dynamik:** Erst nach bestandener Bitraten- und Spektrumsprüfung wird die Lautheit mit EBU R128 gemessen. Der Report enthält `integrated_lufs`, `true_peak_dbfs` und `loudness_range_lu`; `clipped` wird gesetzt, wenn die LRA unter `min_loudness_range_lu` (2.5 LU) liegt oder der True Peak `max_true_peak_dbfs` (3.0 dBFS) erreicht.
 
-Abgelehnte Dateien werden verschoben, nie gelöscht: Fakes nach `inbox/_rejected/`, Brickwall-Master nach `inbox/_rejected/clipped/`, Duplikate nach `inbox/_rejected/duplicate/`.
+Abgelehnte Dateien werden verschoben, nie gelöscht: Fakes und nicht messbare Tracks nach `inbox/_rejected/`, Brickwall-Master nach `inbox/_rejected/clipped/`, Duplikate nach `inbox/_rejected/duplicate/`.
 
 ### Pegel-Angleichung
 
