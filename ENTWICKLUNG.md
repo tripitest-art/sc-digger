@@ -16,7 +16,7 @@ Modul anlegt, trägt es in die Tabelle ein.
 | `sc_digger/output.py` | State-DB, Original-Download (scdl), `find_in_inbox` (schon in der Inbox?), `finalize_quality`, Telegram-Digest, Export-Datei, `telegram_call`, `send_telegram_photo` |
 | `sc_digger/retry.py` | Retry-Queue für fehlgeschlagene Original-Downloads |
 | `sc_digger/cloud.py` | Cloud-Downloads (Dropbox, Google Drive) |
-| `sc_digger/quality.py` | ffprobe, Spektrum-Cutoff (Fake-Erkennung), EBU R128 / LRA (Brickwall) |
+| `sc_digger/quality.py` | ffprobe, Codec-Prüfung (`is_lossless_codec`), Spektrum-Cutoff (Fake-Erkennung) mit Multi-Window-Messung (`spectral_cutoff_hz(..., offsets=...)`, `_cutoff_offsets`) und Stille-Erkennung, EBU R128 / LRA (Brickwall) |
 | `sc_digger/loudness.py` | Pegel-Normalisierung neuer Inbox-Downloads (-8.5 LUFS, samplegenau, Metadaten-Erhalt) |
 | `sc_digger/analysis.py` | BPM/Key per librosa, BPM-Oktav-Korrektur `resolve_bpm` |
 | `sc_digger/structure.py` | Strukturanalyse: Kick-Erkennung, Segmente (`intro`, `main`, `breakdown`, `outro`), erster Kick, Drop-Start (`find_drop_start`) und Breakdown-Anteil (`calculate_breakdown_ratio`) |
