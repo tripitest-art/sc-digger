@@ -402,7 +402,7 @@ Ein Probelauf ohne Telegram und ohne Downloads:
 python -m sc_digger.main --dry-run --no-telegram -v
 ```
 
-Ein Thema pro Pull Request, nach `main` nur per Pull Request, Tests grün, die Sammlung nie verändern. Branch-Namen: `feature/<kurz>`, `fix/<kurz>`, `docs/<kurz>`. Die Regeln und der Arbeitsablauf stehen in [`AGENTS.md`](AGENTS.md), Architektur und Stolperfallen in [`ENTWICKLUNG.md`](ENTWICKLUNG.md), der Betrieb in [`BETRIEB.md`](BETRIEB.md). Aufgaben mit dem Label `worker-task` sind vollständig spezifiziert. Was als Nächstes geplant ist: [`ROADMAP.md`](ROADMAP.md).
+Ein Thema pro Pull Request, nach `main` nur per Pull Request, Tests grün, die Sammlung nie verändern. Branch-Namen: `feature/<kurz>`, `fix/<kurz>`, `docs/<kurz>`. Die Regeln und der Arbeitsablauf stehen in [`AGENTS.md`](AGENTS.md), Architektur und Stolperfallen in [`ENTWICKLUNG.md`](ENTWICKLUNG.md), der Betrieb in [`BETRIEB.md`](BETRIEB.md). Was seit dem letzten Deploy neu ist, steht in [`CHANGELOG.md`](CHANGELOG.md); dort kommt zu jedem PR eine Zeile unter „Unreleased“. Aufgaben mit dem Label `worker-task` sind vollständig spezifiziert. Was als Nächstes geplant ist: [`ROADMAP.md`](ROADMAP.md).
 
 ## Lizenz
 
