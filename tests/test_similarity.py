@@ -1,13 +1,19 @@
 """Eigene Tests für den Chromaprint-Such-Kern „Mehr davon“ (Issue #273).
 
-Reine Vergleichs- und Formatlogik, kein Netzwerk und keine DB nötig: die Kandidaten
-werden im Test direkt aufgebaut (Fingerprint-Synthese wie in tests/test_bot_similar.py).
+Reine Vergleichs- und Formatlogik ohne Netzwerk: die Kandidaten werden im Test direkt
+aufgebaut (Fingerprint-Synthese wie in tests/test_bot_similar.py). Die Tests für
+`build_similar_reply` (Issue #274) nutzen dazu eine temporäre SQLite-Track-DB.
 """
-from sc_digger.db import TrackRecord
+import sqlite3
+
+from sc_digger.db import TrackDB, TrackRecord
+from sc_digger.fingerprint import encode_fingerprint
 from sc_digger.similarity import (
     NO_SIMILAR,
+    SIMILAR_FAILED,
     SimilarCandidate,
     SimilarResult,
+    build_similar_reply,
     find_similar,
     format_similar_list,
 )
@@ -90,3 +96,66 @@ def test_format_similar_list_missing_artist_and_title():
 def test_format_similar_list_empty_is_standard_text():
     assert format_similar_list([]) == NO_SIMILAR
     assert NO_SIMILAR == "Keine ähnlichen Aufnahmen gefunden."
+
+
+def _insert(db, title, values, *, bpm=140, key="5A"):
+    """Legt einen Track mit Fingerprint in der temporären DB ab."""
+    db.upsert_track(
+        TrackRecord(
+            path=f"/inbox/{title}.wav",
+            mtime=1.0,
+            size=1,
+            artist="A",
+            title=title,
+            bpm=bpm,
+            key_camelot=key,
+            fingerprint=encode_fingerprint(values),
+            fingerprint_duration=60.0,
+        )
+    )
+
+
+def test_fingerprinted_tracks_returns_values_and_skips_tracks_without_fingerprint(tmp_path):
+    """Nur Tracks mit Fingerprint kommen zurück – als Track plus Rohwerte."""
+    values = [0] * WORDS
+    with TrackDB(tmp_path / "tracks.sqlite") as db:
+        _insert(db, "mit", values)
+        db.upsert_track(TrackRecord(path="/inbox/ohne.wav", mtime=1.0, size=1, title="ohne"))
+
+        rows = db.fingerprinted_tracks()
+
+    assert [rec.title for rec, _ in rows] == ["mit"]
+    assert rows[0][1] == values
+
+
+def test_fingerprinted_tracks_empty_db_returns_empty_list(tmp_path):
+    with TrackDB(tmp_path / "tracks.sqlite") as db:
+        assert db.fingerprinted_tracks() == []
+
+
+def test_build_similar_reply_uses_db_fingerprints(tmp_path):
+    """Der Bot-Text kommt aus der DB: der Query selbst (BER 0) fällt raus, der nahe Track nicht."""
+    query = [0] * WORDS
+    with TrackDB(tmp_path / "tracks.sqlite") as db:
+        _insert(db, "self", query)
+        _insert(db, "near", _every_fifth_bit(query))
+        reply = build_similar_reply(db, query, top_n=5)
+
+    assert reply.splitlines()[0] == "🎧 Ähnliche Aufnahmen:"
+    assert reply.splitlines()[1] == "1. A – near · 140.0 BPM · 5A · Ähnlichkeit 80.0%"
+    assert "self" not in reply
+
+
+def test_build_similar_reply_empty_db_is_no_similar(tmp_path):
+    with TrackDB(tmp_path / "tracks.sqlite") as db:
+        assert build_similar_reply(db, [0] * WORDS, top_n=5) == NO_SIMILAR
+
+
+def test_build_similar_reply_logs_and_reports_db_error():
+    """Kann die DB nicht gelesen werden, kommt der Standardtext statt einer Ausnahme."""
+
+    class _BrokenDB:
+        def fingerprinted_tracks(self):
+            raise sqlite3.OperationalError("database is locked")
+
+    assert build_similar_reply(_BrokenDB(), [0] * WORDS, top_n=5) == SIMILAR_FAILED

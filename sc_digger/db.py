@@ -18,6 +18,8 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Sequence
 
+from .fingerprint import decode_fingerprint
+
 log = logging.getLogger(__name__)
 
 STALE_TIMEOUT_MINUTES: dict[str, int] = {"embedding": 120, "caption": 30, "tag_backfill": 30, "fingerprint": 30}
@@ -655,6 +657,22 @@ class TrackDB:
             """
         ).fetchall()
         return [TrackRecord.from_row(r) for r in rows]
+
+    def fingerprinted_tracks(self) -> list[tuple[TrackRecord, list[int]]]:
+        """Alle Tracks mit Fingerprint als (TrackRecord, Rohwerte), sortiert nach path, id.
+
+        Read-only: entschlüsselt den gespeicherten Fingerprint (base64) einmal für die
+        Ähnlichkeitssuche. Tracks ohne Fingerprint bleiben draußen; leere DB -> [].
+        """
+        rows = self.db.execute(
+            """
+            SELECT * FROM tracks
+            WHERE fingerprint IS NOT NULL
+              AND fingerprint != ''
+            ORDER BY path ASC, id ASC
+            """
+        ).fetchall()
+        return [(TrackRecord.from_row(r), decode_fingerprint(r["fingerprint"])) for r in rows]
 
     def set_feedback(self, track_id_or_path: int | str | Path, feedback: str) -> bool:
         """Speichert DJ-Feedback (z.B. 'like', 'dislike', 'later') für einen Track."""

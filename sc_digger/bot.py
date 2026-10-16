@@ -24,6 +24,8 @@ from collections import Counter
 from datetime import datetime
 from pathlib import Path
 
+import requests
+
 from .db import TrackDB
 from .harmonic import compatible_keys, find_mix_candidates, format_mix_list
 from .main import run_link
@@ -34,7 +36,7 @@ from . import output, preview, rekordbox
 from .cleanup import audit_inbox_duplicates, format_duplicate_report
 from .fingerprint import compute_fingerprint
 from .preview import extract_preview_from_url
-from .redact import install_redacting_logging
+from .redact import install_redacting_logging, redact
 from .similarity import SIMILAR_FAILED, build_similar_reply
 from .soundcloud import SoundCloudClient, SoundCloudError
 from .stats import calculate_stats, format_stats
@@ -57,10 +59,11 @@ SYNC_XML_FAILED = "Rekordbox-XML konnte nicht geschrieben werden, siehe Containe
 
 HELP_TEXT = (
     "sc-digger Bot\n\n"
-    "Schick mir einen SoundCloud-Link:\n"
+    "Schick mir einen SoundCloud-Link oder eine Audiodatei:\n"
     "• Playlist/Set-Link -> ich zeige dir alle Tracks der Playlist\n"
     "• einzelner Track-Link -> ich zeige dir die 'Station' dazu "
-    "(das, was der SoundCloud-Algorithmus als Radio vorschlägt)\n\n"
+    "(das, was der SoundCloud-Algorithmus als Radio vorschlägt)\n"
+    "• Audio-/Sprachnachricht -> die Top-5 ähnlichen Aufnahmen aus der Sammlung\n\n"
     "Befehle:\n"
     "• /kaufliste -> zeigt die aktuelle Kaufliste offener Store-Tracks\n"
     "• /curator_mining -> Profile aus 👍-Tracks vorschlagen\n"
@@ -437,6 +440,82 @@ def similar_reply_from_url(
                 pass
 
 
+def _download_telegram_audio(cfg: Config, file_id: str, dest: Path) -> Path:
+    """Lädt eine von Telegram gesendete Audiodatei nach dest.
+
+    Erst getFile über `output.telegram_call` (Bot-Methode), dann die Datei über die
+    Telegram-Datei-URL. Die liefert Rohbytes statt JSON und enthält den Bot-Token; sie ist
+    damit keine Bot-Methode, die `telegram_call` abdecken könnte. Wie dort werden Fehler
+    deshalb als TelegramError mit redact() geworfen, die URL landet nie in Log oder Antwort.
+    """
+    info = telegram_call(cfg.telegram_token, "getFile", http="get", params={"file_id": file_id})
+    file_path = (info.get("result") or {}).get("file_path")
+    if not file_path:
+        raise TelegramError("getFile: Telegram lieferte keinen file_path")
+
+    url = f"https://api.telegram.org/file/bot{cfg.telegram_token}/{file_path}"
+    try:
+        r = requests.get(url, timeout=60)
+    except requests.RequestException as e:
+        raise TelegramError(redact(f"getFile-Download: {type(e).__name__}: {e}")) from None
+    if r.status_code >= 400:
+        raise TelegramError(f"getFile-Download: Telegram {r.status_code}")
+    dest.write_bytes(r.content)
+    return dest
+
+
+def similar_reply_from_audio(cfg: Config, db: TrackDB, audio_path: Path) -> str:
+    """„Mehr davon“ zu einer an den Bot gesendeten Audio-Datei.
+
+    Fingerprint über den Standard-Helfer (_compute_fingerprint_values -> compute_fingerprint),
+    danach dieselbe Antwort wie beim Link-Weg (build_similar_reply). Jeder Fehler (faules
+    Audio, fpcalc fehlt, DB nicht lesbar) wird geloggt und als SIMILAR_FAILED geliefert;
+    die Funktion wirft nie.
+    """
+    try:
+        values = _compute_fingerprint_values(Path(audio_path))
+        if not values:
+            log.warning("Kein Fingerprint für gesendete Datei %s", audio_path)
+            return SIMILAR_FAILED
+        return build_similar_reply(db, list(values), top_n=5)
+    except Exception:
+        log.exception("Ähnliche Aufnahmen für gesendete Datei %s nicht ermittelbar", audio_path)
+        return SIMILAR_FAILED
+
+
+def handle_audio_message(cfg: Config, chat_id: str, audio: dict) -> None:
+    """Reagiert auf eine Audio-/Sprachnachricht: Datei holen, Fingerprint, Top-5 als Text.
+
+    Lädt die Datei in eine temporäre Datei (wird immer wieder gelöscht, der Container darf
+    nicht volllaufen), öffnet die Track-DB und schickt die Antwort über `_send_text`.
+    Ohne file_id passiert nichts; jeder Fehler wird geloggt und als SIMILAR_FAILED
+    beantwortet. Wirft nie.
+    """
+    file_id = (audio or {}).get("file_id")
+    if not file_id:
+        return
+
+    tmp: Path | None = None
+    try:
+        fd, tmp_name = tempfile.mkstemp(prefix="sc-digger-audio-", suffix=".audio")
+        os.close(fd)
+        tmp = Path(tmp_name)
+        _download_telegram_audio(cfg, file_id, tmp)
+        with TrackDB(cfg["state"]["track_db_path"]) as db:
+            reply = similar_reply_from_audio(cfg, db, tmp)
+        _send_text(cfg, chat_id, html.escape(reply, quote=False))
+    except Exception:
+        log.exception("Fehler bei gesendeter Audio-Datei")
+        _send_text(cfg, chat_id, SIMILAR_FAILED)
+    finally:
+        if tmp is not None:
+            try:
+                if tmp.is_file():
+                    tmp.unlink()
+            except OSError:
+                pass
+
+
 def sync_xml_reply(cfg: Config, now: datetime | None = None) -> str:
     """Schreibt die Rekordbox-XML über rekordbox.write_rekordbox_xml(cfg) neu und gibt die Antwort zurück.
 
@@ -752,6 +831,8 @@ def listen(cfg: Config) -> None:
                     continue
                 if msg.get("text"):
                     handle_message(cfg, sc, chat_id, msg["text"])
+                elif msg.get("audio") or msg.get("voice"):
+                    handle_audio_message(cfg, chat_id, msg.get("audio") or msg.get("voice"))
         except TelegramError as e:
             log.warning("Telegram-Polling-Fehler (%s), versuche erneut", e)
             time.sleep(5)

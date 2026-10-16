@@ -11,7 +11,7 @@ from dataclasses import dataclass
 import logging
 from typing import TYPE_CHECKING, Iterable
 
-from .fingerprint import MAX_BER, bit_error_rate, decode_fingerprint
+from .fingerprint import MAX_BER, bit_error_rate
 
 if TYPE_CHECKING:
     from .db import TrackDB, TrackRecord
@@ -25,44 +25,23 @@ SIMILAR_FAILED = "Ähnliche-Aufnahmen-Suche fehlgeschlagen, siehe Container-Log.
 def build_similar_reply(db: "TrackDB", query_fp: list[int], *, top_n: int = 5) -> str:
     """Bot-Text mit den bis zu top_n ähnlichsten Aufnahmen zu query_fp.
 
-    Kandidaten sind alle Tracks mit Fingerprint (`db.tracks_with_fingerprint()`, ohne
-    Änderung an der DB). Verglichen wird per Bitfehlerrate (`fingerprint.bit_error_rate`);
-    Kandidaten mit BER <= `fingerprint.MAX_BER` sind dieselbe Aufnahme bzw. Duplikate und
-    fliegen raus. Sortiert aufsteigend nach BER, dann top_n ausgeben. Gibt es nichts,
+    Kandidaten sind alle Tracks mit Fingerprint als Rohwerte
+    (`db.fingerprinted_tracks()`, ohne Änderung an der DB). Verglichen und ausgewählt wird
+    mit `find_similar` (Kandidaten mit BER <= `fingerprint.MAX_BER` sind dieselbe Aufnahme
+    bzw. Duplikate und fliegen raus), formatiert mit `format_similar_list`. Gibt es nichts,
     kommt `NO_SIMILAR`. Fehler (z. B. DB nicht lesbar) werden geloggt; Rückgabe dann
     `SIMILAR_FAILED`. Wirft nie.
     """
     try:
-        scored: list[tuple[float, "TrackRecord"]] = []
-        for rec in db.tracks_with_fingerprint():
-            values = decode_fingerprint(rec.fingerprint or "")
-            if not values:
-                continue
-            ber = bit_error_rate(query_fp, values)
-            if ber <= MAX_BER:
-                continue
-            scored.append((ber, rec))
-        scored.sort(key=lambda item: item[0])
-        return _format_similar(scored[:top_n])
+        candidates = [
+            SimilarCandidate(rec, values)
+            for rec, values in db.fingerprinted_tracks()
+            if values
+        ]
+        return format_similar_list(find_similar(query_fp, candidates, top_n=top_n))
     except Exception:
         log.exception("Ähnliche-Aufnahmen-Suche fehlgeschlagen")
         return SIMILAR_FAILED
-
-
-def _format_similar(scored: list[tuple[float, "TrackRecord"]]) -> str:
-    """Zeilen für die Bot-Antwort: Kopfzeile plus je Ergebnis Rang, Track und Ähnlichkeit."""
-    if not scored:
-        return NO_SIMILAR
-    lines = ["🎧 Ähnliche Aufnahmen:"]
-    for rank, (ber, rec) in enumerate(scored, start=1):
-        artist = rec.artist or "?"
-        title = rec.title or rec.path
-        bpm = f"{rec.bpm:.1f}" if rec.bpm is not None else "–"
-        key = rec.key_camelot or "–"
-        lines.append(
-            f"{rank}. {artist} – {title} · {bpm} BPM · {key} · Ähnlichkeit {(1.0 - ber) * 100:.1f}%"
-        )
-    return "\n".join(lines)
 
 
 @dataclass(frozen=True)
