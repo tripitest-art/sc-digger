@@ -8,5 +8,6 @@ unter „Unreleased“ (Regeln: `AGENTS.md`, Abschnitt „Doku und Changelog“)
 ## Unreleased
 
 ### Hinzugefügt
+- Dependabot für GitHub Actions und pip (`.github/dependabot.yml`): wöchentlich, höchstens 2 offene PRs je Ökosystem (#316).
 - `SECURITY.md` nennt den vertraulichen Meldeweg für Sicherheitslücken (GitHub „Private vulnerability reporting“) und warnt vor Zugangsdaten in öffentlichen Issues (#315).
 - Doku-Pflicht: `CHANGELOG.md`, der Abschnitt „Doku und Changelog“ in `AGENTS.md` und `tests/test_doku.py` halten Doku und Changelog im selben PR wie die Änderung (#314).
