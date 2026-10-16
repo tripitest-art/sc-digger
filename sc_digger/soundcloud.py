@@ -21,6 +21,7 @@ from .models import Track
 log = logging.getLogger(__name__)
 
 API = "https://api-v2.soundcloud.com"
+NET_RETRIES = 3  # Versuche pro Anfrage bei ConnectionError/Timeout
 UA = (
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"
@@ -55,12 +56,30 @@ class SoundCloudClient:
             self._lib = sc_lib.SoundCloud()
         return self._lib
 
+    # ---------- Netzwerk ----------
+    def _net_get(self, url: str, **kw) -> requests.Response:
+        """GET mit Wiederholung bei Verbindungsfehlern (z. B. kurzer DNS-Aussetzer).
+
+        Ohne das fällt eine ganze Quelle aus dem Digest, obwohl der nächste Versuch
+        Sekunden später klappt. HTTP-Statuscodes behandelt der Aufrufer.
+        """
+        for attempt in range(NET_RETRIES):
+            try:
+                return self.s.get(url, **kw)
+            except (requests.ConnectionError, requests.Timeout) as e:
+                if attempt == NET_RETRIES - 1:
+                    raise
+                wait = 2 * (attempt + 1)
+                log.warning("Netzwerkfehler (%s), neuer Versuch in %ds", type(e).__name__, wait)
+                time.sleep(wait)
+        raise AssertionError("unerreichbar")
+
     # ---------- client_id ----------
     def _fetch_client_id(self) -> str:
-        html = self.s.get("https://soundcloud.com", timeout=20).text
+        html = self._net_get("https://soundcloud.com", timeout=20).text
         scripts = re.findall(r'<script crossorigin src="(https://[^"]+\.js)"', html)
         for url in reversed(scripts):
-            js = self.s.get(url, timeout=20).text
+            js = self._net_get(url, timeout=20).text
             m = re.search(r'client_id\s*[:=]\s*"([a-zA-Z0-9]{32})"', js)
             if m:
                 return m.group(1)
@@ -79,7 +98,7 @@ class SoundCloudClient:
         params["client_id"] = self.client_id
         last_status = None
         for attempt in range(3):
-            r = self.s.get(url, params=params, timeout=20)
+            r = self._net_get(url, params=params, timeout=20)
             last_status = r.status_code
             if r.status_code == 401 or r.status_code == 403:
                 # client_id abgelaufen -> neu holen
