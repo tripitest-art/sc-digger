@@ -1,0 +1,133 @@
+# Problemfälle des Track-/Sammlungs-Matchers als dauerhafte Messlatte.
+#
+# Aufbau je Eintrag:
+#   id                 eindeutiger Name des Falls (NICHT doppelt verwenden)
+#   category           Problemklasse, z. B. remix, unicode, feat, duration,
+#                      edit_in_library, noise
+#   query_*            Entdeckung (SoundCloud): Artist, Titel, Laufzeit in Sekunden
+#   target_*           Gegenstück in der Sammlung; Artist und Laufzeit dürfen fehlen
+#   expected_match     true, wenn der Abgleich den Treffer melden soll
+#   note               warum dieses Ergebnis richtig ist
+#
+# Neue Fälle einfach anhängen; erwartet wird immer das fachlich richtige Ergebnis,
+# nicht das, was die heutige Heuristik gerade ausgibt.
+
+- id: remix-different-editors
+  category: remix
+  query_artist: Ueberrest
+  query_title: Surrender (DJØ Edit)
+  query_duration_s: 210.0
+  target_artist: Ueberrest
+  target_title: Surrender (VRTGØ Edit)
+  target_duration_s: 210.0
+  expected_match: false
+  note: Zwei verschiedene Editoren sind nicht dieselbe Fassung.
+
+- id: remix-same-remixer-umlaut
+  category: remix
+  query_artist: Ueberrest
+  query_title: Surrender (VRTGØ Edit)
+  query_duration_s: 210.0
+  target_artist: Ueberrest
+  target_title: Surrender (VRTGO Edit)
+  target_duration_s: 210.0
+  expected_match: true
+  note: Derselbe Remixer, Ø und O sind nach der Faltung gleich.
+
+- id: unicode-umlaut-folding
+  category: unicode
+  query_artist: Überrest
+  query_title: Für immer
+  query_duration_s: 210.0
+  target_artist: Ueberrest
+  target_title: Fuer Immer
+  target_duration_s: 210.0
+  expected_match: true
+  note: ä/ü werden auf ae/ue gefaltet, Groß-/Kleinschreibung zählt nicht.
+
+- id: unicode-umlaut-artist-missing-query
+  category: unicode
+  query_title: Für immer (VRTGØ Edit)
+  query_duration_s: 210.0
+  target_artist: Überrest
+  target_title: Fuer immer (VRTGO Edit)
+  target_duration_s: 210.0
+  expected_match: true
+  note: Fehlender Artist in der Entdeckung darf den Treffer nicht verhindern.
+
+- id: feat-schreibweise-klammern
+  category: feat
+  query_artist: Überrest
+  query_title: Surrender feat. Lena
+  query_duration_s: 210.0
+  target_artist: Ueberrest
+  target_title: Surrender (feat. Lena)
+  target_duration_s: 210.0
+  expected_match: true
+  note: feat-Schreibweise mit und ohne Klammern, „feat“ ist Stoppwort.
+
+- id: duration-stream-vs-datei
+  category: duration
+  query_artist: Ueberrest
+  query_title: Surrender
+  query_duration_s: 210.0
+  target_artist: Ueberrest
+  target_title: Surrender
+  target_duration_s: 212.5
+  expected_match: true
+  note: Wenige Sekunden Unterschied (Stream/Transcode) liegen in der Toleranz.
+
+- id: duration-original-vs-extended
+  category: duration
+  query_artist: Ueberrest
+  query_title: Surrender
+  query_duration_s: 210.0
+  target_artist: Ueberrest
+  target_title: Surrender
+  target_duration_s: 390.0
+  expected_match: false
+  note: Extended-Fassung gegen Original, die Laufzeit weicht stark ab.
+
+- id: version-extended-mix-ist-stoppwort
+  category: duration
+  query_artist: Ueberrest
+  query_title: Surrender (Extended Mix)
+  query_duration_s: 390.0
+  target_artist: Ueberrest
+  target_title: Surrender
+  target_duration_s: 388.0
+  expected_match: true
+  note: „Extended Mix“ ist Stoppwort und fällt beim Namensvergleich weg.
+
+- id: edit-in-library-nur-edit-vorhanden
+  category: edit_in_library
+  query_artist: Ueberrest
+  query_title: Surrender
+  query_duration_s: 210.0
+  target_artist: Ueberrest
+  target_title: Surrender (VRTGØ Edit)
+  target_duration_s: 210.0
+  expected_match: false
+  note: In der Sammlung liegt nur ein fremder Edit, das Original fehlt.
+
+- id: noise-werbezusatz-klammer
+  category: noise
+  query_artist: Ueberrest
+  query_title: Surrender
+  query_duration_s: 210.0
+  target_artist: Ueberrest
+  target_title: Surrender (EXCLU)
+  target_duration_s: 210.0
+  expected_match: true
+  note: Werbezusätze in Klammern sind kein Remixer und blockieren nicht.
+
+- id: noise-premiere-und-exclu
+  category: noise
+  query_artist: Ueberrest
+  query_title: Surrender [Premiere]
+  query_duration_s: 210.0
+  target_artist: Ueberrest
+  target_title: Surrender (EXCLU)
+  target_duration_s: 210.0
+  expected_match: true
+  note: Beidseitige Werbezusätze fallen weg, der Titel bleibt derselbe.

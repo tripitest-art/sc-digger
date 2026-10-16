@@ -54,6 +54,17 @@ Modul anlegt, trägt es in die Tabelle ein.
 | `sc_digger/issuecheck.py` | Planer-Preflight: prüft einen Issue-Text und seine Akzeptanztests vor dem Einstellen (`python -m sc_digger.issuecheck <issue.md>`), lässt den Block mit pytest gegen ein Repo laufen; kopiert die Block-Regex aus `acceptance_guard.py`, importiert sie nicht |
 | `set-secret.sh` / `update.sh` | Zugangsdaten setzen / Update ausrollen (auf dem Server) |
 
+## Testen
+
+- **Matcher-Testliste:** `tests/fixtures/match_cases.yaml` sammelt Problemfälle des Abgleichs
+  Entdeckung ↔ Sammlung (Remix-Varianten, Sonderzeichen, feat-Schreibweisen, Original gegen
+  Extended, Edit in der Bibliothek, Werbezusätze). `tests/test_matcher_cases.py` lädt die Fälle
+  (`load_match_cases`), wertet sie mit denselben Heuristiken wie der echte Abgleich aus
+  (`evaluate_match_case` über `name_key`/`names_match`, Dauer-Toleranz 5 s) und prüft jeden Fall
+  parametrisiert gegen sein erwartetes Ergebnis. Neue Fälle anhängen, das fachlich richtige
+  Ergebnis eintragen – auch wenn die heutige Heuristik noch abweicht; die Liste ist die Messlatte
+  für die Optimierung.
+
 ## Bekannte Stolperfallen (alle schon einmal passiert)
 
 - **Cron-Umgebung ist leer:** kein `/usr/local/bin`, keine `.env`. Deshalb `cron.env`.
