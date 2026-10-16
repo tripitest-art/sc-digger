@@ -407,3 +407,5 @@ Ein Thema pro Pull Request, nach `main` nur per Pull Request, Tests grün, die S
 ## Lizenz
 
 sc-digger steht unter der **GNU General Public License v3.0 oder später** (`GPL-3.0-or-later`), siehe [`LICENSE`](LICENSE). Du darfst den Code nutzen, ändern und weitergeben; wer eine veränderte Fassung weitergibt, muss sie unter derselben Lizenz offenlegen.
+
+Sicherheitslücken bitte vertraulich melden, nicht in einem öffentlichen Issue; den Meldeweg beschreibt [`SECURITY.md`](SECURITY.md).
