@@ -205,6 +205,16 @@ class SoundCloudClient:
         return stream_url or None
 
     # ---------- öffentliche API ----------
+    def search_tracks(self, query: str, limit: int = 10) -> list[Track]:
+        """Freie Suche: api-v2 /search/tracks mit params {"q": query} (kein Datumsfilter, kein sort),
+        über self._paginate; Einträge, die _to_track verwirft (Playlists, Stubs), entfallen."""
+        out: list[Track] = []
+        for raw in self._paginate("/search/tracks", {"q": query}, limit):
+            t = self._to_track(raw)
+            if t:
+                out.append(t)
+        return out
+
     def search_tag(self, tag: str, max_age_days: int, limit: int) -> list[Track]:
         """Neueste Tracks zu einem Tag. Filter created_at.to/from serverseitig."""
         since = datetime.now(timezone.utc) - timedelta(days=max_age_days)

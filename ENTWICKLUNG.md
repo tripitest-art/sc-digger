@@ -13,6 +13,7 @@ Modul anlegt, trägt es in die Tabelle ein.
 | `sc_digger/soundcloud.py` | Inoffizielle api-v2 (client_id aus dem Frontend), Playlists inkl. Stub-Nachladen, Station/Related, Referenz-Accounts (soundcloud-v2-Lib) |
 | `sc_digger/pipeline.py` | Text-BPM, Genre-Relevanz, Perzentil-Scoring, Download-Klassifizierung |
 | `sc_digger/collection.py` | Duplikat-Abgleich mit der Sammlung (Fuzzy-Match, Remixer beachten, Unicode-Faltung); `NameKey`/`NameIndex` als gemeinsame Namenslogik für Sammlung und Web-Digest; Dauer-Prüfung bei Namens-Treffern (`probe_duration`, Toleranz `DURATION_TOLERANCE_S`) |
+| `sc_digger/linksource.py` | Zuordnungslogik: Sammlungsdateien mit SoundCloud-Tracks verknüpfen (Teil 1); reine Logik ohne Netzwerk (`propose_links`, `apply_proposals`, `normalize_url`) |
 | `sc_digger/output.py` | State-DB, Original-Download (scdl), `find_in_inbox` (schon in der Inbox?), `finalize_quality`, Telegram-Digest, Export-Datei, `telegram_call`, `send_telegram_photo` |
 | `sc_digger/retry.py` | Retry-Queue für fehlgeschlagene Original-Downloads |
 | `sc_digger/cloud.py` | Cloud-Downloads (Dropbox, Google Drive) |
@@ -40,6 +41,7 @@ Modul anlegt, trägt es in die Tabelle ein.
 | `sc_digger/web/configedit.py` | Reine Logik des Konfigeditors (ohne Webframework): Formularwert parsen/formatieren, minimaler Override, Diff, Schlüssel entfernen, atomares Schreiben der lokalen Datei mit Backup |
 | `sc_digger/web/__main__.py` | Startbefehl `python -m sc_digger.web`; startet ohne `SC_DIGGER_WEB_PASSWORD` nicht, schaltet den Editor nur mit `SC_DIGGER_CONFIG_LOCAL` ein |
 | `scripts/backfill_gates.py` | Wartungsskript: liest historische Digest-Tracks aus `seen.sqlite`, fragt SoundCloud api-v2 in Batches ab und trägt erkannte Gate-/Store-Links in `tracks.sqlite` ein |
+| `scripts/link_sources.py` | Wartungsskript: verknüpft die Sammlung (Status archive) mit SoundCloud (Teil 2); Likes, Playlists und freie Suche, CSV-Report und `--apply` |
 | `sc_digger/stats.py` | Statistikberechnung für Telegram-Digest und /stats-Bot-Befehl, Vorperioden-Vergleich der Kernkennzahlen, `render_stats_chart`, `send_weekly_digest`, `_trend_section` (Trend-Abschnitt) |
 | `sc_digger/trends.py` | Trend-Radar (Phase 4): Wachstumsanalyse historischer Engagement-Snapshots (`track_snapshots`) je Track und Artist |
 | `sc_digger/preview.py` | Live-Preview (Phase 3): energiereichstes Segment einer Audiodatei per ffmpeg finden und als OGG-Opus-Snippet extrahieren (`find_loudest_segment`, `extract_preview`); Drop-Preview `find_preview_start` startet `preview.riser_s` vor dem ersten Drop (Fallback `find_loudest_segment`); `extract_preview_from_url` für die Stream-Preview nicht heruntergeladener Tracks (`/preview sc:<id>`, seit #168, Schalter `preview.stream_enabled`) |
