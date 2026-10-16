@@ -25,6 +25,12 @@ STOP = {
 # Klammer-Inhalt enthält oft den Remixer -> separat behalten
 PAREN = re.compile(r"[\(\[]([^\)\]]+)[\)\]]")
 
+# Klammer-Inhalte, die nur Werbung sind ("(EXCLU)", "[Premiere]", "(Out Now)"): kein Remixer.
+# Ohne diese Liste zählt z. B. "exclu" als Remixer, und der Treffer scheitert am Dateinamen.
+REMIX_NOISE: frozenset[str] = frozenset(
+    {"final", "exclu", "exclusive", "premiere", "release", "preview", "snippet", "out", "now"}
+)
+
 # Sonderzeichen, die NFKD nicht in ASCII zerlegt (ø, ł, đ, æ, œ) oder die als Lautfolge
 # gelesen werden müssen (ä -> ae statt a). Reihenfolge: NFC, diese Tabelle, dann NFKD.
 _FOLD = {
@@ -58,10 +64,18 @@ def normalize(s: str, *, fallback: bool = True) -> list[str]:
 
 
 def remixer_tokens(title: str) -> set[str]:
-    """Wörter aus Klammern, z. B. '(VRTGØ Edit)' -> {'vrtgo'}. Unterscheidet Edits."""
+    """Wörter aus Klammern, z. B. '(VRTGØ Edit)' -> {'vrtgo'}. Unterscheidet Edits.
+
+    Klammerinhalte, die nur aus Werbe-Zusätzen bestehen (``REMIX_NOISE``, z. B. "(EXCLU)"
+    oder "[Premiere]"), sind kein Remixer und werden übersprungen. Enthält ein Inhalt
+    mindestens ein anderes Wort ("(Final Round Edit)"), zählt er wie bisher ganz.
+    """
     toks: set[str] = set()
     for inner in PAREN.findall(title):
-        toks |= set(normalize(inner, fallback=False))
+        words = normalize(inner, fallback=False)
+        if not words or all(w in REMIX_NOISE for w in words):
+            continue
+        toks |= set(words)
     return toks
 
 
