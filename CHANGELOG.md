@@ -6,3 +6,6 @@ neueste Einträge oben. Jede Zeile nennt den Pull Request; die Zeile für einen 
 unter „Unreleased“ (Regeln: `AGENTS.md`, Abschnitt „Doku und Changelog“).
 
 ## Unreleased
+
+### Hinzugefügt
+- Doku-Pflicht: `CHANGELOG.md`, der Abschnitt „Doku und Changelog“ in `AGENTS.md` und `tests/test_doku.py` halten Doku und Changelog im selben PR wie die Änderung (#314).
