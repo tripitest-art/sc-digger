@@ -32,6 +32,7 @@ _TRACK_COLUMNS = (
     "id", "path", "artist", "title", "format", "bitrate_kbps", "cutoff_hz",
     "quality_status", "bpm", "key_camelot", "key_name", "status", "adopted_at",
     "feedback", "source_url", "created_at", "updated_at", "rb_play_count",
+    "breakdown_ratio",
 )
 
 # Schutz vor versehentlich riesigen Antworten; das Frontend blättert über offset.
@@ -225,6 +226,7 @@ def query_tracks(
     key_camelot: str | None = None,
     quality_status: str | None = None,
     adopted: bool | None = None,
+    breakdown_ratio_max: float | None = None,
     limit: int = DEFAULT_LIMIT,
     offset: int = 0,
 ) -> TrackSearchResult:
@@ -234,12 +236,16 @@ def query_tracks(
     Wortsuche über artist/title, ``bpm_min``/``bpm_max`` bilden einen Bereich,
     ``adopted`` filtert auf (nicht) in die Sammlung übernommene Tracks. ``limit`` wird auf
     ``MAX_LIMIT`` begrenzt, ``total`` ist die Zahl aller Treffer unabhängig von ``limit``.
+    ``breakdown_ratio_max`` (Issue #334) behält nur Tracks mit bekanntem Breakdown-Anteil bis
+    zu diesem Wert; ``NULL`` fällt heraus, weil ein unbekannter Wert kein Peaktime-Werkzeug
+    belegt.
     Zusätzlich enthält jeder Treffer ``sc_id`` (aus dem Dateinamen ``[<sc_id>]``, sonst
     ``None``) und ``sc_feedback`` (aktueller ``sc_feedback``-Wert, sonst ``None``), damit
     die Oberfläche die Bewertung (Issue #229) anzeigen und ändern kann. Ebenso kommen die
     neuesten SoundCloud-Engagement-Zahlen ``sc_plays``/``sc_likes``/``sc_reposts``/
     ``sc_comments`` aus ``track_snapshots`` (Issue #258; ``None``, wenn keine SC-ID oder kein
-    Snapshot vorliegt) und ``rb_play_count`` (Rekordbox-Abspielzähler) mit.
+    Snapshot vorliegt), ``rb_play_count`` (Rekordbox-Abspielzähler) und ``breakdown_ratio``
+    (Anteil kickloser Zeit, ``None`` wenn nicht analysiert) mit.
     Nur lesend; fehlt die Datei/Tabelle, kommt ein leeres Ergebnis zurück.
     """
     where: list[str] = []
@@ -260,6 +266,9 @@ def query_tracks(
     if bpm_max is not None:
         where.append("bpm <= ?")
         params.append(float(bpm_max))
+    if breakdown_ratio_max is not None:
+        where.append("breakdown_ratio IS NOT NULL AND breakdown_ratio <= ?")
+        params.append(float(breakdown_ratio_max))
     if adopted is True:
         where.append("adopted_at IS NOT NULL")
     elif adopted is False:
@@ -278,10 +287,17 @@ def query_tracks(
         with closing(_connect_readonly(db_path)) as db:
             if not _table_exists(db, "tracks"):
                 return TrackSearchResult()
+            # Ältere Track-DBs (vor Migration 7) kennen breakdown_ratio nicht; die rein
+            # lesende Abfrage migriert nicht und wählt deshalb nur vorhandene Spalten.
+            available = {
+                row["name"] for row in db.execute("PRAGMA table_info(tracks)").fetchall()
+            }
+            if breakdown_ratio_max is not None and "breakdown_ratio" not in available:
+                return TrackSearchResult()
             total = int(db.execute(
                 f"SELECT COUNT(*) FROM tracks{clause_sql}", params
             ).fetchone()[0])
-            columns = ", ".join(_TRACK_COLUMNS)
+            columns = ", ".join(col for col in _TRACK_COLUMNS if col in available)
             rows = db.execute(
                 f"SELECT {columns} FROM tracks{clause_sql} "
                 "ORDER BY id ASC LIMIT ? OFFSET ?",
@@ -299,6 +315,7 @@ def query_tracks(
     items: list[dict[str, Any]] = []
     for row in rows:
         item = dict(row)
+        item.setdefault("breakdown_ratio", None)
         sc_id = _sc_id_from_path(item.get("path"))
         item["sc_id"] = sc_id
         item["sc_feedback"] = feedback_map.get(sc_id) if sc_id is not None else None

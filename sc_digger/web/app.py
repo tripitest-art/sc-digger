@@ -346,6 +346,7 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
             key_camelot=params.get("key_camelot") or None,
             quality_status=params.get("quality") or None,
             adopted=_query_bool(params.get("adopted")),
+            breakdown_ratio_max=_query_float(params.get("breakdown_max")),
             limit=_query_int(params.get("limit"), DEFAULT_LIMIT),
             offset=_query_int(params.get("offset"), 0),
         )
@@ -366,6 +367,7 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
             "bpm_min": params.get("bpm_min") or "",
             "bpm_max": params.get("bpm_max") or "",
             "adopted": params.get("adopted") or "",
+            "breakdown_max": params.get("breakdown_max") or "",
         }
         page_size = max(1, min(_query_int(params.get("limit"), DEFAULT_LIMIT), MAX_LIMIT))
         offset = max(0, _query_int(params.get("offset"), 0))
@@ -378,6 +380,7 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
             key_camelot=filters["key_camelot"] or None,
             quality_status=filters["quality"] or None,
             adopted=_query_bool(filters["adopted"]),
+            breakdown_ratio_max=_query_float(filters["breakdown_max"]),
             limit=page_size,
             offset=offset,
         )
