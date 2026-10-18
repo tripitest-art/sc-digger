@@ -185,6 +185,9 @@ FIELDS: tuple[Field, ...] = (
        min=1),
     _f("curator_mining.max_likers_per_track", "int", "Max. Liker pro Track",
        "API-Begrenzung: Wie viele Liker/Reposter pro Track höchstens abgefragt werden (Standard 50).", min=1),
+    _f("curator_mining.min_collection_tracks", "int", "Mindest-Tracks in Sammlung",
+       "Mindestanzahl Tracks eines Künstlers in der Sammlung (Archiv/Übernommen), damit er als Curator vorgeschlagen wird (Standard 3).",
+       min=1),
     # --- state ---
     _f("state.db_path", "str", "State-DB", "Pfad zur Seen-SQLite-Datenbank (gesehene Tracks, Läufe und Retry-Queue).", editable=False),
     _f("state.track_db_path", "str", "Track-DB",

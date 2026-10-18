@@ -234,33 +234,41 @@ def add_user_to_followed_config(cfg: Config, permalink: str) -> bool:
         return False
 
 
+def _artist_slug(name: str | None) -> str:
+    """Künstlername -> vermuteter SoundCloud-Permalink-Slug (klein, mit Bindestrichen).
+
+    Die Track-DB speichert keinen Profil-Link. Für den Follow-Button wird der Name
+    deshalb in die übliche Permalink-Form gebracht; zu lange oder unbrauchbare Namen
+    bekommen keinen Button (Telegram-Grenze für callback_data: 64 Byte).
+    """
+    text = str(name or "").strip().lower()
+    for src, dst in (("ä", "ae"), ("ö", "oe"), ("ü", "ue"), ("ß", "ss")):
+        text = text.replace(src, dst)
+    slug = re.sub(r"[^a-z0-9]+", "-", text).strip("-")
+    return slug if 0 < len(slug) <= 60 else ""
+
+
 def run_curator_mining(sc, cfg: Config) -> str:
-    """Aggregiert Liker/Reposter über alle 👍-Tracks, filtert bekannte Accounts,
-    gibt formatierten Text zurück. Kein Telegram-Aufruf (macht der Bot-Handler)."""
+    """Aggregiert Liker/Reposter über alle 👍-Tracks und Künstler aus der Sammlung,
+    filtert bekannte Accounts, gibt formatierten Text zurück. Kein Telegram-Aufruf
+    (macht der Bot-Handler)."""
     track_db_path = cfg.raw.get("state", {}).get("track_db_path")
     if not track_db_path:
-        return "Keine neuen Curator-Vorschläge."
-
-    with TrackDB(track_db_path) as db:
-        sc_ids = db.get_liked_sc_ids()
-
-    if not sc_ids:
         return "Keine neuen Curator-Vorschläge."
 
     cm_cfg = cfg.raw.get("curator_mining") or {}
     min_appearances = int(cm_cfg.get("min_appearances", 2))
     max_likers = int(cm_cfg.get("max_likers_per_track", 50))
+    min_collection_tracks = int(cm_cfg.get("min_collection_tracks", 3))
 
-    search_cfg = cfg.raw.get("search") or {}
-    ref_accounts = search_cfg.get("reference_accounts") or []
-    followed_users = search_cfg.get("followed_users") or []
-    known = set()
-    for item in ref_accounts + followed_users:
-        if not item:
-            continue
-        slug = str(item).strip().rstrip("/").split("/")[-1].lower()
-        if slug:
-            known.add(slug)
+    with TrackDB(track_db_path) as db:
+        sc_ids = db.get_liked_sc_ids()
+        collection_artists = db.get_top_collection_artists(min_tracks=min_collection_tracks)
+
+    known = _known_account_slugs(cfg)
+    # Sammlungs-Kandidaten werden als Slug verglichen, gefolgte Accounts stehen teils
+    # als URL, teils als reiner Name in der Config.
+    known |= {_artist_slug(item) for item in list(known)}
 
     counter: Counter[str] = Counter()
     usernames: dict[str, str] = {}
@@ -289,22 +297,41 @@ def run_curator_mining(sc, cfg: Config) -> str:
         if count >= min_appearances
     ]
 
-    if not candidates:
+    max_display = 30
+    sections: list[str] = []
+    button_candidates: list[tuple[str, str, int]] = []
+
+    if candidates:
+        lines = ["🔍 Curator-Vorschläge (aus gelikten Tracks)", ""]
+        for p_lower, count in candidates[:max_display]:
+            permalink = original_permalinks[p_lower]
+            username = usernames.get(p_lower, permalink)
+            lines.append(f"• {html.escape(username)} (soundcloud.com/{permalink}) – {count}× gesehen")
+            button_candidates.append((p_lower, username, count))
+
+        if len(candidates) > max_display:
+            lines.append(f"… und {len(candidates) - max_display} weitere")
+        sections.append("\n".join(lines))
+
+    if collection_artists:
+        lines = ["📚 Sammlungs-Favoriten (häufige Artists deiner Sammlung)", ""]
+        seen = {p_lower for p_lower, _count in candidates}
+        shown = 0
+        for artist_name, count in collection_artists[:max_display]:
+            slug = _artist_slug(artist_name)
+            if not slug or slug in known or slug in seen:
+                continue
+            lines.append(f"• {html.escape(artist_name)} (soundcloud.com/{slug}) – {count} Tracks")
+            button_candidates.append((slug, artist_name, count))
+            seen.add(slug)
+            shown += 1
+        if shown:
+            sections.append("\n".join(lines))
+
+    if not sections:
         return "Keine neuen Curator-Vorschläge."
 
-    max_display = 30
-    lines = ["🔍 Curator-Vorschläge", ""]
-    button_candidates: list[tuple[str, str, int]] = []
-    for p_lower, count in candidates[:max_display]:
-        permalink = original_permalinks[p_lower]
-        username = usernames.get(p_lower, permalink)
-        lines.append(f"• {html.escape(username)} (soundcloud.com/{permalink}) – {count}× gesehen")
-        button_candidates.append((p_lower, username, count))
-
-    if len(candidates) > max_display:
-        lines.append(f"… und {len(candidates) - max_display} weitere")
-
-    return CuratorMiningResult("\n".join(lines), button_candidates)
+    return CuratorMiningResult("\n\n".join(sections), button_candidates)
 
 
 def mix_reply(cfg: Config, text: str) -> str:

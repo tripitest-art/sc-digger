@@ -12,6 +12,7 @@ import json
 import logging
 import posixpath
 import sqlite3
+from collections import Counter
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta, timezone
 from enum import Enum
@@ -889,6 +890,41 @@ class TrackDB:
             "SELECT sc_id FROM sc_feedback WHERE value = 'like' ORDER BY updated_at DESC"
         ).fetchall()
         return [row[0] for row in rows]
+
+    def get_top_collection_artists(self, min_tracks: int = 3, limit: int = 30) -> list[tuple[str, int]]:
+        """Ermittelt Künstler mit mindestens min_tracks Tracks in der Sammlung (status = 'archive' oder adopted_at IS NOT NULL).
+        Gibt Liste von (artist_name, track_count) sortiert nach track_count DESC, artist_name ASC zurück.
+        Ignoriert leere Künstlernamen."""
+        # Schreibweisen wie "O.B.I." und "o.b.i." zählen zusammen; angezeigt wird die
+        # häufigste Schreibweise (bei Gleichstand die alphabetisch erste).
+        rows = self.db.execute(
+            """
+            SELECT TRIM(artist) AS artist_name, COUNT(*) AS track_count
+            FROM tracks
+            WHERE artist IS NOT NULL AND TRIM(artist) != ''
+              AND (status = 'archive' OR adopted_at IS NOT NULL)
+            GROUP BY LOWER(TRIM(artist)), TRIM(artist)
+            """
+        ).fetchall()
+
+        grouped: dict[str, dict[str, Any]] = {}
+        for row in rows:
+            name = row["artist_name"]
+            key = name.lower()
+            entry = grouped.setdefault(key, {"count": 0, "spellings": Counter()})
+            entry["count"] += int(row["track_count"])
+            entry["spellings"][name] += int(row["track_count"])
+
+        artists: list[tuple[str, int]] = []
+        for key, entry in grouped.items():
+            if entry["count"] < min_tracks:
+                continue
+            spellings = entry["spellings"]
+            best = sorted(spellings.items(), key=lambda item: (-item[1], item[0]))[0][0]
+            artists.append((best, entry["count"]))
+
+        artists.sort(key=lambda item: (-item[1], item[0].lower()))
+        return artists[:limit]
 
     # ------------------------------------------------------------ Artist-Reputation
 
