@@ -249,6 +249,7 @@ Je Problem eine Zeile `FEHLER <pfad>: <meldung>` bzw. `WARNUNG <pfad>: <meldung>
 - **CBR/VBR-MP3:** CBR-MP3 unter `quality.min_mp3_bitrate_kbps` (Standard 320) wird abgelehnt. VBR-MP3 wird an einem Xing-/VBRI-Kopf erkannt und ausschließlich über das Spektrum bewertet.
 - **Spektrums-Cutoff:** Der Cutoff muss bei MP3 über `min_cutoff_hz_for_320` (Standard 19000 Hz), bei Lossless über `min_cutoff_hz_for_lossless` (19500 Hz) liegen. Liegt er darunter, gilt die Datei als Fake-Transcode.
 - **Lautheit & Dynamik:** Erst nach bestandener Bitraten- und Spektrumsprüfung wird die Lautheit mit EBU R128 gemessen. Der Report enthält `integrated_lufs`, `true_peak_dbfs` und `loudness_range_lu`; `clipped` wird gesetzt, wenn die LRA unter `min_loudness_range_lu` (2.5 LU) liegt oder der True Peak `max_true_peak_dbfs` (3.0 dBFS) erreicht.
+- **32-Bit/Float → 24-Bit-PCM:** Bleibt eine WAV- oder AIFF-Datei in der Inbox, prüft `quality.is_32bit_or_float` sie per `ffprobe` auf 32/64-Bit- oder Float-Samples (`pcm_f32le`, `pcm_s32le`, `sample_fmt` `flt`/`dbl`/`s32`, `bits_per_raw_sample == 32`). Solche Dateien konvertiert `quality.convert_to_pcm24` vor der Pegel-Angleichung atomar nach 24 Bit (WAV `pcm_s24le`, AIFF `pcm_s24be`, Metadaten per `-map_metadata 0`); Pioneer Rekordbox und CDJs weisen 32-Bit-WAVs sonst mit „Ungültiges Dateiformat“ ab. Der `quality_report` trägt danach den neuen Codec, `notes` den Hinweis „32-Bit-Audio für Rekordbox nach 24-Bit PCM konvertiert“. Schlägt die Konvertierung fehl, bleibt die Datei unverändert und der Lauf geht weiter.
 
 Abgelehnte Dateien werden verschoben, nie gelöscht: Fakes und nicht messbare Tracks nach `inbox/_rejected/`, Brickwall-Master nach `inbox/_rejected/clipped/`, Duplikate nach `inbox/_rejected/duplicate/`.
 
@@ -414,6 +415,17 @@ Wurden in früheren Läufen Gated Tracks im Telegram-Digest gemeldet, bevor die 
 docker compose exec -T sc-digger python - < scripts/backfill_gates.py
 ```
 *(Mit `--dry-run` kann der Lauf vorab ohne Schreibzugriff simuliert werden).*
+
+### Wartung: 32-Bit-WAVs in 24-Bit wandeln
+
+Dateien, die vor dieser Prüfung in der Inbox gelandet sind, räumt `scripts/fix_32bit_wavs.py` rekursiv auf. Es werden nur `.wav`, `.aif` und `.aiff` angefasst, komprimierte Formate nie:
+
+```bash
+docker compose exec sc-digger python scripts/fix_32bit_wavs.py /music/inbox --dry-run
+docker compose exec sc-digger python scripts/fix_32bit_wavs.py /music/inbox
+```
+
+*(`--dry-run` zeigt nur, was konvertiert würde. Die Sammlung ist schreibgeschützt und gehört nicht in den Aufruf.)*
 
 ## Grenzen
 
