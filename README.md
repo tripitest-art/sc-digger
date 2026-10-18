@@ -53,10 +53,12 @@ docker compose exec sc-digger python -m sc_digger.main <modus> [...]
 | `playlist <url>` | Prüft eine Playlist oder (mit `--likes`) die Likes eines Profils gegen die Sammlung. Kein Genre-, Score- oder State-Filter, die Quelle wurde bewusst gewählt; Download, Prüfung, Analyse, Tagging und Sortieren laufen wie im Standardlauf. |
 | `similar <track-url>` | Related Tracks eines Track-Links. `--radio` nutzt die Track-Station, `--filter` wendet BPM-Fenster und Scoring an, `--limit` (Standard 50) begrenzt die Zahl der Treffer. |
 | `check <url>` | Verhält sich wie der Telegram-Bot zu einem Link: Playlist-Links liefern alle Tracks, Track-Links die Station dazu. Nach dem Versand werden die Treffer im State markiert, ein Perzentil-Filter läuft nicht. |
-| `audit` | Prüft die bestehende Sammlung nur lesend. `--path` überschreibt `download.collection_dir`, `--report <datei.html>` schreibt einen HTML-Bericht, `--force` misst alle Dateien neu (Standard: Cache über `mtime` und Größe). Der Report darf nicht im Sammlungsordner liegen. |
+| `audit` | Prüft die bestehende Sammlung nur lesend. `--path` überschreibt `download.collection_dir`, `--report <datei.html>` schreibt einen HTML-Bericht, `--force` misst alle Dateien neu (Standard: Cache über `mtime` und Größe), `--export-xml <datei.xml>` exportiert Archiv-Tracks als Rekordbox-XML, `--check-adopted` gleicht Inbox-Tracks per Audio-Fingerprint ab und markiert sie als übernommen. Der Report darf nicht im Sammlungsordner liegen. |
 | `rekordbox` | Schreibt die Rekordbox-XML der Inbox neu. |
 | `intake` | Verarbeitet Dateien aus `download.intake_dir`. `--dry-run` listet sie nur auf, ohne sie zu verschieben. |
 | `stats` | Zeigt die Wochenstatistik auf der Konsole. `--days` (Standard 7) setzt das Fenster, `--chart <datei.png>` speichert ein Balkendiagramm, `--send` schickt die Statistik zusätzlich per Telegram. |
+| `scout` | Bandcamp-Feeds (`bandcamp.py`) und Beatport-Charts (`beatport.py`) abfragen und in `store_items` ablegen. |
+| `cleanup-inbox` | Dubletten derselben SoundCloud-ID in der Inbox identifizieren; `--move` verschiebt überzählige Dateien nach `<inbox>/_rejected/duplicate/`, `--inbox` überschreibt den Standardpfad. |
 
 Zur Strukturanalyse (erster Kick und Segmente) einer einzelnen Audiodatei dient `python -m sc_digger.structure <datei>`.
 
@@ -68,9 +70,12 @@ python -m sc_digger.main playlist https://soundcloud.com/user --likes
 python -m sc_digger.main similar https://soundcloud.com/artist/track --filter
 python -m sc_digger.main check https://soundcloud.com/artist/track
 python -m sc_digger.main audit --report report.html
+python -m sc_digger.main audit --export-xml archiv.xml --check-adopted
 python -m sc_digger.main intake --dry-run
 python -m sc_digger.main stats --days 7 --chart woche.png
 python -m sc_digger.main stats --send
+python -m sc_digger.main scout
+python -m sc_digger.main cleanup-inbox --move
 ```
 
 ## Telegram-Bot
@@ -89,6 +94,7 @@ Der Bot läuft dauerhaft (Hauptprozess des Containers) und antwortet nur im Chat
 | `/preview <Suchtext oder id>` | 20s-Sprachnachricht eines heruntergeladenen Tracks (Track-DB, seit #147) |
 | `/preview sc:<SoundCloud-ID>` | 20s-Sprachnachricht direkt aus dem SoundCloud-Stream, auch für nicht heruntergeladene Tracks (Schalter `preview.stream_enabled`, Standard aus, seit #168) |
 | `/sync_xml` | Schreibt die Rekordbox-XML der Inbox sofort neu (wie `python -m sc_digger.main rekordbox`) und nennt die Track-Zahl und den Zeitpunkt (seit #187) |
+| `/cleanup_inbox` | Dubletten in der Inbox auflisten (nur lesend) |
 
 Zum Digest gehören Inline-Buttons pro Track (Like, Dislike, Später). Die Wahl landet in `sc_feedback` in `tracks.sqlite` und wird von `/mix` und `/curator_mining` ausgewertet. Die Kaufliste kommt zusätzlich sonntags um 20:00 (`0 20 * * 0`, aus `entrypoint.sh`).
 
@@ -178,6 +184,8 @@ Alle Optionen stehen in `config.yaml`; die folgende Liste nennt die Werte aus di
 | `fingerprint.check_downloads` | neue Downloads gegen die Sammlung abgleichen | `true` |
 | `curator_mining.min_appearances` | Mindestzahl Treffer, damit ein Profil vorgeschlagen wird | `2` |
 | `curator_mining.max_likers_per_track` | maximale API-Abfragen pro Track | `50` |
+| `preview.duration_s` | Dauer des Snippets in Sekunden | `20.0` |
+| `preview.riser_s` | Vorlaufzeit vor Drop in Sekunden | `5.0` |
 | `state.db_path` | SQLite-DB für gesehene Tracks, Läufe und Retry-Queue | `/data/seen.sqlite` |
 | `state.track_db_path` | SQLite-Track-DB (WAL-Modus, nicht auf NFS) | `/data/tracks.sqlite` |
 | `retry.max_attempts` | Gesamtzahl der Versuche pro Original-Download | `3` |
@@ -189,13 +197,23 @@ Alle Optionen stehen in `config.yaml`; die folgende Liste nennt die Werte aus di
 | `rekordbox.xml_path` | Zielpfad der XML | `/music/inbox/sc-digger.xml` |
 | `rekordbox.path_map` | Mapping Server-Pfad zu Laptop-Pfad | `/music/inbox` → `Z:/Highres/_sc-digger-inbox` |
 | `rekordbox.cues_enabled` | Memory Cue „First Kick“ aus dem Tag `SCDIGGER_FIRST_KICK` in die XML schreiben | `true` |
+| `rekordbox.cues_as_hotcues` | Cues als Hot Cues A–H schreiben | `true` |
+| `rekordbox.cues_as_memory` | Cues als Memory Cues schreiben | `true` |
 | `rekordbox.playlists_by_bpm` | Zusätzliche Playlists pro BPM-Bereich (Ordner BPM) | `true` |
 | `rekordbox.playlists_by_key` | Zusätzliche Playlists pro Camelot-Key (Ordner Key) | `true` |
+| `rekordbox.playlists_by_style` | Playlists nach Hauptclustern der Schranz-Matrix anlegen | `false` |
+| `rekordbox.playlists_by_subgenre` | Playlists nach Subgenres der Schranz-Matrix anlegen | `false` |
+| `rekordbox.playlists_by_version` | Playlists nach Versionstypen anlegen | `false` |
+| `rekordbox.style_colors` | Track-Farbe nach Versionstyp setzen | `false` |
+| `rekordbox.style_comments` | Track-Kommentar im Stil-Format überschreiben | `false` |
+| `rekordbox.import_xml_path` | Pfad zur exportierten Rekordbox-XML als Rückkanal | `""` |
 | `digest.kaufliste_max_items` | Obergrenze der Kaufliste | `30` |
 | `digest.sunday_summary` | Wochenstatistik im Sonntagslauf senden | `false` |
 | `digest.stats_chart` | Balkendiagramm zum Wochen-Digest | `false` |
 | `digest.trend_radar` | Trend-Abschnitt (Trending Artists / Top-Tracks) im Wochen-Digest | `true` |
 | `digest.trend_radar_days` | Zeitfenster der Trend-Berechnung in Tagen | `7` |
+| `scout.bandcamp.feeds` | URLs für Bandcamp-RSS-Feeds von Labels und Artists | `[]` |
+| `scout.beatport.charts` | URLs für Beatport-Charts | `[]` |
 
 ### Lokale Override-Datei
 
@@ -290,15 +308,44 @@ Der zweite Mechanismus ist der Container-Healthcheck (`sc_digger.healthcheck`): 
 
 `rekordbox.write_rekordbox_xml` läuft nach jedem `discover`-Lauf. `scan_inbox` liest die Inbox und überspringt alles, dessen Pfadteil mit `_rejected`, `.`, `_dl_` oder `.cloud-tmp` beginnt, sowie `_eingang`. `build_xml` erzeugt `PRODUCT`, `COLLECTION` und eine Playlist pro ISO-Kalenderwoche im Ordner `sc-digger` (neueste Woche zuerst, z. B. `KW 40/2026`). Pfade werden über `rekordbox.path_map` vom Server- auf den Laptop-Pfad umgeschrieben; Tracks ohne Mapping werden weggelassen. Die XML wird atomar geschrieben; liegt `xml_path` innerhalb `download.collection_dir`, wird der Lauf abgebrochen.
 
-Zusätzlich zu den Wochen-Playlists können zwei Ordner angelegt werden: `sc-digger/BPM/<Bereich>` (Breite aus `organize.bpm_bucket_size`, z. B. `150-155`) und `sc-digger/Key/<Camelot>` (z. B. `5A`). Tracks ohne BPM bzw. ohne gültigen Camelot-Key landen in `unbekannt`. Eingeschaltet wird das über `rekordbox.playlists_by_bpm` und `rekordbox.playlists_by_key` (Standard in `config.yaml`: `true`); fehlen die Optionen, bleibt die XML wie bisher. Nach dem Einschalten die XML in Rekordbox neu einlesen („rekordbox xml“ neu laden).
+Zusätzlich zu den Wochen-Playlists können Playlists nach Tempo, Tonart und der Schranz-Matrix angelegt werden:
+- `sc-digger/BPM/<Bereich>` (Breite aus `organize.bpm_bucket_size`, z. B. `150-155`) über `rekordbox.playlists_by_bpm: true`
+- `sc-digger/Key/<Camelot>` (z. B. `5A`) über `rekordbox.playlists_by_key: true`
+- `sc-digger/Stile/<Cluster>`, `sc-digger/Subgenres/<Subgenre>` und `sc-digger/Versionen/<Version>` über `rekordbox.playlists_by_style`, `rekordbox.playlists_by_subgenre` und `rekordbox.playlists_by_version` (jeweils Standard: `false`)
 
-Liegt in einer Datei der Tag `SCDIGGER_FIRST_KICK` (Sekunden), übernimmt der Export ihn mit `rekordbox.cues_enabled: true` als **Memory Cue „First Kick“** am TRACK-Element, sodass der Track in Rekordbox direkt auf dem ersten Kick startet. Ohne die Option (oder ohne Tag) enthält die XML keine Marke; die Audiodateien bleiben unverändert.
+Tracks ohne BPM bzw. ohne gültigen Camelot-Key landen in `unbekannt`. Tracks können zudem anhand des Versionstyps (`style_colors`) oder des Subgenres (`matrix_colors`) farblich markiert werden. Kommentare für CDJ/XDJ-Displays lassen sich im Standard- oder Kompakt-Stil-Format schreiben (`style_comments`, `compact_style_comments`). Über `rekordbox.import_xml_path` kann die vom Laptop re-exportierte XML als Rückkanal angegeben werden.
+
+**Vollständiges Cue-System:**
+Liegen in einer Audiodatei Cue-Tags aus der Strukturanalyse (`cues.py`, `structure.py`, `stems.py`), übernimmt der XML-Export diese Marken bei aktivem `rekordbox.cues_enabled: true`:
+- **Erkannte Marken:** Erster Kick (`SCDIGGER_FIRST_KICK`), erster Drop (`SCDIGGER_DROP`), zweiter Drop (`SCDIGGER_DROP2`), Breakdown-Start (`SCDIGGER_BREAKDOWN`) sowie Breakdown-Typ (`SCDIGGER_BREAKDOWN_KIND`: `silence` oder `groove`).
+- **Hot Cues (Pads A–H):** Mit `rekordbox.cues_as_hotcues: true` (Standard `true`) werden Hot Cues für Performance-Pads geschrieben. Das Layout lässt sich über `hot_cue_layout` wählen (`legacy` für First Kick / Drop / Drop 2 / Breakdown oder `standard_8pad` für ein standardisiertes 8-Pad-Belegungsmuster von Intro/Main bis Outro).
+- **Memory Cues:** Mit `rekordbox.cues_as_memory: true` (Standard `true`) werden die Cue-Punkte zusätzlich als Memory Cues hinterlegt.
+- **Phrasen-Quantisierung:** `cues_phrase_align: true` (`phrase.py`) richtet Sektions-Cues (Drop, Breakdown) am 16/32-Beat-Phrasengitter relativ zum ersten Kick aus. Liegt ein Drop musikalisch außerhalb des Rasters, kann `phrase_warning: true` einen warnenden roten Memory Cue setzen. Der Beatgrid-Anker (`grid_anchor: true`) platziert Takt 1 / Beat 1 exakt auf den ersten Kick (`first_kick_s`), sodass das Beatgrid auch bei schnellem Techno (150+ BPM) absolut synchron sitzt.
 
 In Rekordbox einrichten:
 
 1. Unter **Einstellungen → Erweitert → Datenbank → rekordbox xml** den Pfad zur Datei angeben, aus Sicht des DJ-Laptops (z. B. `Z:\Highres\_sc-digger-inbox\sc-digger.xml`).
 2. Die Ansicht **„rekordbox xml“** einblenden.
 3. Unter „rekordbox xml → Importierte Bibliothek“ erscheinen die Wochen-Playlists.
+
+### Schranz-Matrix
+
+`sc_digger/style.py` ordnet Schranz- und Hard-Techno-Tracks deterministisch in ein mehrdimensionales DJ-System ein:
+- **4 Hauptcluster:** *Fundament & Tools*, *Noise & Extremhärte*, *Emotion & Dramaturgie*, *Rhythmus-Crossover*.
+- **13 Subgenres:** Tribal, Hardgroove, Classic, Industrial, Acid, Terror, Neo, Melodic, Bounce, Psy, Reverse Bass, EBM und Crossbreed.
+- **3 stilistische Achsen:** Fluss (hypnotisch-rollend vs. impulsiv-hackernd), Metrum/Raster (straight 4/4 vs. polyrhythmisch/synkopiert) und Klangästhetik (raw/analog vs. modern/digital).
+- **Versionstypen:** Erkennung von Edit, Bootleg, Remix, VIP, Mashup, Flip, Rework, Tool oder Original.
+- **Energie-Klassifizierung:** Energie-Level von 1 bis 5 zur Abstimmung im Set (Warmup, Peaktime, Finale).
+
+Die Ergebnisse steuern Rekordbox-Playlists, Farbmarkierungen und DJ-Kommentare.
+
+### Multi-Platform-Scout
+
+`sc_digger/scout/` erweitert die Recherche über SoundCloud hinaus auf externe Musikplattformen:
+- **Bandcamp-Feeds (`bandcamp.py`):** Fragt konfigurierte RSS-Feeds von Labels und Artists (`scout.bandcamp.feeds`) ab.
+- **Beatport-Charts (`beatport.py`):** Fragt Top-100- und Genre-Charts (`scout.beatport.charts`) ab.
+
+Gefundene Tracks werden gegen die lokale Sammlung abgeglichen, Duplikate übersprungen und neue Tracks in der Tabelle `store_items` hinterlegt. Der CLI-Befehl `python -m sc_digger.main scout` stößt den Abruf manuell an. Offene Kauflinks sind im Web-Dashboard unter `/kaufliste` sowie im Telegram-Bot mit `/kaufliste` einsehbar.
 
 ## Architektur
 
@@ -307,14 +354,21 @@ In Rekordbox einrichten:
 | `main.py` | CLI und Modi, gemeinsame Pipeline `process()` und Auslieferung `deliver()` |
 | `bot.py` | Telegram-Listener; ruft `main.run_link()`; beendet sich nie selbst |
 | `soundcloud.py` | Inoffizielle api-v2 (client_id aus dem Frontend), Playlists inkl. Stub-Nachladen, Station/Related, Referenz-Accounts |
+| `scout/` | Multi-Platform-Scout für externe Feeds und Charts (`bandcamp.py`, `beatport.py`) |
 | `pipeline.py` | Text-BPM, Genre-Relevanz, Perzentil-Scoring, Download-Klassifizierung |
 | `collection.py` | Duplikat-Abgleich mit der Sammlung (Fuzzy-Match, Remixer beachten) |
+| `cleanup.py` | Inbox-Dubletten per SoundCloud-ID identifizieren und auflisten/verschieben |
 | `output.py` | State-DB, Original-Download (scdl), `finalize_quality`, Telegram-Digest, Export-Datei, `telegram_call`, `send_telegram_photo` |
 | `retry.py` | Retry-Queue für fehlgeschlagene Original-Downloads |
 | `cloud.py` | Cloud-Downloads (Dropbox, Google Drive) inkl. ZIP-Auswahl |
 | `quality.py` | ffprobe, Spektrum-Cutoff (Fake-Erkennung), EBU R128 / LRA (Brickwall) |
 | `loudness.py` | Pegel-Normalisierung neuer Inbox-Downloads (samplegenau, Metadaten-Erhalt) |
 | `analysis.py` | BPM/Key per librosa, BPM-Oktav-Korrektur `resolve_bpm` |
+| `structure.py` | Strukturanalyse: Kick-Erkennung, Segmente (`intro`, `main`, `breakdown`, `outro`), erster Kick, Drop-Start und Breakdown-Anteil |
+| `phrase.py` | Phrasen-Quantisierung (16/32-Beat Alignment, Quantisierung auf Phrasengitter und Downbeat-Fallback) |
+| `cues.py` | Cue-Tags (`SCDIGGER_FIRST_KICK`, `SCDIGGER_DROP`, `SCDIGGER_BREAKDOWN`, `SCDIGGER_BREAKDOWN_KIND`) in Dateien lesen und schreiben |
+| `stems.py` | Stem-basierte Subbass- und Breakdown-Analyse (Demucs-Stems `bass.wav`/`drums.wav`, Fake-Drop-Validierung, Breakdown-Typisierung `silence`/`groove`) |
+| `style.py` | Schranz-Matrix (4 Cluster, 13 Subgenres, 3 Achsen, Versionstypen, Energie-Klassifizierung 1–5) |
 | `fingerprint.py` | Audio-Fingerprints (Chromaprint/fpcalc), gleiche Aufnahme erkennen |
 | `harmonic.py` | Harmonische Kompatibilität (Camelot-Wheel), Suche nach Key und BPM (`/mix`) |
 | `organize.py` | Inbox-Sortierung `<BPM>/<Camelot>/`, Tags schreiben (inkl. RIFF-INFO für WAV) |
@@ -324,6 +378,9 @@ In Rekordbox einrichten:
 | `intake.py` | Eingangsordner: bereite Dateien finden und als `Track` vorbereiten |
 | `health.py` | Laufprotokoll, Alarm bei wiederholt leeren oder fehlerhaften Läufen |
 | `healthcheck.py` | Container-Healthcheck: Cron, letzter Lauf, DB-Integrität |
+| `autodeploy.py` | Host-seitiger systemd-Auto-Deployer & Rollback-Runner für `update.sh` |
+| `schema.py` | Konfigurationsvalidierung und Prüfbefehl `python -m sc_digger.schema` |
+| `issuecheck.py` | Planer-Preflight zur Validierung von Issue-Texten und Akzeptanztests |
 | `stats.py` | Statistikberechnung für Digest und `/stats`, Vorperioden-Vergleich der Kernkennzahlen, Diagramm (`render_stats_chart`), Wochen-Digest inkl. Trend-Abschnitt |
 | `trends.py` | Trend-Radar: Wachstumsanalyse historischer Engagement-Snapshots; im Wochen-Digest über `stats.send_weekly_digest` eingebunden. |
 | `preview.py` | Live-Preview: energiereichstes Segment per ffmpeg, OGG-Opus-Snippet (`find_loudest_segment`, `extract_preview`). Eingebunden über den Bot-Befehl `/preview` (`bot.py`, seit #147). Seit #168 zusätzlich `extract_preview_from_url` für `/preview sc:<SoundCloud-ID>` direkt aus dem Stream. |
