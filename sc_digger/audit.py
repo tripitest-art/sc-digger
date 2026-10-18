@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING, Any, Callable, Sequence
 if TYPE_CHECKING:
     from .fingerprint import Fingerprint
 
+from . import cues
 from .analysis import analyze_track
 from .db import QualityStatus, TrackDB, TrackRecord, TrackStatus
 from .models import Config
@@ -30,12 +31,20 @@ from .organize import _BPM_BUCKET_SIZE, _bpm_bucket
 from .quality import check_file
 from .rekordbox import (
     _CAMELOT_RE,
+    HOT_CUE_LAYOUT_LEGACY,
     KINDS,
     InboxTrack,
     _bpm_sort_key,
     _camelot_sort_key,
     _playlist_folder,
+    generate_hot_cues,
     laptop_location,
+)
+from .structure import (
+    analyze_structure as analyze_structure_segments,
+    calculate_breakdown_ratio,
+    find_drop_start,
+    find_first_kick,
 )
 
 log = logging.getLogger(__name__)
@@ -59,6 +68,7 @@ class AuditResult:
     lufs: float | None = None
     true_peak_dbfs: float | None = None
     loudness_range_lu: float | None = None
+    breakdown_ratio: float | None = None
     cached: bool = False
 
 
@@ -169,16 +179,22 @@ def audit_file(
     db: TrackDB,
     *,
     force: bool = False,
+    analyze_structure: bool = False,
 ) -> AuditResult:
-    """Prüft eine einzelne Datei gegen Qualitätskriterien und aktualisiert die TrackDB."""
+    """Prüft eine einzelne Datei gegen Qualitätskriterien und aktualisiert die TrackDB.
+
+    analyze_structure=True ergänzt die rein lesende Strukturanalyse (Kick, Drop, Breakdown)
+    und speichert breakdown_ratio; die Audiodatei selbst wird nicht verändert.
+    """
     stat = path.stat()
     mtime = stat.st_mtime
     size = stat.st_size
 
-    # Inkrementelle Optimierung: Wenn Datei unverändert und force=False, aus DB laden
+    # Inkrementelle Optimierung: Wenn Datei unverändert und force=False, aus DB laden.
+    # Mit analyze_structure wird ein Track ohne gespeicherten breakdown_ratio neu analysiert.
     if not force and not db.needs_audit(path, mtime, size):
         record = db.get_track_by_path(path)
-        if record:
+        if record and not (analyze_structure and record.breakdown_ratio is None):
             return AuditResult(
                 path=path,
                 status=record.quality_status,
@@ -193,6 +209,7 @@ def audit_file(
                 lufs=record.lufs,
                 true_peak_dbfs=record.true_peak_dbfs,
                 loudness_range_lu=record.loudness_range_lu,
+                breakdown_ratio=record.breakdown_ratio,
                 cached=True,
             )
 
@@ -244,6 +261,16 @@ def audit_file(
         except Exception as e:
             log.debug("Audio-Analyse bei Audit übersprungen/fehlgeschlagen für %s: %s", path.name, e)
 
+    # 3b. Strukturanalyse rein lesend (kein Schreiben von ID3-Tags, Goldene Regel 4)
+    breakdown_ratio: float | None = None
+    if analyze_structure:
+        first_kick_s = find_first_kick(path)
+        segments = analyze_structure_segments(path)
+        breakdown_ratio = calculate_breakdown_ratio(segments) if segments else None
+        drop_s = find_drop_start(segments, bpm=bpm, first_kick_s=first_kick_s)
+        log.debug("Struktur %s: erster Kick %s s, Drop %s s, Breakdown-Anteil %s",
+                  path.name, first_kick_s, drop_s, breakdown_ratio)
+
     # 4. Speichern in TrackDB
     rec = TrackRecord(
         path=str(path),
@@ -264,6 +291,7 @@ def audit_file(
         artist=existing_tags.get("artist"),
         title=existing_tags.get("title"),
         status=TrackStatus.ARCHIVE,
+        breakdown_ratio=breakdown_ratio,
     )
     db.upsert_track(rec)
 
@@ -282,6 +310,7 @@ def audit_file(
         lufs=report.get("integrated_lufs"),
         true_peak_dbfs=report.get("true_peak_dbfs"),
         loudness_range_lu=report.get("loudness_range_lu"),
+        breakdown_ratio=breakdown_ratio,
         cached=False,
     )
 
@@ -294,6 +323,7 @@ def audit_collection(
     db: TrackDB,
     *,
     force: bool = False,
+    analyze_structure: bool = False,
 ) -> AuditSummary:
     """Führt ein vollständiges Audit über den angegebenen Sammlungs-Ordner aus."""
     folder = Path(collection_dir)
@@ -313,7 +343,7 @@ def audit_collection(
         if i % 25 == 0 or i == len(files):
             log.info("Audit Fortschritt: %d/%d Dateien...", i, len(files))
 
-        res = audit_file(file_path, cfg, db, force=force)
+        res = audit_file(file_path, cfg, db, force=force, analyze_structure=analyze_structure)
         summary.results.append(res)
 
         if res.cached:
@@ -639,10 +669,11 @@ def _record_to_inbox_track(rec: TrackRecord) -> InboxTrack:
 
     Pfad bleibt der Server-Pfad; die Übersetzung auf die Laptop-Location passiert später
     über laptop_location(path_map). Die Dauer ist nicht in der TrackDB gespeichert und wird
-    als 0.0 übernommen (Rekordbox akzeptiert das).
+    als 0.0 übernommen (Rekordbox akzeptiert das). Die Cue-Zeitpunkte und die Breakdown-Art
+    stammen aus den Cue-Tags der Datei; die TrackDB speichert keine Cue-Zeitpunkte.
     """
     p = Path(rec.path)
-    return InboxTrack(
+    track = InboxTrack(
         path=p,
         title=rec.title or p.stem,
         artist=rec.artist or "",
@@ -654,6 +685,38 @@ def _record_to_inbox_track(rec: TrackRecord) -> InboxTrack:
         size=int(rec.size) if rec.size else 0,
         added=datetime.fromtimestamp(rec.mtime) if rec.mtime else datetime.fromtimestamp(0),
     )
+    track.first_kick_s = cues.read_first_kick_tag(p)
+    track.drop_s = cues.read_drop_tag(p)
+    track.breakdown_s = cues.read_breakdown_tag(p)
+    track.breakdown_kind = cues.read_breakdown_kind_tag(p)
+    track.drop2_s = cues.read_drop2_tag(p)
+    return track
+
+
+def _append_cue_marks(
+    track_node: ET.Element,
+    track: InboxTrack,
+    *,
+    hot_cues: bool,
+    memory_cues: bool,
+) -> None:
+    """Hängt Hot- und Memory-Cues als <POSITION_MARK> an den TRACK-Knoten (wie build_xml).
+
+    Chronologisch nach Start; bei gleichem Zeitstempel steht der Hot Cue vor dem Memory Cue.
+    """
+    marks: list[tuple[float, int, str, str, tuple[str, str, str] | None]] = []
+    for start_s, pad, name, color in generate_hot_cues(track, layout=HOT_CUE_LAYOUT_LEGACY):
+        if hot_cues:
+            marks.append((start_s, 0, name, pad, color))
+        if memory_cues:
+            marks.append((start_s, 1, name, "-1", None))
+
+    marks.sort(key=lambda m: (m[0], m[1]))
+    for start_s, _is_memory, name, num, color in marks:
+        mark_attr = {"Name": name, "Type": "0", "Start": f"{start_s:.3f}", "Num": num}
+        if color is not None:
+            mark_attr["Red"], mark_attr["Green"], mark_attr["Blue"] = color
+        ET.SubElement(track_node, "POSITION_MARK", mark_attr)
 
 
 def export_collection_xml(
@@ -724,7 +787,8 @@ def export_collection_xml(
         }
         if t.bpm is not None:
             attr["AverageBpm"] = f"{t.bpm:.2f}"
-        ET.SubElement(coll, "TRACK", attr)
+        track_node = ET.SubElement(coll, "TRACK", attr)
+        _append_cue_marks(track_node, t, hot_cues=hot_cues, memory_cues=memory_cues)
 
     playlists = ET.SubElement(root, "PLAYLISTS")
     top = ET.SubElement(playlists, "NODE", {"Type": "0", "Name": "ROOT", "Count": "1"})
@@ -788,6 +852,7 @@ def run_audit(
     no_telegram: bool = True,
     export_xml_path: str | Path | None = None,
     check_adopted: bool = False,
+    analyze_structure: bool = False,
 ) -> AuditSummary:
     """Einstiegspunkt für den CLI-Befehl `audit`."""
     target_dir = Path(path or cfg["download"]["collection_dir"]).resolve()
@@ -814,12 +879,14 @@ def run_audit(
     db_path = cfg["state"]["track_db_path"]
 
     with TrackDB(db_path) as db:
-        summary = audit_collection(
-            target_dir,
-            cfg,
-            db,
-            force=force,
-        )
+        # Nur bei Bedarf weiterreichen: bestehende Aufrufer mit der alten Signatur
+        # (z. B. Test-Fakes für audit_collection) bleiben unverändert gültig.
+        if analyze_structure:
+            summary = audit_collection(
+                target_dir, cfg, db, force=force, analyze_structure=True,
+            )
+        else:
+            summary = audit_collection(target_dir, cfg, db, force=force)
         from .fingerprint import duplicate_groups
 
         summary.fingerprints_new, summary.fingerprints_failed = fill_fingerprints(db)

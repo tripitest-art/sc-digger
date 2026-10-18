@@ -52,7 +52,8 @@ Modul anlegt, trägt es in die Tabelle ein.
 | `entrypoint.sh` | Schreibt `cron.env` (Cron hat sonst weder PATH noch Secrets), startet cron und Bot |
 | `skills/*/SKILL.md` | Abläufe für lokale Modelle in LibreChat (Review, Worker, Planer), per GitHub Skill Sync gespiegelt; Regeln bleiben in `AGENTS.md` |
 | `.github/scripts/acceptance_guard.py` | CI-Check `acceptance-guard`: Akzeptanztests = Issue, keine neuen skips, CI/Test-Konfiguration geschützt, PR-Text ausgefüllt (`Closes #N`, `Worker:`) |
-| `sc_digger/issuecheck.py` | Planer-Preflight: prüft einen Issue-Text und seine Akzeptanztests vor dem Einstellen (`python -m sc_digger.issuecheck <issue.md>`), lässt den Block mit pytest gegen ein Repo laufen; kopiert die Block-Regex aus `acceptance_guard.py`, importiert sie nicht |
+| `.github/workflows/codeql.yml` | Statische Sicherheitsanalyse mit CodeQL (Python, Actions); ignoriert `tests/**`, um False-Positives bei Test-Assertions zu verhindern |
+| `sc_digger/issuecheck.py` | Planer-Preflight: prüft einen Issue-Text und seine Akzeptanztests vor dem Einstellen (`python -m sc_digger.issuecheck <issue.md>`), lässt den Block mit pytest gegen ein Repo laufen; kopiert die Block-Regex aus `acceptance_guard.py`, importiert sie nicht; warnt vor CodeQL-Fehlalarmen durch Substring-Domain-Checks |
 | `set-secret.sh` / `update.sh` | Zugangsdaten setzen / Update ausrollen (auf dem Server) |
 
 ## Testen

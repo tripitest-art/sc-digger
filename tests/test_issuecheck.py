@@ -146,3 +146,16 @@ def test_main_meldet_roten_test_nicht_als_fehler(repo, tmp_path, capsys):
     p.write_text(_issue(), encoding="utf-8")
     assert ic.main([str(p), "--repo", str(repo)]) == 0
     assert "Nicht einstellen" not in capsys.readouterr().out
+
+
+def test_url_substring_in_akzeptanztest_erzeugt_codeql_warnung():
+    block = "def test_x():\n    resp_text = 'https://obi.bandcamp.com/track/1'\n    assert 'obi.bandcamp.com' in resp_text\n"
+    found = ic.check_static(_issue(block=block))
+    assert "codeql-url-substring" in _codes(found)
+    assert any(f.level == "warnung" for f in found if f.code == "codeql-url-substring")
+
+
+def test_pfad_in_akzeptanztest_erzeugt_keine_codeql_warnung():
+    block = "def test_x():\n    resp_text = '/track/anthem'\n    assert '/track/anthem' in resp_text\n"
+    assert ic.check_static(_issue(block=block)) == []
+
