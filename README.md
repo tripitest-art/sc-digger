@@ -374,6 +374,7 @@ Gefundene Tracks werden gegen die lokale Sammlung abgeglichen, Duplikate übersp
 | `harmonic.py` | Harmonische Kompatibilität (Camelot-Wheel), Suche nach Key und BPM (`/mix`) |
 | `organize.py` | Inbox-Sortierung `<BPM>/<Camelot>/`, Tags schreiben (inkl. RIFF-INFO für WAV) |
 | `rekordbox.py` | Rekordbox-XML mit einer Playlist pro Woche aus der Inbox |
+| `embeddings.py` | Audio-Embeddings: Vektorspeicher in Track-DB, Queue-Job und Ergebnisverarbeitung |
 | `db.py` | Zentrale Track-DB: Metadaten, Fingerprints, Jobs-Queue, versionierte Migrationen |
 | `audit.py` | Read-only Library-Audit, Fake-Erkennung, HTML-Dashboard |
 | `intake.py` | Eingangsordner: bereite Dateien finden und als `Track` vorbereiten |
