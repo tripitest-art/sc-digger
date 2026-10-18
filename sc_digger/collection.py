@@ -3,12 +3,14 @@ from __future__ import annotations
 
 import logging
 import re
+import sqlite3
 import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-from .models import Track
+from .db import TrackDB
+from .models import Config, Track
 from .quality import probe as quality_probe
 
 log = logging.getLogger(__name__)
@@ -200,16 +202,27 @@ class Collection:
         *,
         duration_fn: Callable[[Path], float | None] | None = probe_duration,
         duration_tolerance_s: float = DURATION_TOLERANCE_S,
+        db: TrackDB | None = None,
     ):
         self.folder = Path(folder)
         self.duration_fn = duration_fn
         self.duration_tolerance_s = duration_tolerance_s
+        self.db = db
         self.index = NameIndex()
         self.reload()
 
     def reload(self) -> None:
         self.index = NameIndex()
         self._durations: dict[str, float | None] = {}
+        if self.db is not None:
+            records = self.db.list_collection_tracks()
+            if records:
+                for rec in records:
+                    self.index.add(rec.path, name_key(None, Path(rec.path).stem))
+                    if rec.duration is not None:
+                        self._durations[rec.path] = rec.duration
+                log.info("Sammlung: %d Dateien (Track-DB)", len(self.index))
+                return
         if not self.folder.exists():
             log.warning("Sammlung nicht gefunden: %s (Duplikat-Check übersprungen)", self.folder)
             return
@@ -252,3 +265,25 @@ class Collection:
         for t in tracks:
             t.duplicate_of = self.find_duplicate(t)
         return tracks
+
+
+def open_collection(cfg: Config) -> Collection:
+    """Baut die Sammlung für den täglichen Lauf, aus der Track-DB wenn konfiguriert.
+
+    Ohne ``state.track_db_path`` oder ohne die Datei bleibt es beim Dateisystem-Scan.
+    Eine nicht lesbare DB wird nur gewarnt: der Lauf soll ohne Index weitergehen.
+    Eine DB wird hier nie angelegt.
+    """
+    folder = cfg["download"]["collection_dir"]
+    db_path = (cfg.raw.get("state") or {}).get("track_db_path")
+    if not db_path or not Path(db_path).exists():
+        return Collection(folder)
+    try:
+        db = TrackDB(db_path)
+    except sqlite3.Error as e:
+        log.warning("Track-DB nicht lesbar (%s), Sammlung wird vom Dateisystem gelesen", e)
+        return Collection(folder)
+    try:
+        return Collection(folder, db=db)
+    finally:
+        db.close()

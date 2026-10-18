@@ -99,6 +99,7 @@ class TrackRecord:
     rb_key: str | None = None         # Rekordbox Tonality
     rb_cues: str | None = None        # JSON-String der Cue-Liste
     energy: int | None = None         # 1..5 Energie-Level (berechnet, siehe sc_digger.style)
+    duration: float | None = None     # Länge der Datei in Sekunden (ffprobe)
     created_at: str | None = None
     updated_at: str | None = None
 
@@ -357,6 +358,14 @@ MIGRATIONS: list[tuple[int, str, str]] = [
         """
         ALTER TABLE tracks ADD COLUMN energy INTEGER;
         CREATE INDEX IF NOT EXISTS idx_tracks_energy ON tracks(energy);
+        """,
+    ),
+    (
+        12,
+        "0012_tracks_duration",
+        """
+        ALTER TABLE tracks ADD COLUMN duration REAL;
+        CREATE INDEX IF NOT EXISTS idx_tracks_duration ON tracks(duration);
         """,
     ),
 ]
@@ -1086,6 +1095,13 @@ class TrackDB:
         limit_clause = f"LIMIT {int(limit)} OFFSET {int(offset)}" if limit is not None else ""
         query = f"SELECT * FROM tracks {where} ORDER BY id ASC {limit_clause}"
         rows = self.db.execute(query, params).fetchall()
+        return [TrackRecord.from_row(r) for r in rows]
+
+    def list_collection_tracks(self) -> list[TrackRecord]:
+        """Alle Tracks mit status in ('archive', 'adopted'), nach id aufsteigend."""
+        rows = self.db.execute(
+            "SELECT * FROM tracks WHERE status IN ('archive', 'adopted') ORDER BY id ASC"
+        ).fetchall()
         return [TrackRecord.from_row(r) for r in rows]
 
     # ------------------------------------------------------------ Job-Operationen

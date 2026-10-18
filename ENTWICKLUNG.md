@@ -12,7 +12,7 @@ Modul anlegt, trägt es in die Tabelle ein.
 | `sc_digger/bot.py` | Telegram-Listener; ruft `main.run_link()`; beendet sich nie selbst (sonst stirbt der Cron) |
 | `sc_digger/soundcloud.py` | Inoffizielle api-v2 (client_id aus dem Frontend), Playlists inkl. Stub-Nachladen, Station/Related, Referenz-Accounts (soundcloud-v2-Lib) |
 | `sc_digger/pipeline.py` | Text-BPM, Genre-Relevanz, Perzentil-Scoring, Download-Klassifizierung |
-| `sc_digger/collection.py` | Duplikat-Abgleich mit der Sammlung (Fuzzy-Match, Remixer beachten, Unicode-Faltung); `NameKey`/`NameIndex` als gemeinsame Namenslogik für Sammlung und Web-Digest; Dauer-Prüfung bei Namens-Treffern (`probe_duration`, Toleranz `DURATION_TOLERANCE_S`) |
+| `sc_digger/collection.py` | Duplikat-Abgleich mit der Sammlung (Fuzzy-Match, Remixer beachten, Unicode-Faltung); `NameKey`/`NameIndex` als gemeinsame Namenslogik für Sammlung und Web-Digest; Dauer-Prüfung bei Namens-Treffern (`probe_duration`, Toleranz `DURATION_TOLERANCE_S`); `open_collection` nutzt den Sammlungs-Index der Track-DB (Rückfall auf `rglob`) |
 | `sc_digger/linksource.py` | Zuordnungslogik: Sammlungsdateien mit SoundCloud-Tracks verknüpfen (Teil 1); reine Logik ohne Netzwerk (`propose_links`, `apply_proposals`, `normalize_url`) |
 | `sc_digger/output.py` | State-DB, Original-Download (scdl), `find_in_inbox` (schon in der Inbox?), `finalize_quality`, Telegram-Digest, Export-Datei, `telegram_call`, `send_telegram_photo` |
 | `sc_digger/retry.py` | Retry-Queue für fehlgeschlagene Original-Downloads |
@@ -28,7 +28,7 @@ Modul anlegt, trägt es in die Tabelle ein.
 | `sc_digger/rekordbox.py` | Rekordbox-XML: Playlists pro Woche aus der Inbox, Locations in NFC-Namen, Beatgrid-Anker `<TEMPO>` an `first_kick_s` (`build_xml(grid_anchor=…)`, Konfiguration `rekordbox.grid_anchor`); lesender XML-Import (`parse_rekordbox_xml`, `import_rekordbox_xml`, Migration 9) für Ratings, Plays und Cues |
 | `sc_digger/cleanup.py` | Inbox-Dubletten per SoundCloud-ID finden, auflisten und optional nach `_rejected/duplicate/` verschieben |
 | `sc_digger/cues.py` | Cue-Tags `SCDIGGER_FIRST_KICK`, `SCDIGGER_DROP`, `SCDIGGER_BREAKDOWN`, `SCDIGGER_BREAKDOWN_KIND` (Sekunden) lesen und schreiben; `write_stem_cues` schreibt First Kick, Drop und Breakdown und richtet Drop/Breakdown optional per `phrase_align` am Phrasengitter aus |
-| `sc_digger/db.py` | Zentrale Track-DB (Phase 2), Metadaten-Index, Audio-Fingerprints, Jobs-Queue, versionierte Migrationen |
+| `sc_digger/db.py` | Zentrale Track-DB (Phase 2), Metadaten-Index, Audio-Fingerprints, Jobs-Queue, versionierte Migrationen; Sammlungs-Index (`list_collection_tracks`) und Dateidauer (`duration`, Migration 12) |
 | `sc_digger/audit.py` | Read-only Library Audit (Phase 2.2), Fake-Erkennung, HTML-Dashboard, Rückmeldung „übernommen“ per Fingerprint (`mark_adopted_tracks`, `audit --check-adopted`, ROADMAP 3.12) |
 | `sc_digger/health.py` | Laufprotokoll, Alarm bei wiederholt leeren/fehlerhaften Läufen |
 | `sc_digger/healthcheck.py` | Container-Healthcheck: Cron, letzter Lauf, DB-Integrität |
