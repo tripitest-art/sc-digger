@@ -10,12 +10,14 @@ Cues aus einem StemAnalysisResult.
 """
 from __future__ import annotations
 
+import json
 import logging
 import math
 from pathlib import Path
-from typing import Sequence
+from typing import Any, Sequence
 
 from sc_digger import phrase
+from sc_digger.db import TrackDB, TrackRecord
 from sc_digger.stems import StemAnalysisResult
 
 log = logging.getLogger(__name__)
@@ -320,3 +322,84 @@ def write_stem_cues(path: Path, result: StemAnalysisResult, *, bpm: float | None
         wrote = True
         ok = write_breakdown_tag(path, breakdown_s, breakdown.kind) and ok
     return wrote and ok
+
+
+def _write_inbox_cues(path: Path, result: dict[str, Any], inbox_dir: Path | str | None) -> None:
+    """Schreibt die Cue-Tags aus einem Worker-Ergebnis, aber nur für Dateien in der Inbox.
+
+    Liegt die Datei in der Sammlung, bleibt sie unberührt (Goldene Regel 4). Die
+    Schreibfunktionen selbst prüfen Werte und Datei und werfen nie.
+    """
+    if inbox_dir is None:
+        return
+    try:
+        if not path.resolve().is_relative_to(Path(inbox_dir).resolve()):
+            return
+    except (OSError, RuntimeError, ValueError):
+        return
+
+    first_kick = result.get("first_kick_s")
+    if first_kick is not None:
+        write_first_kick_tag(path, first_kick)
+    drop_s = result.get("drop_s")
+    if drop_s is not None:
+        write_drop_tag(path, drop_s)
+    drop2_s = result.get("drop2_s")
+    if drop2_s is not None:
+        write_drop2_tag(path, drop2_s)
+    breakdown_s = result.get("breakdown_s")
+    if breakdown_s is not None:
+        write_breakdown_tag(path, breakdown_s, result.get("breakdown_kind"))
+
+
+def apply_cue_result(
+    db: TrackDB,
+    job_id: int,
+    result: dict[str, Any],
+    *,
+    inbox_dir: Path | str | None = None,
+) -> bool:
+    """Übernimmt das Ergebnis eines Cues-Jobs in die Track-DB und schreibt Inbox-Tags.
+
+    1. Liest Job und zugehörigen Track. Fehlen diese: Rückgabe False.
+    2. Speichert result.get('cues') (als JSON-String) in track.rb_cues sowie
+       result.get('breakdown_ratio') in track.breakdown_ratio.
+    3. Falls inbox_dir übergeben wurde und track.path innerhalb von inbox_dir liegt:
+       Schreibt first_kick_s, drop_s, drop2_s, breakdown_s/kind per sc_digger.cues
+       in die Datei. Liegt track.path außerhalb von inbox_dir (Archiv): Datei unberührt lassen.
+    Gibt True bei Erfolg zurück, False bei Fehlern. Wirft nie.
+    """
+    if not isinstance(result, dict):
+        log.warning("Cue-Ergebnis für Job %s ist kein Objekt (%s)", job_id, type(result).__name__)
+        return False
+
+    try:
+        job = db.get_job_by_id(int(job_id))
+        if job is None:
+            log.warning("Cue-Job %s nicht gefunden", job_id)
+            return False
+        track = db.get_track_by_id(int(job.track_id))
+        if track is None:
+            log.warning("Track %s zu Cue-Job %s nicht gefunden", job.track_id, job_id)
+            return False
+
+        cues_value = result.get("cues")
+        rb_cues = json.dumps(cues_value, ensure_ascii=False) if cues_value is not None else None
+        breakdown_ratio = result.get("breakdown_ratio")
+        if breakdown_ratio is not None:
+            breakdown_ratio = float(breakdown_ratio)
+
+        if rb_cues is not None or breakdown_ratio is not None:
+            db.upsert_track(TrackRecord(
+                path=track.path,
+                mtime=track.mtime,
+                size=track.size,
+                rb_cues=rb_cues,
+                breakdown_ratio=breakdown_ratio,
+            ))
+    except Exception as e:
+        log.warning("Cue-Ergebnis für Job %s nicht übernommen: %s", job_id, e)
+        return False
+
+    _write_inbox_cues(Path(track.path), result, inbox_dir)
+    return True

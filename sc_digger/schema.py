@@ -213,6 +213,10 @@ FIELDS: tuple[Field, ...] = (
        "Höchstzahl der Tracks pro täglichem Telegram-Digest (Standard 25).", min=1),
     _f("telegram.feedback_buttons", "bool", "Feedback-Buttons",
        "Interaktive Inline-Buttons (👍/👎/⏳) unter jeder Digest-Nachricht zur Track-Bewertung anzeigen."),
+    # --- cues ---
+    _f("cues.auto_queue", "bool", "Cue-Jobs automatisch einreihen",
+       "Für jeden neuen Inbox-Track einen Cue-Job (JobType.CUES) für den GPU-Worker einreihen; "
+       "der Worker lädt die Datei über die Job-API und meldet First Kick, Drops und Breakdown zurück."),
     # --- rekordbox ---
     _f("rekordbox.xml_enabled", "bool", "XML-Export aktiv",
        "Rekordbox-XML mit Playlists pro Kalenderwoche automatisch in die Inbox schreiben."),
@@ -293,6 +297,7 @@ SECTION_TITLES: dict[str, str] = {
     "retry": "Wiederholung",
     "health": "Health-Alarm",
     "telegram": "Telegram",
+    "cues": "Cues & Struktur",
     "rekordbox": "Rekordbox",
     "digest": "Digest",
     "scout": "Multi-Platform-Scout",
@@ -316,6 +321,7 @@ SECTION_DESCRIPTIONS: dict[str, str] = {
     "retry": "Automatische Wiederholung fehlgeschlagener Downloads in nachfolgenden Läufen.",
     "health": "Schwellenwerte für Telegram-Benachrichtigungen bei Ausfällen oder leerer Trefferausbeute.",
     "telegram": "Einstellungen für den täglichen Digest und interaktive Feedback-Schaltflächen.",
+    "cues": "Reiht Cue- und Strukturanalyse-Jobs für neue Inbox-Tracks in die Job-Queue ein, die ein GPU-Worker über die Job-API abarbeitet.",
     "rekordbox": "Export von Wochen-, BPM-, Key- und Stil-Playlists sowie Rekordbox-Cues (Hot Cues A–H, First Kick, Drops).",
     "digest": "Konfiguration der wöchentlichen Kaufliste, Sonntags-Reports und des Wachstums-/Trend-Radars.",
     "scout": "Zusätzliche Multi-Platform-Erkennung von Neuerscheinungen über Bandcamp-Feeds und Beatport-Charts.",

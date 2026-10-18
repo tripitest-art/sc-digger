@@ -193,6 +193,7 @@ Alle Optionen stehen in `config.yaml`; die folgende Liste nennt die Werte aus di
 | `health.max_hours_since_run` | Alarm, wenn der letzte Lauf älter ist als dieser Wert | `36` |
 | `telegram.max_items_per_digest` | Obergrenze der Tracks im Digest (nicht in `playlist`/`check`) | `25` |
 | `telegram.feedback_buttons` | Inline-Buttons für Feedback anzeigen | `true` |
+| `cues.auto_queue` | Cue-Jobs für neue Inbox-Tracks in die Queue legen (GPU-Worker) | `true` |
 | `rekordbox.xml_enabled` | Rekordbox-XML schreiben | `true` |
 | `rekordbox.xml_path` | Zielpfad der XML | `/music/inbox/sc-digger.xml` |
 | `rekordbox.path_map` | Mapping Server-Pfad zu Laptop-Pfad | `/music/inbox` → `Z:/Highres/_sc-digger-inbox` |

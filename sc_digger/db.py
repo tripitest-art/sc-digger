@@ -51,6 +51,7 @@ class JobType(str, Enum):
     CAPTION = "caption"            # Audio-Beschreibung / KI-Zusammenfassung
     TAG_BACKFILL = "tag_backfill"  # Opt-in Metadaten-Ergänzung
     FINGERPRINT = "fingerprint"    # Chromaprint-Berechnung
+    CUES = "cues"                  # Cue- und Strukturanalyse (GPU-Workstation)
 
 
 def _normalize_path(p: str | Path) -> str:
@@ -1254,3 +1255,17 @@ class TrackDB:
             (s_val, r_json, r_json, error, error, job_id),
         )
         self.db.commit()
+
+
+def enqueue_cue_job(db: TrackDB, track: TrackRecord) -> JobRecord | None:
+    """Reiht einen Cue-Analyse-Job für den Track ein (``JobType.CUES``).
+
+    Payload: ``{"track_id", "path", "format"}``. Ohne ``track.id`` gibt es nichts
+    einzureihen (der Track liegt dann noch nicht in der DB) – Rückgabe ``None``.
+    DB-Fehler werden nicht geschluckt: der Aufrufer entscheidet, ob sie den Lauf
+    betreffen (Goldene Regel 7).
+    """
+    if track.id is None:
+        return None
+    payload = {"track_id": track.id, "path": track.path, "format": track.format}
+    return db.enqueue_job(track.id, JobType.CUES, payload=payload)
