@@ -8,6 +8,7 @@ unter „Unreleased“ (Regeln: `AGENTS.md`, Abschnitt „Doku und Changelog“)
 ## Unreleased
 
 ### Hinzugefügt
+- Harmonischer Set-Builder im Web-Dashboard (`/mix`, `POST /api/set-builder`, `GET /api/set-builder/m3u8`): sortiert Tracks aus Sammlung und/oder Inbox per `order_harmonic` zu einer Kette, zeigt BPM-/Key-Sprünge und setzt bei nicht verknüpfbaren Tracks eine sichtbare Schnitt-Segmentgrenze; die Playlist lässt sich als M3U8 für Rekordbox herunterladen, die Sammlung bleibt unverändert (#346).
 - GPU-Worker-Client für die Workstation (`sc_digger/worker.py`, `python -m sc_digger.worker`): holt Jobs per REST (`/api/jobs/claim`), sendet während der Ausführung Heartbeats und meldet Ergebnis oder Fehler an `/api/jobs/{id}/complete`; Job-Handler kommen über `handler_map`, `--once` bearbeitet genau einen Job (#332).
 - CodeQL-Konfiguration (`.github/workflows/codeql.yml`) schließt `tests/**` von der Sicherheitsanalyse aus; `sc_digger/issuecheck.py` warnt Planer vor Substring-Prüfungen auf Hostnamen in Akzeptanztests (#345).
 - Interaktive Kaufliste im Web-Dashboard: `/kaufliste` und `GET /api/kaufliste` zeigen offene Store-Tracks aus `store_items`, suchen nach Artist/Titel und verlinken direkt zum Kauf; bewertet wird per 👍/👎/⏳ über `POST /api/feedback`, der bisher deaktivierte Nav-Tab ist aktiv (#339).

@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import secrets
 import sqlite3
 from contextlib import closing
@@ -24,10 +25,17 @@ from urllib.parse import urlencode, urlparse
 
 import yaml
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
+from fastapi.responses import (
+    HTMLResponse,
+    JSONResponse,
+    PlainTextResponse,
+    RedirectResponse,
+    Response,
+)
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from ..db import FEEDBACK_VALUES
+from ..dj_export import Playlist, order_harmonic
 from ..harmonic import find_mix_candidates
 from ..models import Config
 from ..pipeline import classify_download, dedupe, estimate_bpm
@@ -39,10 +47,12 @@ from .database import (
     MAX_LIMIT,
     _connect_readonly,
     _sc_id_from_path,
+    _set_builder_entries,
     claim_job_for_worker,
     finish_job,
     get_collection_overview,
     heartbeat_job,
+    load_tracks_for_set_builder,
     query_digest,
     query_store_items,
     query_tracks,
@@ -140,6 +150,94 @@ def _query_bool(value: str | None) -> bool | None:
     if lowered in _FALSES:
         return False
     return None
+
+
+def _payload_float(value: object) -> float | None:
+    """JSON-Wert als float; None, leer oder ungültig -> None (kein Filter)."""
+    if value is None or value == "":
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _m3u8_safe(value: object) -> str:
+    """Feld für eine M3U8-Zeile entschärfen: Zeilenumbrüche und Steuerzeichen entfernen.
+
+    Artist und Titel stammen aus Dateien und fremden Quellen. Ein Zeilenumbruch im Namen
+    würde sonst eine eigene M3U8-Anweisung erzeugen (Header-Injection).
+    """
+    return " ".join(str(value if value is not None else "").split())
+
+
+def _m3u8_filename(name: str) -> str:
+    """Unbedenklicher Dateiname für ``Content-Disposition`` (keine Quotes/Umbrüche)."""
+    stem = re.sub(r"[^A-Za-z0-9._-]+", "_", _m3u8_safe(name)).strip("._-")
+    return f"{stem or 'set'}.m3u8"
+
+
+def _render_m3u8(playlist: Playlist, name: str) -> str:
+    """Playlist als M3U8-Text mit vollständigen Pfaden und Segmentmarken.
+
+    ``dj_export`` schreibt die Datei selbst; für die HTTP-Antwort wird der Text direkt
+    gebraucht. Alle Felder laufen durch :func:`_m3u8_safe`, damit ein Titel mit
+    Zeilenumbruch keine zusätzliche Anweisung einschleusen kann.
+    """
+    lines = ["#EXTM3U"]
+    if name:
+        lines.append(f"#PLAYLIST:{_m3u8_safe(name)}")
+    transitions = iter(playlist.transitions)
+    for pos, entry in enumerate(playlist.entries):
+        if pos > 0:
+            transition = next(transitions, None)
+            if transition is not None and transition["typ"] == "schnitt":
+                lines.append(f"# Segment {transition['segment']} (harmonisch fortlaufend)")
+        seconds = int(entry.duration_s) if entry.duration_s else -1
+        info = f"{entry.artist} - {entry.title}" if entry.artist else entry.title
+        tag = (
+            f"{entry.camelot or '--'} · {entry.bpm:.0f} BPM"
+            if entry.bpm else f"{entry.camelot or '--'} · -- BPM"
+        )
+        lines.append(f"#EXTINF:{seconds},{_m3u8_safe(info)} [{_m3u8_safe(tag)}]")
+        lines.append(_m3u8_safe(entry.path))
+    return "\n".join(lines) + "\n"
+
+
+def _build_set_playlist(
+    track_db_path: str | Path,
+    *,
+    bpm_min: float | None,
+    bpm_max: float | None,
+    status: str | None,
+    track_ids: list[int] | None,
+) -> Playlist:
+    """Kandidaten lesen und harmonisch sortieren (``order_harmonic``).
+
+    Mit ``track_ids`` wird bereits in SQL gefiltert, damit die Auswahl nicht am
+    Standard-Limit hängt; ohne Auswahl gilt das Limit der lesenden Abfrage.
+    """
+    if track_ids is not None:
+        entries = [
+            entry
+            for _, entry in _set_builder_entries(
+                track_db_path,
+                bpm_min=bpm_min,
+                bpm_max=bpm_max,
+                status=status,
+                track_ids=track_ids,
+                limit=MAX_LIMIT,
+            )
+        ]
+    else:
+        entries = load_tracks_for_set_builder(
+            track_db_path,
+            bpm_min=bpm_min,
+            bpm_max=bpm_max,
+            status=status,
+            limit=DEFAULT_LIMIT,
+        )
+    return order_harmonic(entries)
 
 
 class _ReadOnlyTrackDB:
@@ -444,6 +542,97 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
             key=key, bpm=bpm_raw, tol=tol_raw,
             candidates=candidates, error=error, searched=searched,
         ))
+
+    # Harmonischer Set-Builder (Issue #340): dieselbe Graph-Optimierung wie
+    # `python -m sc_digger.dj_export`, aber auf Abruf aus der Track-DB. Beide Routen
+    # lesen nur; die Playlist landet als M3U8 im Browser, nicht auf der Sammlung.
+    @app.post("/api/set-builder")
+    async def api_set_builder(request: Request):
+        if not _check_auth(request, password, allow_anonymous):
+            return _unauthorized()
+        try:
+            payload = await request.json()
+        except Exception:
+            return JSONResponse({"ok": False, "error": "Ungültiges JSON"}, status_code=400)
+        if not isinstance(payload, dict):
+            return JSONResponse({"ok": False, "error": "Ungültiger Payload"}, status_code=400)
+
+        raw_ids = payload.get("track_ids")
+        if raw_ids is None:
+            track_ids = None
+        elif isinstance(raw_ids, list):
+            try:
+                track_ids = [int(item) for item in raw_ids]
+            except (TypeError, ValueError):
+                return JSONResponse(
+                    {"ok": False, "error": "track_ids müssen Zahlen sein"}, status_code=400
+                )
+        else:
+            return JSONResponse(
+                {"ok": False, "error": "track_ids muss eine Liste sein"}, status_code=400
+            )
+
+        playlist = _build_set_playlist(
+            cfg["state"]["track_db_path"],
+            bpm_min=_payload_float(payload.get("bpm_min")),
+            bpm_max=_payload_float(payload.get("bpm_max")),
+            status=str(payload.get("status") or "").strip() or None,
+            track_ids=track_ids,
+        )
+        return JSONResponse({
+            "ok": True,
+            "total_tracks": len(playlist.entries),
+            "segments": playlist.segments,
+            "playlist": [
+                {
+                    "pos": pos,
+                    "artist": entry.artist,
+                    "title": entry.title,
+                    "bpm": entry.bpm,
+                    "camelot": entry.camelot,
+                    "path": str(entry.path),
+                }
+                for pos, entry in enumerate(playlist.entries, 1)
+            ],
+            "transitions": [
+                {
+                    key: transition[key]
+                    for key in ("typ", "von", "nach", "harmonisch",
+                                "kosten", "dbpm", "warnung")
+                }
+                for transition in playlist.transitions
+            ],
+        })
+
+    @app.get("/api/set-builder/m3u8")
+    def api_set_builder_m3u8(request: Request):
+        if not _check_auth(request, password, allow_anonymous):
+            return _unauthorized()
+        params = request.query_params
+        name = (params.get("name") or "set").strip() or "set"
+        raw_ids = (params.get("track_ids") or "").strip()
+        track_ids: list[int] | None = None
+        if raw_ids:
+            try:
+                track_ids = [int(part) for part in raw_ids.split(",") if part.strip()]
+            except ValueError:
+                return PlainTextResponse(
+                    "track_ids müssen Zahlen sein", status_code=400
+                )
+        playlist = _build_set_playlist(
+            cfg["state"]["track_db_path"],
+            bpm_min=_query_float(params.get("bpm_min")),
+            bpm_max=_query_float(params.get("bpm_max")),
+            status=(params.get("status") or "").strip() or None,
+            track_ids=track_ids,
+        )
+        return Response(
+            content=_render_m3u8(playlist, name),
+            media_type="application/x-mpegurl",
+            headers={
+                "Content-Disposition": f'attachment; filename="{_m3u8_filename(name)}"'
+            },
+        )
 
     @app.post("/api/check-url")
     async def api_check_url(request: Request):
