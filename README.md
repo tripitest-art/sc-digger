@@ -94,6 +94,7 @@ Der Bot läuft dauerhaft (Hauptprozess des Containers) und antwortet nur im Chat
 | `/preview <Suchtext oder id>` | 20s-Sprachnachricht eines heruntergeladenen Tracks (Track-DB, seit #147) |
 | `/preview sc:<SoundCloud-ID>` | 20s-Sprachnachricht direkt aus dem SoundCloud-Stream, auch für nicht heruntergeladene Tracks (Schalter `preview.stream_enabled`, Standard aus, seit #168) |
 | `/sync_xml` | Schreibt die Rekordbox-XML der Inbox sofort neu (wie `python -m sc_digger.main rekordbox`) und nennt die Track-Zahl und den Zeitpunkt (seit #187) |
+| `/similar <SoundCloud-Link>` | Top-5 klanglich ähnliche Aufnahmen aus der Sammlung via Chromaprint-Fingerprint (seit #280) |
 | `/cleanup_inbox` | Dubletten in der Inbox auflisten (nur lesend) |
 
 Zum Digest gehören Inline-Buttons pro Track (Like, Dislike, Später). Die Wahl landet in `sc_feedback` in `tracks.sqlite` und wird von `/mix` und `/curator_mining` ausgewertet. Die Kaufliste kommt zusätzlich sonntags um 20:00 (`0 20 * * 0`, aus `entrypoint.sh`).
@@ -367,6 +368,7 @@ Gefundene Tracks werden gegen die lokale Sammlung abgeglichen, Duplikate übersp
 | `scout/` | Multi-Platform-Scout für externe Feeds und Charts (`bandcamp.py`, `beatport.py`) |
 | `pipeline.py` | Text-BPM, Genre-Relevanz, Perzentil-Scoring, Download-Klassifizierung |
 | `collection.py` | Duplikat-Abgleich mit der Sammlung (Fuzzy-Match, Remixer beachten) |
+| `linksource.py` | Zuordnungslogik: Sammlungsdateien mit SoundCloud-Tracks verknüpfen (Teil 1) |
 | `cleanup.py` | Inbox-Dubletten per SoundCloud-ID identifizieren und auflisten/verschieben |
 | `output.py` | State-DB, Original-Download (scdl), `finalize_quality`, Telegram-Digest, Export-Datei, `telegram_call`, `send_telegram_photo` |
 | `retry.py` | Retry-Queue für fehlgeschlagene Original-Downloads |
@@ -380,7 +382,9 @@ Gefundene Tracks werden gegen die lokale Sammlung abgeglichen, Duplikate übersp
 | `stems.py` | Stem-basierte Subbass- und Breakdown-Analyse (Demucs-Stems `bass.wav`/`drums.wav`, Fake-Drop-Validierung, Breakdown-Typisierung `silence`/`groove`) |
 | `style.py` | Schranz-Matrix (4 Cluster, 13 Subgenres, 3 Achsen, Versionstypen, Energie-Klassifizierung 1–5) |
 | `fingerprint.py` | Audio-Fingerprints (Chromaprint/fpcalc), gleiche Aufnahme erkennen |
+| `similarity.py` | Ähnlichkeitssuche über Chromaprint-Fingerprints gegen die Track-DB („Mehr davon“ im Bot per Audio-Datei-Upload) |
 | `harmonic.py` | Harmonische Kompatibilität (Camelot-Wheel), Suche nach Key und BPM (`/mix`) |
+| `dj_export.py` | Harmonischer DJ-Export: M3U8-Playlists, CSV und Set-Reports nach Camelot-Nachbarschaft und ΔBPM |
 | `organize.py` | Inbox-Sortierung `<BPM>/<Camelot>/`, Tags schreiben (inkl. RIFF-INFO für WAV) |
 | `rekordbox.py` | Rekordbox-XML mit einer Playlist pro Woche aus der Inbox |
 | `embeddings.py` | Audio-Embeddings: Vektorspeicher in Track-DB, Queue-Job und Ergebnisverarbeitung |
@@ -398,6 +402,7 @@ Gefundene Tracks werden gegen die lokale Sammlung abgeglichen, Duplikate übersp
 | `preview.py` | Live-Preview: energiereichstes Segment per ffmpeg, OGG-Opus-Snippet (`find_loudest_segment`, `extract_preview`). Eingebunden über den Bot-Befehl `/preview` (`bot.py`, seit #147). Seit #168 zusätzlich `extract_preview_from_url` für `/preview sc:<SoundCloud-ID>` direkt aus dem Stream. |
 | `redact.py` | Zugangsdaten aus Texten, Logs und Fehlermeldungen entfernen |
 | `models.py` | Datenmodelle (`Track`, `Config`) und Config-Loader |
+| `worker.py` | Standalone-Worker-Client für externe GPU-Workstations (Audio-Embeddings, Cue-Berechnung) |
 
 ### Web-Dashboard (Live-Cockpit, Digest-Explorer, Gate-Assistent)
 
