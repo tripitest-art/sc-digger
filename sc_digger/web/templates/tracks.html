@@ -207,6 +207,12 @@
           <option value="0" {% if filters.adopted == "0" %}selected{% endif %}>nicht übernommen</option>
         </select>
       </div>
+      {# Max. Breakdown-Anteil als Dezimalwert 0–1 (Issue #334): 0.2 = 20 %. #}
+      <div class="filter-field">
+        <label for="f-breakdown-max">Max. Breakdown %</label>
+        <input type="text" id="f-breakdown-max" name="breakdown_max" value="{{ filters.breakdown_max }}"
+               placeholder="z. B. 0.2">
+      </div>
     </div>
     <div class="filter-actions">
       <button type="submit">Filtern</button>
@@ -249,6 +255,15 @@
           {% endif %}
           {% if track.rb_play_count and track.rb_play_count > 0 %}
           <span class="badge badge-info" style="margin-top: 0.2rem;">🎧 {{ track.rb_play_count }}x im Set</span>
+          {% endif %}
+          {# Breakdown-Anteil aus der Strukturanalyse (Issue #334). Unter 15 % gilt der Track
+             als Peaktime-Werkzeug; der Wert 0.0 ist gültig und muss deshalb "is not none". #}
+          {% if track.breakdown_ratio is not none %}
+          <span class="badge {% if track.breakdown_ratio < 0.15 %}badge-ok{% else %}badge-info{% endif %}"
+                style="margin-top: 0.2rem;"
+                title="Breakdown-Anteil{% if track.breakdown_ratio < 0.15 %} – Peaktime-Tool{% endif %}">
+            ⚡ {{ (track.breakdown_ratio * 100) | round(0) | int }}% Break{% if track.breakdown_ratio < 0.15 %} · Peaktime{% endif %}
+          </span>
           {% endif %}
         </td>
         <td class="mono">
