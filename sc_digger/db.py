@@ -770,11 +770,10 @@ class TrackDB:
                 "SELECT path, sc_id, source_url FROM tracks WHERE id = ?", (track_id,)
             ).fetchone()
             if row is not None:
-                sc_id = row["sc_id"]
-                if sc_id is None:
-                    m = re.match(r"^\[(\d+)\]", Path(row["path"] or "").name)
-                    if m:
-                        sc_id = int(m.group(1))
+                # Das Präfix im Dateinamen ist die frischere Angabe; erst danach zählt
+                # eine bereits gespeicherte sc_id des Records.
+                m = re.match(r"^\[(\d+)\]", Path(row["path"] or "").name)
+                sc_id = int(m.group(1)) if m else row["sc_id"]
                 set_parts: list[str] = []
                 params: list[Any] = []
                 if sc_id is not None:

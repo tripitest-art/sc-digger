@@ -103,6 +103,17 @@ def test_query_digest_erkennt_inbox_zeile_ueber_sc_id(tmp_path):
     assert item.in_collection is False
 
 
+def test_praefix_hat_vorrang_vor_gespeicherter_sc_id(tmp_path):
+    """Weichen Dateiname und Record auseinander, gilt die ID aus dem Dateinamen."""
+    with TrackDB(tmp_path / "tracks.sqlite") as db:
+        _, archive_rec = _pair(
+            db, tmp_path, inbox_name="[99999] Artist - Track.wav", archive_name="Renamed.wav",
+            inbox_sc_id=4711,
+        )
+        assert len(mark_adopted_tracks(db, now="2026-10-16 12:00:00")) == 1
+        assert db.get_track_by_id(archive_rec.id).sc_id == 99999
+
+
 def test_mark_adopted_unbekannte_id_laesst_archivzeile_unberuehrt(tmp_path):
     with TrackDB(tmp_path / "tracks.sqlite") as db:
         archive_rec = db.upsert_track(TrackRecord(
