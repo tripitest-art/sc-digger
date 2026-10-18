@@ -222,7 +222,13 @@ def finish_file(t: Track, path: Path, inbox: Path, cfg: Config) -> Path | None:
     track_db_path = (cfg.raw.get("state") or {}).get("track_db_path")
     if track_db_path:
         try:
-            from .db import TrackDB, TrackRecord, TrackStatus, QualityStatus
+            from .db import (
+                QualityStatus,
+                TrackDB,
+                TrackRecord,
+                TrackStatus,
+                enqueue_cue_job,
+            )
             stat = path.stat()
             q_rep = t.quality_report or {}
             q_status = QualityStatus.OK if q_rep.get("ok") else QualityStatus.UNKNOWN
@@ -244,7 +250,10 @@ def finish_file(t: Track, path: Path, inbox: Path, cfg: Config) -> Path | None:
                 breakdown_ratio=t.breakdown_ratio,
             )
             with TrackDB(track_db_path) as db:
-                db.upsert_track(rec)
+                stored = db.upsert_track(rec)
+                # Der GPU-Worker holt den Job per API und schreibt Cues zurück (Issue #349).
+                if (cfg.raw.get("cues") or {}).get("auto_queue", True):
+                    enqueue_cue_job(db, stored)
         except Exception as e:
             log.warning("Persistieren in TrackDB fehlgeschlagen: %s", e)
 

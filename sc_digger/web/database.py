@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from ..collection import NameIndex, NameKey, name_key, normalize, remixer_tokens
+from ..cues import apply_cue_result
 from ..db import FEEDBACK_VALUES, JobRecord, TrackDB
 from ..dj_export import Entry
 from ..linksource import normalize_url
@@ -950,8 +951,14 @@ def finish_job(
     status: str,
     result: dict[str, Any] | None = None,
     error: str | None = None,
+    *,
+    inbox_dir: str | Path | None = None,
 ) -> bool:
     """Setzt das Ergebnis eines Jobs auf ``completed`` oder ``failed``.
+
+    Bei ``completed`` und ``job_type == 'cues'`` übernimmt ``apply_cue_result`` die
+    Cue-Punkte in die Track-DB und schreibt die Tags für Inbox-Dateien (Sammlung
+    bleibt unberührt). ``inbox_dir`` ist dafür die erlaubte Schreibwurzel.
 
     Gibt ``True`` bei Erfolg zurück, ``False`` bei unbekanntem Status, unbekanntem Job,
     fehlender Datei oder DB-Fehler. Wirft nie.
@@ -962,9 +969,12 @@ def finish_job(
         return False
     try:
         with TrackDB(track_db_path) as db:
-            if db.get_job_by_id(int(job_id)) is None:
+            job = db.get_job_by_id(int(job_id))
+            if job is None:
                 return False
             db.update_job(int(job_id), status, result=result, error=error)
+            if status == "completed" and _job_value(job.job_type) == "cues":
+                apply_cue_result(db, int(job_id), result or {}, inbox_dir=inbox_dir)
             updated = db.get_job_by_id(int(job_id))
     except (sqlite3.Error, OSError, TypeError, ValueError):
         return False

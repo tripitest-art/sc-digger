@@ -350,6 +350,45 @@ def _iter_file_range(path: Path, start: int, length: int):
             yield chunk
 
 
+def _audio_response(request: Request, path_value: str | None, cfg: Config) -> Response:
+    """Liefert eine Audiodatei aus Inbox oder Sammlung, mit Range-Unterstützung.
+
+    404, wenn der Pfad fehlt, per Symlink aus den erlaubten Wurzeln herausführt oder nicht
+    lesbar ist. Nur lesend; die Sammlung bleibt unberührt.
+    """
+    path = resolve_playable_path(path_value or "", _playable_roots(cfg))
+    if path is None:
+        return PlainTextResponse("Datei nicht verfügbar", status_code=404)
+    try:
+        size = path.stat().st_size
+    except OSError:
+        return PlainTextResponse("Datei nicht verfügbar", status_code=404)
+    try:
+        byte_range = parse_range_header(request.headers.get("range"), size)
+    except ValueError:
+        return Response(
+            status_code=416,
+            headers={"Content-Range": f"bytes */{size}", "Accept-Ranges": "bytes"},
+        )
+    media_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+    if byte_range is None:
+        start, end = 0, size - 1
+        status_code = 200
+    else:
+        start, end = byte_range
+        status_code = 206
+    length = end - start + 1
+    headers = {"Accept-Ranges": "bytes", "Content-Length": str(length)}
+    if status_code == 206:
+        headers["Content-Range"] = f"bytes {start}-{end}/{size}"
+    return StreamingResponse(
+        _iter_file_range(path, start, length),
+        status_code=status_code,
+        media_type=media_type,
+        headers=headers,
+    )
+
+
 def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = False,
                base_path: Path | None = None, local_path: Path | None = None) -> FastAPI:
     """Erzeugt die Status-App.
@@ -447,10 +486,27 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
             status,
             result=payload.get("result"),
             error=payload.get("error"),
+            inbox_dir=(cfg.raw.get("download") or {}).get("inbox_dir"),
         )
         if done:
             return JSONResponse({"ok": True})
         return JSONResponse({"ok": False, "error": "Job nicht gefunden"}, status_code=404)
+
+    @app.get("/api/jobs/{job_id}/audio")
+    def api_jobs_audio(request: Request, job_id: int):
+        """Audiodatei zum Job, damit der GPU-Worker sie lokal analysieren kann.
+
+        Gleiche Wurzeln und derselbe Schutz wie /api/audio/{track_id}: nur lesend,
+        404 bei unbekanntem Job, fehlendem Track oder Datei außerhalb von Inbox/Sammlung.
+        """
+        if not _check_auth(request, password, allow_anonymous):
+            return _unauthorized()
+        with TrackDB(cfg["state"]["track_db_path"]) as db:
+            job = db.get_job_by_id(job_id)
+            track = db.get_track_by_id(job.track_id) if job is not None else None
+        if track is None:
+            return PlainTextResponse("Track nicht gefunden", status_code=404)
+        return _audio_response(request, track.path, cfg)
 
     # Rein lesende Track-Abfragen für den Explorer (Teil 1 des Dashboards): nur die
     # Track-DB, ausschließlich `mode=ro`, keine Schreibpfade.
@@ -491,37 +547,7 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
             track = db.get_track_by_id(track_id)
         if track is None:
             return PlainTextResponse("Track nicht gefunden", status_code=404)
-        path = resolve_playable_path(track.path, _playable_roots(cfg))
-        if path is None:
-            return PlainTextResponse("Datei nicht verfügbar", status_code=404)
-        try:
-            size = path.stat().st_size
-        except OSError:
-            return PlainTextResponse("Datei nicht verfügbar", status_code=404)
-        try:
-            byte_range = parse_range_header(request.headers.get("range"), size)
-        except ValueError:
-            return Response(
-                status_code=416,
-                headers={"Content-Range": f"bytes */{size}", "Accept-Ranges": "bytes"},
-            )
-        media_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
-        if byte_range is None:
-            start, end = 0, size - 1
-            status_code = 200
-        else:
-            start, end = byte_range
-            status_code = 206
-        length = end - start + 1
-        headers = {"Accept-Ranges": "bytes", "Content-Length": str(length)}
-        if status_code == 206:
-            headers["Content-Range"] = f"bytes {start}-{end}/{size}"
-        return StreamingResponse(
-            _iter_file_range(path, start, length),
-            status_code=status_code,
-            media_type=media_type,
-            headers=headers,
-        )
+        return _audio_response(request, track.path, cfg)
 
     # DJ-Ansicht auf dieselben rein lesenden Abfragen (Teil 2 des Dashboards): Filter-Formular
     # und Treffertabelle serverseitig gerendert, Paginierung über offset.

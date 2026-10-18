@@ -216,6 +216,12 @@ telegram:
   # Inline-Buttons (👍/👎/⏳) unter jeder Digest-Nachricht zur Track-Bewertung
   feedback_buttons: true
 
+cues:
+  # Cue- und Strukturanalyse (First Kick, Drops, Breakdown) läuft auf der GPU-Workstation:
+  # für jeden neuen Inbox-Track wird ein Job in die Queue gelegt, der Worker holt die Datei
+  # über /api/jobs/<id>/audio und meldet das Ergebnis über /api/jobs/<id>/complete zurück.
+  auto_queue: true
+
 rekordbox:
   # Rekordbox-XML-Export: schreibt eine XML mit Playlists pro Woche in die Inbox
   xml_enabled: true
