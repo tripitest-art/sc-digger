@@ -53,6 +53,26 @@ def telegram_call(token: str, method: str, *, http: str = "post", timeout: int =
     return body
 
 
+def telegram_download(token: str, file_path: str, dest: str | Path, *, timeout: int = 60) -> Path:
+    """Lädt eine Datei der Telegram-File-API nach dest (Rohbytes, kein JSON).
+
+    Der File-Endpunkt ist keine Bot-Methode und damit nicht über `telegram_call` erreichbar;
+    deshalb steht der einzige direkte Zugriff auf die File-URL hier. Wie dort enthält die URL
+    den Bot-Token: Fehler werden als TelegramError mit redact() geworfen, die URL erscheint
+    nie in Log oder Antwort.
+    """
+    url = f"https://api.telegram.org/file/bot{token}/{file_path}"
+    try:
+        r = requests.get(url, timeout=timeout)
+    except requests.RequestException as e:
+        raise TelegramError(redact(f"Datei-Download: {type(e).__name__}: {e}")) from None
+    if r.status_code >= 400:
+        raise TelegramError(f"Datei-Download: Telegram {r.status_code}")
+    path = Path(dest)
+    path.write_bytes(r.content)
+    return path
+
+
 # ---------------------------------------------------------------- State
 class State:
     """Merkt sich gemeldete Tracks, damit der Digest nie zweimal dasselbe zeigt."""

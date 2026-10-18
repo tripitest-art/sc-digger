@@ -24,19 +24,17 @@ from collections import Counter
 from datetime import datetime
 from pathlib import Path
 
-import requests
-
 from .db import TrackDB
 from .harmonic import compatible_keys, find_mix_candidates, format_mix_list
 from .main import run_link
 from .models import Config
-from .output import TelegramError, parse_feedback_callback, telegram_call
+from .output import TelegramError, parse_feedback_callback, telegram_call, telegram_download
 from .output import send_telegram_voice
 from . import output, preview, rekordbox
 from .cleanup import audit_inbox_duplicates, format_duplicate_report
 from .fingerprint import compute_fingerprint
 from .preview import extract_preview_from_url
-from .redact import install_redacting_logging, redact
+from .redact import install_redacting_logging
 from .similarity import SIMILAR_FAILED, build_similar_reply
 from .soundcloud import SoundCloudClient, SoundCloudError
 from .stats import calculate_stats, format_stats
@@ -443,25 +441,14 @@ def similar_reply_from_url(
 def _download_telegram_audio(cfg: Config, file_id: str, dest: Path) -> Path:
     """Lädt eine von Telegram gesendete Audiodatei nach dest.
 
-    Erst getFile über `output.telegram_call` (Bot-Methode), dann die Datei über die
-    Telegram-Datei-URL. Die liefert Rohbytes statt JSON und enthält den Bot-Token; sie ist
-    damit keine Bot-Methode, die `telegram_call` abdecken könnte. Wie dort werden Fehler
-    deshalb als TelegramError mit redact() geworfen, die URL landet nie in Log oder Antwort.
+    Erst getFile über `output.telegram_call` (Bot-Methode), dann die Rohbytes über
+    `output.telegram_download`. Beide Wege werfen TelegramError ohne Token in der Meldung.
     """
     info = telegram_call(cfg.telegram_token, "getFile", http="get", params={"file_id": file_id})
     file_path = (info.get("result") or {}).get("file_path")
     if not file_path:
         raise TelegramError("getFile: Telegram lieferte keinen file_path")
-
-    url = f"https://api.telegram.org/file/bot{cfg.telegram_token}/{file_path}"
-    try:
-        r = requests.get(url, timeout=60)
-    except requests.RequestException as e:
-        raise TelegramError(redact(f"getFile-Download: {type(e).__name__}: {e}")) from None
-    if r.status_code >= 400:
-        raise TelegramError(f"getFile-Download: Telegram {r.status_code}")
-    dest.write_bytes(r.content)
-    return dest
+    return telegram_download(cfg.telegram_token, file_path, dest)
 
 
 def similar_reply_from_audio(cfg: Config, db: TrackDB, audio_path: Path) -> str:

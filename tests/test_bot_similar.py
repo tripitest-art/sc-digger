@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from sc_digger import bot, similarity
+from sc_digger import bot, output, similarity
 from sc_digger.db import TrackDB, TrackRecord
 from sc_digger.fingerprint import Fingerprint, encode_fingerprint
 from sc_digger.models import Config
@@ -224,7 +224,7 @@ def _file_get(monkeypatch, *, status_code=200, content=b"audio-bytes", file_path
         return resp
 
     monkeypatch.setattr(bot, "telegram_call", fake_call)
-    monkeypatch.setattr(bot.requests, "get", fake_get)
+    monkeypatch.setattr(output.requests, "get", fake_get)
     return calls
 
 
@@ -261,12 +261,44 @@ def test_download_telegram_audio_redacts_token_from_request_errors(tmp_path, mon
     _file_get(monkeypatch)
 
     def boom(url, timeout=None):
-        raise bot.requests.RequestException(f"HTTPError für {url}")
+        raise output.requests.RequestException(f"HTTPError für {url}")
 
-    monkeypatch.setattr(bot.requests, "get", boom)
+    monkeypatch.setattr(output.requests, "get", boom)
 
     with pytest.raises(bot.TelegramError) as err:
         bot._download_telegram_audio(Config({}), "F1", tmp_path / "empfangen.oga")
 
     assert token not in str(err.value)
     assert "bot***" in str(err.value)
+
+
+def test_listen_routes_voice_and_audio_to_audio_handler(monkeypatch):
+    """Polling-Routing: voice/audio geht an handle_audio_message, nicht an handle_message."""
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:abc")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "4242")
+    monkeypatch.setattr(bot, "SoundCloudClient", lambda: None)
+    seen = []
+
+    updates = iter([
+        {"result": []},                                                      # Backlog beim Start
+        {"result": [
+            {"update_id": 7, "message": {"chat": {"id": 4242}, "voice": {"file_id": "V1"}}},
+            {"update_id": 8, "message": {"chat": {"id": 4242}, "audio": {"file_id": "A1"}}},
+        ]},
+    ])
+
+    def fake_call(token, method, **kwargs):
+        try:
+            return next(updates)
+        except StopIteration:
+            raise KeyboardInterrupt                                      # Loop beenden
+
+    monkeypatch.setattr(bot, "telegram_call", fake_call)
+    monkeypatch.setattr(bot, "handle_message", lambda *a: pytest.fail("Text-Handler gerufen"))
+    monkeypatch.setattr(bot, "handle_audio_message",
+                        lambda cfg, chat_id, audio: seen.append((chat_id, audio)))
+
+    with pytest.raises(KeyboardInterrupt):
+        bot.listen(Config({}))
+
+    assert seen == [("4242", {"file_id": "V1"}), ("4242", {"file_id": "A1"})]
