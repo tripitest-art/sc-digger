@@ -24,6 +24,8 @@ from collections import Counter
 from datetime import datetime
 from pathlib import Path
 
+import yaml
+
 from .db import TrackDB
 from .harmonic import compatible_keys, find_mix_candidates, format_mix_list
 from .main import run_link
@@ -38,6 +40,7 @@ from .redact import install_redacting_logging
 from .similarity import SIMILAR_FAILED, build_similar_reply
 from .soundcloud import SoundCloudClient, SoundCloudError
 from .stats import calculate_stats, format_stats
+from .web.configedit import save_local
 
 log = logging.getLogger("sc_digger.bot")
 
@@ -80,21 +83,22 @@ HELP_TEXT = (
 )
 
 
-def _send_text(cfg: Config, chat_id: str, text: str) -> None:
+def _send_text(cfg: Config, chat_id: str, text: str,
+               reply_markup: dict | None = None) -> None:
     """Sendet text per sendMessage an chat_id, zunächst mit parse_mode='HTML'.
     Scheitert Telegram am HTML (Status 400 bzw. Entity-Parsing-Fehler), wird die Nachricht
     ohne parse_mode als reiner Text erneut gesendet, damit der Bot nie stumm bleibt."""
+    base = {"chat_id": chat_id, "text": text, "disable_web_page_preview": True}
+    if reply_markup:
+        base["reply_markup"] = reply_markup
     try:
         telegram_call(cfg.telegram_token, "sendMessage",
-                      json={"chat_id": chat_id, "text": text, "parse_mode": "HTML",
-                            "disable_web_page_preview": True})
+                      json={**base, "parse_mode": "HTML"})
     except TelegramError as e:
         if "400" not in str(e) and "parse entities" not in str(e):
             raise
         log.warning("HTML-Versand fehlgeschlagen (%s), sende als Klartext erneut", e)
-        telegram_call(cfg.telegram_token, "sendMessage",
-                      json={"chat_id": chat_id, "text": text,
-                            "disable_web_page_preview": True})
+        telegram_call(cfg.telegram_token, "sendMessage", json=base)
 
 
 def handle_kaufliste_command(cfg: Config, chat_id: str | None = None) -> None:
@@ -109,6 +113,125 @@ def handle_kaufliste_command(cfg: Config, chat_id: str | None = None) -> None:
         log.exception("Fehler beim Senden der Kaufliste")
         if target_chat:
             _send_text(cfg, target_chat, "Kaufliste fehlgeschlagen, siehe Container-Log.")
+
+
+class CuratorMiningResult(str):
+    """Formatierter Text plus Kandidaten für die Inline-Buttons; bleibt als str nutzbar."""
+
+    candidates: list[tuple[str, str, int]]
+
+    def __new__(cls, text: str, candidates: list[tuple[str, str, int]]) -> "CuratorMiningResult":
+        obj = super().__new__(cls, text)
+        obj.candidates = candidates
+        return obj
+
+
+def _permalink_slug(permalink: str | None) -> str:
+    """SoundCloud-URL oder Permalink -> reiner Slug (klein, ohne Domain und Slashes)."""
+    value = str(permalink or "").strip().lower()
+    if not value:
+        return ""
+    if "soundcloud.com" in value:
+        value = value.split("soundcloud.com", 1)[1].lstrip("/")
+    elif "://" in value:
+        value = value.split("://", 1)[1]
+        value = value.split("/", 1)[1] if "/" in value else ""
+    value = value.split("?", 1)[0].split("#", 1)[0].strip("/")
+    return value.split("/", 1)[0] if value else ""
+
+
+def _known_account_slugs(cfg: Config) -> set[str]:
+    """Slugs aller bereits gefolgten und als Referenz hinterlegten Accounts."""
+    search_cfg = cfg.raw.get("search") or {}
+    known: set[str] = set()
+    for item in (search_cfg.get("followed_users") or []) + (search_cfg.get("reference_accounts") or []):
+        slug = _permalink_slug(item)
+        if slug:
+            known.add(slug)
+    return known
+
+
+def curator_follow_callback_data(permalink: str) -> str:
+    """Callback-Data 'cf:<slug>' für einen Curator-Button (Telegram-Grenze: 64 Byte)."""
+    slug = _permalink_slug(permalink)
+    if not slug or len(slug) > 60:
+        raise ValueError(f"Kein gültiger SoundCloud-Permalink: {permalink!r}")
+    return f"cf:{slug}"
+
+
+def parse_curator_follow_callback(data: str | None) -> str | None:
+    """Callback-Data 'cf:<slug>' -> Slug; None bei fremdem Präfix oder ungültigen Daten."""
+    try:
+        if not isinstance(data, str):
+            return None
+        text = data.strip()
+        if not text.startswith("cf:"):
+            return None
+        slug = _permalink_slug(text[3:])
+        if not slug or len(slug) > 60:
+            return None
+        return slug
+    except Exception:
+        return None
+
+
+def curator_mining_keyboard(candidates: list[tuple[str, str, int]]) -> dict | None:
+    """Inline-Keyboard mit einem Follow-Button je Kandidat (permalink, display_name, count)."""
+    if not candidates:
+        return None
+    rows: list[list[dict]] = []
+    for permalink, display_name, _count in candidates:
+        slug = _permalink_slug(permalink)
+        if not slug:
+            continue
+        label = str(display_name or slug).strip() or slug
+        rows.append([{
+            "text": f"➕ {label}",
+            "callback_data": curator_follow_callback_data(slug),
+        }])
+    return {"inline_keyboard": rows} if rows else None
+
+
+def add_user_to_followed_config(cfg: Config, permalink: str) -> bool:
+    """Trägt den Account dauerhaft in search.followed_users der lokalen Override-Datei ein.
+    True nur bei einem neuen, gespeicherten Eintrag; wirft nie."""
+    try:
+        slug = _permalink_slug(permalink)
+        if not slug:
+            return False
+        if slug in _known_account_slugs(cfg):
+            return False
+
+        local_env = os.environ.get("SC_DIGGER_CONFIG_LOCAL")
+        local_path = Path(local_env) if local_env else None
+        if local_path is None:
+            log.warning("SC_DIGGER_CONFIG_LOCAL nicht gesetzt – %s nicht gespeichert", slug)
+            return False
+
+        search_cfg = cfg.raw.setdefault("search", {})
+        followed = list(search_cfg.get("followed_users") or [])
+        followed.append(f"https://soundcloud.com/{slug}")
+
+        local_doc: dict = {}
+        if local_path.is_file():
+            text = local_path.read_text(encoding="utf-8")
+            if text.strip():
+                parsed = yaml.safe_load(text)
+                if isinstance(parsed, dict):
+                    local_doc = parsed
+        local_search = local_doc.get("search")
+        if not isinstance(local_search, dict):
+            local_search = {}
+        local_search["followed_users"] = followed
+        local_doc["search"] = local_search
+
+        save_local(local_path, local_doc)
+        search_cfg["followed_users"] = followed
+        cfg.raw["search"] = search_cfg
+        return True
+    except Exception:
+        log.exception("Account %r konnte nicht in Followed Users gespeichert werden", permalink)
+        return False
 
 
 def run_curator_mining(sc, cfg: Config) -> str:
@@ -171,15 +294,17 @@ def run_curator_mining(sc, cfg: Config) -> str:
 
     max_display = 30
     lines = ["🔍 Curator-Vorschläge", ""]
+    button_candidates: list[tuple[str, str, int]] = []
     for p_lower, count in candidates[:max_display]:
         permalink = original_permalinks[p_lower]
-        username = html.escape(usernames.get(p_lower, permalink))
-        lines.append(f"• {username} (soundcloud.com/{permalink}) – {count}× gesehen")
+        username = usernames.get(p_lower, permalink)
+        lines.append(f"• {html.escape(username)} (soundcloud.com/{permalink}) – {count}× gesehen")
+        button_candidates.append((p_lower, username, count))
 
     if len(candidates) > max_display:
         lines.append(f"… und {len(candidates) - max_display} weitere")
 
-    return "\n".join(lines)
+    return CuratorMiningResult("\n".join(lines), button_candidates)
 
 
 def mix_reply(cfg: Config, text: str) -> str:
@@ -632,7 +757,8 @@ def handle_message(cfg: Config, sc: SoundCloudClient, chat_id: str, text: str) -
     if first_word in ("/curator-mining", "/curator_mining"):
         try:
             msg = run_curator_mining(sc, cfg)
-            _send_text(cfg, chat_id, msg)
+            keyboard = curator_mining_keyboard(getattr(msg, "candidates", None) or [])
+            _send_text(cfg, chat_id, msg, reply_markup=keyboard)
         except Exception:
             log.exception("Fehler bei Curator-Mining")
             _send_text(cfg, chat_id, "Curator-Mining fehlgeschlagen, siehe Container-Log.")
@@ -767,6 +893,66 @@ def mark_choice(keyboard: dict, sc_id: int, value: str) -> dict:
     return res
 
 
+def _mark_curator_button(reply_markup: dict | None, permalink: str) -> dict | None:
+    """Kopiert das Keyboard; der Button zu permalink verliert sein Callback und wird zum ✅-Link."""
+    if not isinstance(reply_markup, dict):
+        return None
+    rows: list[list[dict]] = []
+    for row in reply_markup.get("inline_keyboard") or []:
+        new_row = []
+        for button in row:
+            new_button = dict(button)
+            if parse_curator_follow_callback(new_button.get("callback_data")) == permalink:
+                label = str(new_button.get("text") or "")
+                label = label.removeprefix("➕ ").removeprefix("✅ ").strip() or permalink
+                new_button["text"] = f"✅ {label}"
+                new_button.pop("callback_data", None)
+                new_button["url"] = f"https://soundcloud.com/{permalink}"
+            new_row.append(new_button)
+        rows.append(new_row)
+    result = dict(reply_markup)
+    result["inline_keyboard"] = rows
+    return result
+
+
+def _handle_curator_follow(cfg: Config, cq: dict, permalink: str) -> None:
+    """Callback auf einen Curator-Button: Account dauerhaft folgen und Button als erledigt zeigen."""
+    cq_id = cq.get("id")
+    already = permalink in _known_account_slugs(cfg)
+    added = add_user_to_followed_config(cfg, permalink)
+    if added:
+        answer = f"✅ {permalink} zu Followed Users hinzugefügt"
+    elif already:
+        answer = f"{permalink} ist bereits in Followed Users"
+    else:
+        answer = f"{permalink} konnte nicht gespeichert werden"
+    if cq_id:
+        try:
+            telegram_call(
+                cfg.telegram_token,
+                "answerCallbackQuery",
+                json={"callback_query_id": cq_id, "text": answer},
+            )
+        except Exception as e:
+            log.warning("Telegram-Fehler bei answerCallbackQuery: %s", e)
+
+    msg = cq.get("message") or {}
+    reply_markup = msg.get("reply_markup")
+    if reply_markup and "message_id" in msg:
+        try:
+            telegram_call(
+                cfg.telegram_token,
+                "editMessageReplyMarkup",
+                json={
+                    "chat_id": (msg.get("chat") or {}).get("id"),
+                    "message_id": msg["message_id"],
+                    "reply_markup": _mark_curator_button(reply_markup, permalink),
+                },
+            )
+        except Exception as e:
+            log.warning("Telegram-Fehler bei editMessageReplyMarkup: %s", e)
+
+
 def handle_callback(cfg: Config, cq: dict) -> None:
     """Ein callback_query-Objekt von Telegram. Wirft nie.
     1. cq["message"]["chat"]["id"] != TELEGRAM_CHAT_ID -> log.warning, KEIN Telegram-Aufruf, nichts speichern.
@@ -786,6 +972,11 @@ def handle_callback(cfg: Config, cq: dict) -> None:
             return
 
         cq_id = cq.get("id")
+        follow_slug = parse_curator_follow_callback(cq.get("data"))
+        if follow_slug is not None:
+            _handle_curator_follow(cfg, cq, follow_slug)
+            return
+
         parsed = parse_feedback_callback(cq.get("data"))
         if parsed is None:
             if cq_id:
