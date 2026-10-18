@@ -8,7 +8,7 @@ unter „Unreleased“ (Regeln: `AGENTS.md`, Abschnitt „Doku und Changelog“)
 ## Unreleased
 
 ### Hinzugefügt
-- Cue- und Strukturanalyse als Job-Queue-Aufgabe: neuer `JobType.CUES` mit `enqueue_cue_job`, `GET /api/jobs/{id}/audio` zum Herunterladen der Job-Datei für den GPU-Worker und automatische Übernahme des Ergebnisses in `rb_cues`/`breakdown_ratio` samt Cue-Tags (nur Inbox-Dateien, Sammlung bleibt unberührt); `finish_file` reiht bei `cues.auto_queue: true` je neuem Inbox-Track einen Job ein (#349).
+- Cue- und Strukturanalyse als Job-Queue-Aufgabe: neuer `JobType.CUES` mit `enqueue_cue_job`, `GET /api/jobs/{id}/audio` zum Herunterladen der Job-Datei für den GPU-Worker und automatische Übernahme des Ergebnisses in `rb_cues`/`breakdown_ratio` samt Cue-Tags (nur Inbox-Dateien, Sammlung bleibt unberührt); `finish_file` reiht bei `cues.auto_queue: true` je neuem Inbox-Track einen Job ein (#360).
 - `/curator_mining` im Telegram-Bot liefert Inline-Buttons „➕ <Name>“; ein Klick trägt den Account dauerhaft in `search.followed_users` der lokalen Override-Datei (`SC_DIGGER_CONFIG_LOCAL`) ein, doppelte Klicks und Callbacks aus fremden Chats bleiben wirkungslos (#359).
 - Audio-Vorhören im Track-Explorer (`/tracks`, `GET /api/audio/{track_id}`): HTML5-Player je Zeile mit Range-Requests zum Springen im Track, rein lesend und nur für Dateien unterhalb von `download.inbox_dir` und `download.collection_dir`; Pfade außerhalb und Symlinks aus den Ordnern heraus ergeben 404 (#350).
 - Statusseite (`/`) zeigt den zuletzt deployten Commit und Zeitpunkt (`data/version.json`, von `update.sh` nach dem Rauchtest geschrieben, gelesen über `sc_digger/web/status.py`); ohne Deploy über `update.sh` bleibt das Feld leer (#358).
