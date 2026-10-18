@@ -22,6 +22,7 @@ from typing import Any
 
 from ..collection import NameIndex, NameKey, name_key, normalize, remixer_tokens
 from ..db import FEEDBACK_VALUES, JobRecord, TrackDB
+from ..dj_export import Entry
 from ..linksource import normalize_url
 
 _AUDIO_EXT = {".wav", ".aiff", ".aif", ".flac", ".mp3", ".m4a"}
@@ -326,6 +327,111 @@ def query_tracks(
         item["sc_comments"] = snapshot["comments"] if snapshot else None
         items.append(item)
     return TrackSearchResult(total=total, items=items)
+
+
+# --------------------------------------------------------------- Set-Builder (Issue #340)
+
+
+def _set_builder_entries(
+    track_db_path: str | Path,
+    *,
+    bpm_min: float | None = None,
+    bpm_max: float | None = None,
+    status: str | None = None,
+    track_ids: list[int] | None = None,
+    limit: int = DEFAULT_LIMIT,
+) -> list[tuple[int, Entry]]:
+    """Track-Zeilen samt ``id`` als :class:`~sc_digger.dj_export.Entry`-Paare.
+
+    Nur lesend (``mode=ro``), sortiert nach ``id``. Tracks ohne BPM oder ohne Camelot-Key
+    werden übersprungen: der Set-Builder kann sie nicht einordnen, und ``order_harmonic``
+    würde sie nur als Lücken mitschleppen. ``track_ids`` filtert bereits in SQL, damit die
+    Auswahl nicht am ``limit`` hängt; eine leere Liste bedeutet bewusst „keine Auswahl".
+    Fehlt die Datei/Tabelle, kommt eine leere Liste zurück (wirft nie).
+    """
+    limit = max(0, min(int(limit), MAX_LIMIT))
+    if track_ids is not None:
+        ids = sorted({int(track_id) for track_id in track_ids})
+        if not ids:
+            return []
+    else:
+        ids = []
+
+    where = ["bpm IS NOT NULL", "TRIM(key_camelot) != ''"]
+    params: list[Any] = []
+    if bpm_min is not None:
+        where.append("bpm >= ?")
+        params.append(float(bpm_min))
+    if bpm_max is not None:
+        where.append("bpm <= ?")
+        params.append(float(bpm_max))
+    if status:
+        where.append("status = ?")
+        params.append(status)
+    if ids:
+        where.append(f"id IN ({','.join('?' for _ in ids)})")
+        params.extend(ids)
+    params.append(limit)
+
+    try:
+        with closing(_connect_readonly(track_db_path)) as db:
+            if not _table_exists(db, "tracks"):
+                return []
+            available = {
+                row["name"] for row in db.execute("PRAGMA table_info(tracks)").fetchall()
+            }
+            if not {"bpm", "key_camelot"} <= available:
+                return []
+            rows = db.execute(
+                "SELECT id, path, artist, title, bpm, key_camelot, key_name "
+                f"FROM tracks WHERE {' AND '.join(where)} ORDER BY id ASC LIMIT ?",
+                params,
+            ).fetchall()
+    except sqlite3.Error:
+        return []
+
+    entries: list[tuple[int, Entry]] = []
+    for row in rows:
+        path = str(row["path"] or "")
+        if not path:
+            continue
+        entries.append((
+            int(row["id"]),
+            Entry(
+                path=Path(path),
+                artist=str(row["artist"] or ""),
+                title=str(row["title"] or ""),
+                bpm=float(row["bpm"]) if row["bpm"] is not None else None,
+                camelot=str(row["key_camelot"] or "").strip() or None,
+                key_name=row["key_name"],
+            ),
+        ))
+    return entries
+
+
+def load_tracks_for_set_builder(
+    track_db_path: str | Path,
+    *,
+    bpm_min: float | None = None,
+    bpm_max: float | None = None,
+    status: str | None = None,
+    limit: int = 100,
+) -> list[Entry]:
+    """Liest Tracks rein lesend aus TrackDB als Entry-Objekte für sc_digger.dj_export.
+
+    Filtert nach bpm_min/max und status (archive/inbox), ignoriert Tracks ohne BPM/Key.
+    ``limit`` wird auf :data:`MAX_LIMIT` begrenzt; fehlt die Datenbank, ist das Ergebnis leer.
+    """
+    return [
+        entry
+        for _, entry in _set_builder_entries(
+            track_db_path,
+            bpm_min=bpm_min,
+            bpm_max=bpm_max,
+            status=status,
+            limit=limit,
+        )
+    ]
 
 
 @dataclass

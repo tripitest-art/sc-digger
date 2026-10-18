@@ -88,10 +88,66 @@
   .scan-status.err {
     color: var(--accent-err);
   }
+  .set-chain td {
+    vertical-align: top;
+  }
+  .set-transition {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    align-items: center;
+  }
+  .set-path {
+    font-size: 0.72rem;
+    color: var(--text-dim);
+    word-break: break-all;
+  }
 </style>
 {% endblock %}
 
 {% block content %}
+<div class="card" id="set-builder">
+  <div class="card-header">
+    <h2 class="card-title" style="margin: 0;">Harmonischer Set-Builder</h2>
+  </div>
+  <p class="meta" style="margin-top: 0;">
+    Tracks aus Sammlung oder Inbox zu einer harmonisch laufenden Kette sortieren: gleicher
+    oder benachbarter Camelot-Key, kleine BPM-Schritte. Wo kein direkter Übergang passt,
+    setzt der Builder eine sichtbare Segmentgrenze statt eines unharmonischen Sprungs.
+    Die fertige Playlist lässt sich als <span class="mono">.m3u8</span> für Rekordbox
+    herunterladen; die Sammlung bleibt unverändert.
+  </p>
+  <form class="filter-form" id="set-builder-form"
+        onsubmit="event.preventDefault(); buildSet();">
+    <div class="filter-grid">
+      <div class="filter-field">
+        <label for="sb-bpm-min">BPM von</label>
+        <input type="text" id="sb-bpm-min" name="bpm_min" placeholder="154"
+               inputmode="decimal" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="filter-field">
+        <label for="sb-bpm-max">BPM bis</label>
+        <input type="text" id="sb-bpm-max" name="bpm_max" placeholder="160"
+               inputmode="decimal" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="filter-field">
+        <label for="sb-status">Status</label>
+        <select id="sb-status" name="status">
+          <option value="archive">Sammlung</option>
+          <option value="inbox">Inbox</option>
+          <option value="">Sammlung + Inbox</option>
+        </select>
+      </div>
+    </div>
+    <div class="filter-actions">
+      <button type="submit" id="sb-run">Set berechnen &amp; optimieren</button>
+      <a id="sb-download" class="btn-page" href="/api/set-builder/m3u8?name=set">💾 M3U8 herunterladen</a>
+    </div>
+  </form>
+  <p id="sb-status" class="scan-status" role="status" aria-live="polite"></p>
+  <div id="sb-result"></div>
+</div>
+
 <div class="card">
   <div class="card-header">
     <h2 class="card-title" style="margin: 0;">Harmonic Mix Finder</h2>
@@ -342,6 +398,157 @@
     } catch (error) {
       renderRows([]);
       showScanStatus('Abfrage fehlgeschlagen: ' + error, 'err');
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  // Harmonischer Set-Builder (Issue #340). Artist und Titel kommen aus der Track-DB und
+  // sind fremder Text: die Kette wird per DOM/textContent gebaut, nie per innerHTML.
+  const SET_BADGES = {
+    gleich: ['badge-ok', 'gleich'],
+    rad_pm1: ['badge-info', '±1'],
+    relativ: ['badge-purple', 'relativ'],
+    boost2: ['badge-warn', 'Boost +2'],
+    boost3: ['badge-warn', 'Boost +3'],
+    fern: ['badge-err', 'fern'],
+    unbekannt: ['badge-muted', 'Key ?'],
+  };
+
+  function setBuilderParams() {
+    const params = new URLSearchParams();
+    const min = (document.getElementById('sb-bpm-min').value || '').trim();
+    const max = (document.getElementById('sb-bpm-max').value || '').trim();
+    const status = document.getElementById('sb-status').value;
+    if (min) { params.set('bpm_min', min); }
+    if (max) { params.set('bpm_max', max); }
+    if (status) { params.set('status', status); }
+    params.set('name', 'set');
+    return params;
+  }
+
+  function showSetStatus(text, kind) {
+    const status = document.getElementById('sb-status');
+    status.textContent = text;
+    status.classList.toggle('ok', kind === 'ok');
+    status.classList.toggle('err', kind === 'err');
+  }
+
+  function makeSetTransition(transition) {
+    const wrap = document.createElement('div');
+    wrap.className = 'set-transition';
+    if (!transition) {
+      wrap.textContent = '—';
+      return wrap;
+    }
+    if (transition.typ === 'schnitt') {
+      wrap.appendChild(makeBadge('badge-err', 'Schnitt'));
+    } else {
+      const badge = SET_BADGES[transition.harmonisch] || ['badge-muted', transition.harmonisch];
+      wrap.appendChild(makeBadge(badge[0], badge[1]));
+    }
+    if (transition.dbpm !== null && transition.dbpm !== undefined) {
+      const dbpm = document.createElement('span');
+      dbpm.className = 'mono';
+      dbpm.style.fontSize = '0.75rem';
+      dbpm.textContent = 'ΔBPM ' + (transition.dbpm > 0 ? '+' : '') + transition.dbpm;
+      wrap.appendChild(dbpm);
+    }
+    if (transition.warnung) {
+      const warn = document.createElement('span');
+      warn.className = 'meta';
+      warn.style.fontSize = '0.72rem';
+      warn.textContent = transition.warnung;
+      wrap.appendChild(warn);
+    }
+    return wrap;
+  }
+
+  function renderSet(data) {
+    const container = document.getElementById('sb-result');
+    container.replaceChildren();
+    if (!data.playlist || !data.playlist.length) {
+      const empty = document.createElement('p');
+      empty.className = 'meta';
+      empty.textContent = 'Kein Track mit BPM und Camelot-Key im gewählten Fenster.';
+      container.appendChild(empty);
+      return;
+    }
+
+    const table = document.createElement('table');
+    table.className = 'set-chain';
+    const head = document.createElement('thead');
+    const headRow = document.createElement('tr');
+    ['#', 'Track', 'BPM', 'Key', 'Übergang'].forEach((label) => {
+      const th = document.createElement('th');
+      th.textContent = label;
+      headRow.appendChild(th);
+    });
+    head.appendChild(headRow);
+    table.appendChild(head);
+
+    const body = document.createElement('tbody');
+    const transitions = data.transitions || [];
+    data.playlist.forEach((track, index) => {
+      const row = document.createElement('tr');
+      row.appendChild(makeCell(String(track.pos)));
+
+      const titleCell = document.createElement('td');
+      const title = document.createElement('strong');
+      title.textContent = [track.artist, track.title].filter(Boolean).join(' – ') || '—';
+      titleCell.appendChild(title);
+      const path = document.createElement('div');
+      path.className = 'set-path mono';
+      path.textContent = track.path || '';
+      titleCell.appendChild(path);
+      row.appendChild(titleCell);
+
+      row.appendChild(makeCell(track.bpm !== null ? String(track.bpm) : '—'));
+      row.appendChild(makeCell(track.camelot || '—'));
+      row.appendChild(makeCell(makeSetTransition(index > 0 ? transitions[index - 1] : null)));
+      body.appendChild(row);
+    });
+    table.appendChild(body);
+
+    const summary = document.createElement('p');
+    summary.className = 'meta';
+    summary.textContent = data.total_tracks + ' Tracks · ' + data.segments + ' Segment(e)';
+    container.appendChild(summary);
+    container.appendChild(table);
+  }
+
+  async function buildSet() {
+    const button = document.getElementById('sb-run');
+    const params = setBuilderParams();
+    showSetStatus('Berechne harmonische Kette …', '');
+    button.disabled = true;
+    try {
+      const payload = {
+        bpm_min: params.get('bpm_min'),
+        bpm_max: params.get('bpm_max'),
+        status: params.get('status'),
+      };
+      const response = await fetch('/api/set-builder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      let data = {};
+      try { data = await response.json(); } catch (ignored) { data = {}; }
+      if (!response.ok || !data.ok) {
+        renderSet({ playlist: [] });
+        showSetStatus(data.error || ('HTTP ' + response.status), 'err');
+        return;
+      }
+      renderSet(data);
+      document.getElementById('sb-download').href =
+        '/api/set-builder/m3u8?' + params.toString();
+      showSetStatus(
+        data.total_tracks + ' Track(s), ' + data.segments + ' Segment(e) berechnet.',
+        'ok'
+      );
+    } catch (error) {
+      showSetStatus('Berechnung fehlgeschlagen: ' + error, 'err');
     } finally {
       button.disabled = false;
     }
