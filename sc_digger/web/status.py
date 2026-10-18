@@ -12,6 +12,7 @@ from ..redact import redact
 from ..stats import DigestStats, calculate_stats
 
 DEFAULT_MAX_HOURS_SINCE_RUN = 36
+HEARTBEAT_ACTIVE_SECONDS = 300
 
 
 @dataclass
@@ -24,6 +25,19 @@ class RunInfo:
 
 
 @dataclass
+class JobQueueSummary:
+    pending: int = 0
+    running: int = 0
+    completed: int = 0
+    failed: int = 0
+    last_heartbeat_at: str | None = None  # Zeitstempel des jüngsten updated_at unter status='running' oder 'completed'
+    workstation_active: bool = False      # True, wenn ein running-Job einen Heartbeat innerhalb der letzten 5 Minuten (300 s) hat
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
 class StatusSnapshot:
     generated_at: str
     runs: list[RunInfo] = field(default_factory=list)        # letzte 10 Läufe ALLER Modi, neueste zuerst (ORDER BY id DESC)
@@ -33,6 +47,7 @@ class StatusSnapshot:
     alert_active: bool = False                              # health_state: key "alert:discover" == "1"
     inbox_total: int = 0                                    # Zeilen in tracks mit status = 'inbox' (gesamt)
     stats: DigestStats | None = None
+    job_summary: JobQueueSummary | None = None              # Job-Queue der KI-Workstation (jobs-Tabelle)
 
     def to_dict(self) -> dict[str, Any]:
         """JSON-fähig (asdict); enthält alle Felder oben."""
@@ -126,8 +141,68 @@ def _age_hours(finished_at: str, now: datetime) -> float | None:
     return round((now - parsed).total_seconds() / 3600.0, 1)
 
 
+def _parse_db_timestamp(value: Any) -> datetime | None:
+    """Liest einen SQLite-CURRENT_TIMESTAMP ("YYYY-MM-DD HH:MM:SS", UTC); Unlesbares -> None."""
+    if not value:
+        return None
+    try:
+        return datetime.strptime(str(value), "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+    except (ValueError, TypeError):
+        return None
+
+
+def _read_job_summary(track_db_path: str | Path, now: datetime) -> JobQueueSummary:
+    """Zählt die jobs-Tabelle der Track-DB je Status und bestimmt das jüngste Lebenszeichen.
+
+    Rein lesend; fehlt die Tabelle, die Datei oder schlägt die Abfrage fehl, kommt eine leere
+    Zusammenfassung zurück (keine Exception, keine neue Datei).
+    """
+    try:
+        with _connect_readonly(track_db_path) as db:
+            if not _table_exists(db, "jobs"):
+                return JobQueueSummary()
+            counts = {
+                str(status): int(count)
+                for status, count in db.execute(
+                    "SELECT status, COUNT(*) FROM jobs GROUP BY status"
+                ).fetchall()
+            }
+            heartbeat_rows = db.execute(
+                "SELECT status, updated_at FROM jobs WHERE status IN ('running', 'completed')"
+            ).fetchall()
+    except sqlite3.Error:
+        return JobQueueSummary()
+
+    summary = JobQueueSummary(
+        pending=counts.get("pending", 0),
+        running=counts.get("running", 0),
+        completed=counts.get("completed", 0),
+        failed=counts.get("failed", 0),
+    )
+
+    newest: tuple[str, datetime] | None = None
+    for _status, value in heartbeat_rows:
+        parsed = _parse_db_timestamp(value)
+        if parsed is not None and (newest is None or parsed > newest[1]):
+            newest = (str(value), parsed)
+    if newest is not None:
+        summary.last_heartbeat_at = newest[0]
+
+    # Ein laufender Job mit frischem updated_at zeigt, dass die Workstation gerade arbeitet.
+    # Das Intervall ist bewusst dasselbe wie beim Browser-Refresh der Statusseite (60 s) mal fünf.
+    for status, value in heartbeat_rows:
+        if status != "running":
+            continue
+        parsed = _parse_db_timestamp(value)
+        if parsed is not None and (now - parsed).total_seconds() <= HEARTBEAT_ACTIVE_SECONDS:
+            summary.workstation_active = True
+            break
+
+    return summary
+
+
 def collect_status(cfg: Config, *, days: int = 7, now: datetime | None = None) -> StatusSnapshot:
-    """Liest cfg["state"]["db_path"] (runs, health_state) und cfg["state"]["track_db_path"] (tracks).
+    """Liest cfg["state"]["db_path"] (runs, health_state) und cfg["state"]["track_db_path"] (tracks, jobs).
 
     - now: Standard datetime.now(timezone.utc); alle Zeiten der DB sind UTC.
     - healthy = last_discover.ok und Alter <= cfg["health"]["max_hours_since_run"] (Standard 36)
@@ -148,6 +223,7 @@ def collect_status(cfg: Config, *, days: int = 7, now: datetime | None = None) -
     last_discover = _read_last_discover(state_db_path)
     alert_active = _read_alert_active(state_db_path)
     inbox_total = _read_inbox_total(track_db_path)
+    job_summary = _read_job_summary(track_db_path, now)
 
     age = _age_hours(last_discover.finished_at, now) if last_discover else None
 
@@ -176,4 +252,5 @@ def collect_status(cfg: Config, *, days: int = 7, now: datetime | None = None) -
         alert_active=alert_active,
         inbox_total=inbox_total,
         stats=stats,
+        job_summary=job_summary,
     )

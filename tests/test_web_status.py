@@ -50,7 +50,7 @@ def test_snapshot_to_dict_has_all_fields(tmp_path):
     data = snap.to_dict()
     assert set(data) == {
         "generated_at", "runs", "last_discover", "last_discover_age_hours",
-        "healthy", "alert_active", "inbox_total", "stats",
+        "healthy", "alert_active", "inbox_total", "stats", "job_summary",
     }
     json.dumps(data)
 
