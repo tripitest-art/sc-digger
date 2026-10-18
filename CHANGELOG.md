@@ -8,6 +8,7 @@ unter „Unreleased“ (Regeln: `AGENTS.md`, Abschnitt „Doku und Changelog“)
 ## Unreleased
 
 ### Hinzugefügt
+- Job-Queue-REST-API im Web-Dashboard (`POST /api/jobs/claim`, `/api/jobs/{id}/heartbeat`, `/api/jobs/{id}/complete`), damit externe GPU-Worker Jobs ohne SMB/NFS-Mount der Track-DB claimen und abschließen können (#330).
 - Strukturanalyse und Cue-Tags in `finish_file()` eingebunden: Schreibt `SCDIGGER_FIRST_KICK`, `SCDIGGER_DROP` und `SCDIGGER_BREAKDOWN` in neue Inbox-Tracks und persistiert `breakdown_ratio` in der TrackDB (#327).
 - Dependabot für GitHub Actions und pip (`.github/dependabot.yml`): wöchentlich, höchstens 2 offene PRs je Ökosystem (#316).
 - `SECURITY.md` nennt den vertraulichen Meldeweg für Sicherheitslücken (GitHub „Private vulnerability reporting“) und warnt vor Zugangsdaten in öffentlichen Issues (#315).

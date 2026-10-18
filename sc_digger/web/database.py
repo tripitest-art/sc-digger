@@ -16,11 +16,12 @@ import re
 import sqlite3
 from contextlib import closing
 from dataclasses import asdict, dataclass, field
+from enum import Enum
 from pathlib import Path
 from typing import Any
 
 from ..collection import NameIndex, NameKey, name_key, normalize, remixer_tokens
-from ..db import FEEDBACK_VALUES
+from ..db import FEEDBACK_VALUES, JobRecord, TrackDB
 from ..linksource import normalize_url
 
 _AUDIO_EXT = {".wav", ".aiff", ".aif", ".flac", ".mp3", ".m4a"}
@@ -647,4 +648,91 @@ def save_track_feedback(
     except sqlite3.Error:
         return False
     return True
+
+
+# --------------------------------------------------------------- Job-Queue (Issue #330)
+
+_FINISH_STATUSES = ("completed", "failed")
+
+
+def _job_value(value: Any) -> Any:
+    """Enum-Feld (z. B. ``JobStatus.RUNNING``) als reine Zeichenkette für JSON."""
+    return value.value if isinstance(value, Enum) else value
+
+
+def _job_to_dict(job: JobRecord) -> dict[str, Any]:
+    """JobRecord als JSON-fähiges Dict für die REST-Antwort der Worker-API."""
+    return {
+        "id": job.id,
+        "track_id": job.track_id,
+        "job_type": _job_value(job.job_type),
+        "status": _job_value(job.status),
+        "payload": job.payload,
+        "result": job.result,
+        "error": job.error,
+        "created_at": job.created_at,
+        "updated_at": job.updated_at,
+    }
+
+
+def claim_job_for_worker(
+    track_db_path: str | Path, job_type: str | None = None
+) -> dict[str, Any] | None:
+    """Beansprucht atomar den nächsten offenen Job (``pending`` -> ``running``).
+
+    Nutzt ``TrackDB.claim_next_job``; ohne ``job_type`` zählt jeder Typ. Fehlt die Datei
+    oder schlägt die Abfrage fehl, kommt ``None`` zurück statt einer Exception – ein
+    externer Worker soll an einer fehlenden DB nicht scheitern. Eine fehlende Datei wird
+    dabei nicht angelegt (``TrackDB`` würde das tun).
+    """
+    if not Path(track_db_path).is_file():
+        return None
+    try:
+        with TrackDB(track_db_path) as db:
+            job = db.claim_next_job(job_type)
+    except (sqlite3.Error, OSError):
+        return None
+    return _job_to_dict(job) if job is not None else None
+
+
+def heartbeat_job(track_db_path: str | Path, job_id: int) -> bool:
+    """Aktualisiert das Lebenszeichen eines laufenden Jobs (``updated_at``).
+
+    Gibt ``True`` nur zurück, wenn genau ein Job im Status ``running`` aktualisiert wurde.
+    Wirft nie; fehlende Datei oder DB-Fehler ergeben ``False``.
+    """
+    if not Path(track_db_path).is_file():
+        return False
+    try:
+        with TrackDB(track_db_path) as db:
+            return db.touch_job(int(job_id))
+    except (sqlite3.Error, OSError, TypeError, ValueError):
+        return False
+
+
+def finish_job(
+    track_db_path: str | Path,
+    job_id: int,
+    status: str,
+    result: dict[str, Any] | None = None,
+    error: str | None = None,
+) -> bool:
+    """Setzt das Ergebnis eines Jobs auf ``completed`` oder ``failed``.
+
+    Gibt ``True`` bei Erfolg zurück, ``False`` bei unbekanntem Status, unbekanntem Job,
+    fehlender Datei oder DB-Fehler. Wirft nie.
+    """
+    if status not in _FINISH_STATUSES:
+        return False
+    if not Path(track_db_path).is_file():
+        return False
+    try:
+        with TrackDB(track_db_path) as db:
+            if db.get_job_by_id(int(job_id)) is None:
+                return False
+            db.update_job(int(job_id), status, result=result, error=error)
+            updated = db.get_job_by_id(int(job_id))
+    except (sqlite3.Error, OSError, TypeError, ValueError):
+        return False
+    return updated is not None and _job_value(updated.status) == status
 
