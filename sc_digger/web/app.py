@@ -200,7 +200,7 @@ def _render_m3u8(playlist: Playlist, name: str) -> str:
             if entry.bpm else f"{entry.camelot or '--'} · -- BPM"
         )
         lines.append(f"#EXTINF:{seconds},{_m3u8_safe(info)} [{_m3u8_safe(tag)}]")
-        lines.append(str(entry.path))
+        lines.append(_m3u8_safe(entry.path))
     return "\n".join(lines) + "\n"
 
 

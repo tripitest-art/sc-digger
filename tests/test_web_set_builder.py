@@ -86,7 +86,7 @@ def test_loader_filtert_bpm_status_und_unvollstaendige_tracks(tmp_path: Path):
     db_path = tmp_path / "tracks.sqlite"
 
     alle = load_tracks_for_set_builder(db_path)
-    # Tracks ohne BPM oder ohne Key fehlen; acht vollständige Tracks bleiben.
+    # Tracks ohne BPM oder ohne Key fehlen; sechs vollständige Tracks bleiben.
     assert len(alle) == 6
     assert all(entry.bpm is not None and entry.camelot for entry in alle)
 
@@ -249,6 +249,22 @@ def test_m3u8_ohne_treffer_bleibt_gueltig(tmp_path: Path):
     assert antwort.text == "#EXTM3U\n#PLAYLIST:set\n"
 
 
+def test_m3u8_entschaerft_pfad_mit_umbruch(tmp_path: Path):
+    client = client_for(tmp_path)
+    with TrackDB(tmp_path / "tracks.sqlite") as db:
+        db.upsert_track(TrackRecord(
+            path="audio/boese.wav\n#EXTINF:0,x", mtime=1.0, size=10, status="archive",
+            artist="A1", title="Pfad", bpm=155.0, key_camelot="8A",
+        ))
+
+    antwort = client.get("/api/set-builder/m3u8", auth=AUTH)
+    assert antwort.status_code == 200
+    zeilen = antwort.text.splitlines()
+    # Auch der Pfad wird eingeebnet, statt eine eigene M3U8-Zeile einzuschleusen.
+    assert "audio/boese.wav #EXTINF:0,x" in zeilen
+    assert "#EXTINF:0,x" not in zeilen
+
+
 def test_mix_seite_enthaelt_set_builder_formular(tmp_path: Path):
     client = client_for(tmp_path)
 
@@ -258,3 +274,17 @@ def test_mix_seite_enthaelt_set_builder_formular(tmp_path: Path):
     assert 'id="sb-bpm-min"' in antwort.text
     assert 'id="sb-bpm-max"' in antwort.text
     assert "/api/set-builder/m3u8" in antwort.text
+
+
+def test_mix_seite_trennt_auswahl_und_statusmeldung(tmp_path: Path):
+    client = client_for(tmp_path)
+
+    antwort = client.get("/mix", auth=AUTH)
+    assert antwort.status_code == 200
+    html = antwort.text
+    # Auswahl und Meldung brauchen getrennte IDs: showSetStatus() schreibt per
+    # textContent, sonst verschwinden die <option>s der Statusauswahl.
+    assert html.count('id="sb-status"') == 1
+    assert html.count('id="sb-message"') == 1
+    assert "document.getElementById('sb-message')" in html
+    assert 'for="sb-status"' in html

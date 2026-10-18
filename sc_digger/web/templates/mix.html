@@ -144,7 +144,7 @@
       <a id="sb-download" class="btn-page" href="/api/set-builder/m3u8?name=set">💾 M3U8 herunterladen</a>
     </div>
   </form>
-  <p id="sb-status" class="scan-status" role="status" aria-live="polite"></p>
+  <p id="sb-message" class="scan-status" role="status" aria-live="polite"></p>
   <div id="sb-result"></div>
 </div>
 
@@ -428,7 +428,7 @@
   }
 
   function showSetStatus(text, kind) {
-    const status = document.getElementById('sb-status');
+    const status = document.getElementById('sb-message');
     status.textContent = text;
     status.classList.toggle('ok', kind === 'ok');
     status.classList.toggle('err', kind === 'err');
