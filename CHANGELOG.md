@@ -8,6 +8,7 @@ unter „Unreleased“ (Regeln: `AGENTS.md`, Abschnitt „Doku und Changelog“)
 ## Unreleased
 
 ### Hinzugefügt
+- CodeQL-Konfiguration (`.github/workflows/codeql.yml`) schließt `tests/**` von der Sicherheitsanalyse aus; `sc_digger/issuecheck.py` warnt Planer vor Substring-Prüfungen auf Hostnamen in Akzeptanztests (#345).
 - Interaktive Kaufliste im Web-Dashboard: `/kaufliste` und `GET /api/kaufliste` zeigen offene Store-Tracks aus `store_items`, suchen nach Artist/Titel und verlinken direkt zum Kauf; bewertet wird per 👍/👎/⏳ über `POST /api/feedback`, der bisher deaktivierte Nav-Tab ist aktiv (#339).
 - Status-Seite (`/`, `GET /api/status`) zeigt die Job-Queue der KI-Workstation: Zähler für anstehend, in Arbeit, erledigt und Fehler aus der `jobs`-Tabelle der Track-DB sowie „Workstation aktiv“ bzw. „im Standby“ anhand des letzten Heartbeats (5 Minuten); rein lesend (#337).
 - Track-Explorer zeigt den Breakdown-Anteil aus der Strukturanalyse als Badge (unter 15 % als Peaktime-Tool) und filtert per „Max. Breakdown %“ (`/tracks`, `GET /api/tracks`, `query_tracks(breakdown_ratio_max=…)`) (#335).

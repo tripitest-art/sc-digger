@@ -181,6 +181,25 @@ def _forbidden_call(tree: ast.AST) -> str | None:
             return name
         if name.split(".")[0] == "random":
             return name
+_DOMAIN_RE = re.compile(r"^[a-z0-9.-]+\.(?:com|org|net|de|io|me|fm|ai|app|co|uk)$", re.I)
+
+
+def _url_substring_in_test(tree: ast.AST) -> str | None:
+    """Erkennt 'domain.tld in ...'-Vergleiche im Akzeptanztest.
+
+    CodeQLs Heuristik py/incomplete-url-substring-sanitization wertet solche
+    Substring-Prüfungen als unsichere URL-Bereinigung und schlägt fehl.
+    """
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Compare):
+            continue
+        for op, comparator in zip(node.ops, node.comparators):
+            if isinstance(op, (ast.In, ast.NotIn)):
+                for target in (node.left, comparator):
+                    if isinstance(target, ast.Constant) and isinstance(target.value, str):
+                        val = target.value.strip().lower()
+                        if _DOMAIN_RE.match(val):
+                            return target.value
     return None
 
 
@@ -246,6 +265,16 @@ def check_static(issue_md: str) -> list[Finding]:
         if value.startswith(_MUSIC_PREFIX):
             findings.append(Finding("fehler", "musik-pfad",
                                     f"Akzeptanztest fasst die geschützte Sammlung an: {value}"))
+
+    url_substr = _url_substring_in_test(tree)
+    if url_substr:
+        findings.append(Finding(
+            "warnung",
+            "codeql-url-substring",
+            f"Akzeptanztest prüft Domain als Teilzeichenkette ('{url_substr}' in ...); "
+            "dies löst CodeQL py/incomplete-url-substring-sanitization aus. "
+            "Besser: URL parsen (urllib.parse) oder Pfade prüfen.",
+        ))
 
     return _dedupe(findings)
 
