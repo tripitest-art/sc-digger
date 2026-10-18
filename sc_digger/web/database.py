@@ -357,7 +357,7 @@ class StoreSearchResult:
 
 
 def query_store_items(
-    db_path: str | Path,
+    track_db_path: str | Path,
     *,
     search: str | None = None,
     feedback: str | None = None,
@@ -376,7 +376,7 @@ def query_store_items(
     offset = max(0, int(offset))
 
     try:
-        with closing(_connect_readonly(db_path)) as db:
+        with closing(_connect_readonly(track_db_path)) as db:
             if not _table_exists(db, "store_items"):
                 return StoreSearchResult()
             has_feedback = _table_exists(db, "sc_feedback")
