@@ -8,6 +8,7 @@ unter „Unreleased“ (Regeln: `AGENTS.md`, Abschnitt „Doku und Changelog“)
 ## Unreleased
 
 ### Hinzugefügt
+- Status-Seite (`/`, `GET /api/status`) zeigt die Job-Queue der KI-Workstation: Zähler für anstehend, in Arbeit, erledigt und Fehler aus der `jobs`-Tabelle der Track-DB sowie „Workstation aktiv“ bzw. „im Standby“ anhand des letzten Heartbeats (5 Minuten); rein lesend (#337).
 - Track-Explorer zeigt den Breakdown-Anteil aus der Strukturanalyse als Badge (unter 15 % als Peaktime-Tool) und filtert per „Max. Breakdown %“ (`/tracks`, `GET /api/tracks`, `query_tracks(breakdown_ratio_max=…)`) (#335).
 - Job-Queue-REST-API im Web-Dashboard (`POST /api/jobs/claim`, `/api/jobs/{id}/heartbeat`, `/api/jobs/{id}/complete`), damit externe GPU-Worker Jobs ohne SMB/NFS-Mount der Track-DB claimen und abschließen können (#330).
 - Strukturanalyse und Cue-Tags in `finish_file()` eingebunden: Schreibt `SCDIGGER_FIRST_KICK`, `SCDIGGER_DROP` und `SCDIGGER_BREAKDOWN` in neue Inbox-Tracks und persistiert `breakdown_ratio` in der TrackDB (#327).

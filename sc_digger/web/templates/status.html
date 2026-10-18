@@ -96,6 +96,45 @@
     </div>
   </div>
 
+  <!-- KI-Workstation & Job-Queue -->
+  <div class="card">
+    <div class="card-header">
+      <h2 class="card-title" style="margin: 0; font-size: 1.1rem;">KI-Workstation &amp; Job-Queue</h2>
+      {% if snap.job_summary and snap.job_summary.workstation_active %}
+      <span class="status-pill ok" style="padding: 0.15rem 0.6rem; font-size: 0.75rem;">Workstation aktiv</span>
+      {% else %}
+      <span class="status-pill warn" style="padding: 0.15rem 0.6rem; font-size: 0.75rem;">Workstation im Standby</span>
+      {% endif %}
+    </div>
+    <p class="meta" style="margin-bottom: 0.75rem;">
+      Asynchrone Aufgaben der GPU-Workstation (Audio-Embeddings, Captions, Fingerprints) aus der
+      <code>jobs</code>-Tabelle der Track-DB. Rein lesend, ohne Steuerung der Worker.
+    </p>
+    <div class="stat-grid" style="grid-template-columns: 1fr 1fr;">
+      <div class="stat-box" title="Jobs, die auf einen Worker warten">
+        <div class="val">{{ snap.job_summary.pending if snap.job_summary else 0 }}</div>
+        <div class="lbl">Anstehend</div>
+      </div>
+      <div class="stat-box" title="Jobs, die ein Worker gerade bearbeitet">
+        <div class="val">{{ snap.job_summary.running if snap.job_summary else 0 }}</div>
+        <div class="lbl">In Arbeit</div>
+      </div>
+      <div class="stat-box" title="Erfolgreich abgeschlossene Jobs">
+        <div class="val ok">{{ snap.job_summary.completed if snap.job_summary else 0 }}</div>
+        <div class="lbl">Erledigt</div>
+      </div>
+      <div class="stat-box" title="Jobs, die mit einem Fehler endeten">
+        <div class="val warn">{{ snap.job_summary.failed if snap.job_summary else 0 }}</div>
+        <div class="lbl">Fehler</div>
+      </div>
+    </div>
+    {% if snap.job_summary and snap.job_summary.last_heartbeat_at %}
+    <p class="meta" style="margin-top: 0.75rem; margin-bottom: 0;">Letztes Lebenszeichen: <span class="mono">{{ snap.job_summary.last_heartbeat_at }}</span> UTC</p>
+    {% else %}
+    <p class="meta" style="margin-top: 0.75rem; margin-bottom: 0;">Noch kein Lebenszeichen eines Workers.</p>
+    {% endif %}
+  </div>
+
   <!-- Sammlung & Track-DB -->
   <div class="card">
     <div class="card-header">
