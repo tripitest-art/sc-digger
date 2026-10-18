@@ -292,6 +292,7 @@ def audit_file(
         title=existing_tags.get("title"),
         status=TrackStatus.ARCHIVE,
         breakdown_ratio=breakdown_ratio,
+        duration=report.get("duration"),
     )
     db.upsert_track(rec)
 

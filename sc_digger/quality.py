@@ -232,6 +232,7 @@ def check_file(path: Path, cfg: Config) -> dict:
         "file": path.name, "codec": codec, "ext": ext,
         "bitrate_kbps": bitrate, "sample_rate": sample_rate,
         "cutoff_hz": None, "ok": False, "reason": "",
+        "duration": duration if duration > 0 else None,
     }
 
     ext_lossless = ext in q["accepted_lossless"]

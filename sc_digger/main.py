@@ -28,7 +28,7 @@ from .analysis import analyze_track, resolve_bpm
 from .audit import run_audit
 from .cleanup import audit_inbox_duplicates, format_duplicate_report, move_duplicates
 from .cloud import download_cloud
-from .collection import Collection
+from .collection import Collection, open_collection
 from .cues import write_breakdown_tag, write_drop_tag, write_first_kick_tag
 from .db import TrackDB
 from .health import Health
@@ -66,7 +66,7 @@ def process(tracks: list[Track], cfg: Config, *, dry_run: bool,
     Gibt (neue Tracks, Duplikate) zurück.
     """
     mark_sets(tracks, cfg)
-    coll = Collection(cfg["download"]["collection_dir"])
+    coll = open_collection(cfg)
     coll.mark_duplicates(tracks)
     dupes = [t for t in tracks if t.duplicate_of]
     fresh = [t for t in tracks if not t.duplicate_of] if skip_duplicates else tracks
@@ -869,7 +869,7 @@ def run_scout(cfg: Config, *, dry_run: bool = False) -> int:
 
     # Duplikat-Abgleich gegen die lokale Sammlung. Fehlt der Ordner, warnt Collection
     # und findet nichts. Duplikate werden nur gezählt/geloggt, nicht gespeichert.
-    coll = Collection(cfg["download"]["collection_dir"])
+    coll = open_collection(cfg)
     coll.mark_duplicates(tracks)
     duplicates = [t for t in tracks if t.duplicate_of]
     fresh = [t for t in tracks if not t.duplicate_of]
