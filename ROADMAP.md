@@ -272,8 +272,8 @@ Ein Track, der aus der Inbox in die Sammlung gewandert ist, ist das stärkste Po
   Trainingsdaten reichen nicht: Brickwall-Master haben fast alle eine hohe Flachheit, und Gesang lässt sich daran
   nicht erkennen. Abstimmen mit Issue #52 (Energie-Klassifizierung).
 
-### 4.2 Persönlicher Taste-Score (Anti-TikTok-Filter)
-* Kleiner Klassifikator: deine Sammlung + 👍 + übernommene Tracks (3.12) als Positive, 👎 + aussortierte Tracks als Negative.
+### 4.2 Persönlicher Taste-Score (Anti-TikTok-Filter) (✅ Implementiert, #353 / #366)
+* Logistische Regression (`sc_digger/taste.py`) auf Audio-Embeddings und Feedback (👍/👎 aus `sc_feedback`) zur Vorhersage des Gefallens von Tracks.
 * Ergänzt das Engagement-Scoring im Digest; filtert Pop-EDM/TikTok-Bounce aus `#hardtechno`
   anhand des Klangs statt anhand von Titeln.
 * Nur für Tracks mit verfügbarem Audio (native/Cloud-Downloads) oder über die 30-s-Stream-Preview
