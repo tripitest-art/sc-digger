@@ -29,7 +29,7 @@ from .harmonic import compatible_keys, find_mix_candidates, format_mix_list
 from .main import run_link
 from .models import Config
 from .output import TelegramError, parse_feedback_callback, telegram_call, telegram_download
-from .output import send_telegram_voice
+from .output import State, send_telegram_voice
 from . import output, preview, rekordbox
 from .cleanup import audit_inbox_duplicates, format_duplicate_report
 from .fingerprint import compute_fingerprint
@@ -47,6 +47,8 @@ MIX_USAGE = "Aufruf: /mix <Camelot-Key> <BPM> [Toleranz], z. B. /mix 5A 155 oder
 STATS_USAGE = "Aufruf: /stats [Tage (1–365, Standard: 7)]"
 PREVIEW_USAGE = "Aufruf: /preview <Suchtext oder id oder sc:<SoundCloud-ID>>"
 SIMILAR_USAGE = "Aufruf: /similar <SoundCloud-Link>"
+REJECTED_USAGE = "Aufruf: /rejected [Anzahl (1–100, Standard: 10)]"
+RETRY_USAGE = "Aufruf: /retry <id>"
 
 # Länge des temporären Snippets für die /similar-Suche: SoundCloud-Stream-Previews sind
 # rund 30 s lang, mehr käme aus der Download-Quelle ohnehin nicht.
@@ -70,6 +72,8 @@ HELP_TEXT = (
     "• /preview sc:&lt;SoundCloud-ID&gt; -> 20s-Snippet direkt aus dem SoundCloud-Stream (nicht heruntergeladen)\n"
     "• /similar &lt;SoundCloud-Link&gt; -> Top-5 ähnliche Aufnahmen aus der Sammlung\n"
     "• /stats [Tage] -> Statistiken über Scans, Inbox und Feedback\n"
+    "• /rejected [Anzahl] -> zuletzt abgelehnte Downloads aus der Quarantäne\n"
+    "• /retry &lt;id&gt; -> abgelehnten Track zur erneuten Prüfung freigeben\n"
     "• /cleanup_inbox -> Dubletten in der Inbox auflisten (nur lesend)\n"
     "• /sync_xml -> Rekordbox-XML der Inbox sofort neu schreiben\n\n"
     "Kein täglicher Filter, du bekommst die volle Liste mit Stats und Download-Einordnung."
@@ -554,6 +558,65 @@ def cleanup_inbox_reply(cfg: Config) -> str:
         return "Inbox-Cleanup fehlgeschlagen, siehe Container-Log."
 
 
+def rejected_reply(cfg: Config, text: str) -> str:
+    """Antwort auf '/rejected [limit]' (1–100, Standard: 10). Ungültiges Argument -> REJECTED_USAGE."""
+    parts = text.strip().split()
+    limit = 10
+    if len(parts) == 2:
+        try:
+            limit = int(parts[1])
+        except ValueError:
+            return REJECTED_USAGE
+        if not (1 <= limit <= 100):
+            return REJECTED_USAGE
+    elif len(parts) > 2:
+        return REJECTED_USAGE
+
+    state_db_path = (cfg.raw.get("state") or {}).get("db_path")
+    if not state_db_path:
+        return "Quarantäne nicht konfiguriert (state.db_path fehlt)."
+
+    with State(state_db_path) as state:
+        items = state.list_rejected(limit)
+    if not items:
+        return "Keine abgelehnten Tracks in der Quarantäne."
+
+    lines = [f"🚫 Abgelehnte Downloads ({len(items)}):"]
+    for item in items:
+        title = html.escape(item["title"] or "", quote=False)
+        reason = html.escape(item["reason"] or "ohne Grund", quote=False)
+        cutoff = f", {item['cutoff_hz'] / 1000:.0f} kHz" if item.get("cutoff_hz") else ""
+        lines.append(f"• <code>{item['id']}</code> – {title}: {reason}{cutoff}")
+    lines.append("")
+    lines.append("Zurückholen: /retry &lt;id&gt;")
+    return "\n".join(lines)
+
+
+def retry_reply(cfg: Config, text: str) -> str:
+    """Bearbeitet '/retry <id>': entfernt den Track aus Quarantäne und seen, damit der
+    nächste Suchlauf ihn wieder als Neuentdeckung prüft. Ungültiges Argument -> RETRY_USAGE."""
+    parts = text.strip().split()
+    if len(parts) != 2:
+        return RETRY_USAGE
+    try:
+        track_id = int(parts[1])
+    except ValueError:
+        return RETRY_USAGE
+    if track_id <= 0:
+        return RETRY_USAGE
+
+    state_db_path = (cfg.raw.get("state") or {}).get("db_path")
+    if not state_db_path:
+        return "Quarantäne nicht konfiguriert (state.db_path fehlt)."
+
+    with State(state_db_path) as state:
+        deleted = state.unmark_rejected(track_id)
+    if deleted:
+        return (f"Track {track_id} zurückgesetzt und aus der Quarantäne freigegeben – "
+                "wird beim nächsten Suchlauf neu geprüft.")
+    return f"Track {track_id} ist nicht in der Quarantäne."
+
+
 def handle_message(cfg: Config, sc: SoundCloudClient, chat_id: str, text: str) -> None:
     text = text.strip()
     # Erstes Wort bereinigt um einen angehängten Bot-Namen (/help@bot bzw. "/help @bot")
@@ -589,6 +652,22 @@ def handle_message(cfg: Config, sc: SoundCloudClient, chat_id: str, text: str) -
         except Exception:
             log.exception("Fehler bei /stats-Befehl")
             _send_text(cfg, chat_id, "Statistikabfrage fehlgeschlagen, siehe Container-Log.")
+        return
+
+    if first_word == "/rejected":
+        try:
+            _send_text(cfg, chat_id, rejected_reply(cfg, text))
+        except Exception:
+            log.exception("Fehler bei /rejected-Befehl")
+            _send_text(cfg, chat_id, "Quarantäne-Abfrage fehlgeschlagen, siehe Container-Log.")
+        return
+
+    if first_word == "/retry":
+        try:
+            _send_text(cfg, chat_id, retry_reply(cfg, text))
+        except Exception:
+            log.exception("Fehler bei /retry-Befehl")
+            _send_text(cfg, chat_id, "Retry fehlgeschlagen, siehe Container-Log.")
         return
 
     if first_word == "/sync_xml":

@@ -59,6 +59,27 @@ log = logging.getLogger("sc_digger")
 
 
 # ------------------------------------------------------------------ gemeinsame Nachbearbeitung
+_DOWNLOAD_FAILED_NOTE = "Original-Download fehlgeschlagen"
+
+
+def _rejection_reason(t: Track) -> str | None:
+    """Grund, warum ein Track in die Quarantäne gehört; None heißt: nicht abgelehnt.
+
+    Erfasst fehlgeschlagene Downloads, abgelehnte Qualitätsprüfungen und unmessbares
+    Signal. Solche Tracks dürfen nicht in `seen` landen, sonst wären sie nach einem
+    Falsch-Positiv dauerhaft verloren.
+    """
+    report = t.quality_report or {}
+    if t.quality_report and not report.get("ok", True):
+        return report.get("reason") or "Qualitätsprüfung nicht bestanden"
+    if t.download_error:
+        return t.download_error
+    for note in reversed(t.notes):
+        if note.startswith(_DOWNLOAD_FAILED_NOTE) or "Qualitätsprüfung fehlgeschlagen" in note:
+            return note
+    return None
+
+
 def process(tracks: list[Track], cfg: Config, *, dry_run: bool,
             skip_duplicates: bool = True) -> tuple[list[Track], list[Track]]:
     """Duplikat-Check -> Klassifizierung -> native Downloads + Qualität + Analyse + Tagging + Organize.
@@ -684,8 +705,14 @@ def _discover(cfg: Config, dry_run: bool, no_telegram: bool) -> int:
                 log.exception("Exploration-Statistik fehlgeschlagen")
             # Erst nach erfolgreichem Versand markieren: bei Fehler in send_telegram
             # werden Tracks beim nächsten Lauf erneut gemeldet statt verloren zu gehen.
+            # Abgelehnte Downloads kommen in die Quarantäne statt in seen – sonst wären
+            # sie nach einer fehlerhaften Qualitätsprüfung dauerhaft stumm verloren.
             for t in fresh:
-                state.mark_one(t)
+                reason = _rejection_reason(t)
+                if reason:
+                    state.mark_rejected(t, reason=reason)
+                else:
+                    state.mark_one(t)
     if not dry_run:
         write_rekordbox_xml(cfg)
     # Sonntags-Digest hängt nur am täglichen Lauf, Standard aus. Ein Fehler hier darf

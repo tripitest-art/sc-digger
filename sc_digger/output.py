@@ -85,6 +85,13 @@ class State:
             "id INTEGER PRIMARY KEY, url TEXT, title TEXT, "
             "reported_at TEXT DEFAULT CURRENT_TIMESTAMP)"
         )
+        # Quarantäne: abgelehnte Downloads dürfen nicht in seen landen, sonst wären sie
+        # nach einer falschen Qualitätsprüfung dauerhaft verloren.
+        self.db.execute(
+            "CREATE TABLE IF NOT EXISTS rejected ("
+            "id INTEGER PRIMARY KEY, url TEXT, title TEXT, reason TEXT, "
+            "cutoff_hz REAL, rejected_at TEXT DEFAULT CURRENT_TIMESTAMP)"
+        )
         self.db.commit()
 
     def __enter__(self) -> "State":
@@ -113,6 +120,38 @@ class State:
             [(t.id, t.url, t.title) for t in tracks],
         )
         self.db.commit()
+
+    def mark_rejected(self, t: Track, reason: str = "", cutoff_hz: float | None = None) -> None:
+        """Erfasst einen abgelehnten Track in der Quarantäne-Tabelle rejected (INSERT OR REPLACE)."""
+        if cutoff_hz is None and t.quality_report:
+            cutoff_hz = t.quality_report.get("cutoff_hz")
+        self.db.execute(
+            "INSERT OR REPLACE INTO rejected (id, url, title, reason, cutoff_hz, rejected_at) "
+            "VALUES (?,?,?,?,?, CURRENT_TIMESTAMP)",
+            (t.id, t.url, t.title, reason, cutoff_hz),
+        )
+        self.db.commit()
+
+    def unmark_rejected(self, track_id: int) -> bool:
+        """Entfernt einen Track aus rejected (und vorsorglich aus seen). Gibt True zurück,
+        wenn ein Quarantäne-Eintrag gelöscht wurde."""
+        cur = self.db.execute("DELETE FROM rejected WHERE id=?", (track_id,))
+        self.db.execute("DELETE FROM seen WHERE id=?", (track_id,))
+        self.db.commit()
+        return cur.rowcount > 0
+
+    def list_rejected(self, limit: int = 10) -> list[dict]:
+        """Liefert die zuletzt abgelehnten Tracks, neueste zuerst."""
+        rows = self.db.execute(
+            "SELECT id, url, title, reason, cutoff_hz, rejected_at FROM rejected "
+            "ORDER BY rejected_at DESC, id DESC LIMIT ?",
+            (max(int(limit), 0),),
+        ).fetchall()
+        return [
+            {"id": r[0], "url": r[1], "title": r[2], "reason": r[3],
+             "cutoff_hz": r[4], "rejected_at": r[5]}
+            for r in rows
+        ]
 
 
 # ---------------------------------------------------------------- Download
