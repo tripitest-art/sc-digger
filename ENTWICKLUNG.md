@@ -9,7 +9,7 @@ Modul anlegt, trägt es in die Tabelle ein.
 | Datei | Zuständig für |
 |---|---|
 | `sc_digger/main.py` | CLI und Modi (`discover`, `playlist`, `similar`, `check`), gemeinsame Pipeline `process()`, Nachbearbeitung `finish_file()` (Qualität, BPM/Key, Tags, Struktur/Cues, Organize, DB-Persistierung), Auslieferung `deliver()` |
-| `sc_digger/bot.py` | Telegram-Listener; ruft `main.run_link()`; beendet sich nie selbst (sonst stirbt der Cron) |
+| `sc_digger/bot.py` | Telegram-Listener; ruft `main.run_link()`; beendet sich nie selbst (sonst stirbt der Cron); Curator-Mining (`/curator_mining`) schickt Inline-Buttons, deren `cf:<slug>`-Callbacks den Account über `web.configedit.save_local` in `search.followed_users` der Override-Datei eintragen |
 | `sc_digger/soundcloud.py` | Inoffizielle api-v2 (client_id aus dem Frontend), Playlists inkl. Stub-Nachladen, Station/Related, Referenz-Accounts (soundcloud-v2-Lib) |
 | `sc_digger/pipeline.py` | Text-BPM, Genre-Relevanz, Perzentil-Scoring, Download-Klassifizierung |
 | `sc_digger/collection.py` | Duplikat-Abgleich mit der Sammlung (Fuzzy-Match, Remixer beachten, Unicode-Faltung); `NameKey`/`NameIndex` als gemeinsame Namenslogik für Sammlung und Web-Digest; Dauer-Prüfung bei Namens-Treffern (`probe_duration`, Toleranz `DURATION_TOLERANCE_S`); `open_collection` nutzt den Sammlungs-Index der Track-DB (Rückfall auf `rglob`) |

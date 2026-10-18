@@ -88,7 +88,7 @@ Der Bot läuft dauerhaft (Hauptprozess des Containers) und antwortet nur im Chat
 | Playlist- oder Set-Link | Alle Tracks der Playlist, mit Sammlungsabgleich, Download-Weg und Export-Datei |
 | Track-Link | Track-Station (SoundCloud-Radio) zum Track, ebenso aufbereitet |
 | `/kaufliste` | Offene Store-Tracks aus `store_items` mit Kauflink |
-| `/curator_mining` (auch `/curator-mining`) | Profile, die eigene Like-Tracks auffällig oft geliked oder repostet haben, als Kandidaten für `search.reference_accounts` |
+| `/curator_mining` (auch `/curator-mining`) | Profile, die eigene Like-Tracks auffällig oft geliked oder repostet haben, als Kandidaten für `search.reference_accounts`; die Inline-Buttons „➕ <Name>“ tragen einen Account per Klick in `search.followed_users` der lokalen Override-Datei (`SC_DIGGER_CONFIG_LOCAL`) ein |
 | `/mix <Key> <BPM> [Toleranz]` | Harmonisch und tempomäßig passende Tracks aus der Track-DB, mit Camelot-Abstand; Toleranz in BPM, Standard 3.0 |
 | `/stats [Tage]` | Statistik der letzten 1–365 Tage (Standard 7) |
 | `/preview <Suchtext oder id>` | 20s-Sprachnachricht eines heruntergeladenen Tracks (Track-DB, seit #147) |
