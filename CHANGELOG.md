@@ -8,7 +8,9 @@ unter „Unreleased“ (Regeln: `AGENTS.md`, Abschnitt „Doku und Changelog“)
 ## Unreleased
 
 ### Hinzugefügt
+- Doku-Aktualisierung: ROADMAP.md (Curator-Mining, Embeddings, Auto-Cues & Set-Tools), Modul-Tabelle in ENTWICKLUNG.md vervollständigt und Konfigurations-Referenz in README.md ergänzt (#367).
 - Ähnlichkeitssuche per Embeddings: Kosinus-Ähnlichkeit auf kompakten float32-Vektoren (`sc_digger/similarity.py`) mit Chromaprint-Fallback bei fehlenden Embeddings (#363).
+- Taste-Score: Logistische Regression auf Embeddings und Feedback zur Vorhersage des Gefallens von Tracks (`sc_digger/taste.py`) (#366).
 - Audio-Embeddings: Vektorspeicher in Track-DB, Queue-Job und Ergebnisverarbeitung (#362).
 - `/curator_mining` schlägt zusätzlich häufige Künstler der eigenen Sammlung vor (`curator_mining.min_collection_tracks`, Standard 3; `TrackDB.get_top_collection_artists`), gegliedert in Liker-Vorschläge und „📚 Sammlungs-Favoriten“ mit denselben Follow-Buttons; bereits gefolgte oder als Referenz hinterlegte Accounts bleiben außen vor (#361).
 - Cue- und Strukturanalyse als Job-Queue-Aufgabe: neuer `JobType.CUES` mit `enqueue_cue_job`, `GET /api/jobs/{id}/audio` zum Herunterladen der Job-Datei für den GPU-Worker und automatische Übernahme des Ergebnisses in `rb_cues`/`breakdown_ratio` samt Cue-Tags (nur Inbox-Dateien, Sammlung bleibt unberührt); `finish_file` reiht bei `cues.auto_queue: true` je neuem Inbox-Track einen Job ein (#360).

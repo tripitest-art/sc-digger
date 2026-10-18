@@ -158,7 +158,9 @@ def find_similar_embeddings(
             continue
         try:
             score = cosine_similarity(query, cand.vector)
-        except (ValueError, TypeError):
+        except (ValueError, TypeError) as exc:
+            # Ungültige Werte oder Typen überspringen (kein Abbruch der Suche)
+            log.debug("Überspringe Kandidat %s bei Kosinus-Ähnlichkeit: %s", cand.track.id, exc)
             continue
         if score < min_score:
             continue
@@ -205,22 +207,15 @@ def build_similar_by_track(db: "TrackDB", track_id: int, *, top_n: int = 5) -> s
         if emb is None:
             return None
         model, query_vec = emb
-        from .embeddings import unpack_vector
 
-        rows = db.db.execute(
-            """
-            SELECT t.*, e.vector
-            FROM tracks t
-            JOIN track_embeddings e ON t.id = e.track_id
-            WHERE e.model = ?
-            ORDER BY t.id ASC
-            """,
-            (model,),
-        ).fetchall()
-        candidates = [
-            EmbeddingCandidate(db._row_to_track(r), unpack_vector(r["vector"]))
-            for r in rows
-        ]
+        candidates: list[EmbeddingCandidate] = []
+        for track, vec in db.embedded_tracks():
+            if track.id == track_id:
+                continue
+            cand_emb = db.get_embedding(track.id)
+            if cand_emb is not None and cand_emb[0] == model:
+                candidates.append(EmbeddingCandidate(track, vec))
+
         results = find_similar_embeddings(
             query_vec, candidates, top_n=top_n, exclude_track_id=track_id
         )
