@@ -44,6 +44,7 @@ from .database import (
     get_collection_overview,
     heartbeat_job,
     query_digest,
+    query_store_items,
     query_tracks,
     save_track_feedback,
 )
@@ -526,6 +527,62 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
 
         total_pages = max(1, (result.total + page_size - 1) // page_size)
         template = _env.get_template("digest.html")
+        return HTMLResponse(template.render(
+            items=result.items,
+            total=result.total,
+            page_size=page_size,
+            page=offset // page_size + 1,
+            total_pages=total_pages,
+            filters=filters,
+            prev_url=page_url(max(0, offset - page_size)) if offset > 0 else None,
+            next_url=page_url(offset + page_size) if offset + page_size < result.total else None,
+        ))
+
+    # Kaufempfehlungen aus store_items (Issue #338): dieselbe rein lesende Abfrage für
+    # JSON-API und Seite, Bewertungen laufen über das bestehende POST /api/feedback.
+    @app.get("/api/kaufliste")
+    def api_kaufliste(request: Request):
+        if not _check_auth(request, password, allow_anonymous):
+            return _unauthorized()
+        params = request.query_params
+        result = query_store_items(
+            cfg["state"]["track_db_path"],
+            search=params.get("q") or None,
+            feedback=params.get("feedback") or None,
+            limit=_query_int(params.get("limit"), DEFAULT_LIMIT),
+            offset=_query_int(params.get("offset"), 0),
+        )
+        return JSONResponse(result.to_dict())
+
+    @app.get("/kaufliste", response_class=HTMLResponse)
+    def kaufliste_page(request: Request):
+        if not _check_auth(request, password, allow_anonymous):
+            return _unauthorized()
+        params = request.query_params
+        filters = {
+            "q": params.get("q") or "",
+            "feedback": params.get("feedback") or "",
+        }
+        page_size = max(1, min(_query_int(params.get("limit"), DEFAULT_LIMIT), MAX_LIMIT))
+        offset = max(0, _query_int(params.get("offset"), 0))
+        result = query_store_items(
+            cfg["state"]["track_db_path"],
+            search=filters["q"] or None,
+            feedback=filters["feedback"] or None,
+            limit=page_size,
+            offset=offset,
+        )
+
+        def page_url(new_offset: int) -> str:
+            """Link auf eine andere Seite, aktive Filter bleiben erhalten."""
+            query = {key: value for key, value in filters.items() if value}
+            query["limit"] = str(page_size)
+            if new_offset > 0:
+                query["offset"] = str(new_offset)
+            return "/kaufliste?" + urlencode(query)
+
+        total_pages = max(1, (result.total + page_size - 1) // page_size)
+        template = _env.get_template("kaufliste.html")
         return HTMLResponse(template.render(
             items=result.items,
             total=result.total,

@@ -1,0 +1,240 @@
+{% extends "base.html" %}
+
+{% block title %}sc-digger Kaufliste{% endblock %}
+{% block nav_kaufliste %}active{% endblock %}
+
+{% block meta %}
+<style>
+  .kaufliste-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 0.75rem;
+  }
+  .filter-form .filter-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 0.75rem;
+    align-items: end;
+  }
+  .filter-form .filter-field label {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-weight: 600;
+  }
+  .filter-form input[type=text],
+  .filter-form select {
+    max-width: none;
+  }
+  .filter-actions {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+    margin-top: 1rem;
+  }
+  .feedback-group {
+    display: flex;
+    gap: 0.3rem;
+    align-items: center;
+  }
+  .feedback-btn {
+    padding: 0.15rem 0.5rem;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background-color: var(--bg-card-subtle);
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    line-height: 1.4;
+    cursor: pointer;
+  }
+  .feedback-btn:hover {
+    border-color: var(--accent-primary);
+  }
+  .feedback-btn:disabled {
+    opacity: 0.5;
+    cursor: progress;
+  }
+  .feedback-btn.active {
+    border-color: var(--accent-ok);
+    background-color: var(--accent-ok-bg);
+  }
+  .feedback-btn[data-value=dislike].active {
+    border-color: var(--accent-err);
+    background-color: var(--accent-err-bg);
+  }
+  .feedback-btn[data-value=later].active {
+    border-color: var(--accent-warn);
+    background-color: var(--accent-warn-bg);
+  }
+  .feedback-error {
+    color: var(--accent-err);
+    font-size: 0.72rem;
+  }
+  .pager {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 1rem;
+    margin-top: 1.25rem;
+  }
+  .pager-buttons {
+    display: flex;
+    gap: 0.5rem;
+    margin-left: auto;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="kaufliste-toolbar">
+    <div>
+      <h1 style="margin: 0;">🛒 Kaufliste</h1>
+      <p class="meta" style="margin: 0.25rem 0 0;">
+        Offene Store-Tracks bei Bandcamp und Beatport &middot;
+        <strong>{{ total }}</strong> Treffer
+        {% if total_pages > 1 %}&middot; Seite {{ page }} von {{ total_pages }}{% endif %}
+      </p>
+    </div>
+    <a href="/digest" style="font-size: 0.875rem; font-weight: 500;">&larr; Zum Digest</a>
+  </div>
+  <p class="meta" style="margin-bottom: 0;">
+    Direkt zum Kauf springen oder bewerten: 👍 landet im Reputations-Scoring,
+    ⏳ merkt den Track vor, 👎 sortiert ihn aus. Die Bewertung wirkt sofort, ohne Neuladen.
+  </p>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h2 class="card-title" style="margin: 0;">Filter</h2>
+  </div>
+  <form class="filter-form" method="get" action="/kaufliste">
+    <input type="hidden" name="limit" value="{{ page_size }}">
+    <div class="filter-grid">
+      <div class="filter-field">
+        <label for="f-q">Artist / Titel</label>
+        <input type="text" id="f-q" name="q" value="{{ filters.q }}"
+               placeholder="Wortsuche über Artist und Titel">
+      </div>
+      <div class="filter-field">
+        <label for="f-feedback">Feedback</label>
+        <select id="f-feedback" name="feedback">
+          <option value="" {% if not filters.feedback %}selected{% endif %}>alle</option>
+          <option value="like" {% if filters.feedback == "like" %}selected{% endif %}>👍 Like</option>
+          <option value="dislike" {% if filters.feedback == "dislike" %}selected{% endif %}>👎 Dislike</option>
+          <option value="later" {% if filters.feedback == "later" %}selected{% endif %}>⏳ Später</option>
+          <option value="none" {% if filters.feedback == "none" %}selected{% endif %}>Ohne Bewertung</option>
+        </select>
+      </div>
+    </div>
+    <div class="filter-actions">
+      <button type="submit">Filtern</button>
+      <a href="/kaufliste" class="meta">Zurücksetzen</a>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h2 class="card-title" style="margin: 0;">Offene Store-Tracks</h2>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>Artist</th>
+        <th>Titel</th>
+        <th>Kaufen</th>
+        <th>Zuletzt gesehen</th>
+        <th>Feedback</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in items %}
+      <tr>
+        <td>{{ item.artist or "—" }}</td>
+        <td><strong>{{ item.title }}</strong></td>
+        <td style="white-space: nowrap;">
+          {# Nur http/https verlinken: purchase_url stammt aus fremden Feeds. #}
+          {% set purchase_href = item.purchase_url if item.purchase_url and (item.purchase_url.startswith("http://") or item.purchase_url.startswith("https://")) else "" %}
+          {% if purchase_href %}
+          <a href="{{ purchase_href }}" target="_blank" rel="noopener"
+             class="btn-page" style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">
+            🛒 {{ item.purchase_title or "Kaufen" }} ↗
+          </a>
+          {% else %}
+          <span class="meta">—</span>
+          {% endif %}
+        </td>
+        <td class="mono meta" style="white-space: nowrap; font-size: 0.78rem;">
+          {{ item.last_seen[:16] if item.last_seen else "—" }}
+        </td>
+        <td>
+          <div class="feedback-group" data-feedback-cell data-sc-id="{{ item.sc_id }}">
+            <button type="button" class="feedback-btn {% if item.feedback == 'like' %}active{% endif %}"
+                    data-value="like" title="Gefällt mir" onclick="sendFeedback(this)">👍</button>
+            <button type="button" class="feedback-btn {% if item.feedback == 'dislike' %}active{% endif %}"
+                    data-value="dislike" title="Passt nicht" onclick="sendFeedback(this)">👎</button>
+            <button type="button" class="feedback-btn {% if item.feedback == 'later' %}active{% endif %}"
+                    data-value="later" title="Später anhören" onclick="sendFeedback(this)">⏳</button>
+            <span class="feedback-error meta"></span>
+          </div>
+        </td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="5" style="text-align: center; padding: 2rem;" class="meta">
+          Keine Store-Tracks für diese Filtereinstellungen gefunden.
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {% if total > 0 %}
+  <div class="pager">
+    <div class="meta">
+      Seite {{ page }} von {{ total_pages }} ({{ total }} Store-Tracks gesamt)
+    </div>
+    <div class="pager-buttons">
+      <a href="{{ prev_url or '#' }}" class="btn-page {% if not prev_url %}disabled{% endif %}">
+        &larr; Vorherige
+      </a>
+      <a href="{{ next_url or '#' }}" class="btn-page {% if not next_url %}disabled{% endif %}">
+        Nächste &rarr;
+      </a>
+    </div>
+  </div>
+  {% endif %}
+</div>
+<script>
+  // Bewertung ohne Seiten-Reload an POST /api/feedback (wie im Digest). Bis die Antwort da
+  // ist, sind die Knöpfe gesperrt, damit kein zweiter Klick eine widersprüchliche Bewertung schickt.
+  async function sendFeedback(button) {
+    const cell = button.closest('[data-feedback-cell]');
+    if (!cell) { return; }
+    const buttons = cell.querySelectorAll('button[data-value]');
+    const errorBox = cell.querySelector('.feedback-error');
+    if (errorBox) { errorBox.textContent = ''; }
+    buttons.forEach((b) => { b.disabled = true; });
+    try {
+      const response = await fetch('/api/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sc_id: parseInt(cell.dataset.scId, 10),
+          value: button.dataset.value,
+        }),
+      });
+      if (!response.ok) { throw new Error('HTTP ' + response.status); }
+      buttons.forEach((b) => { b.classList.toggle('active', b === button); });
+    } catch (error) {
+      if (errorBox) { errorBox.textContent = 'nicht gespeichert'; }
+    } finally {
+      buttons.forEach((b) => { b.disabled = false; });
+    }
+  }
+</script>
+{% endblock %}

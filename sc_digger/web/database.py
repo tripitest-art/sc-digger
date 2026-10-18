@@ -329,6 +329,117 @@ def query_tracks(
 
 
 @dataclass
+class StoreItemResult:
+    """Ein offener Store-Track (Bandcamp/Beatport) samt aktueller Bewertung."""
+
+    sc_id: int
+    title: str
+    artist: str
+    purchase_url: str
+    purchase_title: str | None
+    first_seen: str
+    last_seen: str
+    feedback: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
+class StoreSearchResult:
+    """Eine Seite der Kaufliste samt Gesamtzahl der Treffer."""
+
+    total: int = 0
+    items: list[dict[str, Any]] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+def query_store_items(
+    track_db_path: str | Path,
+    *,
+    search: str | None = None,
+    feedback: str | None = None,
+    limit: int = DEFAULT_LIMIT,
+    offset: int = 0,
+) -> StoreSearchResult:
+    """Liest Store-Items rein lesend aus store_items mit LEFT JOIN auf sc_feedback.
+
+    Sortiert nach ``store_items.last_seen`` DESC, ``store_items.id`` DESC. ``search`` sucht
+    wie im Digest als Wortsuche über Artist und Titel, ``feedback`` filtert exakt auf
+    ``like``/``dislike``/``later`` (``none``: noch ohne Bewertung). ``limit`` wird auf
+    ``MAX_LIMIT`` begrenzt, ``total`` zählt alle Treffer unabhängig von ``limit``.
+    Fehlt die Datei oder eine Tabelle, kommt ein leeres Ergebnis zurück; die Funktion wirft nie.
+    """
+    limit = max(0, min(int(limit), MAX_LIMIT))
+    offset = max(0, int(offset))
+
+    try:
+        with closing(_connect_readonly(track_db_path)) as db:
+            if not _table_exists(db, "store_items"):
+                return StoreSearchResult()
+            has_feedback = _table_exists(db, "sc_feedback")
+            join = (
+                " LEFT JOIN sc_feedback ON sc_feedback.sc_id = store_items.sc_id"
+                if has_feedback else ""
+            )
+            feedback_column = (
+                "sc_feedback.value AS feedback" if has_feedback else "NULL AS feedback"
+            )
+
+            where: list[str] = []
+            params: list[Any] = []
+            if search:
+                clause, extra = _like_clause(search)
+                if clause:
+                    where.append(f"({clause})")
+                    params.extend(extra)
+            if feedback:
+                fb = feedback.strip().lower()
+                if not has_feedback:
+                    # Ohne sc_feedback-Tabelle gibt es keine Bewertungen: „none“ trifft
+                    # alle Store-Items, jeder andere Filter keinen einzigen.
+                    if fb != "none":
+                        return StoreSearchResult()
+                elif fb == "none":
+                    where.append("sc_feedback.value IS NULL")
+                elif fb in FEEDBACK_VALUES:
+                    where.append("sc_feedback.value = ?")
+                    params.append(fb)
+
+            clause_sql = f" WHERE {' AND '.join(where)}" if where else ""
+            total = int(db.execute(
+                f"SELECT COUNT(*) FROM store_items{join}{clause_sql}", params
+            ).fetchone()[0])
+            rows = db.execute(
+                "SELECT store_items.sc_id, store_items.title, store_items.artist, "
+                "store_items.purchase_url, store_items.purchase_title, "
+                f"store_items.first_seen, store_items.last_seen, {feedback_column} "
+                f"FROM store_items{join}{clause_sql} "
+                "ORDER BY store_items.last_seen DESC, store_items.id DESC LIMIT ? OFFSET ?",
+                [*params, limit, offset],
+            ).fetchall()
+    except sqlite3.Error:
+        return StoreSearchResult()
+
+    items = [
+        StoreItemResult(
+            sc_id=int(row["sc_id"]),
+            title=str(row["title"] or ""),
+            artist=str(row["artist"] or ""),
+            purchase_url=str(row["purchase_url"] or ""),
+            purchase_title=row["purchase_title"],
+            first_seen=str(row["first_seen"] or ""),
+            last_seen=str(row["last_seen"] or ""),
+            feedback=row["feedback"],
+        ).to_dict()
+        for row in rows
+    ]
+    return StoreSearchResult(total=total, items=items)
+
+
+@dataclass
 class DigestItem:
     """Repräsentiert einen im Digest oder On-Demand vorgeschlagenen Track."""
 
