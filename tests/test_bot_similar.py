@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from sc_digger import bot, similarity
+from sc_digger import bot, output, similarity
 from sc_digger.db import TrackDB, TrackRecord
-from sc_digger.fingerprint import encode_fingerprint
+from sc_digger.fingerprint import Fingerprint, encode_fingerprint
 from sc_digger.models import Config
 
 URL = "https://soundcloud.com/a/t1"
@@ -132,3 +132,173 @@ def test_handle_message_similar_without_url_sends_usage(cfg, sent):
 
 def test_similar_is_in_help_text():
     assert "/similar" in bot.HELP_TEXT
+
+
+def test_similar_reply_from_audio_fingerprints_sent_file(tmp_path, monkeypatch):
+    """Eine gesendete Datei liefert dieselbe Antwort wie der Link-Weg."""
+    seen = {}
+
+    def fake_compute(path, **kwargs):
+        seen["path"] = Path(path)
+        return Fingerprint(values=[0] * WORDS, duration=60.0)
+
+    monkeypatch.setattr(bot, "compute_fingerprint", fake_compute)
+    audio = tmp_path / "gesendet.oga"
+    audio.write_bytes(b"fake-audio")
+
+    with TrackDB(tmp_path / "t.sqlite") as db:
+        _fingerprinted(db, tmp_path, "Svetec", "Raw", _near([0] * WORDS))
+        reply = bot.similar_reply_from_audio(None, db, audio)
+
+    assert seen["path"] == audio
+    assert reply.splitlines()[0] == "🎧 Ähnliche Aufnahmen:"
+    assert reply.splitlines()[1] == "1. Svetec – Raw · 140.0 BPM · 5A · Ähnlichkeit 80.0%"
+
+
+def test_similar_reply_from_audio_without_fingerprint_returns_standard_text(tmp_path, monkeypatch):
+    """Ohne Fingerprint (fpcalc-Fehler) gibt es den Standard-Fehlertext statt einer Ausnahme."""
+    monkeypatch.setattr(bot, "compute_fingerprint", lambda path, **kwargs: None)
+
+    with TrackDB(tmp_path / "t.sqlite") as db:
+        reply = bot.similar_reply_from_audio(None, db, tmp_path / "faul.oga")
+
+    assert reply == similarity.SIMILAR_FAILED
+
+
+def test_handle_audio_message_downloads_and_removes_temp_file(cfg, sent, monkeypatch):
+    """Eine Audionachricht wird geladen, ausgewertet und als Top-Liste beantwortet."""
+    seen = {}
+
+    def fake_download(c, file_id, dest):
+        seen["file_id"] = file_id
+        seen["path"] = Path(dest)
+        Path(dest).write_bytes(b"fake-audio")
+        return dest
+
+    monkeypatch.setattr(bot, "_download_telegram_audio", fake_download)
+    with TrackDB(cfg["state"]["track_db_path"]) as db:
+        _fingerprinted(db, Path(cfg["state"]["track_db_path"]).parent, "Svetec", "Raw", _near([0] * WORDS))
+
+    bot.handle_audio_message(cfg, "42", {"file_id": "F1"})
+
+    assert seen["file_id"] == "F1"
+    assert "1. Svetec – Raw" in sent[0]
+    assert not seen["path"].exists()
+
+
+def test_handle_audio_message_download_error_reports_standard_text(cfg, sent, monkeypatch):
+    def boom(c, file_id, dest):
+        raise bot.TelegramError("kaputt")
+
+    monkeypatch.setattr(bot, "_download_telegram_audio", boom)
+
+    bot.handle_audio_message(cfg, "42", {"file_id": "F1"})
+
+    assert sent == [similarity.SIMILAR_FAILED]
+
+
+def test_handle_audio_message_without_file_id_does_nothing(cfg, sent):
+    bot.handle_audio_message(cfg, "42", {"duration": 3})
+
+    assert sent == []
+
+
+def _file_get(monkeypatch, *, status_code=200, content=b"audio-bytes", file_path="voice/file_1.oga"):
+    """Fakt `telegram_call` (getFile) und den Datei-Download; gibt die Aufrufe zurück."""
+    calls = {}
+
+    def fake_call(token, method, **kwargs):
+        calls["method"] = method
+        calls["params"] = kwargs.get("params")
+        return {"ok": True, "result": {"file_path": file_path}}
+
+    class _Resp:
+        pass
+
+    resp = _Resp()
+    resp.status_code = status_code
+    resp.content = content
+
+    def fake_get(url, timeout=None):
+        calls["url"] = url
+        return resp
+
+    monkeypatch.setattr(bot, "telegram_call", fake_call)
+    monkeypatch.setattr(output.requests, "get", fake_get)
+    return calls
+
+
+def test_download_telegram_audio_gets_file_and_writes_bytes(tmp_path, monkeypatch):
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123456:AABBCCDDEEFFGGHHIIJJ")
+    calls = _file_get(monkeypatch)
+
+    dest = tmp_path / "empfangen.oga"
+    out = bot._download_telegram_audio(Config({}), "F1", dest)
+
+    assert out == dest
+    assert dest.read_bytes() == b"audio-bytes"
+    assert calls["method"] == "getFile"
+    assert calls["params"] == {"file_id": "F1"}
+    assert calls["url"].startswith("https://api.telegram.org/file/bot")
+    assert calls["url"].endswith("/voice/file_1.oga")
+
+
+def test_download_telegram_audio_reports_http_error_without_token(tmp_path, monkeypatch):
+    token = "123456:AABBCCDDEEFFGGHHIIJJ"
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", token)
+    _file_get(monkeypatch, status_code=404, content=b"nope")
+
+    with pytest.raises(bot.TelegramError) as err:
+        bot._download_telegram_audio(Config({}), "F1", tmp_path / "empfangen.oga")
+
+    assert token not in str(err.value)
+
+
+def test_download_telegram_audio_redacts_token_from_request_errors(tmp_path, monkeypatch):
+    """requests schreibt die URL in die Fehlermeldung – der Bot-Token darf nicht durchkommen."""
+    token = "123456:AABBCCDDEEFFGGHHIIJJ"
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", token)
+    _file_get(monkeypatch)
+
+    def boom(url, timeout=None):
+        raise output.requests.RequestException(f"HTTPError für {url}")
+
+    monkeypatch.setattr(output.requests, "get", boom)
+
+    with pytest.raises(bot.TelegramError) as err:
+        bot._download_telegram_audio(Config({}), "F1", tmp_path / "empfangen.oga")
+
+    assert token not in str(err.value)
+    assert "bot***" in str(err.value)
+
+
+def test_listen_routes_voice_and_audio_to_audio_handler(monkeypatch):
+    """Polling-Routing: voice/audio geht an handle_audio_message, nicht an handle_message."""
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:abc")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "4242")
+    monkeypatch.setattr(bot, "SoundCloudClient", lambda: None)
+    seen = []
+
+    updates = iter([
+        {"result": []},                                                      # Backlog beim Start
+        {"result": [
+            {"update_id": 7, "message": {"chat": {"id": 4242}, "voice": {"file_id": "V1"}}},
+            {"update_id": 8, "message": {"chat": {"id": 4242}, "audio": {"file_id": "A1"}}},
+        ]},
+    ])
+
+    def fake_call(token, method, **kwargs):
+        try:
+            return next(updates)
+        except StopIteration:
+            raise KeyboardInterrupt                                      # Loop beenden
+
+    monkeypatch.setattr(bot, "telegram_call", fake_call)
+    monkeypatch.setattr(bot, "handle_message", lambda *a: pytest.fail("Text-Handler gerufen"))
+    monkeypatch.setattr(bot, "handle_audio_message",
+                        lambda cfg, chat_id, audio: seen.append((chat_id, audio)))
+
+    with pytest.raises(KeyboardInterrupt):
+        bot.listen(Config({}))
+
+    assert seen == [("4242", {"file_id": "V1"}), ("4242", {"file_id": "A1"})]
