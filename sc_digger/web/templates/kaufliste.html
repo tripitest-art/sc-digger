@@ -157,8 +157,10 @@
         <td>{{ item.artist or "—" }}</td>
         <td><strong>{{ item.title }}</strong></td>
         <td style="white-space: nowrap;">
-          {% if item.purchase_url %}
-          <a href="{{ item.purchase_url }}" target="_blank" rel="noopener"
+          {# Nur http/https verlinken: purchase_url stammt aus fremden Feeds. #}
+          {% set purchase_href = item.purchase_url if item.purchase_url and (item.purchase_url.startswith("http://") or item.purchase_url.startswith("https://")) else "" %}
+          {% if purchase_href %}
+          <a href="{{ purchase_href }}" target="_blank" rel="noopener"
              class="btn-page" style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">
             🛒 {{ item.purchase_title or "Kaufen" }} ↗
           </a>

@@ -233,6 +233,24 @@ def test_kaufliste_escaped_html(tmp_path: Path):
     assert "https://evil.example/track?a=1&amp;b=2" in response.text
 
 
+def test_kaufliste_verlinkt_nur_http_schemata(tmp_path: Path):
+    """Kauf-URLs aus fremden Feeds dürfen kein aktives Schema wie javascript: werden."""
+    db_path = tmp_path / "tracks.sqlite"
+    with TrackDB(db_path) as db:
+        db.upsert_store_item(
+            sc_id=402,
+            title="Böser Link",
+            artist="Evil",
+            purchase_url="javascript:alert(1)",
+        )
+
+    client = client_for(tmp_path)
+    response = client.get("/kaufliste", auth=("sc", PASSWORD))
+    assert response.status_code == 200
+    assert "Böser Link" in response.text
+    assert "javascript:alert(1)" not in response.text
+
+
 def test_api_kaufliste_filter_und_auth(tmp_path: Path):
     seed_items(tmp_path / "tracks.sqlite", count=2)
     with TrackDB(tmp_path / "tracks.sqlite") as db:
