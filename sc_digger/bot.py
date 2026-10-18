@@ -23,6 +23,7 @@ import xml.etree.ElementTree as ET
 from collections import Counter
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import yaml
 
@@ -131,11 +132,10 @@ def _permalink_slug(permalink: str | None) -> str:
     value = str(permalink or "").strip().lower()
     if not value:
         return ""
-    if "soundcloud.com" in value:
-        value = value.split("soundcloud.com", 1)[1].lstrip("/")
-    elif "://" in value:
-        value = value.split("://", 1)[1]
-        value = value.split("/", 1)[1] if "/" in value else ""
+    # Kein Substring-Test auf die Domain (CodeQL: unvollständige Sanitisierung, z. B.
+    # "soundcloud.com.evil.tld"). Enthält der Wert einen Pfad, zerlegt urlparse ihn in Host+Pfad.
+    if "://" in value or "/" in value:
+        value = urlsplit(value if "://" in value else f"https://{value}").path
     value = value.split("?", 1)[0].split("#", 1)[0].strip("/")
     return value.split("/", 1)[0] if value else ""
 
