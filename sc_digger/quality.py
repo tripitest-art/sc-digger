@@ -61,7 +61,9 @@ def is_32bit_or_float(path: Path) -> bool:
     """True, wenn die Datei 32/64-Bit-Audio oder Float-Samples enthält.
 
     Geprüft werden Codec (pcm_f32le, pcm_s32le, …), sample_fmt (flt, dbl, s32, …) und
-    bits_per_raw_sample == 32. Wirft nie: fehlende oder kaputte Dateien -> False.
+    bits_per_raw_sample == 32. Ausnahme: ffprobe meldet für pcm_s16*/pcm_s24* ebenfalls
+    sample_fmt s32 (Decoder-Sample-Breite); solche Dateien gelten als nicht 32-Bit.
+    Wirft nie: fehlende oder kaputte Dateien -> False.
     """
     try:
         r = _run([
