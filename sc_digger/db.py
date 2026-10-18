@@ -369,6 +369,20 @@ MIGRATIONS: list[tuple[int, str, str]] = [
         CREATE INDEX IF NOT EXISTS idx_tracks_duration ON tracks(duration);
         """,
     ),
+    (
+        13,
+        "0013_track_embeddings",
+        """
+        CREATE TABLE IF NOT EXISTS track_embeddings (
+            track_id INTEGER PRIMARY KEY REFERENCES tracks(id) ON DELETE CASCADE,
+            model TEXT NOT NULL,
+            dim INTEGER NOT NULL,
+            vector BLOB NOT NULL,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_track_embeddings_model ON track_embeddings(model);
+        """,
+    ),
 ]
 
 
@@ -1105,6 +1119,55 @@ class TrackDB:
         ).fetchall()
         return [TrackRecord.from_row(r) for r in rows]
 
+    def _row_to_track(self, row: sqlite3.Row) -> TrackRecord:
+        return TrackRecord.from_row(row)
+
+    def set_embedding(self, track_id: int, model: str, vector: Sequence[float]) -> None:
+        """Speichert oder aktualisiert ein Audio-Embedding für einen Track."""
+        from .embeddings import pack_vector
+
+        dim = len(vector)
+        blob = pack_vector(vector)
+        self.db.execute(
+            """
+            INSERT INTO track_embeddings (track_id, model, dim, vector, updated_at)
+            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(track_id) DO UPDATE SET
+                model = excluded.model,
+                dim = excluded.dim,
+                vector = excluded.vector,
+                updated_at = CURRENT_TIMESTAMP;
+            """,
+            (track_id, model, dim, blob),
+        )
+        self.db.commit()
+
+    def get_embedding(self, track_id: int) -> tuple[str, list[float]] | None:
+        """Liest das gespeicherte Embedding (Modellname, Vektor) eines Tracks."""
+        row = self.db.execute(
+            "SELECT model, vector FROM track_embeddings WHERE track_id = ?",
+            (track_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        from .embeddings import unpack_vector
+
+        return (row["model"], unpack_vector(row["vector"]))
+
+    def embedded_tracks(self) -> list[tuple[TrackRecord, list[float]]]:
+        """Liest alle Tracks mit gespeichertem Embedding aufsteigend nach Track-ID."""
+        from .embeddings import unpack_vector
+
+        rows = self.db.execute(
+            """
+            SELECT t.*, e.vector
+            FROM tracks t
+            JOIN track_embeddings e ON t.id = e.track_id
+            ORDER BY t.id ASC
+            """
+        ).fetchall()
+        return [(self._row_to_track(r), unpack_vector(r["vector"])) for r in rows]
+
     # ------------------------------------------------------------ Job-Operationen
 
     def enqueue_job(
@@ -1130,6 +1193,20 @@ class TrackDB:
 
     def get_job_by_id(self, job_id: int) -> JobRecord | None:
         row = self.db.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
+        return JobRecord.from_row(row) if row else None
+
+    def find_active_job(self, job_type: JobType | str, track_id: int) -> JobRecord | None:
+        """Sucht nach einem anstehenden oder laufenden Job für diesen Track."""
+        jt = job_type.value if isinstance(job_type, Enum) else str(job_type)
+        row = self.db.execute(
+            """
+            SELECT * FROM jobs
+            WHERE track_id = ? AND job_type = ? AND status IN ('pending', 'running')
+            ORDER BY id ASC
+            LIMIT 1;
+            """,
+            (track_id, jt),
+        ).fetchone()
         return JobRecord.from_row(row) if row else None
 
     def get_pending_jobs(

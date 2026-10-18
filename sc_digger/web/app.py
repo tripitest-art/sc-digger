@@ -36,8 +36,9 @@ from fastapi.responses import (
 )
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
-from ..db import FEEDBACK_VALUES, TrackDB
+from ..db import FEEDBACK_VALUES, JobType, TrackDB
 from ..dj_export import Playlist, order_harmonic
+from ..embeddings import apply_embedding_result
 from ..harmonic import find_mix_candidates
 from ..models import Config
 from ..pipeline import classify_download, dedupe, estimate_bpm
@@ -489,6 +490,11 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
             inbox_dir=(cfg.raw.get("download") or {}).get("inbox_dir"),
         )
         if done:
+            if status == "completed":
+                with TrackDB(cfg["state"]["track_db_path"]) as db:
+                    job = db.get_job_by_id(job_id)
+                    if job is not None and (job.job_type == JobType.EMBEDDING or job.job_type == "embedding"):
+                        apply_embedding_result(db, job_id, payload.get("result") or {})
             return JSONResponse({"ok": True})
         return JSONResponse({"ok": False, "error": "Job nicht gefunden"}, status_code=404)
 
