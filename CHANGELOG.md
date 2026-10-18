@@ -8,6 +8,7 @@ unter „Unreleased“ (Regeln: `AGENTS.md`, Abschnitt „Doku und Changelog“)
 ## Unreleased
 
 ### Hinzugefügt
+- 32-Bit-/Float-Audio (WAV, AIFF) wird nach bestandener Qualitätsprüfung automatisch nach 24-Bit-PCM konvertiert (`quality.is_32bit_or_float`, `quality.convert_to_pcm24`), damit Rekordbox und CDJs es lesen; `scripts/fix_32bit_wavs.py` räumt bestehende Inbox-Bestände rekursiv auf (#365).
 - Doku-Aktualisierung: ROADMAP.md (Curator-Mining, Embeddings, Auto-Cues & Set-Tools), Modul-Tabellen in ENTWICKLUNG.md und README.md vervollständigt, Bot-Befehl `/similar` und Konfigurations-Referenz in README.md ergänzt (#367).
 - Taste-Score: Logistische Regression auf Embeddings und Feedback zur Vorhersage des Gefallens von Tracks (`sc_digger/taste.py`) (#366).
 - Audio-Embeddings: Vektorspeicher in Track-DB, Queue-Job und Ergebnisverarbeitung (#362).
