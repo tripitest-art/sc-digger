@@ -950,6 +950,8 @@ def cli() -> None:
     aud.add_argument("--report", help="Dateipfad für den HTML-Report (z.B. report.html)")
     aud.add_argument("--force", action="store_true",
                      help="Alle Dateien neu analysieren (inkrementellen Cache ignorieren)")
+    aud.add_argument("--analyze-structure", action="store_true",
+                     help="Kick/Drop/Breakdown rein lesend analysieren und breakdown_ratio speichern")
     aud.add_argument("--export-xml",
                      help="Archivierte Tracks der TrackDB als Rekordbox-XML in diese Datei exportieren")
     aud.add_argument("--check-adopted", action="store_true",
@@ -995,6 +997,7 @@ def cli() -> None:
                 no_telegram=a.no_telegram,
                 export_xml_path=a.export_xml,
                 check_adopted=a.check_adopted,
+                analyze_structure=a.analyze_structure,
             )
         elif a.mode == "rekordbox":
             write_rekordbox_xml(cfg)
