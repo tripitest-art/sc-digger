@@ -227,7 +227,7 @@ def handle_cues_job(
                 raise FileNotFoundError(
                     f"Audiodatei nicht gefunden und kein Client zum Download: {payload.get('path')!r}"
                 )
-            job_id = payload.get("job_id", payload.get("id"))
+            job_id = payload.get("job_id")
             if job_id is None:
                 raise ValueError("cues-Payload enthält keine job_id für den Audio-Download")
             data = client.get_job_audio(int(job_id))
