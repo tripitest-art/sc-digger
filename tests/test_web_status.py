@@ -50,9 +50,39 @@ def test_snapshot_to_dict_has_all_fields(tmp_path):
     data = snap.to_dict()
     assert set(data) == {
         "generated_at", "runs", "last_discover", "last_discover_age_hours",
-        "healthy", "alert_active", "inbox_total", "stats", "job_summary",
+        "healthy", "alert_active", "inbox_total", "stats", "job_summary", "version",
     }
     json.dumps(data)
+
+
+def test_version_leer_ohne_update_sh(tmp_path):
+    # Vor dem ersten update.sh-Lauf (oder bei einem manuellen Checkout ohne Deploy) fehlt
+    # data/version.json; collect_status liefert dann leere Felder statt eines Fehlers.
+    snap = collect_status(make_cfg(tmp_path), now=NOW)
+    assert snap.version.commit is None
+    assert snap.version.deployed_at is None
+
+
+def test_version_aus_version_json(tmp_path):
+    (tmp_path / "version.json").write_text(
+        json.dumps({"commit": "a1b2c3d", "deployed_at": "2026-10-18T20:00:00Z"}), encoding="utf-8")
+    snap = collect_status(make_cfg(tmp_path), now=NOW)
+    assert snap.version.commit == "a1b2c3d"
+    assert snap.version.deployed_at == "2026-10-18T20:00:00Z"
+
+
+def test_kaputte_version_json_wird_ignoriert(tmp_path):
+    (tmp_path / "version.json").write_text("{kaputt", encoding="utf-8")
+    snap = collect_status(make_cfg(tmp_path), now=NOW)
+    assert snap.version.commit is None
+
+
+def test_version_erscheint_auf_der_statusseite(tmp_path):
+    (tmp_path / "version.json").write_text(
+        json.dumps({"commit": "a1b2c3d", "deployed_at": "2026-10-18T20:00:00Z"}), encoding="utf-8")
+    r = client_for(tmp_path).get("/", auth=("sc", PASSWORD))
+    assert r.status_code == 200
+    assert "a1b2c3d" in r.text and "2026-10-18T20:00:00Z" in r.text
 
 
 def test_healthz_works_even_anonymous_disabled(tmp_path):

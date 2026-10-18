@@ -13,6 +13,9 @@
     <div>
       <h1 style="margin: 0;">sc-digger Status</h1>
       <p class="meta" style="margin: 0.25rem 0 0;">Stand: {{ snap.generated_at }} UTC (aktualisiert sich alle 60&nbsp;Sekunden)</p>
+      {% if snap.version.commit %}
+      <p class="meta" style="margin: 0.1rem 0 0;">Version: {{ snap.version.commit }}{% if snap.version.deployed_at %} &middot; deployt {{ snap.version.deployed_at }}{% endif %}</p>
+      {% endif %}
     </div>
     <div style="display: flex; align-items: center; gap: 1rem;">
       {% if snap.healthy %}

@@ -51,5 +51,8 @@ if [ "$ok" != 1 ]; then
 fi
 
 echo "$current" > "$STATE"
+# Für die Statusseite (sc_digger/web/status.py liest data/version.json neben der State-DB).
+mkdir -p data
+printf '{"commit": "%s", "deployed_at": "%s"}\n' "$current" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > data/version.json
 docker image prune -f >/dev/null
 echo "Aktualisiert: $built -> $current"

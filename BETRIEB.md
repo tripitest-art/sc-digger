@@ -39,6 +39,8 @@ cd /root/sc-digger && ./update.sh
 Holt den neuen Stand von GitHub über einen Deploy-Key (nur lesen), baut neu, startet und prüft,
 ob der neue Container antwortet. Der zuletzt erfolgreich ausgerollte Stand steht in `.last-build`;
 scheitert Build oder Start, meldet das Skript `FEHLER` und versucht es beim nächsten Aufruf erneut.
+Nach dem Rauchtest schreibt es außerdem `data/version.json` (Commit-Kurz-Hash, Zeitpunkt UTC);
+die Statusseite (`/`) zeigt das neben „Stand:“ als „Version: …“, solange die Datei existiert.
 `./update.sh --force` baut immer neu. Der
 Schlüssel liegt auf dem Server unter `/home/claude/.ssh/sc_digger_deploy` und ist per
 `core.sshCommand` in der Repo-Konfiguration hinterlegt; eingetragen ist er auf GitHub unter
