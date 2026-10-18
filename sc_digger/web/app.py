@@ -13,6 +13,7 @@ frisch gelesen; die versionierte `config.yaml` bleibt unangetastet.
 """
 from __future__ import annotations
 
+import json
 import logging
 import secrets
 import sqlite3
@@ -38,7 +39,10 @@ from .database import (
     MAX_LIMIT,
     _connect_readonly,
     _sc_id_from_path,
+    claim_job_for_worker,
+    finish_job,
     get_collection_overview,
+    heartbeat_job,
     query_digest,
     query_tracks,
     save_track_feedback,
@@ -257,6 +261,68 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
         if not _check_auth(request, password, allow_anonymous):
             return _unauthorized()
         return JSONResponse(collect_status(cfg).to_dict())
+
+    # Job-Queue für externe GPU-Worker (Issue #330): claimen, Lebenszeichen und Ergebnis
+    # melden über HTTP, damit die Workstation die Track-DB nicht per SMB/NFS einbinden muss.
+    # Keine Origin-Prüfung: die Clients sind Skripte auf einer anderen Maschine, keine
+    # Browser-Formulare; geschützt ist die API über dieselbe Basic-Anmeldung wie der Rest.
+    @app.post("/api/jobs/claim")
+    async def api_jobs_claim(request: Request):
+        if not _check_auth(request, password, allow_anonymous):
+            return _unauthorized()
+        raw = await request.body()
+        payload: dict = {}
+        if raw.strip():
+            try:
+                payload = json.loads(raw)
+            except Exception:
+                return JSONResponse({"ok": False, "error": "Ungültiges JSON"}, status_code=400)
+            if not isinstance(payload, dict):
+                return JSONResponse({"ok": False, "error": "Ungültiger Payload"}, status_code=400)
+        job_type = payload.get("job_type")
+        job = claim_job_for_worker(
+            cfg["state"]["track_db_path"], str(job_type) if job_type else None
+        )
+        return JSONResponse({"ok": True, "job": job})
+
+    @app.post("/api/jobs/{job_id}/heartbeat")
+    def api_jobs_heartbeat(request: Request, job_id: int):
+        if not _check_auth(request, password, allow_anonymous):
+            return _unauthorized()
+        if heartbeat_job(cfg["state"]["track_db_path"], job_id):
+            return JSONResponse({"ok": True})
+        return JSONResponse(
+            {"ok": False, "error": "Job nicht gefunden oder nicht im Status running"},
+            status_code=404,
+        )
+
+    @app.post("/api/jobs/{job_id}/complete")
+    async def api_jobs_complete(request: Request, job_id: int):
+        if not _check_auth(request, password, allow_anonymous):
+            return _unauthorized()
+        try:
+            payload = await request.json()
+        except Exception:
+            return JSONResponse({"ok": False, "error": "Ungültiges JSON"}, status_code=400)
+        if not isinstance(payload, dict):
+            return JSONResponse({"ok": False, "error": "Ungültiger Payload"}, status_code=400)
+        status = payload.get("status")
+        # Der Status entscheidet über die Job-Tabelle; nur die beiden Endzustände sind gültig.
+        if status not in ("completed", "failed"):
+            return JSONResponse(
+                {"ok": False, "error": "status muss completed oder failed sein"},
+                status_code=422,
+            )
+        done = finish_job(
+            cfg["state"]["track_db_path"],
+            job_id,
+            status,
+            result=payload.get("result"),
+            error=payload.get("error"),
+        )
+        if done:
+            return JSONResponse({"ok": True})
+        return JSONResponse({"ok": False, "error": "Job nicht gefunden"}, status_code=404)
 
     # Rein lesende Track-Abfragen für den Explorer (Teil 1 des Dashboards): nur die
     # Track-DB, ausschließlich `mode=ro`, keine Schreibpfade.
