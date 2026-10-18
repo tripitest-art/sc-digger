@@ -183,6 +183,8 @@ curator_mining:
   min_appearances: 2
   # Wie viele Liker/Reposter pro Track maximal abgefragt werden (API-Calls)
   max_likers_per_track: 50
+  # Mindestanzahl Tracks eines Künstlers in der Sammlung, damit er als Curator vorgeschlagen wird
+  min_collection_tracks: 3
 
 state:
   db_path: /data/seen.sqlite
