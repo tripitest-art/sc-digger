@@ -29,11 +29,13 @@ from .audit import run_audit
 from .cleanup import audit_inbox_duplicates, format_duplicate_report, move_duplicates
 from .cloud import download_cloud
 from .collection import Collection
+from .cues import write_breakdown_tag, write_drop_tag, write_first_kick_tag
 from .db import TrackDB
 from .health import Health
 from .intake import AUDIO_EXTS, find_ready_files, track_from_file
 from .models import Config, DownloadKind, Track
 from .organize import organize, write_tags
+from .phrase import quantize_to_phrase
 from .redact import install_redacting_logging, redact
 from .output import (DigestMessage, State, TelegramError, build_digest, build_digest_messages, build_export_txt, download_native,
                      finalize_quality, find_in_inbox, send_digest, send_scout_digest, send_scout_error, send_telegram,
@@ -46,6 +48,12 @@ from .scout.bandcamp import fetch_bandcamp_feeds
 from .scout.beatport import fetch_beatport_charts
 from .soundcloud import ClientIdError, RateLimitError, SoundCloudClient, SoundCloudError
 from .stats import calculate_stats, format_stats, render_stats_chart, send_weekly_digest
+from .structure import (
+    analyze_structure,
+    calculate_breakdown_ratio,
+    find_drop_start,
+    find_first_kick,
+)
 
 log = logging.getLogger("sc_digger")
 
@@ -156,6 +164,31 @@ def finish_file(t: Track, path: Path, inbox: Path, cfg: Config) -> Path | None:
         except Exception as e:
             t.notes.append(f"Tagging fehlgeschlagen: {e}")
 
+    # Strukturanalyse & Cue-Tags
+    if org.get("write_tags", True):
+        try:
+            first_kick = find_first_kick(path)
+            segments = analyze_structure(path)
+            t.breakdown_ratio = calculate_breakdown_ratio(segments) if segments else None
+            phrase_align = bool((cfg.raw.get("rekordbox") or {}).get("cues_phrase_align", True))
+            drop_s = find_drop_start(segments, bpm=t.bpm, first_kick_s=first_kick, phrase_align=phrase_align)
+
+            breakdown_s: float | None = None
+            first_bd = next((s for s in segments if s.kind == "breakdown"), None)
+            if first_bd is not None:
+                breakdown_s = round(float(first_bd.start_s), 3)
+                if phrase_align and t.bpm is not None and t.bpm > 0 and first_kick is not None:
+                    breakdown_s = quantize_to_phrase(breakdown_s, first_kick, t.bpm)
+
+            if first_kick is not None:
+                write_first_kick_tag(path, first_kick)
+            if drop_s is not None:
+                write_drop_tag(path, drop_s)
+            if breakdown_s is not None:
+                write_breakdown_tag(path, breakdown_s)
+        except Exception as e:
+            t.notes.append(f"Strukturanalyse fehlgeschlagen: {e}")
+
     # Auto-Organize: nach BPM/Key-Ordner verschieben
     if org.get("enabled", True):
         try:
@@ -187,6 +220,7 @@ def finish_file(t: Track, path: Path, inbox: Path, cfg: Config) -> Path | None:
                 bitrate_kbps=q_rep.get("bitrate_kbps"),
                 cutoff_hz=q_rep.get("cutoff_hz"),
                 quality_status=q_status,
+                breakdown_ratio=t.breakdown_ratio,
             )
             with TrackDB(track_db_path) as db:
                 db.upsert_track(rec)
