@@ -604,7 +604,8 @@ def query_digest(
 ) -> DigestSearchResult:
     """Liest chronologisch (neueste zuerst) aus seen.sqlite (seen-Tabelle) und joint
     Informationen aus track_db (tracks, sc_feedback, store_items, gate_items).
-    Gleicht den Status (in_inbox, in_collection) primär per SoundCloud-ID ([<sc_id>])
+    Gleicht den Status (in_inbox, in_collection) primär per SoundCloud-ID ([<sc_id>],
+    zusätzlich über die Spalte tracks.sc_id für per Fingerprint übernommene Sammlungsdateien)
     und als Fallback per Fuzzy-Match auf Artist & Title (unter Beachtung von Remixer-Tokens)
     ab. Zusätzlich zählt die in ``tracks.source_url`` gespeicherte SoundCloud-URL (Issue #307,
     Vergleichsform über ``linksource.normalize_url``): gleiche URL heißt vorhanden, auch wenn
@@ -685,10 +686,20 @@ def query_digest(
                     has_artist_title = "artist" in cols and "title" in cols
                     # Ältere Tabellen ohne source_url bleiben unterstützt (Issue #307).
                     has_source_url = "source_url" in cols
+                    # Ältere DBs ohne sc_id (Migration 14) behalten das bisherige Verhalten.
+                    has_sc_id = "sc_id" in cols
                     for row in tdb.execute("SELECT * FROM tracks"):
                         p_str = str(row["path"] or "")
                         st_str = str(row["status"] or "").lower()
                         row_url = normalize_url(row["source_url"]) if has_source_url else ""
+                        # Die per Fingerprint übertragene sc_id erkennt Sammlungsdateien
+                        # auch ohne [<id>]-Präfix (ROADMAP 3.12); sie gilt vor dem Namensabgleich.
+                        row_sc_id = row["sc_id"] if has_sc_id else None
+                        if row_sc_id is not None:
+                            if st_str == "inbox":
+                                inbox_ids.add(int(row_sc_id))
+                            elif st_str in ("archive", "adopted"):
+                                archive_ids.add(int(row_sc_id))
                         m = re.search(r"\[(\d+)\]", p_str)
                         if m:
                             tid = int(m.group(1))

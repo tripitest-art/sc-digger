@@ -658,7 +658,7 @@ def mark_adopted_tracks(
         if match is None:
             continue
 
-        db.mark_adopted(inbox_rec.id, ts)
+        db.mark_adopted(inbox_rec.id, ts, archive_track_id=match.id)
         refreshed = db.get_track_by_id(inbox_rec.id)
         adopted.append((refreshed or inbox_rec, match))
 

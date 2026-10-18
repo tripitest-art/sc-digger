@@ -11,6 +11,7 @@ import dataclasses
 import json
 import logging
 import posixpath
+import re
 import sqlite3
 from collections import Counter
 from dataclasses import asdict, dataclass, field
@@ -88,6 +89,9 @@ class TrackRecord:
     artist: str | None = None
     title: str | None = None
     source_url: str | None = None
+    # SoundCloud-ID; bei Inbox-Dateien aus dem Präfix [<id>], bei übernommenen
+    # Sammlungsdateien per Fingerprint übertragen (ROADMAP 3.12).
+    sc_id: int | None = None
     fingerprint: str | None = None
     fingerprint_duration: float | None = None
     status: TrackStatus | str | None = None
@@ -382,6 +386,14 @@ MIGRATIONS: list[tuple[int, str, str]] = [
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP
         );
         CREATE INDEX IF NOT EXISTS idx_track_embeddings_model ON track_embeddings(model);
+        """,
+    ),
+    (
+        14,
+        "0014_tracks_sc_id",
+        """
+        ALTER TABLE tracks ADD COLUMN sc_id INTEGER;
+        CREATE INDEX IF NOT EXISTS idx_tracks_sc_id ON tracks(sc_id);
         """,
     ),
 ]
@@ -720,12 +732,17 @@ class TrackDB:
         track_id: int,
         adopted_at: str,
         *,
+        archive_track_id: int | None = None,
         feedback: str = "like",
     ) -> bool:
         """Markiert den Track mit ID track_id als übernommen (adopted_at = adopted_at).
         Ein bestehendes feedback='dislike' wird NIEMALS überschrieben.
         Falls feedback != 'dislike', wird feedback auf den übergebenen Wert (Standard 'like') gesetzt.
         Aktualisiert updated_at = CURRENT_TIMESTAMP.
+        Ist archive_track_id gesetzt, wandert die SoundCloud-ID (Präfix [<id>] im Dateinamen,
+        sonst sc_id von track_id) samt source_url auf die Archivzeile; eine dort bereits
+        gesetzte source_url bleibt stehen. Eine unbekannte track_id ändert auch die
+        Archivzeile nicht.
         Gibt True zurück, wenn der Track existiert und aktualisiert wurde, sonst False.
         """
         # feedback nur setzen, wenn der Track nicht bereits ein 'dislike' trägt:
@@ -743,8 +760,39 @@ class TrackDB:
             """,
             (adopted_at, feedback, track_id),
         )
+        changed = cur.rowcount > 0
         self.db.commit()
-        return cur.rowcount > 0
+        if not changed:
+            return False
+
+        if archive_track_id is not None:
+            row = self.db.execute(
+                "SELECT path, sc_id, source_url FROM tracks WHERE id = ?", (track_id,)
+            ).fetchone()
+            if row is not None:
+                sc_id = row["sc_id"]
+                if sc_id is None:
+                    m = re.match(r"^\[(\d+)\]", Path(row["path"] or "").name)
+                    if m:
+                        sc_id = int(m.group(1))
+                set_parts: list[str] = []
+                params: list[Any] = []
+                if sc_id is not None:
+                    set_parts.append("sc_id = ?")
+                    params.append(int(sc_id))
+                if row["source_url"]:
+                    # Nur eine leere URL füllen: die Sammlungszeile bleibt die Wahrheit.
+                    set_parts.append("source_url = COALESCE(NULLIF(source_url, ''), ?)")
+                    params.append(str(row["source_url"]))
+                if set_parts:
+                    set_parts.append("updated_at = CURRENT_TIMESTAMP")
+                    params.append(archive_track_id)
+                    self.db.execute(
+                        f"UPDATE tracks SET {', '.join(set_parts)} WHERE id = ?",
+                        params,
+                    )
+                    self.db.commit()
+        return True
 
     def get_adopted_tracks(self) -> list[TrackRecord]:
         """Gibt alle Tracks mit adopted_at IS NOT NULL zurück, sortiert nach adopted_at DESC, id ASC."""
