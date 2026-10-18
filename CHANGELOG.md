@@ -8,7 +8,6 @@ unter „Unreleased“ (Regeln: `AGENTS.md`, Abschnitt „Doku und Changelog“)
 ## Unreleased
 
 ### Hinzugefügt
-- Doku-Aktualisierung: ROADMAP.md (Curator-Mining, Embeddings, Auto-Cues & Set-Tools), Modul-Tabelle in ENTWICKLUNG.md vervollständigt und Konfigurations-Referenz in README.md ergänzt (#367).
 - Ähnlichkeitssuche per Embeddings: Kosinus-Ähnlichkeit auf kompakten float32-Vektoren (`sc_digger/similarity.py`) mit Chromaprint-Fallback bei fehlenden Embeddings (#363).
 - Taste-Score: Logistische Regression auf Embeddings und Feedback zur Vorhersage des Gefallens von Tracks (`sc_digger/taste.py`) (#366).
 - Audio-Embeddings: Vektorspeicher in Track-DB, Queue-Job und Ergebnisverarbeitung (#362).

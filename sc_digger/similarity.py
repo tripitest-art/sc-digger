@@ -11,6 +11,7 @@ from dataclasses import dataclass
 import logging
 from typing import TYPE_CHECKING, Iterable, Sequence
 
+from .embeddings import cosine_similarity
 from .fingerprint import MAX_BER, bit_error_rate
 
 if TYPE_CHECKING:
@@ -145,8 +146,6 @@ def find_similar_embeddings(
     """
     if top_n <= 0:
         return []
-
-    from .embeddings import cosine_similarity
 
     results: list[EmbeddingResult] = []
     query_len = len(query)
