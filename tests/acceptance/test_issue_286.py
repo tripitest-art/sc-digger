@@ -8,9 +8,33 @@ ROOT = Path(__file__).resolve().parents[2]
 CFG = Config.load(ROOT / "config.yaml")
 
 
+def _mk_track(track_id: int, title: str, url: str, artist: str = "Artist") -> Track:
+    return Track(
+        id=track_id,
+        title=title,
+        url=url,
+        artist=artist,
+        artist_url="",
+        created_at="",
+        duration_ms=180000,
+        genre="Schranz",
+        tags=[],
+        description="",
+        bpm=150.0,
+        plays=0,
+        likes=0,
+        reposts=0,
+        comments=0,
+        downloadable=True,
+        has_downloads_left=True,
+        purchase_url=None,
+        purchase_title=None,
+    )
+
+
 def test_state_mark_and_unmark_rejected(tmp_path):
     db_file = tmp_path / "seen.sqlite"
-    t = Track(id=12345, title="Schranz Track 1", artist="Artist", url="https://soundcloud.com/artist/track-1")
+    t = _mk_track(12345, "Schranz Track 1", "https://soundcloud.com/artist/track-1")
 
     with State(db_file) as state:
         state.mark_rejected(t, reason="Spektrum endet bei 14 kHz", cutoff_hz=14000.0)
@@ -33,8 +57,8 @@ def test_bot_rejected_and_retry_reply(tmp_path, monkeypatch):
     db_file = tmp_path / "seen.sqlite"
     cfg = Config({**CFG.raw, "state": {**CFG["state"], "db_path": str(db_file)}})
 
-    t1 = Track(id=101, title="Track Alpha", artist="DJ A", url="https://sc.com/a")
-    t2 = Track(id=102, title="Track Beta", artist="DJ B", url="https://sc.com/b")
+    t1 = _mk_track(101, "Track Alpha", "https://sc.com/a", artist="DJ A")
+    t2 = _mk_track(102, "Track Beta", "https://sc.com/b", artist="DJ B")
 
     with State(db_file) as state:
         state.mark_rejected(t1, reason="Codec nicht akzeptiert")
