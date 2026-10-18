@@ -94,6 +94,7 @@ Der Bot läuft dauerhaft (Hauptprozess des Containers) und antwortet nur im Chat
 | `/preview <Suchtext oder id>` | 20s-Sprachnachricht eines heruntergeladenen Tracks (Track-DB, seit #147) |
 | `/preview sc:<SoundCloud-ID>` | 20s-Sprachnachricht direkt aus dem SoundCloud-Stream, auch für nicht heruntergeladene Tracks (Schalter `preview.stream_enabled`, Standard aus, seit #168) |
 | `/sync_xml` | Schreibt die Rekordbox-XML der Inbox sofort neu (wie `python -m sc_digger.main rekordbox`) und nennt die Track-Zahl und den Zeitpunkt (seit #187) |
+| `/similar <SoundCloud-Link>` | Top-5 klanglich ähnliche Aufnahmen aus der Sammlung via Chromaprint-Fingerprint (seit #280) |
 | `/cleanup_inbox` | Dubletten in der Inbox auflisten (nur lesend) |
 
 Zum Digest gehören Inline-Buttons pro Track (Like, Dislike, Später). Die Wahl landet in `sc_feedback` in `tracks.sqlite` und wird von `/mix` und `/curator_mining` ausgewertet. Die Kaufliste kommt zusätzlich sonntags um 20:00 (`0 20 * * 0`, aus `entrypoint.sh`).
@@ -184,6 +185,7 @@ Alle Optionen stehen in `config.yaml`; die folgende Liste nennt die Werte aus di
 | `fingerprint.check_downloads` | neue Downloads gegen die Sammlung abgleichen | `true` |
 | `curator_mining.min_appearances` | Mindestzahl Treffer, damit ein Profil vorgeschlagen wird | `2` |
 | `curator_mining.max_likers_per_track` | maximale API-Abfragen pro Track | `50` |
+| `curator_mining.min_collection_tracks` | Mindestanzahl Tracks in der Sammlung für Sammlungs-Favoriten | `3` |
 | `preview.duration_s` | Dauer des Snippets in Sekunden | `20.0` |
 | `preview.riser_s` | Vorlaufzeit vor Drop in Sekunden | `5.0` |
 | `state.db_path` | SQLite-DB für gesehene Tracks, Läufe und Retry-Queue | `/data/seen.sqlite` |
@@ -200,13 +202,21 @@ Alle Optionen stehen in `config.yaml`; die folgende Liste nennt die Werte aus di
 | `rekordbox.cues_enabled` | Memory Cue „First Kick“ aus dem Tag `SCDIGGER_FIRST_KICK` in die XML schreiben | `true` |
 | `rekordbox.cues_as_hotcues` | Cues als Hot Cues A–H schreiben | `true` |
 | `rekordbox.cues_as_memory` | Cues als Memory Cues schreiben | `true` |
+| `rekordbox.cues_phrase_align` | Drop und Breakdown am 16/32-Beat-Phrasengitter ausrichten | `true` |
+| `rekordbox.hot_cue_layout` | Pad-Layout der Hot Cues (`legacy` oder `standard_8pad`) | `legacy` |
+| `rekordbox.grid_anchor` | Beatgrid-Anker `<TEMPO>` an `first_kick_s` setzen (verlässliches Beatgrid bei 150+ BPM) | `true` |
+| `rekordbox.phrase_warning` | Warn-Cues an Drops/Breakdowns setzen, die außerhalb des Phrasengitters liegen | `true` |
+| `rekordbox.active_loop` | Automatischen Active Loop am Outro-Start anlegen | `false` |
+| `rekordbox.active_loop_beats` | Länge des Active Loops in Beats | `32` |
 | `rekordbox.playlists_by_bpm` | Zusätzliche Playlists pro BPM-Bereich (Ordner BPM) | `true` |
 | `rekordbox.playlists_by_key` | Zusätzliche Playlists pro Camelot-Key (Ordner Key) | `true` |
 | `rekordbox.playlists_by_style` | Playlists nach Hauptclustern der Schranz-Matrix anlegen | `false` |
 | `rekordbox.playlists_by_subgenre` | Playlists nach Subgenres der Schranz-Matrix anlegen | `false` |
 | `rekordbox.playlists_by_version` | Playlists nach Versionstypen anlegen | `false` |
 | `rekordbox.style_colors` | Track-Farbe nach Versionstyp setzen | `false` |
+| `rekordbox.matrix_colors` | Track-Farbe aus Hauptclustern der Schranz-Matrix ableiten | `false` |
 | `rekordbox.style_comments` | Track-Kommentar im Stil-Format überschreiben | `false` |
+| `rekordbox.compact_style_comments` | Kompakte Stil-Kürzel in Track-Kommentare schreiben | `false` |
 | `rekordbox.import_xml_path` | Pfad zur exportierten Rekordbox-XML als Rückkanal | `""` |
 | `digest.kaufliste_max_items` | Obergrenze der Kaufliste | `30` |
 | `digest.sunday_summary` | Wochenstatistik im Sonntagslauf senden | `false` |
@@ -359,6 +369,7 @@ Gefundene Tracks werden gegen die lokale Sammlung abgeglichen, Duplikate übersp
 | `scout/` | Multi-Platform-Scout für externe Feeds und Charts (`bandcamp.py`, `beatport.py`) |
 | `pipeline.py` | Text-BPM, Genre-Relevanz, Perzentil-Scoring, Download-Klassifizierung |
 | `collection.py` | Duplikat-Abgleich mit der Sammlung (Fuzzy-Match, Remixer beachten) |
+| `linksource.py` | Zuordnungslogik: Sammlungsdateien mit SoundCloud-Tracks verknüpfen (Teil 1) |
 | `cleanup.py` | Inbox-Dubletten per SoundCloud-ID identifizieren und auflisten/verschieben |
 | `output.py` | State-DB, Original-Download (scdl), `finalize_quality`, Telegram-Digest, Export-Datei, `telegram_call`, `send_telegram_photo` |
 | `retry.py` | Retry-Queue für fehlgeschlagene Original-Downloads |
@@ -372,10 +383,13 @@ Gefundene Tracks werden gegen die lokale Sammlung abgeglichen, Duplikate übersp
 | `stems.py` | Stem-basierte Subbass- und Breakdown-Analyse (Demucs-Stems `bass.wav`/`drums.wav`, Fake-Drop-Validierung, Breakdown-Typisierung `silence`/`groove`) |
 | `style.py` | Schranz-Matrix (4 Cluster, 13 Subgenres, 3 Achsen, Versionstypen, Energie-Klassifizierung 1–5) |
 | `fingerprint.py` | Audio-Fingerprints (Chromaprint/fpcalc), gleiche Aufnahme erkennen |
+| `similarity.py` | Ähnlichkeitssuche über Chromaprint-Fingerprints gegen die Track-DB („Mehr davon“ im Bot per Audio-Datei-Upload) |
 | `harmonic.py` | Harmonische Kompatibilität (Camelot-Wheel), Suche nach Key und BPM (`/mix`) |
+| `dj_export.py` | Harmonischer DJ-Export: M3U8-Playlists, CSV und Set-Reports nach Camelot-Nachbarschaft und ΔBPM |
 | `organize.py` | Inbox-Sortierung `<BPM>/<Camelot>/`, Tags schreiben (inkl. RIFF-INFO für WAV) |
 | `rekordbox.py` | Rekordbox-XML mit einer Playlist pro Woche aus der Inbox |
 | `embeddings.py` | Audio-Embeddings: Vektorspeicher in Track-DB, Queue-Job und Ergebnisverarbeitung |
+| `taste.py` | Taste-Score: Logistische Regression auf Embeddings und Feedback zur Vorhersage des Gefallens |
 | `db.py` | Zentrale Track-DB: Metadaten, Fingerprints, Jobs-Queue, versionierte Migrationen |
 | `audit.py` | Read-only Library-Audit, Fake-Erkennung, HTML-Dashboard |
 | `intake.py` | Eingangsordner: bereite Dateien finden und als `Track` vorbereiten |
@@ -389,6 +403,7 @@ Gefundene Tracks werden gegen die lokale Sammlung abgeglichen, Duplikate übersp
 | `preview.py` | Live-Preview: energiereichstes Segment per ffmpeg, OGG-Opus-Snippet (`find_loudest_segment`, `extract_preview`). Eingebunden über den Bot-Befehl `/preview` (`bot.py`, seit #147). Seit #168 zusätzlich `extract_preview_from_url` für `/preview sc:<SoundCloud-ID>` direkt aus dem Stream. |
 | `redact.py` | Zugangsdaten aus Texten, Logs und Fehlermeldungen entfernen |
 | `models.py` | Datenmodelle (`Track`, `Config`) und Config-Loader |
+| `worker.py` | Standalone-Worker-Client für externe GPU-Workstations (Audio-Embeddings, Cue-Berechnung) |
 
 ### Web-Dashboard (Live-Cockpit, Digest-Explorer, Gate-Assistent)
 

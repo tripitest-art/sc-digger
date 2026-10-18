@@ -1,14 +1,17 @@
 # Changelog
 
-Was seit dem letzten Deploy neu ist: Stephan liest hier, bevor er auf dem Server
-`./update.sh` ausführt. Format: [Keep a Changelog](https://keepachangelog.com/de/),
-neueste Einträge oben. Jede Zeile nennt den Pull Request; die Zeile für einen neuen PR steht
-unter „Unreleased“ (Regeln: `AGENTS.md`, Abschnitt „Doku und Changelog“).
+Alle relevanten Änderungen an diesem Projekt werden in dieser Datei dokumentiert.
+Formatierung orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.0.0/).
+Jeder PR ergänzt bei Fertigstellung genau eine Zeile mit PR-Nummer (`#123`)
+unter „Unreleased“ (Regeln: `AGENTS.md` -> Dokumentations-Integrität).
 
 ## Unreleased
 
 ### Hinzugefügt
 - 32-Bit-/Float-Audio (WAV, AIFF) wird nach bestandener Qualitätsprüfung automatisch nach 24-Bit-PCM konvertiert (`quality.is_32bit_or_float`, `quality.convert_to_pcm24`), damit Rekordbox und CDJs es lesen; `scripts/fix_32bit_wavs.py` räumt bestehende Inbox-Bestände rekursiv auf (#365).
+- Doku-Aktualisierung: ROADMAP.md (Curator-Mining, Embeddings, Auto-Cues & Set-Tools), Modul-Tabellen in ENTWICKLUNG.md und README.md vervollständigt, Bot-Befehl `/similar` und Konfigurations-Referenz in README.md ergänzt (#367).
+- Taste-Score: Logistische Regression auf Embeddings und Feedback zur Vorhersage des Gefallens von Tracks (`sc_digger/taste.py`) (#366).
+- Taste-Score: Logistische Regression auf Embeddings und Feedback zur Vorhersage des Gefallens von Tracks (`sc_digger/taste.py`) (#366).
 - Audio-Embeddings: Vektorspeicher in Track-DB, Queue-Job und Ergebnisverarbeitung (#362).
 - `/curator_mining` schlägt zusätzlich häufige Künstler der eigenen Sammlung vor (`curator_mining.min_collection_tracks`, Standard 3; `TrackDB.get_top_collection_artists`), gegliedert in Liker-Vorschläge und „📚 Sammlungs-Favoriten“ mit denselben Follow-Buttons; bereits gefolgte oder als Referenz hinterlegte Accounts bleiben außen vor (#361).
 - Cue- und Strukturanalyse als Job-Queue-Aufgabe: neuer `JobType.CUES` mit `enqueue_cue_job`, `GET /api/jobs/{id}/audio` zum Herunterladen der Job-Datei für den GPU-Worker und automatische Übernahme des Ergebnisses in `rb_cues`/`breakdown_ratio` samt Cue-Tags (nur Inbox-Dateien, Sammlung bleibt unberührt); `finish_file` reiht bei `cues.auto_queue: true` je neuem Inbox-Track einen Job ein (#360).
