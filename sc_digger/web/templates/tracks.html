@@ -108,6 +108,10 @@
     color: var(--accent-err);
     font-size: 0.72rem;
   }
+  .audio-preview {
+    width: 150px;
+    height: 30px;
+  }
   .pager {
     display: flex;
     flex-wrap: wrap;
@@ -235,6 +239,7 @@
         <th>Key</th>
         <th>Qualität</th>
         <th>Status</th>
+        <th>Anhören</th>
         <th>Übernahme</th>
         <th>Feedback</th>
         <th>Quelle</th>
@@ -297,6 +302,15 @@
           {% endif %}
         </td>
         <td>
+          {# Vorhören nur, wenn die Datei lokal in Inbox oder Sammlung liegt (Issue #350). #}
+          {% if track.playable %}
+          <audio class="audio-preview" controls preload="none"
+                 src="/api/audio/{{ track.id }}" title="Vorhören"></audio>
+          {% else %}
+          <span class="meta">—</span>
+          {% endif %}
+        </td>
+        <td>
           {% if track.adopted_at %}
           <span class="badge badge-ok">übernommen</span>
           <div class="mono" style="color: var(--text-dim); font-size: 0.75rem;">{{ track.adopted_at }}</div>
@@ -327,7 +341,7 @@
       </tr>
       {% else %}
       <tr>
-        <td colspan="10" class="meta">Keine Treffer für diese Filter.</td>
+        <td colspan="11" class="meta">Keine Treffer für diese Filter.</td>
       </tr>
       {% endfor %}
     </tbody>
