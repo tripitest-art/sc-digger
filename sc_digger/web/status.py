@@ -1,6 +1,7 @@
 """Statusseite: sammelt die Kennzahlen aus State- und Track-Datenbank, ohne zu schreiben."""
 from __future__ import annotations
 
+import json
 import sqlite3
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
@@ -38,6 +39,15 @@ class JobQueueSummary:
 
 
 @dataclass
+class VersionInfo:
+    commit: str | None = None       # Kurz-Hash, von update.sh nach erfolgreichem Rauchtest geschrieben
+    deployed_at: str | None = None  # ISO-8601 UTC
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
 class StatusSnapshot:
     generated_at: str
     runs: list[RunInfo] = field(default_factory=list)        # letzte 10 Läufe ALLER Modi, neueste zuerst (ORDER BY id DESC)
@@ -48,6 +58,7 @@ class StatusSnapshot:
     inbox_total: int = 0                                    # Zeilen in tracks mit status = 'inbox' (gesamt)
     stats: DigestStats | None = None
     job_summary: JobQueueSummary | None = None              # Job-Queue der KI-Workstation (jobs-Tabelle)
+    version: VersionInfo = field(default_factory=VersionInfo)  # zuletzt von update.sh deployter Stand
 
     def to_dict(self) -> dict[str, Any]:
         """JSON-fähig (asdict); enthält alle Felder oben."""
@@ -201,6 +212,22 @@ def _read_job_summary(track_db_path: str | Path, now: datetime) -> JobQueueSumma
     return summary
 
 
+def _read_version(state_db_path: str | Path) -> VersionInfo:
+    """Liest version.json neben der State-DB (von update.sh nach dem Rauchtest geschrieben).
+
+    Fehlt die Datei (Autodeploy nie gelaufen, manueller Checkout) oder ist sie kaputt: leere
+    VersionInfo, keine Exception.
+    """
+    path = Path(state_db_path).parent / "version.json"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return VersionInfo()
+    if not isinstance(data, dict):
+        return VersionInfo()
+    return VersionInfo(commit=data.get("commit"), deployed_at=data.get("deployed_at"))
+
+
 def collect_status(cfg: Config, *, days: int = 7, now: datetime | None = None) -> StatusSnapshot:
     """Liest cfg["state"]["db_path"] (runs, health_state) und cfg["state"]["track_db_path"] (tracks, jobs).
 
@@ -253,4 +280,5 @@ def collect_status(cfg: Config, *, days: int = 7, now: datetime | None = None) -
         inbox_total=inbox_total,
         stats=stats,
         job_summary=job_summary,
+        version=_read_version(state_db_path),
     )
