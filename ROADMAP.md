@@ -185,16 +185,12 @@ Copilot, Recommender und Dashboard.
 ### 3.4 Rekordbox-XML Wochen-Playlists (✅ Implementiert)
 * ~~Nach jedem `discover`-Lauf: `sc-digger.xml` mit Playlist pro Kalenderwoche (`KW xx/yyyy`).~~
 
-### 3.5 Curator-Mining (🟡 Teilweise implementiert, #64)
+### 3.5 Curator-Mining (✅ Implementiert, #64, #359, #361)
 * ✅ Umgesetzt: `soundcloud.py` (`get_likers`, `get_reposters`), `db.py` (`get_liked_sc_ids`),
   Bot-Befehl `/curator_mining` mit Vorschlagsliste, `config.yaml` → `curator_mining`.
-* Offen: Inline-Button „✅ Hinzufügen" (Bot ergänzt `config.yaml`) und wöchentlicher Cron.
-* Offen, zweite Kandidatenquelle: Artists, die in der Track-DB (aus `audit`) häufig vorkommen, werden mit
-  SoundCloud-Profilen abgeglichen und als Kandidaten für `followed_users` vorgeschlagen. Grundlage ist die
-  Häufigkeit in der Sammlung (Abspielzahlen kennt die DB nicht); `curator_mining.min_collection_tracks`
-  (default: 3). **Kein automatischer Eintrag**, auch diese Kandidaten laufen über den Button „✅ Hinzufügen":
-  automatisch gesetzte Referenz-Accounts bekämen den Score-Bonus und würden sich selbst verstärken.
-  Sobald 3.12 fertig ist, zählen übernommene Tracks zusätzlich zu den 👍-Tracks als Ausgangsmenge.
+* ✅ Inline-Buttons: `/curator_mining` liefert Buttons „➕ <Name>“; ein Klick trägt den Account dauerhaft in `search.followed_users` der lokalen Override-Datei (`SC_DIGGER_CONFIG_LOCAL`) ein (#359).
+* ✅ Sammlungs-Favoriten: Artists, die in der Track-DB häufig vorkommen (`curator_mining.min_collection_tracks`, Default 3), werden mit SoundCloud-Profilen abgeglichen und als zweite Kandidatenquelle („📚 Sammlungs-Favoriten“) mit Follow-Buttons vorgeschlagen (#361).
+* Offen: wöchentlicher automatischer Cron-Versand.
 
 Ursprünglicher Plan:
 * `soundcloud.py`: `get_likers(track_id)` und `get_reposters(track_id)` über api-v2 (paginiert, konfigurierbar).
@@ -203,7 +199,7 @@ Ursprünglicher Plan:
   (`reference_accounts`, `followed_users`), meldet Kandidaten ab konfigurierbarem Schwellwert.
 * **Output:** Telegram-Liste + Inline-Button „✅ Hinzufügen" – Bot ergänzt den Account in `config.yaml`
   (versioniert per Git-Commit möglich, oder nur local).
-* **Trigger:** wöchentlich (Cron) **und** auf Zuruf per Bot (`/curator-mining`).
+* **Trigger:** wöchentlich (Cron) **und** auf Zuruf per Bot (`/curator_mining`).
 * `config.yaml` → `curator_mining.min_appearances` (default: 2), `curator_mining.max_likers_per_track` (default: 50).
 
 ### 3.6 Kaufliste (✅ Implementiert, #47)
@@ -264,8 +260,10 @@ Ein Track, der aus der Inbox in die Sammlung gewandert ist, ist das stärkste Po
 * Engagement-Snapshots pro Lauf, Wachstum pro Track und Artist, wöchentlicher Trend-Report.
 * Im Wochen-Digest eingebunden (#162): Trend-Abschnitt über `digest.trend_radar` steuerbar.
 
-### 4.1 Audio-Embeddings (Workstation)
-* Embeddings über Essentia (Discogs-EffNet / MAEST) oder CLAP, als Job aus der Track-DB.
+### 4.1 Audio-Embeddings (Workstation) (✅ Vektorspeicher & Job-Queue implementiert, #362)
+* Vektorspeicher in Track-DB (`track_embeddings`, Migration 13) für kompakte float32-Vektoren (`pack_vector`/`unpack_vector`), Kosinus-Ähnlichkeit (`cosine_similarity`).
+* Job-Queue-Integration: `JobType.EMBEDDING` mit `enqueue_embedding_job`, Ergebnisverarbeitung `apply_embedding_result` und Worker-Handler (`make_embedding_handler`).
+* Embeddings über Essentia (Discogs-EffNet / MAEST) oder CLAP als Aufgabe auf der Workstation.
 * Zusätzliche Features: Energie, Perkussions-/Harmonie-Verhältnis, spektrale Rauheit.
 * Rohmerkmale vom Server (spektrale Flachheit, Zero-Crossing-Rate im Hauptteil, Breakdown-Anteil aus 5.4)
   werden als Zahlen in der Track-DB abgelegt und stehen dem Modell als Features zur Verfügung.
@@ -293,30 +291,24 @@ Ein Track, der aus der Inbox in die Sammlung gewandert ist, ist das stärkste Po
 
 ## 🔵 Phase 5: DJ-Performance & Set-Tools
 
-5.1 bis 5.4 laufen mit `librosa` auf dem Server, brauchen keine Workstation und sparen bei jedem neuen Track
+5.1 bis 5.4 laufen mit `librosa` auf dem Server bzw. als GPU-Job auf der Workstation und sparen bei jedem neuen Track
 Vorbereitungszeit. 5.5 bleibt Vision.
 
-### 5.1 Strukturanalyse (🔵 Geplant)
+### 5.1 Strukturanalyse (✅ Implementiert, #202 / PR #235, #327, #344)
 Gemeinsamer Baustein für Auto-Cues, Drop-Preview und Breakdown-Anteil. Wird einmal gebaut und einmal pro Track gerechnet.
 
-* `analysis.py`: Kick-Präsenz-Kurve aus der Energie im Bassband (ca. 40–120 Hz), taktweise über die ganze Spieldauer.
+* `sc_digger/structure.py`: Kick-Präsenz-Kurve aus der Energie im Bassband (ca. 40–120 Hz), taktweise über die ganze Spieldauer.
   Daraus Segmente `intro`, `main`, `breakdown`, `outro` mit Start und Ende in Sekunden.
 * **Schwellen relativ zum Track** (Anteil am Median der Bassband-Energie), keine absoluten Pegel. Inbox-Tracks sind seit
   #74 auf −8,5 LUFS normalisiert, Tracks der Sammlung (`audit`) nicht.
-* Speicherung in neuer Tabelle `track_segments` (Migration): Track, Typ, Start, Ende. Alle Abnehmer lesen von dort.
-* Umfang: zunächst neu geladene Tracks in der Inbox; die Sammlung kann später über `audit` nachgezogen werden, rein lesend.
+* Speicherung in der Track-DB: Drop-Start, Breakdown-Start/Ende, `breakdown_ratio`.
+* Umfang: neu geladene Tracks in der Inbox (automatisch in `finish_file()`) sowie Sammlung per `audit --analyze-structure` (#344).
 
-### 5.2 Auto-Cues (🔵 Geplant)
-* **Stufe 1, First Kick:** erster Kick-Einsatz im Bassband, nicht der erste beliebige Transient (Intros beginnen oft mit
-  Hi-Hat, Sweep oder FX). Suchfenster konfigurierbar, default 60 s. Ohne erkennbaren Kick gibt es keinen Cue statt eines falschen.
-* **Stufe 2, Drop und Outro:** Wiedereinsatz der Kick nach dem ersten Haupt-Breakdown sowie Outro-Start, aus den
-  Segmenten von 5.1 und auf den Taktanfang eingerastet.
-* **Format:** `POSITION_MARK` im Track-Knoten der Rekordbox-XML, `Type="0"`. Memory Cues haben `Num="-1"`, Hot Cues
-  `Num="0"` bis `"7"` (A–H). Standard sind Memory Cues; Hot Cues optional über `rekordbox.cues_as_hotcues`.
-* **Kein Beatgrid schreiben.** Die BPM-Messung ist für ein Grid über sechs Minuten nicht genau genug; das Raster legt
-  Rekordbox an. Geschrieben wird nur in die XML.
-* **Vorab von Hand prüfen:** wie Rekordbox Cues aus der XML übernimmt, vor allem bei schon importierten Tracks.
-* Traktor-NML folgt später nach demselben Muster.
+### 5.2 Auto-Cues & Cue-Jobs (✅ Implementiert, #327, #344, #360)
+* **Stufe 1, First Kick:** erster Kick-Einsatz im Bassband (`SCDIGGER_FIRST_KICK`), nicht der erste beliebige Transient.
+* **Stufe 2, Drop und Breakdown:** Wiedereinsatz der Kick nach dem Haupt-Breakdown (`SCDIGGER_DROP`, `SCDIGGER_BREAKDOWN`, `SCDIGGER_BREAKDOWN_KIND`), optional am 16/32-Beat-Phrasengitter ausgerichtet (`phrase.py`).
+* **Format:** `POSITION_MARK` in der Rekordbox-XML (`rekordbox.py`), Beatgrid-Anker `<TEMPO>` an `first_kick_s` (`grid_anchor: true`), Hot Cues (Layout `legacy` & `standard_8pad`) und Memory Cues.
+* **Asynchrone Cue-Jobs auf GPU-Workstation:** `JobType.CUES`, `POST /api/jobs/claim`, `GET /api/jobs/{id}/audio`, `POST /api/jobs/{id}/complete` und Übernahme in Track-DB & Tags per `apply_cue_result` (#360).
 
 ### 5.3 Drop-Preview (✅ Abgeschlossen)
 * `preview.find_preview_start` startet `preview.riser_s` vor dem ersten Drop (aus 5.1). Fallback ohne Breakdown: `find_loudest_segment`. Umgesetzt in #202 / PR #235.
@@ -325,10 +317,14 @@ Gemeinsamer Baustein für Auto-Cues, Drop-Preview und Breakdown-Anteil. Wird ein
 ### 5.4 Breakdown-Anteil als Messwert (✅ Abgeschlossen)
 * `breakdown_ratio`: Anteil kickloser Zeit zwischen Intro-Ende und Outro-Start (`calculate_breakdown_ratio`). Gespeichert in der Track-DB (Migration 7) und am Track-Modell. Umgesetzt in #202 / PR #235.
 
-### 5.5 Set-Tools & Web-Dashboard (🟣 / 🟡 Teilweise umgesetzt)
+### 5.5 Set-Tools & Web-Dashboard (🟣 / 🟡 Weitgehend umgesetzt)
 - [x] **Rekordbox-XML-Export:** wöchentliche Playlist „sc-digger KW xx“ aus der Inbox, ohne manuellen Import (siehe 3.4).
 - [x] **Harmonic Mixing:** `/mix <Key> <BPM>` im Bot listet harmonisch und tempomäßig passende Tracks (#76, #94, #103) sowie Web-Interface unter `/mix` (#231).
 - [x] **Web-Curation-Dashboard (Phase 1):** FastAPI + Dark Theme mit Live-Status (`/`), Digest-Explorer mit Multi-DB-Query (`/digest`), interaktivem Feedback (👍/👎), Kaufliste (`/kaufliste`), Harmonic Mix Finder & URL-Scanner (`/mix`) und Gate-Assistent Drag & Drop Upload (`/intake`).
+- [x] **Harmonischer Set-Builder:** `/mix`, `POST /api/set-builder` berechnet harmonische Übergangsketten mit Segment-Grenzen, M3U8-Download über `GET /api/set-builder/m3u8` (#346).
+- [x] **Audio-Vorhören im Track-Explorer:** `/tracks`, `GET /api/audio/{track_id}` mit sicherem Pfad-Check und HTTP-Range-Requests (#350 / #357).
+- [x] **Statusseite & Version-Monitor:** `/` und `GET /api/status` zeigt KI-Workstation-Status, Job-Queue-Zähler und deployte Version (`data/version.json`, #337, #358).
+- [x] **REST-API für externe GPU-Worker:** `POST /api/jobs/claim`, `/api/jobs/{id}/heartbeat`, `/api/jobs/{id}/complete`, `/api/jobs/{id}/audio` (#330, #360) und Standalone-Worker-Client `sc_digger/worker.py` (#332 / #347).
 - [ ] **Next-Track-Recommender per Embedding-Ähnlichkeit** (braucht Phase 4.1).
 - [ ] **Stem-Extraktion via Demucs:** Kicks und Percussion-Loops für 3-Deck-Tools (nur eigene Sammlung).
 

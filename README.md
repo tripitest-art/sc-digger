@@ -184,6 +184,7 @@ Alle Optionen stehen in `config.yaml`; die folgende Liste nennt die Werte aus di
 | `fingerprint.check_downloads` | neue Downloads gegen die Sammlung abgleichen | `true` |
 | `curator_mining.min_appearances` | Mindestzahl Treffer, damit ein Profil vorgeschlagen wird | `2` |
 | `curator_mining.max_likers_per_track` | maximale API-Abfragen pro Track | `50` |
+| `curator_mining.min_collection_tracks` | Mindestanzahl Tracks in der Sammlung für Sammlungs-Favoriten | `3` |
 | `preview.duration_s` | Dauer des Snippets in Sekunden | `20.0` |
 | `preview.riser_s` | Vorlaufzeit vor Drop in Sekunden | `5.0` |
 | `state.db_path` | SQLite-DB für gesehene Tracks, Läufe und Retry-Queue | `/data/seen.sqlite` |
@@ -200,13 +201,21 @@ Alle Optionen stehen in `config.yaml`; die folgende Liste nennt die Werte aus di
 | `rekordbox.cues_enabled` | Memory Cue „First Kick“ aus dem Tag `SCDIGGER_FIRST_KICK` in die XML schreiben | `true` |
 | `rekordbox.cues_as_hotcues` | Cues als Hot Cues A–H schreiben | `true` |
 | `rekordbox.cues_as_memory` | Cues als Memory Cues schreiben | `true` |
+| `rekordbox.cues_phrase_align` | Drop und Breakdown am 16/32-Beat-Phrasengitter ausrichten | `true` |
+| `rekordbox.hot_cue_layout` | Pad-Layout der Hot Cues (`legacy` oder `standard_8pad`) | `legacy` |
+| `rekordbox.grid_anchor` | Beatgrid-Anker `<TEMPO>` an `first_kick_s` setzen (verlässliches Beatgrid bei 150+ BPM) | `true` |
+| `rekordbox.phrase_warning` | Warn-Cues an Drops/Breakdowns setzen, die außerhalb des Phrasengitters liegen | `true` |
+| `rekordbox.active_loop` | Automatischen Active Loop am Outro-Start anlegen | `false` |
+| `rekordbox.active_loop_beats` | Länge des Active Loops in Beats | `32` |
 | `rekordbox.playlists_by_bpm` | Zusätzliche Playlists pro BPM-Bereich (Ordner BPM) | `true` |
 | `rekordbox.playlists_by_key` | Zusätzliche Playlists pro Camelot-Key (Ordner Key) | `true` |
 | `rekordbox.playlists_by_style` | Playlists nach Hauptclustern der Schranz-Matrix anlegen | `false` |
 | `rekordbox.playlists_by_subgenre` | Playlists nach Subgenres der Schranz-Matrix anlegen | `false` |
 | `rekordbox.playlists_by_version` | Playlists nach Versionstypen anlegen | `false` |
 | `rekordbox.style_colors` | Track-Farbe nach Versionstyp setzen | `false` |
+| `rekordbox.matrix_colors` | Track-Farbe aus Hauptclustern der Schranz-Matrix ableiten | `false` |
 | `rekordbox.style_comments` | Track-Kommentar im Stil-Format überschreiben | `false` |
+| `rekordbox.compact_style_comments` | Kompakte Stil-Kürzel in Track-Kommentare schreiben | `false` |
 | `rekordbox.import_xml_path` | Pfad zur exportierten Rekordbox-XML als Rückkanal | `""` |
 | `digest.kaufliste_max_items` | Obergrenze der Kaufliste | `30` |
 | `digest.sunday_summary` | Wochenstatistik im Sonntagslauf senden | `false` |
