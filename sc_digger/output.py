@@ -20,7 +20,7 @@ from .db import TrackDB
 from .fingerprint import compute_fingerprint, find_same_recording
 from .loudness import normalize_inbox_file
 from .models import Config, DownloadKind, Track
-from .quality import check_file
+from .quality import check_file, convert_to_pcm24, is_32bit_or_float
 from .redact import redact
 
 log = logging.getLogger(__name__)
@@ -280,6 +280,14 @@ def finalize_quality(t: Track, path: Path, inbox: Path, cfg: Config) -> Path | N
     else:
         res = reject_if_duplicate(t, path, inbox, cfg)
         if res is not None:
+            # Rekordbox/CDJs weisen 32-Bit-Float-WAVs als "ungültiges Dateiformat" ab.
+            # Vor der Normalisierung, weil apply_gain Float-WAVs nicht schreiben kann.
+            if res.suffix.lower() in (".wav", ".aif", ".aiff") and is_32bit_or_float(res):
+                if convert_to_pcm24(res):
+                    t.quality_report["codec"] = (
+                        "pcm_s24be" if res.suffix.lower() in (".aif", ".aiff") else "pcm_s24le"
+                    )
+                    t.notes.append("32-Bit-Audio für Rekordbox nach 24-Bit PCM konvertiert")
             normalize_inbox_file(res, t.quality_report, cfg)
         return res
     target.mkdir(parents=True, exist_ok=True)

@@ -12,8 +12,11 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
+import stat
 import subprocess
+import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -41,6 +44,103 @@ def probe(path: Path) -> dict:
     if r.returncode != 0:
         raise RuntimeError(r.stderr.decode(errors="replace"))
     return json.loads(r.stdout)
+
+
+# 32/64-Bit-Formate, die Rekordbox und CDJs ablehnen ("Ungültiges Dateiformat").
+# Float-WAVs entstehen bei Free-DLs regelmäßig, wenn das Mastering-Tool in 32-Bit-Float
+# exportiert; das Material selbst ist nicht besser als 24-Bit-PCM.
+_32BIT_CODECS = {
+    "pcm_f32le", "pcm_f32be", "pcm_f64le", "pcm_f64be",
+    "pcm_s32le", "pcm_s32be",
+}
+# Dieselben Formate, wie ffprobe sie im Feld sample_fmt meldet (flt/dbl = Float, s32 = Int).
+_32BIT_SAMPLE_FMTS = {"flt", "fltp", "dbl", "dblp", "s32", "s32p"}
+
+
+def is_32bit_or_float(path: Path) -> bool:
+    """True, wenn die Datei 32/64-Bit-Audio oder Float-Samples enthält.
+
+    Geprüft werden Codec (pcm_f32le, pcm_s32le, …), sample_fmt (flt, dbl, s32, …) und
+    bits_per_raw_sample == 32. Ausnahme: ffprobe meldet für pcm_s16*/pcm_s24* ebenfalls
+    sample_fmt s32 (Decoder-Sample-Breite); solche Dateien gelten als nicht 32-Bit.
+    Wirft nie: fehlende oder kaputte Dateien -> False.
+    """
+    try:
+        r = _run([
+            "ffprobe", "-v", "error", "-select_streams", "a:0",
+            "-show_entries", "stream=codec_name,sample_fmt,bits_per_raw_sample",
+            "-of", "json", str(path),
+        ])
+        if r.returncode != 0:
+            return False
+        streams = json.loads(r.stdout).get("streams") or []
+        if not streams:
+            return False
+        stream = streams[0]
+        codec = (stream.get("codec_name") or "").lower()
+        sample_fmt = (stream.get("sample_fmt") or "").lower()
+        if codec in _32BIT_CODECS:
+            return True
+        # 16/24-Bit-PCM deklariert ffmpeg intern als sample_fmt s32 (Sample-Breite im
+        # Decoder). Ohne diese Ausnahme gälte jedes konvertierte 24-Bit-WAV als 32-Bit.
+        if codec.startswith(("pcm_s16", "pcm_s24", "pcm_s8", "pcm_u8")):
+            return False
+        if sample_fmt in _32BIT_SAMPLE_FMTS:
+            return True
+        try:
+            return int(stream.get("bits_per_raw_sample")) == 32
+        except (TypeError, ValueError):
+            return False
+    except Exception:
+        return False
+
+
+def convert_to_pcm24(path: Path) -> bool:
+    """Konvertiert WAV/AIFF in 24-Bit-PCM (WAV: little, AIFF: big endian), atomar.
+
+    Rekordbox/CDJs lesen nur PCM bis 24 Bit. Der Container bleibt gleich (Endung
+    entscheidet), Metadaten werden mitgenommen (-map_metadata 0), die Dateirechte
+    ebenfalls. Geschrieben wird in eine Temp-Datei im selben Verzeichnis, dann
+    os.replace — ein Abbruch hinterlässt nie eine halbe Datei. True bei Erfolg,
+    False bei jedem Fehler. Wirft nie.
+    """
+    try:
+        path = Path(path)
+        suffix = path.suffix.lower()
+        if suffix not in (".wav", ".aif", ".aiff"):
+            return False
+        codec = "pcm_s24be" if suffix in (".aif", ".aiff") else "pcm_s24le"
+
+        # Endung muss erhalten bleiben: ffmpeg wählt den Container am Dateinamen.
+        fd, tmp_name = tempfile.mkstemp(
+            dir=path.parent, prefix=f".{path.stem}-pcm24-", suffix=path.suffix,
+        )
+        os.close(fd)
+        tmp = Path(tmp_name)
+        try:
+            mode = stat.S_IMODE(path.stat().st_mode)
+            r = _run([
+                "ffmpeg", "-v", "error", "-y", "-i", str(path),
+                "-map_metadata", "0", "-c:a", codec, str(tmp),
+            ], timeout=600)
+            if r.returncode != 0:
+                log.warning(
+                    "Konvertierung nach 24 Bit fehlgeschlagen für %s: %s",
+                    path.name, r.stderr.decode(errors="replace").strip(),
+                )
+                return False
+            os.chmod(tmp, mode)
+            os.replace(tmp, path)
+            return True
+        finally:
+            try:
+                if tmp.exists():
+                    tmp.unlink()
+            except OSError:
+                pass
+    except Exception as e:
+        log.warning("Konvertierung nach 24 Bit fehlgeschlagen für %s: %s", path, e)
+        return False
 
 
 # Abtastrate, auf die für die Spektrumsmessung dekodiert wird (Nyquist = 22,05 kHz).
