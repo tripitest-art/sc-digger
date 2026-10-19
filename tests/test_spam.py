@@ -8,6 +8,9 @@ from tests.test_modes import mk
 
 ROOT = Path(__file__).resolve().parents[1]
 CFG = Config.load(ROOT / "config.yaml")
+# Auf dem Server existiert die Track-DB aus config.yaml; deren Künstler-Reputation würde die
+# Scores der Test-Tracks verändern. Die Tests dürfen deshalb nie eine echte DB lesen.
+CFG.raw["state"] = {**CFG["state"], "track_db_path": ""}
 
 
 def test_boundary_values_reposts_likes():
