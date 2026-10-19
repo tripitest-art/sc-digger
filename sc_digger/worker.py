@@ -66,6 +66,20 @@ class JobWorkerClient:
             f"{self.api_url}{path}", json=payload or {}, timeout=self.timeout
         )
 
+    def get_job_audio(self, job_id: int) -> bytes:
+        """Lädt die Audiodatei des Jobs über ``GET /api/jobs/{job_id}/audio``.
+
+        Gibt die Rohdaten zurück. HTTP- und Verbindungsfehler werden durchgereicht;
+        eine abgelehnte Anmeldung (401) wird wie beim Claim als RuntimeError gemeldet.
+        """
+        response = self._session.get(
+            f"{self.api_url}/api/jobs/{int(job_id)}/audio", timeout=self.timeout
+        )
+        if response.status_code == 401:
+            raise RuntimeError("Job-API hat die Anmeldung abgelehnt (401)")
+        response.raise_for_status()
+        return response.content
+
     def claim_job(self, job_type: str | None = None) -> dict | None:
         """Beansprucht den nächsten Job. Gibt Job-Dict oder None zurück.
 
@@ -175,10 +189,17 @@ def run_worker_loop(
     Netzfehlern). ``max_jobs`` beendet die Schleife nach so vielen gemeldeten Jobs
     (auch ``failed`` zählt – sonst liefe ``--once`` bei einem kaputten Job endlos).
     ``stop_event`` ist ein ``threading.Event``-kompatibles Objekt für sauberes Stoppen.
+    Ohne ``handler_map`` kommt das Standard-Mapping aus ``cue_infer.build_handler_map`` mit
+    dem Cue-Handler zum Einsatz.
     Rückgabe: Anzahl der Jobs mit gemeldetem Endstatus.
     """
     handled = 0
     interval = max(0.0, float(poll_interval))
+
+    if handler_map is None:
+        from .cue_infer import build_handler_map
+
+        handler_map = build_handler_map(client)
 
     while True:
         if stop_event is not None and stop_event.is_set():
@@ -282,6 +303,9 @@ def main(argv: list[str] | None = None) -> int:
         args.api_url, password=args.password, worker_id=args.worker_id, timeout=args.timeout
     )
 
+    # Cue-Jobs brauchen die Audiodatei per HTTP; der Handler wird mit diesem Client gebunden.
+    from .cue_infer import build_handler_map
+
     stop_event = threading.Event()
     try:
         processed = run_worker_loop(
@@ -289,6 +313,7 @@ def main(argv: list[str] | None = None) -> int:
             job_type=args.job_type,
             poll_interval=args.poll_interval,
             max_jobs=1 if args.once else None,
+            handler_map=build_handler_map(client),
             stop_event=stop_event,
         )
     except KeyboardInterrupt:
