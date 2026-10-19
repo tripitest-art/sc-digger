@@ -13,4 +13,4 @@ uvicorn>=0.29           # ASGI-Server für die Statusseite
 jinja2>=3.1             # HTML-Vorlagen der Statusseite (Autoescape)
 httpx>=0.28.1             # ASGI-Testclient für die Tests
 python-multipart>=0.0.9 # Formular-Parsing (application/x-www-form-urlencoded) im Konfigeditor
-beautifulsoup4>=4.12    # HTML-Scraping der Beatport-Charts (sc_digger.scout.beatport)
+beautifulsoup4>=4.15.0    # HTML-Scraping der Beatport-Charts (sc_digger.scout.beatport)
