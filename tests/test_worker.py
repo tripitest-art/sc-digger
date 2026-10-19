@@ -8,9 +8,11 @@ from sc_digger.worker import JobWorkerClient, execute_job, run_worker_loop
 
 
 class FakeResponse:
-    def __init__(self, status_code: int = 200, payload: dict | None = None):
+    def __init__(self, status_code: int = 200, payload: dict | None = None,
+                 content: bytes = b""):
         self.status_code = status_code
         self.payload = payload if payload is not None else {"ok": True}
+        self.content = content
 
     def raise_for_status(self) -> None:
         if self.status_code >= 400:
@@ -28,9 +30,16 @@ class FakeSession:
         self.response = response or FakeResponse()
         self.error = error
         self.calls: list[dict] = []
+        self.get_calls: list[dict] = []
 
     def post(self, url: str, json: dict | None = None, timeout: float | None = None):
         self.calls.append({"url": url, "json": json, "timeout": timeout})
+        if self.error is not None:
+            raise self.error
+        return self.response
+
+    def get(self, url: str, timeout: float | None = None):
+        self.get_calls.append({"url": url, "timeout": timeout})
         if self.error is not None:
             raise self.error
         return self.response
@@ -144,6 +153,41 @@ def test_claim_job_401_raises_without_password_in_message():
 
     try:
         client.claim_job()
+    except RuntimeError as exc:
+        assert "401" in str(exc)
+        assert "secret" not in str(exc)
+    else:  # pragma: no cover - Guard gegen stilles Durchrutschen
+        raise AssertionError("RuntimeError erwartet")
+
+
+def test_get_job_audio_returns_bytes_and_calls_expected_url():
+    session = FakeSession(FakeResponse(200, {"ok": True}, content=b"RIFF-AUDIO"))
+    client = make_client(session)
+
+    assert client.get_job_audio(12) == b"RIFF-AUDIO"
+    assert session.get_calls == [
+        {"url": "http://fake-server:8080/api/jobs/12/audio", "timeout": 10.0}
+    ]
+
+
+def test_get_job_audio_raises_on_404():
+    session = FakeSession(FakeResponse(404, {"ok": False}))
+    client = make_client(session)
+
+    try:
+        client.get_job_audio(12)
+    except requests.HTTPError as exc:
+        assert "404" in str(exc)
+    else:  # pragma: no cover - Guard gegen stilles Durchrutschen
+        raise AssertionError("HTTPError erwartet")
+
+
+def test_get_job_audio_401_raises_without_password_in_message():
+    session = FakeSession(FakeResponse(401, {"ok": False}))
+    client = make_client(session)
+
+    try:
+        client.get_job_audio(12)
     except RuntimeError as exc:
         assert "401" in str(exc)
         assert "secret" not in str(exc)
