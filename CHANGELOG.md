@@ -8,6 +8,7 @@ unter „Unreleased“ (Regeln: `AGENTS.md`, Abschnitt „Doku und Changelog“)
 ## Unreleased
 
 ### Hinzugefügt
+- Quarantäne-Manager im Web-Dashboard: `/rejected` und `GET /api/rejected` listen abgewiesene Downloads aus der `rejected`-Tabelle (Titel, Uploader, Grund, Spektrums-Cutoff, Datum) mit Wortsuche und Seitenweise; 🔄 Wiederholen/Freigeben ruft `POST /api/retry` auf und hebt die Blockade wie der Bot-Befehl `/retry` auf (Eintrag aus `rejected` und `seen`, Origin-geprüft, startet keinen Download). Der Track-Explorer verlinkt die Liste; Abfrage rein lesend (#341).
 - Ähnlichkeitssuche per Embeddings: Kosinus-Ähnlichkeit auf kompakten float32-Vektoren (`sc_digger/similarity.py`) mit Chromaprint-Fallback bei fehlenden Embeddings (#363).
 - 32-Bit-/Float-Audio (WAV, AIFF) wird nach bestandener Qualitätsprüfung automatisch nach 24-Bit-PCM konvertiert (`quality.is_32bit_or_float`, `quality.convert_to_pcm24`), damit Rekordbox und CDJs es lesen; `scripts/fix_32bit_wavs.py` räumt bestehende Inbox-Bestände rekursiv auf (#365).
 - Doku-Aktualisierung: ROADMAP.md (Curator-Mining, Embeddings, Auto-Cues & Set-Tools), Modul-Tabellen in ENTWICKLUNG.md und README.md vervollständigt, Bot-Befehl `/similar` und Konfigurations-Referenz in README.md ergänzt (#367).

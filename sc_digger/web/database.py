@@ -25,6 +25,7 @@ from ..cues import apply_cue_result
 from ..db import FEEDBACK_VALUES, JobRecord, TrackDB
 from ..dj_export import Entry
 from ..linksource import normalize_url
+from ..output import State
 
 _AUDIO_EXT = {".wav", ".aiff", ".aif", ".flac", ".mp3", ".m4a"}
 
@@ -908,6 +909,109 @@ def save_track_feedback(
     except sqlite3.Error:
         return False
     return True
+
+
+# ------------------------------------------------------------- Quarantäne (Issue #341)
+
+
+def _rejected_like_clause(search: str) -> tuple[str, list[Any]]:
+    """Wortsuche für die Quarantäne-Liste über Titel, URL und Ablehnungsgrund.
+
+    Wie :func:`_like_clause` müssen alle Wörter passen (UND); ``%`` und ``_`` werden
+    escaped, damit sie keine Platzhalter sind. Die Tabelle ``rejected`` hat keine
+    Artist-Spalte, deshalb sucht die Quarantäne über Titel, URL und Grund.
+    """
+    clauses: list[str] = []
+    params: list[Any] = []
+    for word in str(search).split():
+        escaped = (
+            word.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        )
+        clauses.append(
+            "(title LIKE ? ESCAPE '\\' OR url LIKE ? ESCAPE '\\' "
+            "OR reason LIKE ? ESCAPE '\\')"
+        )
+        params.extend((f"%{escaped}%",) * 3)
+    return " AND ".join(clauses), params
+
+
+def query_rejected_tracks(
+    state_db_path: str | Path,
+    *,
+    search: str | None = None,
+    limit: int = DEFAULT_LIMIT,
+    offset: int = 0,
+) -> dict[str, Any]:
+    """Liest abgelehnte Tracks rein lesend aus der Tabelle ``rejected`` der State-DB.
+
+    Gibt ``{'total': int, 'items': [...]}`` zurück, sortiert nach ``rejected_at`` DESC und
+    ``id`` DESC; ``search`` ist eine Wortsuche über Titel, URL und Ablehnungsgrund.
+    ``limit`` wird auf :data:`MAX_LIMIT` begrenzt, ``total`` zählt alle Treffer unabhängig
+    von ``limit``. Jeder Treffer enthält zusätzlich ``artist``, soweit der gespeicherte
+    Titel die Form ``Artist - Titel`` hat (die Quarantäne-Tabelle kennt keine eigene
+    Artist-Spalte). Fehlt die Datei oder die Tabelle, kommt ein leeres Ergebnis zurück;
+    die Funktion wirft nie und legt keine Datei an.
+    """
+    limit = max(0, min(int(limit), MAX_LIMIT))
+    offset = max(0, int(offset))
+
+    where: list[str] = []
+    params: list[Any] = []
+    if search:
+        clause, extra = _rejected_like_clause(search)
+        if clause:
+            where.append(f"({clause})")
+            params.extend(extra)
+    clause_sql = f" WHERE {' AND '.join(where)}" if where else ""
+
+    try:
+        with closing(_connect_readonly(state_db_path)) as db:
+            if not _table_exists(db, "rejected"):
+                return {"total": 0, "items": []}
+            total = int(db.execute(
+                f"SELECT COUNT(*) FROM rejected{clause_sql}", params
+            ).fetchone()[0])
+            rows = db.execute(
+                "SELECT id, url, title, reason, cutoff_hz, rejected_at "
+                f"FROM rejected{clause_sql} "
+                "ORDER BY rejected_at DESC, id DESC LIMIT ? OFFSET ?",
+                [*params, limit, offset],
+            ).fetchall()
+    except sqlite3.Error:
+        return {"total": 0, "items": []}
+
+    items: list[dict[str, Any]] = []
+    for row in rows:
+        title = str(row["title"] or "")
+        artist, _ = _parse_artist_title(title)
+        items.append({
+            "id": int(row["id"]),
+            "url": str(row["url"] or ""),
+            "title": title,
+            "artist": artist,
+            "reason": str(row["reason"] or ""),
+            "cutoff_hz": row["cutoff_hz"],
+            "rejected_at": str(row["rejected_at"] or ""),
+        })
+    return {"total": total, "items": items}
+
+
+def retry_quarantined_track(state_db_path: str | Path, track_id: int) -> bool:
+    """Gibt einen Track aus der Quarantäne frei (wie Bot-Befehl ``/retry <id>``).
+
+    Entfernt den Eintrag über ``State.unmark_rejected`` aus ``rejected`` und vorsorglich
+    aus ``seen``, damit der Track beim nächsten Lauf erneut geprüft wird. Gibt ``True``
+    zurück, wenn ein Quarantäne-Eintrag gelöscht wurde, sonst ``False``. Fehlt die Datei,
+    wird sie nicht angelegt; die Funktion wirft nie.
+    """
+    state_path = Path(state_db_path)
+    if not state_path.is_file():
+        return False
+    try:
+        with State(state_path) as state:
+            return state.unmark_rejected(int(track_id))
+    except (sqlite3.Error, OSError, TypeError, ValueError):
+        return False
 
 
 # --------------------------------------------------------------- Job-Queue (Issue #330)
