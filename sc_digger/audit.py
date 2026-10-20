@@ -40,6 +40,7 @@ from .rekordbox import (
     generate_hot_cues,
     laptop_location,
 )
+from .style import classify_track, format_compact_rekordbox_comment
 from .structure import (
     analyze_structure as analyze_structure_segments,
     calculate_breakdown_ratio,
@@ -669,9 +670,10 @@ def _record_to_inbox_track(rec: TrackRecord) -> InboxTrack:
     """Wandelt einen TrackRecord aus der TrackDB in eine InboxTrack für den XML-Export um.
 
     Pfad bleibt der Server-Pfad; die Übersetzung auf die Laptop-Location passiert später
-    über laptop_location(path_map). Die Dauer ist nicht in der TrackDB gespeichert und wird
-    als 0.0 übernommen (Rekordbox akzeptiert das). Die Cue-Zeitpunkte und die Breakdown-Art
-    stammen aus den Cue-Tags der Datei; die TrackDB speichert keine Cue-Zeitpunkte.
+    über laptop_location(path_map). Dauer und LUFS kommen aus der TrackDB (duration None ->
+    0.0), damit TotalTime und der kompakte Kommentar dieselben Werte wie die Inbox tragen.
+    Die Cue-Zeitpunkte und die Breakdown-Art stammen aus den Cue-Tags der Datei; die TrackDB
+    speichert keine Cue-Zeitpunkte.
     """
     p = Path(rec.path)
     track = InboxTrack(
@@ -682,7 +684,7 @@ def _record_to_inbox_track(rec: TrackRecord) -> InboxTrack:
         bpm=rec.bpm,
         key=rec.key_camelot or rec.key_name or "",
         comment="",
-        duration_s=0.0,
+        duration_s=float(rec.duration) if rec.duration is not None else 0.0,
         size=int(rec.size) if rec.size else 0,
         added=datetime.fromtimestamp(rec.mtime) if rec.mtime else datetime.fromtimestamp(0),
     )
@@ -691,6 +693,7 @@ def _record_to_inbox_track(rec: TrackRecord) -> InboxTrack:
     track.breakdown_s = cues.read_breakdown_tag(p)
     track.breakdown_kind = cues.read_breakdown_kind_tag(p)
     track.drop2_s = cues.read_drop2_tag(p)
+    track.lufs = rec.lufs
     return track
 
 
@@ -700,13 +703,18 @@ def _append_cue_marks(
     *,
     hot_cues: bool,
     memory_cues: bool,
+    hot_cue_layout: str = HOT_CUE_LAYOUT_LEGACY,
+    phrase_align: bool = False,
 ) -> None:
     """Hängt Hot- und Memory-Cues als <POSITION_MARK> an den TRACK-Knoten (wie build_xml).
 
     Chronologisch nach Start; bei gleichem Zeitstempel steht der Hot Cue vor dem Memory Cue.
+    hot_cue_layout/phrase_align werden an generate_hot_cues durchgereicht.
     """
     marks: list[tuple[float, int, str, str, tuple[str, str, str] | None]] = []
-    for start_s, pad, name, color in generate_hot_cues(track, layout=HOT_CUE_LAYOUT_LEGACY):
+    for start_s, pad, name, color in generate_hot_cues(
+        track, layout=hot_cue_layout, phrase_align=phrase_align
+    ):
         if hot_cues:
             marks.append((start_s, 0, name, pad, color))
         if memory_cues:
@@ -730,14 +738,23 @@ def export_collection_xml(
     playlists_by_key: bool = True,
     hot_cues: bool = True,
     memory_cues: bool = True,
+    hot_cue_layout: str = HOT_CUE_LAYOUT_LEGACY,
+    phrase_align_cues: bool = False,
+    grid_anchor: bool = False,
+    compact_style_comments: bool = False,
 ) -> int:
     """Liest TrackRecords mit status='archive' aus db.
 
     Überspringt Records mit quality_status in ('fake_transcode', 'corrupt').
-    Wandelt gültige Records in InboxTrack-Instanzen um (Pfade, Metadaten, BPM, Key).
+    Wandelt gültige Records in InboxTrack-Instanzen um (Pfade, Metadaten, BPM, Key, Dauer, LUFS).
     Liegt xml_path innerhalb von collection_dir: wirft ValueError (Goldene Regel 4).
     Schreibt die Rekordbox-XML atomar (wie write_rekordbox_xml).
     Gibt die Anzahl der erfolgreich in die XML geschriebenen Tracks zurück.
+
+    hot_cue_layout/phrase_align_cues steuern die Cue-Erzeugung wie in build_xml; grid_anchor
+    schreibt den Beatgrid-Anker <TEMPO> als erstes TRACK-Kind (first_kick_s >= 0, bpm > 0);
+    compact_style_comments füllt Comments mit dem kompakten Display-Kommentar. Die
+    Standardwerte erhalten das bisherige Verhalten (legacy, kein Anker, leeres Comments).
     """
     target = Path(xml_path)
 
@@ -788,8 +805,36 @@ def export_collection_xml(
         }
         if t.bpm is not None:
             attr["AverageBpm"] = f"{t.bpm:.2f}"
+        if compact_style_comments:
+            analysis = classify_track(bpm=t.bpm, title=t.title)
+            attr["Comments"] = format_compact_rekordbox_comment(
+                analysis,
+                bpm=t.bpm,
+                key_camelot=t.key or None,
+                drop1_s=t.drop_s,
+                drop2_s=t.drop2_s,
+                lufs=t.lufs,
+            )
         track_node = ET.SubElement(coll, "TRACK", attr)
-        _append_cue_marks(track_node, t, hot_cues=hot_cues, memory_cues=memory_cues)
+        # Beatgrid-Anker vor den Cue-Marken, damit er erstes TRACK-Kind bleibt (wie build_xml).
+        if grid_anchor and t.first_kick_s is not None and t.bpm is not None:
+            kick_s = float(t.first_kick_s)
+            anchor_bpm = float(t.bpm)
+            if kick_s >= 0 and anchor_bpm > 0:
+                ET.SubElement(track_node, "TEMPO", {
+                    "Beginning": f"{kick_s:.3f}",
+                    "Bpm": f"{anchor_bpm:.2f}",
+                    "Metro": "4/4",
+                    "Battito": "1",
+                })
+        _append_cue_marks(
+            track_node,
+            t,
+            hot_cues=hot_cues,
+            memory_cues=memory_cues,
+            hot_cue_layout=hot_cue_layout,
+            phrase_align=phrase_align_cues,
+        )
 
     playlists = ET.SubElement(root, "PLAYLISTS")
     top = ET.SubElement(playlists, "NODE", {"Type": "0", "Name": "ROOT", "Count": "1"})
@@ -906,11 +951,33 @@ def run_audit(
                 coll_dir = cfg["download"]["collection_dir"]
             except (KeyError, TypeError):
                 coll_dir = None
+            # Optionen wie in write_rekordbox_xml aus cfg["rekordbox"] lesen; fehlender
+            # Abschnitt/Schlüssel -> Standardwert, damit audit --export-xml dasselbe Layout,
+            # denselben Anker und dieselben Cue-Arten wie der Inbox-Export nutzt.
+            rb_cfg = cfg.raw.get("rekordbox") if isinstance(cfg.raw, dict) else None
+            if not isinstance(rb_cfg, dict):
+                rb_cfg = {}
+            hot_cues = rb_cfg.get("cues_as_hotcues", True)
+            hot_cues = True if hot_cues is None else bool(hot_cues)
+            memory_cues = rb_cfg.get("cues_as_memory", True)
+            memory_cues = True if memory_cues is None else bool(memory_cues)
+            raw_layout: Any = rb_cfg.get("hot_cue_layout", HOT_CUE_LAYOUT_LEGACY)
+            hot_cue_layout = raw_layout.strip() if isinstance(raw_layout, str) else ""
+            if not hot_cue_layout:
+                hot_cue_layout = HOT_CUE_LAYOUT_LEGACY
+            grid_anchor = rb_cfg.get("grid_anchor", True)
+            grid_anchor = True if grid_anchor is None else bool(grid_anchor)
             count = export_collection_xml(
                 db,
                 export_xml_path,
-                cfg["rekordbox"].get("path_map", {}) if "rekordbox" in cfg.raw else {},
+                rb_cfg.get("path_map", {}),
                 collection_dir=coll_dir,
+                hot_cues=hot_cues,
+                memory_cues=memory_cues,
+                hot_cue_layout=hot_cue_layout,
+                phrase_align_cues=bool(rb_cfg.get("cues_phrase_align", False)),
+                grid_anchor=grid_anchor,
+                compact_style_comments=bool(rb_cfg.get("compact_style_comments", False)),
             )
             print(f"\n🎛️  Sammlungs-XML geschrieben: {Path(export_xml_path).resolve()} ({count} Tracks)")
 
