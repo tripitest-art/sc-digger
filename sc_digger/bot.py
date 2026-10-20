@@ -35,10 +35,10 @@ from .output import TelegramError, parse_feedback_callback, telegram_call, teleg
 from .output import State, send_telegram_voice
 from . import output, preview, rekordbox
 from .cleanup import audit_inbox_duplicates, format_duplicate_report
-from .fingerprint import compute_fingerprint
+from .fingerprint import compute_fingerprint, decode_fingerprint, encode_fingerprint
 from .preview import extract_preview_from_url
 from .redact import install_redacting_logging
-from .similarity import SIMILAR_FAILED, build_similar_reply
+from .similarity import SIMILAR_FAILED, build_similar_by_track, build_similar_reply
 from .soundcloud import SoundCloudClient, SoundCloudError
 from .stats import calculate_stats, format_stats
 from .web.configedit import save_local
@@ -50,7 +50,9 @@ URL_RE = re.compile(r"https?://(?:on\.)?(?:www\.|m\.)?soundcloud\.com/\S+", re.I
 MIX_USAGE = "Aufruf: /mix <Camelot-Key> <BPM> [Toleranz], z. B. /mix 5A 155 oder /mix 8B 160 2"
 STATS_USAGE = "Aufruf: /stats [Tage (1–365, Standard: 7)]"
 PREVIEW_USAGE = "Aufruf: /preview <Suchtext oder id oder sc:<SoundCloud-ID>>"
-SIMILAR_USAGE = "Aufruf: /similar <SoundCloud-Link>"
+SIMILAR_USAGE = "Aufruf: /similar <SoundCloud-Link | Track-ID>"
+SIMILAR_TRACK_NOT_FOUND = "Track nicht in der Datenbank gefunden."
+SIMILAR_NO_FEATURES = "Für diesen Track liegen weder Embeddings noch Fingerprints vor."
 REJECTED_USAGE = "Aufruf: /rejected [Anzahl (1–100, Standard: 10)]"
 RETRY_USAGE = "Aufruf: /retry <id>"
 DUPLICATE_USAGE = "Aufruf: /is_duplicate <SoundCloud-ID> [Notiz]"
@@ -76,7 +78,7 @@ HELP_TEXT = (
     "• /mix 5A 155 -> harmonisch passende Tracks aus der Sammlung (±3 BPM)\n"
     "• /preview &lt;Suchtext oder id&gt; -> 20s-Snippet eines heruntergeladenen Tracks als Sprachnachricht\n"
     "• /preview sc:&lt;SoundCloud-ID&gt; -> 20s-Snippet direkt aus dem SoundCloud-Stream (nicht heruntergeladen)\n"
-    "• /similar &lt;SoundCloud-Link&gt; -> Top-5 ähnliche Aufnahmen aus der Sammlung\n"
+    "• /similar &lt;SoundCloud-Link | Track-ID&gt; -> Top-5 ähnliche Aufnahmen aus der Sammlung\n"
     "• /stats [Tage] -> Statistiken über Scans, Inbox und Feedback\n"
     "• /rejected [Anzahl] -> zuletzt abgelehnte Downloads aus der Quarantäne\n"
     "• /retry &lt;id&gt; -> abgelehnten Track zur erneuten Prüfung freigeben\n"
@@ -553,6 +555,38 @@ def _compute_fingerprint_values(path: Path) -> list[int] | None:
     return list(fp.values) if fp is not None else None
 
 
+def similar_reply_from_track_id(db: TrackDB, track_id: int, *, top_n: int = 5) -> str:
+    """Ähnlichkeitssuche für einen existierenden Track aus der Track-DB:
+    1. get_track_by_id(track_id) -> None: SIMILAR_TRACK_NOT_FOUND
+    2. Versuch klangliche Suche per Embeddings: build_similar_by_track(db, track_id, top_n=top_n)
+    3. Liefert build_similar_by_track None (kein Embedding vorhanden):
+       Fallback auf Chromaprint, falls track.fingerprint vorhanden:
+       values = decode_fingerprint(track.fingerprint)
+       Antwort = build_similar_reply(db, values, top_n=top_n)
+       (Liefert der Track selbst BER <= MAX_BER, wird er in find_similar automatisch gefiltert)
+       Liegt auch kein Fingerprint vor: SIMILAR_NO_FEATURES
+    Wirft nie, fängt DB-Fehler ab und liefert SIMILAR_FAILED.
+    """
+    try:
+        track = db.get_track_by_id(track_id)
+        if track is None:
+            return SIMILAR_TRACK_NOT_FOUND
+
+        emb_reply = build_similar_by_track(db, track_id, top_n=top_n)
+        if emb_reply is not None:
+            return emb_reply
+
+        if track.fingerprint:
+            values = decode_fingerprint(track.fingerprint)
+            if values:
+                return build_similar_reply(db, values, top_n=top_n)
+
+        return SIMILAR_NO_FEATURES
+    except Exception:
+        log.exception("Fehler bei der Ähnlichkeitssuche für Track-ID %s", track_id)
+        return SIMILAR_FAILED
+
+
 def similar_reply_from_url(
     cfg: Config,
     db: TrackDB,
@@ -560,9 +594,15 @@ def similar_reply_from_url(
     *,
     fetch_audio=None,
     compute_fp=None,
+    top_n: int = 5,
 ) -> str:
     """„Mehr davon“ zu einem SoundCloud-Link: Audio temporär besorgen, Fingerprint rechnen,
     Top-5 ähnliche Aufnahmen als Text liefern (gleiche Antwort wie bei einer Datei).
+
+    Prüft vor dem Download, ob db.get_track_by_source_url(url) einen Track liefert
+    und build_similar_by_track(db, track.id, top_n=top_n) nicht None ist.
+    In diesem Fall wird das klangliche Embedding-Ergebnis sofort zurückgegeben (kein Audio-Fetch).
+    Andernfalls unverändert Fallback auf den bestehenden Download- und Chromaprint-Weg.
 
     fetch_audio(url, dest_path) und compute_fp(path) sind injizierbar (Tests); ohne Übergabe
     laufen die Standard-Helfer _fetch_audio_via_soundcloud und _compute_fingerprint_values.
@@ -572,6 +612,15 @@ def similar_reply_from_url(
     cfg bleibt in der Signatur (Issue-Schnittstelle, einheitlich zu den anderen Bot-Antworten),
     die Standard-Helfer kommen ohne Konfiguration aus.
     """
+    try:
+        track = db.get_track_by_source_url(url)
+        if track is not None:
+            emb_reply = build_similar_by_track(db, track.id, top_n=top_n)
+            if emb_reply is not None:
+                return emb_reply
+    except Exception:
+        log.exception("Fehler beim Prüfen vorhandener Embeddings für URL %s", url)
+
     fetch = fetch_audio if fetch_audio is not None else _fetch_audio_via_soundcloud
     compute = compute_fp if compute_fp is not None else _compute_fingerprint_values
 
@@ -585,7 +634,7 @@ def similar_reply_from_url(
         if not values:
             log.warning("Kein Fingerprint für %s (Quelle %s)", tmp, url)
             return SIMILAR_FAILED
-        return build_similar_reply(db, list(values), top_n=5)
+        return build_similar_reply(db, list(values), top_n=top_n)
     except Exception:
         log.exception("Ähnliche Aufnahmen zu %s nicht ermittelbar", url)
         return SIMILAR_FAILED
@@ -611,12 +660,14 @@ def _download_telegram_audio(cfg: Config, file_id: str, dest: Path) -> Path:
     return telegram_download(cfg.telegram_token, file_path, dest)
 
 
-def similar_reply_from_audio(cfg: Config, db: TrackDB, audio_path: Path) -> str:
+def similar_reply_from_audio(cfg: Config, db: TrackDB, audio_path: Path, *, top_n: int = 5) -> str:
     """„Mehr davon“ zu einer an den Bot gesendeten Audio-Datei.
 
     Fingerprint über den Standard-Helfer (_compute_fingerprint_values -> compute_fingerprint),
-    danach dieselbe Antwort wie beim Link-Weg (build_similar_reply). Jeder Fehler (faules
-    Audio, fpcalc fehlt, DB nicht lesbar) wird geloggt und als SIMILAR_FAILED geliefert;
+    danach dieselbe Antwort wie beim Link-Weg (build_similar_reply).
+    Findet db.find_by_fingerprint(...) einen Track, für den build_similar_by_track(db, t.id, top_n=top_n)
+    nicht None liefert, wird dieses bevorzugt. Andernfalls unverändert build_similar_reply(db, list(values), top_n=top_n).
+    Jeder Fehler (faules Audio, fpcalc fehlt, DB nicht lesbar) wird geloggt und als SIMILAR_FAILED geliefert;
     die Funktion wirft nie.
     """
     try:
@@ -624,7 +675,16 @@ def similar_reply_from_audio(cfg: Config, db: TrackDB, audio_path: Path) -> str:
         if not values:
             log.warning("Kein Fingerprint für gesendete Datei %s", audio_path)
             return SIMILAR_FAILED
-        return build_similar_reply(db, list(values), top_n=5)
+
+        encoded = encode_fingerprint(values)
+        if encoded:
+            matched_tracks = db.find_by_fingerprint(encoded)
+            for t in matched_tracks:
+                res = build_similar_by_track(db, t.id, top_n=top_n)
+                if res is not None:
+                    return res
+
+        return build_similar_reply(db, list(values), top_n=top_n)
     except Exception:
         log.exception("Ähnliche Aufnahmen für gesendete Datei %s nicht ermittelbar", audio_path)
         return SIMILAR_FAILED
@@ -939,13 +999,23 @@ def handle_message(cfg: Config, sc: SoundCloudClient, chat_id: str, text: str) -
     if first_word == "/similar":
         parts = text.split(maxsplit=1)
         arg = parts[1].strip() if len(parts) > 1 else ""
-        m_similar = URL_RE.search(arg)
-        if not m_similar:
+        track_id: int | None = None
+        url_match = None
+        if arg.isdigit():
+            track_id = int(arg)
+        else:
+            url_match = URL_RE.search(arg)
+
+        if track_id is None and not url_match:
             _send_text(cfg, chat_id, SIMILAR_USAGE)
             return
+
         try:
             with TrackDB(cfg["state"]["track_db_path"]) as db:
-                reply = similar_reply_from_url(cfg, db, m_similar.group(0))
+                if track_id is not None:
+                    reply = similar_reply_from_track_id(db, track_id)
+                else:
+                    reply = similar_reply_from_url(cfg, db, url_match.group(0))
             _send_text(cfg, chat_id, html.escape(reply, quote=False))
         except Exception:
             log.exception("Fehler beim /similar-Befehl")
