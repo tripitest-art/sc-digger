@@ -602,6 +602,23 @@ class TrackDB:
             log.warning("Track-Suche nach Dateiname fehlgeschlagen für %r: %s", filename, e)
             return None
 
+    def get_track_by_source_url(self, source_url: str) -> TrackRecord | None:
+        """Liefert den TrackRecord mit exakt übereinstimmender source_url oder None.
+
+        Bei leerem String, keinem Treffer oder geschlossener DB -> None. Wirft nie.
+        """
+        if not source_url:
+            return None
+        try:
+            row = self.db.execute(
+                "SELECT * FROM tracks WHERE source_url = ? ORDER BY id ASC LIMIT 1",
+                (source_url,),
+            ).fetchone()
+            return TrackRecord.from_row(row) if row else None
+        except Exception as e:
+            log.warning("Track-Suche nach source_url fehlgeschlagen für %r: %s", source_url, e)
+            return None
+
     def update_rekordbox_metadata(
         self,
         track_id: int,

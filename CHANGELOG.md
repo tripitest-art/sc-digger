@@ -8,6 +8,7 @@ unter „Unreleased“ (Regeln: `AGENTS.md`, Abschnitt „Doku und Changelog“)
 ## Unreleased
 
 ### Hinzugefügt
+- Telegram-Bot `/similar`: Klangliche Ähnlichkeitssuche per Audio-Embedding bevorzugt, transparenter Chromaprint-Fallback bei fehlendem Embedding, Unterstützung numerischer Track-IDs (`/similar <id>`) (#380).
 - `audit --export-xml` übernimmt die `rekordbox`-Optionen des Inbox-Exports: `hot_cue_layout` (auch `standard_8pad` inkl. Outro-Pad H), `grid_anchor` (`<TEMPO>`-Anker), `cues_phrase_align`, `cues_as_hotcues`, `cues_as_memory` und `compact_style_comments`; `TotalTime` trägt die in der TrackDB gespeicherte Dauer, die Sammlung bleibt unverändert (#381).
 - Quarantäne-Manager im Web-Dashboard: `/rejected` und `GET /api/rejected` listen abgewiesene Downloads aus der `rejected`-Tabelle (Titel, Uploader, Grund, Spektrums-Cutoff, Datum) mit Wortsuche und Seitenweise; 🔄 Wiederholen/Freigeben ruft `POST /api/retry` auf und hebt die Blockade wie der Bot-Befehl `/retry` auf (Eintrag aus `rejected` und `seen`, Origin-geprüft, startet keinen Download). Der Track-Explorer verlinkt die Liste; Abfrage rein lesend (#341).
 - Ähnlichkeitssuche per Embeddings: Kosinus-Ähnlichkeit auf kompakten float32-Vektoren (`sc_digger/similarity.py`) mit Chromaprint-Fallback bei fehlenden Embeddings (#363).

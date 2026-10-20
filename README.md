@@ -94,7 +94,7 @@ Der Bot läuft dauerhaft (Hauptprozess des Containers) und antwortet nur im Chat
 | `/preview <Suchtext oder id>` | 20s-Sprachnachricht eines heruntergeladenen Tracks (Track-DB, seit #147) |
 | `/preview sc:<SoundCloud-ID>` | 20s-Sprachnachricht direkt aus dem SoundCloud-Stream, auch für nicht heruntergeladene Tracks (Schalter `preview.stream_enabled`, Standard aus, seit #168) |
 | `/sync_xml` | Schreibt die Rekordbox-XML der Inbox sofort neu (wie `python -m sc_digger.main rekordbox`) und nennt die Track-Zahl und den Zeitpunkt (seit #187) |
-| `/similar <SoundCloud-Link>` | Top-5 klanglich ähnliche Aufnahmen aus der Sammlung via Chromaprint-Fingerprint (seit #280) |
+| `/similar <SoundCloud-Link | Track-ID>` | Top-5 klanglich ähnliche Aufnahmen aus der Sammlung via Audio-Embeddings (Fallback auf Chromaprint) (seit #280, #378) |
 | `/cleanup_inbox` | Dubletten in der Inbox auflisten (nur lesend) |
 
 Zum Digest gehören Inline-Buttons pro Track (Like, Dislike, Später). Die Wahl landet in `sc_feedback` in `tracks.sqlite` und wird von `/mix` und `/curator_mining` ausgewertet. Die Kaufliste kommt zusätzlich sonntags um 20:00 (`0 20 * * 0`, aus `entrypoint.sh`).

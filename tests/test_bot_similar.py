@@ -302,3 +302,137 @@ def test_listen_routes_voice_and_audio_to_audio_handler(monkeypatch):
         bot.listen(Config({}))
 
     assert seen == [("4242", {"file_id": "V1"}), ("4242", {"file_id": "A1"})]
+
+
+def test_handle_message_routes_similar_id_with_embedding(cfg, sent):
+    """'/similar <id>' liefert klangliche Embeddings, falls vorhanden."""
+    with TrackDB(cfg["state"]["track_db_path"]) as db:
+        t1 = db.upsert_track(TrackRecord(path="/m/1.mp3", mtime=1.0, size=10, artist="A1", title="T1"))
+        t2 = db.upsert_track(TrackRecord(path="/m/2.mp3", mtime=1.0, size=10, artist="A2", title="T2", bpm=150, key_camelot="8A"))
+        db.set_embedding(t1.id, "effnet", [1.0, 0.0])
+        db.set_embedding(t2.id, "effnet", [0.99, 0.01])
+
+    bot.handle_message(cfg, None, "42", f"/similar {t1.id}")
+
+    assert len(sent) == 1
+    assert "🎧 Klanglich ähnlich:" in sent[0]
+    assert "A2 – T2" in sent[0]
+
+
+def test_handle_message_routes_similar_id_fallback_chromaprint(cfg, sent):
+    """'/similar <id>' fällt transparent auf Chromaprint zurück, falls kein Embedding existiert."""
+    with TrackDB(cfg["state"]["track_db_path"]) as db:
+        t1 = _fingerprinted(db, Path(cfg["state"]["track_db_path"]).parent, "Artist1", "Track1", [0] * WORDS)
+        _fingerprinted(db, Path(cfg["state"]["track_db_path"]).parent, "Artist2", "Track2", _near([0] * WORDS))
+
+    bot.handle_message(cfg, None, "42", f"/similar {t1.id}")
+
+    assert len(sent) == 1
+    assert "🎧 Ähnliche Aufnahmen:" in sent[0]
+    assert "Artist2 – Track2" in sent[0]
+
+
+def test_handle_message_routes_similar_id_not_found(cfg, sent):
+    bot.handle_message(cfg, None, "42", "/similar 99999")
+
+    assert sent == [bot.SIMILAR_TRACK_NOT_FOUND]
+
+
+def test_handle_message_routes_similar_id_no_features(cfg, sent):
+    with TrackDB(cfg["state"]["track_db_path"]) as db:
+        t = db.upsert_track(TrackRecord(path="/m/bare.mp3", mtime=1.0, size=10))
+
+    bot.handle_message(cfg, None, "42", f"/similar {t.id}")
+
+    assert sent == [bot.SIMILAR_NO_FEATURES]
+
+
+def test_handle_message_similar_invalid_arg_sends_usage(cfg, sent):
+    bot.handle_message(cfg, None, "42", "/similar invalid_arg")
+
+    assert sent == [bot.SIMILAR_USAGE]
+
+
+def test_handle_message_similar_db_exception_sends_failed(cfg, sent, monkeypatch):
+    class BrokenDB:
+        def __enter__(self):
+            raise RuntimeError("DB error")
+        def __exit__(self, *args):
+            pass
+
+    monkeypatch.setattr(bot, "TrackDB", lambda path: BrokenDB())
+    bot.handle_message(cfg, None, "42", "/similar 1")
+
+    assert sent == [similarity.SIMILAR_FAILED]
+
+
+def test_similar_reply_from_audio_prefers_embedding(tmp_path, monkeypatch):
+    """Audionachricht: Entspricht der Fingerprint einem DB-Track mit Embedding, wird dieses bevorzugt."""
+    raw_vals = [1000] * WORDS
+    monkeypatch.setattr(bot, "_compute_fingerprint_values", lambda path: raw_vals)
+
+    with TrackDB(tmp_path / "t.sqlite") as db:
+        t1 = db.upsert_track(TrackRecord(path="/m/1.mp3", mtime=1.0, size=10, artist="Hit", title="Song", fingerprint=encode_fingerprint(raw_vals)))
+        t2 = db.upsert_track(TrackRecord(path="/m/2.mp3", mtime=1.0, size=10, artist="Similar", title="Vibe", bpm=150, key_camelot="8A"))
+        db.set_embedding(t1.id, "effnet", [1.0, 0.0])
+        db.set_embedding(t2.id, "effnet", [0.95, 0.05])
+
+        reply = bot.similar_reply_from_audio(None, db, tmp_path / "test.oga")
+
+    assert "🎧 Klanglich ähnlich:" in reply
+    assert "Similar – Vibe" in reply
+
+
+def test_similar_reply_from_audio_fallback_chromaprint(tmp_path, monkeypatch):
+    """Audionachricht: Entspricht der Fingerprint einem DB-Track ohne Embedding, greift Chromaprint."""
+    raw_vals = [1000] * WORDS
+    monkeypatch.setattr(bot, "_compute_fingerprint_values", lambda path: raw_vals)
+
+    with TrackDB(tmp_path / "t.sqlite") as db:
+        db.upsert_track(TrackRecord(path="/m/1.mp3", mtime=1.0, size=10, artist="Hit", title="Song", fingerprint=encode_fingerprint(raw_vals)))
+        _fingerprinted(db, tmp_path, "Other", "Tune", _near(raw_vals))
+
+        reply = bot.similar_reply_from_audio(None, db, tmp_path / "test.oga")
+
+    assert "🎧 Ähnliche Aufnahmen:" in reply
+    assert "Other – Tune" in reply
+
+
+def test_similar_reply_from_track_id_db_error_returns_failed(tmp_path, monkeypatch):
+    with TrackDB(tmp_path / "t.sqlite") as db:
+        monkeypatch.setattr(db, "get_track_by_id", lambda tid: (_ for _ in ()).throw(RuntimeError("disk error")))
+        reply = bot.similar_reply_from_track_id(db, 1)
+
+    assert reply == similarity.SIMILAR_FAILED
+
+
+def test_similar_reply_from_track_id_top_n(tmp_path):
+    with TrackDB(tmp_path / "t.sqlite") as db:
+        t_query = db.upsert_track(TrackRecord(path="/m/q.mp3", mtime=1.0, size=10, artist="Q", title="T"))
+        db.set_embedding(t_query.id, "effnet", [1.0, 0.0])
+        for i in range(1, 6):
+            t = db.upsert_track(TrackRecord(path=f"/m/{i}.mp3", mtime=1.0, size=10, artist=f"A{i}", title=f"T{i}"))
+            db.set_embedding(t.id, "effnet", [1.0 - i * 0.01, 0.0])
+
+        reply = bot.similar_reply_from_track_id(db, t_query.id, top_n=2)
+
+    lines = [l for l in reply.splitlines() if l.startswith("1.") or l.startswith("2.") or l.startswith("3.")]
+    assert len(lines) == 2
+
+
+def test_similar_reply_from_url_db_error_falls_back_to_fetch(tmp_path, monkeypatch):
+    url = "https://soundcloud.com/artist/boom"
+    called = []
+
+    def fake_fetch(u, dest):
+        called.append(u)
+        dest.write_bytes(b"dummy")
+        return dest
+
+    with TrackDB(tmp_path / "t.sqlite") as db:
+        monkeypatch.setattr(db, "get_track_by_source_url", lambda u: (_ for _ in ()).throw(RuntimeError("db fail")))
+        reply = bot.similar_reply_from_url(None, db, url, fetch_audio=fake_fetch, compute_fp=lambda p: [0] * WORDS)
+
+    assert called == [url]
+    assert reply == similarity.NO_SIMILAR
+
