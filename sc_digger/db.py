@@ -396,7 +396,23 @@ MIGRATIONS: list[tuple[int, str, str]] = [
         CREATE INDEX IF NOT EXISTS idx_tracks_sc_id ON tracks(sc_id);
         """,
     ),
+    (
+        15,
+        "0015_match_overrides",
+        """
+        CREATE TABLE IF NOT EXISTS match_overrides (
+            sc_id INTEGER PRIMARY KEY,
+            override_type TEXT NOT NULL CHECK (override_type IN ('already_in_collection', 'not_duplicate')),
+            note TEXT,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        );
+        """,
+    ),
 ]
+
+# Erlaubte Werte in ``match_overrides.override_type``: die Handkorrektur ersetzt den
+# Namens-Abgleich, deshalb bleiben es genau diese zwei Richtungen.
+MATCH_OVERRIDE_TYPES = ("already_in_collection", "not_duplicate")
 
 
 def _apply_migrations(db: sqlite3.Connection) -> None:
@@ -822,6 +838,47 @@ class TrackDB:
     def get_sc_feedback(self, sc_id: int) -> str | None:
         row = self.db.execute("SELECT value FROM sc_feedback WHERE sc_id = ?", (sc_id,)).fetchone()
         return row["value"] if row else None
+
+    def set_match_override(self, sc_id: int, override_type: str, note: str = "") -> None:
+        """Speichert eine Handkorrektur des Matchers je SoundCloud-ID, letzte Wahl gewinnt.
+
+        ``already_in_collection`` markiert einen Falsch-Negativ als vorhanden,
+        ``not_duplicate`` gibt einen Falsch-Positiv wieder frei. Unbekannter Typ ->
+        ``ValueError``, dann wird nichts gespeichert.
+        """
+        if override_type not in MATCH_OVERRIDE_TYPES:
+            raise ValueError(
+                f"Ungültiger Override-Typ: {override_type!r}. Erlaubt: {MATCH_OVERRIDE_TYPES}"
+            )
+        self.db.execute(
+            """
+            INSERT INTO match_overrides (sc_id, override_type, note, updated_at)
+            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(sc_id) DO UPDATE SET
+                override_type = excluded.override_type,
+                note = excluded.note,
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (int(sc_id), override_type, note or None),
+        )
+        self.db.commit()
+
+    def get_match_override(self, sc_id: int) -> str | None:
+        row = self.db.execute(
+            "SELECT override_type FROM match_overrides WHERE sc_id = ?", (int(sc_id),)
+        ).fetchone()
+        return str(row["override_type"]) if row else None
+
+    def list_match_overrides(self) -> dict[int, str]:
+        """Alle Korrekturen als ``{sc_id: override_type}`` (leer, wenn keine gesetzt sind)."""
+        rows = self.db.execute("SELECT sc_id, override_type FROM match_overrides").fetchall()
+        return {int(r["sc_id"]): str(r["override_type"]) for r in rows if r["sc_id"] is not None}
+
+    def remove_match_override(self, sc_id: int) -> bool:
+        """Löscht die Korrektur zu ``sc_id``; ``True``, wenn ein Eintrag vorhanden war."""
+        cur = self.db.execute("DELETE FROM match_overrides WHERE sc_id = ?", (int(sc_id),))
+        self.db.commit()
+        return cur.rowcount > 0
 
     def record_exploration_use(self, tag: str, success: bool, now: datetime | None = None) -> None:
         ts = (now or datetime.now(timezone.utc)).strftime("%Y-%m-%d %H:%M:%S")

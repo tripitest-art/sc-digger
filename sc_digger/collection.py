@@ -178,6 +178,11 @@ class NameIndex:
 # Fassungen unterscheiden sich praktisch immer um mehr als ein paar Sekunden.
 DURATION_TOLERANCE_S = 5.0
 
+# Rückgabe von ``find_duplicate`` für einen Treffer, den es nur als Handkorrektur gibt:
+# der Track fehlt (oder heißt anders) in der Sammlung, wurde aber ausdrücklich als
+# vorhanden markiert.
+MANUAL_DUPLICATE_LABEL = "(manuell als vorhanden markiert)"
+
 
 def probe_duration(path: Path) -> float | None:
     """Dauer in Sekunden per ``sc_digger.quality.probe`` (``format.duration``); wirft nie.
@@ -203,11 +208,16 @@ class Collection:
         duration_fn: Callable[[Path], float | None] | None = probe_duration,
         duration_tolerance_s: float = DURATION_TOLERANCE_S,
         db: TrackDB | None = None,
+        match_overrides: dict[int, str] | None = None,
     ):
         self.folder = Path(folder)
         self.duration_fn = duration_fn
         self.duration_tolerance_s = duration_tolerance_s
         self.db = db
+        # Handkorrekturen des Matchers: {sc_id: "already_in_collection" | "not_duplicate"}.
+        self.match_overrides: dict[int, str] = {
+            int(k): v for k, v in (match_overrides or {}).items()
+        }
         self.index = NameIndex()
         self.reload()
 
@@ -244,10 +254,21 @@ class Collection:
     def find_duplicate(self, t: Track) -> str | None:
         """Gibt den Dateinamen zurück, falls der Track vermutlich schon vorhanden ist.
 
+        Eine Handkorrektur aus ``match_overrides`` (Schlüssel ist die SoundCloud-ID
+        ``t.id``) geht dem Namens-Abgleich vor: ``not_duplicate`` gibt den Track frei,
+        ``already_in_collection`` meldet ihn als vorhanden, auch ohne Datei-Treffer.
+
         Bei mehreren Namens-Treffern entscheidet die Länge: nur wenn ``t.duration_ms``
         bekannt ist und die Dauer der Kandidatendatei um mehr als ``duration_tolerance_s``
         abweicht, wird der Kandidat übersprungen.
         """
+        override = self.match_overrides.get(t.id)
+        if override == "not_duplicate":
+            log.debug("Matcher-Korrektur: %s gilt nicht als Duplikat", t.id)
+            return None
+        if override == "already_in_collection":
+            log.debug("Matcher-Korrektur: %s gilt als vorhanden", t.id)
+            return MANUAL_DUPLICATE_LABEL
         track_seconds = t.duration_ms / 1000 if t.duration_ms > 0 else None
         for label in self.index.find_all(name_key(t.artist, t.title)):
             if track_seconds is not None and self.duration_fn is not None:
@@ -284,6 +305,6 @@ def open_collection(cfg: Config) -> Collection:
         log.warning("Track-DB nicht lesbar (%s), Sammlung wird vom Dateisystem gelesen", e)
         return Collection(folder)
     try:
-        return Collection(folder, db=db)
+        return Collection(folder, db=db, match_overrides=db.list_match_overrides())
     finally:
         db.close()

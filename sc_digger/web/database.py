@@ -632,6 +632,8 @@ def query_digest(
     # gemeinsamen Logik aus collection.names_match (früher ein eigener Fuzzy-Matcher).
     inbox_index = NameIndex()
     archive_index = NameIndex()
+    # Handkorrekturen des Matchers (Issue #325): sie gehen jedem automatischen Treffer vor.
+    match_overrides: dict[int, str] = {}
 
     if inbox_dir:
         inbox_p = Path(inbox_dir)
@@ -726,6 +728,12 @@ def query_digest(
                             inbox_index.add(p_str, row_key)
                         elif st_str in ("archive", "adopted"):
                             archive_index.add(p_str, row_key)
+                # Handkorrekturen des Matchers (Issue #325). Ältere DBs ohne die Migration
+                # bleiben unterstützt, dann wirkt nur der automatische Abgleich.
+                if _table_exists(tdb, "match_overrides"):
+                    for row in tdb.execute("SELECT sc_id, override_type FROM match_overrides"):
+                        if row["sc_id"] is not None:
+                            match_overrides[int(row["sc_id"])] = str(row["override_type"] or "")
                 # Neuesten Engagement-Snapshot je Track ergänzen (Issue #257). Die Abfrage steht
                 # zuletzt, damit eine minimale Fremd-Tabelle ohne diese Spalten die übrigen Maps
                 # nicht verwirft; ORDER BY liefert je sc_id den jüngsten Snapshot zuerst.
@@ -786,6 +794,12 @@ def query_digest(
             or (digest_url in archive_urls)
             or archive_index.find(q_key) is not None
         )
+        # Handkorrektur des Matchers schlägt alle automatischen Treffer (Issue #325).
+        override = match_overrides.get(sc_id)
+        if override == "already_in_collection":
+            in_coll = True
+        elif override == "not_duplicate":
+            in_coll = False
 
         purchase_url = store_map.get(sc_id)
         gate_url = gate_map.get(sc_id)
