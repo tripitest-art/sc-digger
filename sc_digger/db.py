@@ -415,8 +415,80 @@ MIGRATIONS: list[tuple[int, str, str]] = [
 MATCH_OVERRIDE_TYPES = ("already_in_collection", "not_duplicate")
 
 
+def check_migrations(
+    migrations: Sequence[tuple[int, str, str]] | None = None,
+) -> list[str]:
+    """Probleme der Migrationsliste als lesbare Zeilen auf Deutsch; leere Liste = in Ordnung.
+
+    ``migrations=None`` prüft die Liste :data:`MIGRATIONS` zur Aufrufzeit, damit
+    ``monkeypatch.setattr(db_mod, "MIGRATIONS", ...)`` wirkt.
+    Geprüft wird je Eintrag ``(version, name, script)``:
+
+    - ``version`` ist ein int (kein bool) und >= 1;
+    - ``name`` ist ein nicht leerer str und beginnt mit ``f"{version:04d}_"``;
+    - keine Version kommt doppelt vor (die Meldung nennt Version und beide Namen);
+    - kein Name kommt doppelt vor (die Meldung nennt Name und beide Versionen).
+
+    Lücken in den Versionen und jede Reihenfolge sind erlaubt, weil der Runner fehlende
+    Versionen nachholt. Die Funktion wirft nicht, auch nicht bei unbrauchbaren Einträgen:
+    an dieser Stelle soll ein Fehler in der Liste lesbar werden, nicht als Traceback.
+    """
+    eintraege = MIGRATIONS if migrations is None else migrations
+    probleme: list[str] = []
+    try:
+        liste = list(eintraege)
+    except TypeError:
+        return ["Migrationsliste ist keine Liste von Einträgen."]
+
+    gesehen_versionen: dict[int, str] = {}
+    gesehen_namen: dict[str, int] = {}
+    for nummer, eintrag in enumerate(liste, start=1):
+        wer = f"Eintrag {nummer}"
+        if not isinstance(eintrag, (tuple, list)) or len(eintrag) != 3:
+            probleme.append(f"{wer} ist kein Tupel aus (version, name, script).")
+            continue
+
+        version, name = eintrag[0], eintrag[1]
+        version_ok = (
+            isinstance(version, int) and not isinstance(version, bool) and version >= 1
+        )
+        if not version_ok:
+            probleme.append(
+                f"{wer}: Version {version!r} ist keine ganze Zahl >= 1 (Name {name!r})."
+            )
+        name_ok = isinstance(name, str) and bool(name)
+        if not name_ok:
+            probleme.append(f"{wer}: Name {name!r} ist kein nicht leerer Text.")
+        elif version_ok and not name.startswith(f"{version:04d}_"):
+            probleme.append(
+                f"{wer}: Name {name!r} beginnt nicht mit der Version {version:04d}_."
+            )
+
+        if version_ok:
+            if version in gesehen_versionen:
+                probleme.append(
+                    f"Version {version} kommt doppelt vor: "
+                    f"{gesehen_versionen[version]!r} und {name!r}."
+                )
+            else:
+                gesehen_versionen[version] = name if isinstance(name, str) else repr(name)
+        if name_ok:
+            if name in gesehen_namen:
+                probleme.append(
+                    f"Name {name!r} kommt doppelt vor: "
+                    f"Version {gesehen_namen[name]} und {version!r}."
+                )
+            else:
+                gesehen_namen[name] = version
+
+    return probleme
+
+
 def _apply_migrations(db: sqlite3.Connection) -> None:
     """Führt unaufgeführte Schema-Migrationen versioniert und atomar transaktional aus."""
+    probleme = check_migrations()
+    if probleme:
+        raise ValueError("Migrationsliste ungültig: " + "; ".join(probleme))
     db.execute(
         "CREATE TABLE IF NOT EXISTS schema_migrations ("
         " version INTEGER PRIMARY KEY,"
