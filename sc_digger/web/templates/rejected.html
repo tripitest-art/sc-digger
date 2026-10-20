@@ -1,0 +1,215 @@
+{% extends "base.html" %}
+
+{% block title %}sc-digger Quarantäne{% endblock %}
+
+{% block meta %}
+<style>
+  .rejected-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 0.75rem;
+  }
+  .filter-form .filter-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 0.75rem;
+    align-items: end;
+  }
+  .filter-form .filter-field label {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-weight: 600;
+  }
+  .filter-form input[type=text] {
+    max-width: none;
+  }
+  .filter-actions {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+    margin-top: 1rem;
+  }
+  .retry-btn {
+    padding: 0.25rem 0.6rem;
+    font-size: 0.78rem;
+    white-space: nowrap;
+  }
+  .retry-btn:disabled {
+    opacity: 0.5;
+    cursor: progress;
+  }
+  .retry-error {
+    color: var(--accent-err);
+    font-size: 0.72rem;
+    display: block;
+    margin-top: 0.2rem;
+  }
+  .retry-ok {
+    color: var(--accent-ok);
+    font-weight: 600;
+  }
+  .pager {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 1rem;
+    margin-top: 1.25rem;
+  }
+  .pager-buttons {
+    display: flex;
+    gap: 0.5rem;
+    margin-left: auto;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="rejected-toolbar">
+    <div>
+      <h1 style="margin: 0;">⚠️ Quarantäne</h1>
+      <p class="meta" style="margin: 0.25rem 0 0;">
+        Abgelehnte Downloads aus der Qualitätsprüfung &middot;
+        <strong>{{ total }}</strong> Treffer
+        {% if total_pages > 1 %}&middot; Seite {{ page }} von {{ total_pages }}{% endif %}
+      </p>
+    </div>
+    <a href="/tracks" style="font-size: 0.875rem; font-weight: 500;">&larr; Zum Track-Explorer</a>
+  </div>
+  <p class="meta" style="margin-bottom: 0;">
+    Diese Tracks wurden nicht in <code>seen</code> abgelegt, damit eine falsche
+    Qualitätsprüfung sie nicht dauerhaft verliert. 🔄 <strong>Wiederholen / Freigeben</strong>
+    hebt die Blockade auf (wie Bot-Befehl <code>/retry &lt;id&gt;</code>): der Track wird beim
+    nächsten regulären Lauf erneut geladen und geprüft. Hier startet kein Download.
+  </p>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h2 class="card-title" style="margin: 0;">Filter</h2>
+  </div>
+  <form class="filter-form" method="get" action="/rejected">
+    <input type="hidden" name="limit" value="{{ page_size }}">
+    <div class="filter-grid">
+      <div class="filter-field">
+        <label for="f-q">Titel / URL / Grund</label>
+        <input type="text" id="f-q" name="q" value="{{ filters.q }}"
+               placeholder="Wortsuche über Titel, URL und Ablehnungsgrund">
+      </div>
+    </div>
+    <div class="filter-actions">
+      <button type="submit">Filtern</button>
+      <a href="/rejected" class="meta">Zurücksetzen</a>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h2 class="card-title" style="margin: 0;">Abgewiesene Tracks</h2>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>SoundCloud-ID</th>
+        <th>Titel &amp; Uploader</th>
+        <th>Ablehnungsgrund</th>
+        <th>Abgelehnt am</th>
+        <th>Aktion</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in items %}
+      <tr data-rejected-row data-track-id="{{ item.id }}">
+        <td class="mono">
+          {{ item.id }}
+          {# Nur http/https verlinken: die URL stammt aus fremden Feeds. #}
+          {% set sc_href = item.url if item.url and (item.url.startswith("http://") or item.url.startswith("https://")) else "" %}
+          {% if sc_href %}
+          <div><a href="{{ sc_href }}" target="_blank" rel="noopener noreferrer">SoundCloud ↗</a></div>
+          {% endif %}
+        </td>
+        <td>
+          <strong>{{ item.title or "—" }}</strong>
+          <div class="meta" style="font-size: 0.78rem;">{{ item.artist or "Uploader unbekannt" }}</div>
+        </td>
+        <td>
+          {{ item.reason or "—" }}
+          {% if item.cutoff_hz is not none %}
+          <div class="mono meta" style="font-size: 0.78rem;">
+            {{ (item.cutoff_hz / 1000) | round(1) }} kHz ({{ item.cutoff_hz | round(0) | int }} Hz)
+          </div>
+          {% endif %}
+        </td>
+        <td class="mono meta" style="white-space: nowrap; font-size: 0.78rem;">
+          {{ item.rejected_at[:16] if item.rejected_at else "—" }}
+        </td>
+        <td>
+          <button type="button" class="retry-btn" onclick="retryTrack(this)">
+            🔄 Wiederholen / Freigeben
+          </button>
+          <span class="retry-error meta"></span>
+        </td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="5" style="text-align: center; padding: 2rem;" class="meta">
+          Keine abgewiesenen Tracks für diese Filtereinstellungen.
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {% if total > 0 %}
+  <div class="pager">
+    <div class="meta">
+      Seite {{ page }} von {{ total_pages }} ({{ total }} abgewiesene Tracks gesamt)
+    </div>
+    <div class="pager-buttons">
+      <a href="{{ prev_url or '#' }}" class="btn-page {% if not prev_url %}disabled{% endif %}">
+        &larr; Vorherige
+      </a>
+      <a href="{{ next_url or '#' }}" class="btn-page {% if not next_url %}disabled{% endif %}">
+        Nächste &rarr;
+      </a>
+    </div>
+  </div>
+  {% endif %}
+</div>
+<script>
+  // Freigabe ohne Seiten-Reload an POST /api/retry. Bis die Antwort da ist, ist der Knopf
+  // gesperrt, damit kein zweiter Klick denselben Eintrag erneut freigibt.
+  async function retryTrack(button) {
+    const row = button.closest('[data-rejected-row]');
+    if (!row) { return; }
+    const errorBox = row.querySelector('.retry-error');
+    if (errorBox) { errorBox.textContent = ''; }
+    button.disabled = true;
+    try {
+      const response = await fetch('/api/retry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ track_id: parseInt(row.dataset.trackId, 10) }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.ok) {
+        throw new Error(data.error || ('HTTP ' + response.status));
+      }
+      // Der Track ist nicht mehr in Quarantäne: Zeile als freigegeben kennzeichnen.
+      row.querySelectorAll('td').forEach((cell) => { cell.style.opacity = '0.5'; });
+      button.replaceWith(Object.assign(document.createElement('span'), {
+        className: 'retry-ok',
+        textContent: '✓ freigegeben',
+      }));
+    } catch (error) {
+      button.disabled = false;
+      if (errorBox) { errorBox.textContent = error.message || 'nicht freigegeben'; }
+    }
+  }
+</script>
+{% endblock %}

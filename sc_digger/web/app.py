@@ -58,8 +58,10 @@ from .database import (
     heartbeat_job,
     load_tracks_for_set_builder,
     query_digest,
+    query_rejected_tracks,
     query_store_items,
     query_tracks,
+    retry_quarantined_track,
     save_track_feedback,
 )
 from .intake import process_uploaded_audio
@@ -893,6 +895,87 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
             prev_url=page_url(max(0, offset - page_size)) if offset > 0 else None,
             next_url=page_url(offset + page_size) if offset + page_size < result.total else None,
         ))
+
+    # Quarantäne-Manager (Issue #341): dieselbe rein lesende Abfrage für JSON-API und Seite.
+    # Die Freigabe läuft über den Quarantäne-Pfad von State (wie Bot-Befehl /retry <id>),
+    # nicht über einen Download: der Track wird nur für den nächsten regulären Lauf frei.
+    @app.get("/api/rejected")
+    def api_rejected(request: Request):
+        if not _check_auth(request, password, allow_anonymous):
+            return _unauthorized()
+        params = request.query_params
+        return JSONResponse(query_rejected_tracks(
+            cfg["state"]["db_path"],
+            search=params.get("q") or None,
+            limit=_query_int(params.get("limit"), DEFAULT_LIMIT),
+            offset=_query_int(params.get("offset"), 0),
+        ))
+
+    @app.get("/rejected", response_class=HTMLResponse)
+    def rejected_page(request: Request):
+        if not _check_auth(request, password, allow_anonymous):
+            return _unauthorized()
+        params = request.query_params
+        filters = {"q": params.get("q") or ""}
+        page_size = max(1, min(_query_int(params.get("limit"), DEFAULT_LIMIT), MAX_LIMIT))
+        offset = max(0, _query_int(params.get("offset"), 0))
+        result = query_rejected_tracks(
+            cfg["state"]["db_path"],
+            search=filters["q"] or None,
+            limit=page_size,
+            offset=offset,
+        )
+
+        def page_url(new_offset: int) -> str:
+            """Link auf eine andere Seite, aktive Filter bleiben erhalten."""
+            query = {key: value for key, value in filters.items() if value}
+            query["limit"] = str(page_size)
+            if new_offset > 0:
+                query["offset"] = str(new_offset)
+            return "/rejected?" + urlencode(query)
+
+        total_pages = max(1, (result["total"] + page_size - 1) // page_size)
+        template = _env.get_template("rejected.html")
+        return HTMLResponse(template.render(
+            items=result["items"],
+            total=result["total"],
+            page_size=page_size,
+            page=offset // page_size + 1,
+            total_pages=total_pages,
+            filters=filters,
+            prev_url=page_url(max(0, offset - page_size)) if offset > 0 else None,
+            next_url=(
+                page_url(offset + page_size)
+                if offset + page_size < result["total"] else None
+            ),
+        ))
+
+    @app.post("/api/retry")
+    async def api_retry(request: Request):
+        if not _check_auth(request, password, allow_anonymous):
+            return _unauthorized()
+        if not _same_origin(request):
+            return JSONResponse({"ok": False, "error": "Ungültige Herkunft"}, status_code=403)
+        try:
+            payload = await request.json()
+        except Exception:
+            return JSONResponse({"ok": False, "error": "Ungültiges JSON"}, status_code=400)
+        if not isinstance(payload, dict):
+            return JSONResponse({"ok": False, "error": "Ungültiger Payload"}, status_code=400)
+        track_id = payload.get("track_id")
+        if track_id is None or isinstance(track_id, bool):
+            return JSONResponse(
+                {"ok": False, "error": "track_id muss eine Zahl sein"}, status_code=400
+            )
+        try:
+            track_id_int = int(track_id)
+        except (TypeError, ValueError):
+            return JSONResponse(
+                {"ok": False, "error": "track_id muss eine Zahl sein"}, status_code=400
+            )
+        if retry_quarantined_track(cfg["state"]["db_path"], track_id_int):
+            return JSONResponse({"ok": True})
+        return JSONResponse({"ok": False, "error": "Track nicht in Quarantäne"})
 
     # Interaktive Bewertung aus dem Web (Issue #229): derselbe Speicherpfad wie die
     # Telegram-Buttons (bot.py), damit Digest-Historie, /mix und Statistik dasselbe Feedback

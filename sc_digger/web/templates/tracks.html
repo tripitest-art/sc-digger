@@ -132,7 +132,12 @@
         {% if total_pages > 1 %}&middot; Seite {{ page }} von {{ total_pages }}{% endif %}
       </p>
     </div>
-    <a href="/" style="font-size: 0.875rem; font-weight: 500;">&larr; Zurück zum Status</a>
+    <div style="display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: baseline;">
+      {# Direktlink zur Quarantäne-Liste (Issue #341): abgewiesene Downloads einsehen
+         und für den nächsten Lauf freigeben. #}
+      <a href="/rejected" style="font-size: 0.875rem; font-weight: 500;">⚠️ Quarantäne-Liste anzeigen (/rejected)</a>
+      <a href="/" style="font-size: 0.875rem; font-weight: 500;">&larr; Zurück zum Status</a>
+    </div>
   </div>
 
   <details class="info-toggle" style="margin-top: 1rem;">
