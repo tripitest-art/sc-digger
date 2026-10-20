@@ -53,6 +53,8 @@ PREVIEW_USAGE = "Aufruf: /preview <Suchtext oder id oder sc:<SoundCloud-ID>>"
 SIMILAR_USAGE = "Aufruf: /similar <SoundCloud-Link>"
 REJECTED_USAGE = "Aufruf: /rejected [Anzahl (1–100, Standard: 10)]"
 RETRY_USAGE = "Aufruf: /retry <id>"
+DUPLICATE_USAGE = "Aufruf: /is_duplicate <SoundCloud-ID> [Notiz]"
+NOT_DUPLICATE_USAGE = "Aufruf: /not_duplicate <SoundCloud-ID> [Notiz]"
 
 # Länge des temporären Snippets für die /similar-Suche: SoundCloud-Stream-Previews sind
 # rund 30 s lang, mehr käme aus der Download-Quelle ohnehin nicht.
@@ -78,6 +80,8 @@ HELP_TEXT = (
     "• /stats [Tage] -> Statistiken über Scans, Inbox und Feedback\n"
     "• /rejected [Anzahl] -> zuletzt abgelehnte Downloads aus der Quarantäne\n"
     "• /retry &lt;id&gt; -> abgelehnten Track zur erneuten Prüfung freigeben\n"
+    "• /is_duplicate &lt;SoundCloud-ID&gt; [Notiz] -> Track als schon vorhanden markieren (Matcher-Fehler)\n"
+    "• /not_duplicate &lt;SoundCloud-ID&gt; [Notiz] -> Track trotz Matcher-Treffer freigeben\n"
     "• /cleanup_inbox -> Dubletten in der Inbox auflisten (nur lesend)\n"
     "• /sync_xml -> Rekordbox-XML der Inbox sofort neu schreiben\n\n"
     "Kein täglicher Filter, du bekommst die volle Liste mit Stats und Download-Einordnung."
@@ -769,6 +773,73 @@ def retry_reply(cfg: Config, text: str) -> str:
     return f"Track {track_id} ist nicht in der Quarantäne."
 
 
+def _parse_match_override_args(text: str) -> tuple[int, str] | None:
+    """Liest den Rest von '/is_duplicate|/not_duplicate <SoundCloud-ID> [Notiz]'.
+
+    ``None``, wenn die ID fehlt oder nicht rein numerisch ist; die Notiz darf Leerzeichen
+    enthalten und bleibt sonst leer.
+    """
+    parts = text.strip().split()
+    if len(parts) < 2:
+        return None
+    raw = parts[1]
+    if not re.fullmatch(r"[0-9]+", raw) or int(raw) <= 0:
+        return None
+    return int(raw), " ".join(parts[2:])
+
+
+def _store_match_override(cfg: Config, sc_id: int, note: str, override_type: str) -> str | None:
+    """Speichert die Korrektur; ``None`` heißt gespeichert, sonst der Antworttext.
+
+    Fehlt ``state.track_db_path``, wird nichts angelegt – nur der Hinweis zurückgegeben.
+    """
+    db_path = (cfg.raw.get("state") or {}).get("track_db_path")
+    if not db_path:
+        return "Track-DB nicht konfiguriert."
+    with TrackDB(db_path) as db:
+        db.set_match_override(sc_id, override_type, note=note)
+    return None
+
+
+def duplicate_override_reply(cfg: Config, text: str) -> str:
+    """Antwort auf '/is_duplicate <sc_id> [Notiz]': merkt den Track als vorhanden vor.
+
+    Für Falsch-Negative des Matchers. Fehlt die ID oder ist sie nicht rein numerisch,
+    kommt nur DUPLICATE_USAGE zurück und es wird nichts gespeichert.
+    """
+    parsed = _parse_match_override_args(text)
+    if parsed is None:
+        return DUPLICATE_USAGE
+    sc_id, note = parsed
+    error = _store_match_override(cfg, sc_id, note, "already_in_collection")
+    if error is not None:
+        return error
+    note_part = f" (Notiz: {note})" if note else ""
+    return (
+        f"SoundCloud-Track {sc_id} ist als vorhanden markiert{note_part}. "
+        "Er wird ab jetzt nicht mehr als neu geladen."
+    )
+
+
+def not_duplicate_reply(cfg: Config, text: str) -> str:
+    """Antwort auf '/not_duplicate <sc_id> [Notiz]': gibt einen Falsch-Positiv wieder frei.
+
+    Fehlerfälle wie bei :func:`duplicate_override_reply`, nur mit NOT_DUPLICATE_USAGE.
+    """
+    parsed = _parse_match_override_args(text)
+    if parsed is None:
+        return NOT_DUPLICATE_USAGE
+    sc_id, note = parsed
+    error = _store_match_override(cfg, sc_id, note, "not_duplicate")
+    if error is not None:
+        return error
+    note_part = f" (Notiz: {note})" if note else ""
+    return (
+        f"SoundCloud-Track {sc_id} ist kein Duplikat{note_part}. "
+        "Er wird ab jetzt wieder als neu geprüft."
+    )
+
+
 def handle_message(cfg: Config, sc: SoundCloudClient, chat_id: str, text: str) -> None:
     text = text.strip()
     # Erstes Wort bereinigt um einen angehängten Bot-Namen (/help@bot bzw. "/help @bot")
@@ -797,6 +868,22 @@ def handle_message(cfg: Config, sc: SoundCloudClient, chat_id: str, text: str) -
         except Exception:
             log.exception("Fehler bei Mix-Suche")
             _send_text(cfg, chat_id, "Mix-Suche fehlgeschlagen, siehe Container-Log.")
+        return
+
+    if first_word == "/is_duplicate":
+        try:
+            _send_text(cfg, chat_id, duplicate_override_reply(cfg, text))
+        except Exception:
+            log.exception("Fehler bei /is_duplicate-Befehl")
+            _send_text(cfg, chat_id, "Korrektur fehlgeschlagen, siehe Container-Log.")
+        return
+
+    if first_word == "/not_duplicate":
+        try:
+            _send_text(cfg, chat_id, not_duplicate_reply(cfg, text))
+        except Exception:
+            log.exception("Fehler bei /not_duplicate-Befehl")
+            _send_text(cfg, chat_id, "Korrektur fehlgeschlagen, siehe Container-Log.")
         return
 
     if first_word == "/stats":
