@@ -21,7 +21,7 @@ from .models import Track
 log = logging.getLogger(__name__)
 
 API = "https://api-v2.soundcloud.com"
-NET_RETRIES = 3  # Versuche pro Anfrage bei ConnectionError/Timeout
+NET_BACKOFF_S: tuple[float, ...] = (5, 15, 45, 90)  # Wartezeit vor Versuch 2, 3, 4, 5
 UA = (
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"
@@ -46,6 +46,7 @@ class SoundCloudClient:
         self.s.headers["User-Agent"] = UA
         self.client_id: str | None = None
         self.delay = request_delay
+        self.net_down = False
         self._lib = None  # soundcloud-v2-Lib, nur für Reposts/Likes der Referenz-Accounts
 
     @property
@@ -62,16 +63,26 @@ class SoundCloudClient:
 
         Ohne das fällt eine ganze Quelle aus dem Digest, obwohl der nächste Versuch
         Sekunden später klappt. HTTP-Statuscodes behandelt der Aufrufer.
+        Nach einem endgültigen Fehlschlag wird net_down gesetzt: weitere Zugriffe
+        scheitern dann sofort, bis wieder einer gelingt.
         """
-        for attempt in range(NET_RETRIES):
+        if self.net_down:
+            r = self.s.get(url, **kw)
+            self.net_down = False
+            return r
+        for attempt in range(len(NET_BACKOFF_S) + 1):
             try:
-                return self.s.get(url, **kw)
+                r = self.s.get(url, **kw)
             except (requests.ConnectionError, requests.Timeout) as e:
-                if attempt == NET_RETRIES - 1:
+                if attempt == len(NET_BACKOFF_S):
+                    self.net_down = True
                     raise
-                wait = 2 * (attempt + 1)
+                wait = NET_BACKOFF_S[attempt]
                 log.warning("Netzwerkfehler (%s), neuer Versuch in %ds", type(e).__name__, wait)
                 time.sleep(wait)
+            else:
+                self.net_down = False
+                return r
         raise AssertionError("unerreichbar")
 
     # ---------- client_id ----------

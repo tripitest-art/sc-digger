@@ -48,11 +48,11 @@ def test_get_wiederholt_bei_timeout(client):
     assert client._get("/foo") == {"ok": True}
 
 
-def test_get_gibt_nach_drei_versuchen_auf(client):
+def test_get_gibt_nach_allen_wartezeiten_auf(client):
     client.s = FlakySession(fails=99)
     with pytest.raises(requests.ConnectionError):
         client._get("/foo")
-    assert client.s.calls == 3
+    assert client.s.calls == len(sc_mod.NET_BACKOFF_S) + 1
 
 
 def test_client_id_abruf_wiederholt(client):
