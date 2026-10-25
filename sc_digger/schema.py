@@ -156,8 +156,8 @@ FIELDS: tuple[Field, ...] = (
        "ID3- und Vorbis-Tags automatisch in die Zieldatei schreiben (Artist, Title, BPM, Key, Genre, URL, Lautheit)."),
     # --- quality ---
     _f("quality.accepted_lossless", "list", "Verlustfreie Formate",
-       "Dateiendungen, die als verlustfreies Original akzeptiert werden (Standard: wav, aiff, aif, flac). "
-       "Der Codec muss zusätzlich verlustfrei sein (pcm_*, flac, alac etc.). Für ALAC kann m4a ergänzt werden; "
+       "Dateiendungen, die als verlustfreies Original akzeptiert werden (Standard: wav, aiff, aif, flac, m4a). "
+       "Der Codec muss zusätzlich verlustfrei sein (pcm_*, flac, alac etc.). m4a steht für ALAC; "
        "AAC in .m4a wird weiterhin am Codec abgewiesen."),
     _f("quality.min_mp3_bitrate_kbps", "int", "Mindest-MP3-Bitrate",
        "Mindest-Bitrate für CBR-MP3 in kbps (Standard 320 kbps). Niedrigere Bitraten werden aussortiert.", min=1),
