@@ -9,6 +9,11 @@ concurrency:
   group: tests-${{ github.ref }}
   cancel-in-progress: true
 
+# Beide Jobs lesen nur. Ohne diesen Block erbte der GITHUB_TOKEN die Repo-Defaults,
+# die vor Februar 2023 auf read-write stehen (CodeQL: actions/missing-workflow-permissions).
+permissions:
+  contents: read
+
 jobs:
   tests:
     runs-on: ubuntu-latest
@@ -36,3 +41,26 @@ jobs:
             echo "::error::Möglicher Token im Repo gefunden (siehe oben)."
             exit 1
           fi
+
+  # Der pre-push-Hook auf dem Worker-Server läuft als root und ruft `python -m pytest -q`.
+  # Dieser Job prüft denselben Befehl mit denselben Abhängigkeiten: sonst fällt erst der
+  # Push aus, wenn ein Test nur als root scheitert (#324).
+  tests-als-root:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: System-Pakete (die Suite braucht sie auch als root)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg libsndfile1 libchromaprint-tools
+
+      - name: Python-Pakete
+        run: pip install -r requirements.txt pytest
+
+      - name: Tests als root (Umgebung des pre-push-Hooks)
+        run: sudo -E "$(command -v python)" -m pytest -q
