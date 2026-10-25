@@ -151,7 +151,8 @@ organize:
   write_tags: true
 
 quality:
-  accepted_lossless: [wav, aiff, aif, flac]
+  # m4a nur für ALAC; AAC in .m4a fällt am Codec durch.
+  accepted_lossless: [wav, aiff, aif, flac, m4a]
   min_mp3_bitrate_kbps: 320
   # Fake-Check: Spektrum-Cutoff. Echte 320er reichen bis ~20 kHz.
   min_cutoff_hz_for_320: 19000
