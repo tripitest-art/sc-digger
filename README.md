@@ -116,7 +116,7 @@ docker compose run --rm sc-digger python -m sc_digger.main --dry-run -v
 docker compose up -d
 ```
 
-Die Sammlung wird in `docker-compose.yml` mit `:ro` eingebunden und bleibt schreibgeschützt. Der Container startet `cron` und den Bot (`entrypoint.sh`); der Bot ist der Hauptprozess. Lässt sich die Crontab nicht installieren, bricht der Start mit Fehlermeldung und Exit-Code 1 ab, statt ohne Kaufliste- und Scout-Lauf weiterzulaufen.
+Die Sammlung wird in `docker-compose.yml` mit `:ro` eingebunden und bleibt schreibgeschützt. Der Dienst `sc-digger` setzt `cap_drop: ALL` und gibt nur `CHOWN`, `DAC_OVERRIDE`, `FOWNER`, `SETGID` und `SETUID` zurück, die `cron` und die Dateizugriffe brauchen; zusätzlich ist `no-new-privileges` gesetzt. Der Container startet `cron` und den Bot (`entrypoint.sh`); der Bot ist der Hauptprozess. Lässt sich die Crontab nicht installieren, bricht der Start mit Fehlermeldung und Exit-Code 1 ab, statt ohne Kaufliste- und Scout-Lauf weiterzulaufen.
 
 Auf einem Server setzt `./set-secret.sh NAME` die Zugangsdaten verdeckt in die `.env`; `./update.sh` holt den neuen Stand von `main` und baut neu. Betrieb, Mounts und Logs beschreibt `BETRIEB.md`.
 
