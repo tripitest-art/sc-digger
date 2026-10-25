@@ -9,6 +9,11 @@ concurrency:
   group: tests-${{ github.ref }}
   cancel-in-progress: true
 
+# Beide Jobs lesen nur. Ohne diesen Block erbte der GITHUB_TOKEN die Repo-Defaults,
+# die vor Februar 2023 auf read-write stehen (CodeQL: actions/missing-workflow-permissions).
+permissions:
+  contents: read
+
 jobs:
   tests:
     runs-on: ubuntu-latest
