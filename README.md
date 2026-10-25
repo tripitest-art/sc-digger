@@ -484,6 +484,8 @@ pip install -r requirements.txt pytest
 python -m pytest -q
 ```
 
+Abhängigkeiten: `requirements.txt` nennt nur die Untergrenzen (hier pflegt Dependabot). Das Docker-Image installiert dagegen aus `requirements.lock` (exakte Versionen mit Hashes, `--require-hashes`). Nach jeder Änderung an `requirements.txt` das Lockfile mit `scripts/update-lock.sh` neu erzeugen (braucht `uv`) und mit committen; `tests/test_requirements_lock.py` wird sonst rot. Das Lockfile gilt für Python 3.12 auf Linux x86_64.
+
 Die Befehle brauchen `ffmpeg` im `PATH` (Qualitätsprüfung und Analyse); `fpcalc`/Chromaprint ist optional für Fingerprints. Tests laufen ohne Netzwerk (Fakes statt SoundCloud und Telegram, synthetisches Audio per ffmpeg). Ein Pull Request durchläuft die Checks `tests`, `acceptance-guard` und CodeQL. Der `acceptance-guard` vergleicht Akzeptanztests mit dem Issue und schützt `.github/` sowie die Test-Konfiguration.
 
 Ein Probelauf ohne Telegram und ohne Downloads:
