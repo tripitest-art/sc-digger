@@ -85,8 +85,8 @@ flowchart TD
 |---|---|---|---|
 | **Phase 1** | Basis & DJ-Ready Pipeline | ✅ **Abgeschlossen** | Native Downloads, FFT-Fake-Check, BPM/Key, Tagging, Inbox-Organize, Modi discover/playlist/similar |
 | **Phase 1.5** | Robustheit | ✅ **Abgeschlossen** | BPM-Oktav-Korrektur, Health-Alarm |
-| **Phase 2** | Track-DB & Library Audit | 🟡 **Fast fertig** | Zentrale DB ✅, `audit` ✅, Fingerprint-Duplikate ✅, LUFS-Tags ✅, Container-Healthcheck ✅, Inbox-Normalisierung ✅, robuste Discovery ✅, Retry-Queue ✅, Engagement-Tempo ✅, `/stats` ✅; offen: Sonntags-Digest mit Grafik (#116) |
-| **Phase 3** | Feedback & Smart Ingestion | 🟡 **Laufend** | 👍/👎 ✅, Cloud-Downloads ✅, DJ-Sets inkl. kurzer Mixe ✅, Rekordbox-Wochen-XML ✅, Curator-Mining 🟡 (Vorschläge ✅), Cloud-Quellen erweitern ✅, Kaufliste ✅, Eingangsordner ✅, Promo-Abzug und Sperrliste ✅, Tag-Rotation/Exploration ✅ (#135, #141), Artist-Reputation ✅ (#140), Live-Preview 🟡 (Snippet #132 ✅, `/preview` #147 ✅; offen: Stream-Preview #168), Rekordbox-Komfort 🔵 (3.11), Status „übernommen“ 🔵 (3.12) |
+| **Phase 2** | Track-DB & Library Audit | 🟡 **Fast fertig** | Zentrale DB ✅, `audit` ✅, Fingerprint-Duplikate ✅, LUFS-Tags ✅, Container-Healthcheck ✅, Inbox-Normalisierung ✅, robuste Discovery ✅, Retry-Queue ✅, Engagement-Tempo ✅, `/stats` ✅, Sonntags-Digest mit Grafik ✅ (#116, Standard aus); offen: nichts |
+| **Phase 3** | Feedback & Smart Ingestion | 🟡 **Laufend** | 👍/👎 ✅, Cloud-Downloads ✅, DJ-Sets inkl. kurzer Mixe ✅, Rekordbox-Wochen-XML ✅, Curator-Mining 🟡 (Vorschläge ✅), Cloud-Quellen erweitern ✅, Kaufliste ✅, Eingangsordner ✅, Promo-Abzug und Sperrliste ✅, Tag-Rotation/Exploration ✅ (#135, #141), Artist-Reputation ✅ (#140), Live-Preview ✅ (Snippet #132, `/preview` #147, Stream-Preview #168, beide Schalter standardmäßig aus), Rekordbox-Komfort 🔵 (3.11), Status „übernommen“ 🔵 (3.12) |
 | **Phase 4** | Geschmacksmodell & KI-Copilot | 🔵 Geplant | Audio-Embeddings, persönlicher Taste-Score, Qwen-Copilot via Tool-Calling; begonnen: Trend-Radar (#122) |
 | **Phase 5** | DJ-Performance & Set-Tools | 🔵 5.1–5.4 geplant, Rest 🟣 Vision | Harmonic Mixing per `/mix` ✅; Strukturanalyse, Auto-Cues, Drop-Preview, Breakdown-Anteil; später Embedding-Recommender, Web-Dashboard, Stem-Extraktion |
 
@@ -260,7 +260,7 @@ Ein Track, der aus der Inbox in die Sammlung gewandert ist, ist das stärkste Po
 * Engagement-Snapshots pro Lauf, Wachstum pro Track und Artist, wöchentlicher Trend-Report.
 * Im Wochen-Digest eingebunden (#162): Trend-Abschnitt über `digest.trend_radar` steuerbar.
 
-### 4.1 Audio-Embeddings (Workstation) (✅ Vektorspeicher & Job-Queue implementiert, #362)
+### 4.1 Audio-Embeddings (Workstation) (🟡 Vektorspeicher und Job-Queue gebaut, Verkettung fehlt, #362)
 * Vektorspeicher in Track-DB (`track_embeddings`, Migration 13) für kompakte float32-Vektoren (`pack_vector`/`unpack_vector`), Kosinus-Ähnlichkeit (`cosine_similarity`).
 * Job-Queue-Integration: `JobType.EMBEDDING` mit `enqueue_embedding_job`, Ergebnisverarbeitung `apply_embedding_result` und Worker-Handler (`make_embedding_handler`).
 * Embeddings über Essentia (Discogs-EffNet / MAEST) oder CLAP als Aufgabe auf der Workstation.
@@ -272,7 +272,7 @@ Ein Track, der aus der Inbox in die Sammlung gewandert ist, ist das stärkste Po
   Trainingsdaten reichen nicht: Brickwall-Master haben fast alle eine hohe Flachheit, und Gesang lässt sich daran
   nicht erkennen. Abstimmen mit Issue #52 (Energie-Klassifizierung).
 
-### 4.2 Persönlicher Taste-Score (Anti-TikTok-Filter) (✅ Implementiert, #353 / #366)
+### 4.2 Persönlicher Taste-Score (Anti-TikTok-Filter) (🟡 Bibliothek vorhanden, nicht angeschlossen, #353 / #366)
 * Logistische Regression (`sc_digger/taste.py`) auf Audio-Embeddings und Feedback (👍/👎 aus `sc_feedback`) zur Vorhersage des Gefallens von Tracks.
 * Ergänzt das Engagement-Scoring im Digest; filtert Pop-EDM/TikTok-Bounce aus `#hardtechno`
   anhand des Klangs statt anhand von Titeln.
@@ -320,7 +320,7 @@ Gemeinsamer Baustein für Auto-Cues, Drop-Preview und Breakdown-Anteil. Wird ein
 ### 5.5 Set-Tools & Web-Dashboard (🟣 / 🟡 Weitgehend umgesetzt)
 - [x] **Rekordbox-XML-Export:** wöchentliche Playlist „sc-digger KW xx“ aus der Inbox, ohne manuellen Import (siehe 3.4).
 - [x] **Harmonic Mixing:** `/mix <Key> <BPM>` im Bot listet harmonisch und tempomäßig passende Tracks (#76, #94, #103) sowie Web-Interface unter `/mix` (#231).
-- [x] **Web-Curation-Dashboard (Phase 1):** FastAPI + Dark Theme mit Live-Status (`/`), Digest-Explorer mit Multi-DB-Query (`/digest`), interaktivem Feedback (👍/👎), Kaufliste (`/kaufliste`), Harmonic Mix Finder & URL-Scanner (`/mix`) und Gate-Assistent Drag & Drop Upload (`/intake`).
+- [x] **Web-Curation-Dashboard (Phase 1):** FastAPI + Dark Theme mit Live-Status (`/`), Digest-Explorer mit Multi-DB-Query (`/digest`), interaktivem Feedback (👍/👎), Kaufliste (`/kaufliste`), Harmonic Mix Finder & URL-Scanner (`/mix`) und Gate-Assistent Drag & Drop Upload im Digest-Explorer (`/digest`, `POST /api/upload-intake`; eine eigene Seite `/intake` gibt es nicht).
 - [x] **Harmonischer Set-Builder:** `/mix`, `POST /api/set-builder` berechnet harmonische Übergangsketten mit Segment-Grenzen, M3U8-Download über `GET /api/set-builder/m3u8` (#346).
 - [x] **Audio-Vorhören im Track-Explorer:** `/tracks`, `GET /api/audio/{track_id}` mit sicherem Pfad-Check und HTTP-Range-Requests (#350 / #357).
 - [x] **Statusseite & Version-Monitor:** `/` und `GET /api/status` zeigt KI-Workstation-Status, Job-Queue-Zähler und deployte Version (`data/version.json`, #337, #358).
