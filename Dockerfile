@@ -2,8 +2,9 @@ FROM python:3.12-slim
 RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg cron libsndfile1 libchromaprint-tools \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Reproduzierbarer Build: exakt die Versionen und Hashes aus requirements.lock (Neu erzeugen: scripts/update-lock.sh).
+COPY requirements.lock .
+RUN pip install --no-cache-dir --require-hashes -r requirements.lock
 COPY sc_digger ./sc_digger
 COPY config.yaml .
 COPY entrypoint.sh .
