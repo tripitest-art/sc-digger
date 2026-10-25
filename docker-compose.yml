@@ -3,6 +3,16 @@ services:
     build: .
     restart: unless-stopped
     init: true                     # räumt Zombie-Prozesse der Cron-Jobs ab
+    security_opt:
+      - no-new-privileges:true     # keine Rechteausweitung über setuid-Binaries
+    cap_drop:
+      - ALL                        # alle Docker-Standardrechte entfernen
+    cap_add:                       # nur was cron (setuid/setgid) und die Dateizugriffe brauchen
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
     env_file: .env                 # TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, SOUNDCLOUD_AUTH_TOKEN
     environment:
       TZ: Europe/Berlin
