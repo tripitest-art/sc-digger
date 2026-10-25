@@ -6,16 +6,25 @@ set -e
 export -p > /app/cron.env
 chmod 600 /app/cron.env
 
+# Scheitert crontab, fehlen die Jobs still (Healthcheck prüft nur, ob cron läuft).
+# Lieber laut abbrechen: der Neustart ist in docker compose ps sichtbar.
+install_crontab() {
+    crontab /etc/cron.d/sc-digger || {
+        echo "FEHLER: crontab konnte nicht installiert werden, Cron-Jobs fehlen" >&2
+        exit 1
+    }
+}
+
 # Wöchentlicher Kaufliste-Lauf (Sonntag 20:00)
 if [ -f /etc/cron.d/sc-digger ] && ! grep -q "send_kaufliste" /etc/cron.d/sc-digger; then
     echo "0 20 * * 0 . /app/cron.env; cd /app && python -c \"from sc_digger.models import Config; from sc_digger.output import send_kaufliste; send_kaufliste(Config.load('config.yaml'))\" >> /proc/1/fd/1 2>&1" >> /etc/cron.d/sc-digger
-    crontab /etc/cron.d/sc-digger 2>/dev/null || true
+    install_crontab
 fi
 
 # Täglicher Scout-Lauf (18:00), getrennt vom discover-Lauf im Dockerfile
 if [ -f /etc/cron.d/sc-digger ] && ! grep -q "sc_digger.main scout" /etc/cron.d/sc-digger; then
     echo "0 18 * * * . /app/cron.env; cd /app && python -m sc_digger.main scout >> /proc/1/fd/1 2>&1" >> /etc/cron.d/sc-digger
-    crontab /etc/cron.d/sc-digger 2>/dev/null || true
+    install_crontab
 fi
 
 cron

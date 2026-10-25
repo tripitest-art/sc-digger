@@ -60,7 +60,7 @@ Modul anlegt, trägt es in die Tabelle ein.
 | `sc_digger/schema.py` | Config-Schema: `FIELDS`/`SECTION_TITLES`, `validate_config` (Typen, Wertebereiche, Warnungen), `deep_merge` für die lokale Override-Datei, Prüfbefehl `python -m sc_digger.schema` |
 | `sc_digger/style.py` | Schranz-Matrix (4 Cluster, 13 Subgenres, 3 Achsen), Versionstyp-Erkennung, Rekordbox-Farb-/Kommentar-Empfehlung, Energie-Stufe, `classify_track` |
 | `config.yaml` | Einzige Konfiguration (Tags, Referenz-Accounts, Schwellwerte). Ist die Produktivkonfiguration. |
-| `entrypoint.sh` | Schreibt `cron.env` (Cron hat sonst weder PATH noch Secrets), startet cron und Bot |
+| `entrypoint.sh` | Schreibt `cron.env` (Cron hat sonst weder PATH noch Secrets), hängt die Kaufliste-/Scout-Jobs an und installiert sie per `install_crontab` (ein Fehler dort bricht den Start mit Exit 1 ab, damit fehlende Jobs nicht unbemerkt bleiben), startet cron und Bot |
 | `skills/*/SKILL.md` | Abläufe für lokale Modelle in LibreChat (Review, Worker, Planer), per GitHub Skill Sync gespiegelt; Regeln bleiben in `AGENTS.md` |
 | `.github/scripts/acceptance_guard.py` | CI-Check `acceptance-guard`: Akzeptanztests = Issue, keine neuen skips, CI/Test-Konfiguration geschützt, PR-Text ausgefüllt (`Closes #N`, `Worker:`) |
 | `.github/workflows/codeql.yml` | Statische Sicherheitsanalyse mit CodeQL (Python, Actions); ignoriert `tests/**`, um False-Positives bei Test-Assertions zu verhindern |
