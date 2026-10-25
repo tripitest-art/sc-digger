@@ -99,6 +99,11 @@ def _check_auth(request: Request, password: str | None, allow_anonymous: bool) -
     return secrets.compare_digest(given, password or "")
 
 
+# Einzige Pfade ohne Anmeldung. Alles andere (auch unbekannte Pfade) verlangt Basic-Auth:
+# Die Prüfung sitzt in einer Middleware (Default-deny), nicht in den einzelnen Handlern.
+PUBLIC_PATHS = frozenset({"/healthz"})
+
+
 def _same_origin(request: Request) -> bool:
     """True, wenn Origin oder Referer denselben Host (netloc) wie der Host-Header hat.
 
@@ -411,14 +416,20 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
     app.state.password = password
     app.state.allow_anonymous = allow_anonymous
 
+    @app.middleware("http")
+    async def require_login(request: Request, call_next):
+        if request.url.path not in PUBLIC_PATHS and not _check_auth(
+            request, password, allow_anonymous
+        ):
+            return _unauthorized()
+        return await call_next(request)
+
     @app.get("/healthz")
     def healthz() -> dict[str, bool]:
         return {"ok": True}
 
     @app.get("/", response_class=HTMLResponse)
     def index(request: Request):
-        if not _check_auth(request, password, allow_anonymous):
-            return _unauthorized()
         snap = collect_status(cfg)
         overview = get_collection_overview(cfg["state"]["track_db_path"])
         template = _env.get_template("status.html")
@@ -428,8 +439,6 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
 
     @app.get("/api/status")
     def api_status(request: Request):
-        if not _check_auth(request, password, allow_anonymous):
-            return _unauthorized()
         return JSONResponse(collect_status(cfg).to_dict())
 
     # Job-Queue für externe GPU-Worker (Issue #330): claimen, Lebenszeichen und Ergebnis
@@ -438,8 +447,6 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
     # Browser-Formulare; geschützt ist die API über dieselbe Basic-Anmeldung wie der Rest.
     @app.post("/api/jobs/claim")
     async def api_jobs_claim(request: Request):
-        if not _check_auth(request, password, allow_anonymous):
-            return _unauthorized()
         raw = await request.body()
         payload: dict = {}
         if raw.strip():
@@ -457,8 +464,6 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
 
     @app.post("/api/jobs/{job_id}/heartbeat")
     def api_jobs_heartbeat(request: Request, job_id: int):
-        if not _check_auth(request, password, allow_anonymous):
-            return _unauthorized()
         if heartbeat_job(cfg["state"]["track_db_path"], job_id):
             return JSONResponse({"ok": True})
         return JSONResponse(
@@ -468,8 +473,6 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
 
     @app.post("/api/jobs/{job_id}/complete")
     async def api_jobs_complete(request: Request, job_id: int):
-        if not _check_auth(request, password, allow_anonymous):
-            return _unauthorized()
         try:
             payload = await request.json()
         except Exception:
@@ -507,8 +510,6 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
         Gleiche Wurzeln und derselbe Schutz wie /api/audio/{track_id}: nur lesend,
         404 bei unbekanntem Job, fehlendem Track oder Datei außerhalb von Inbox/Sammlung.
         """
-        if not _check_auth(request, password, allow_anonymous):
-            return _unauthorized()
         with TrackDB(cfg["state"]["track_db_path"]) as db:
             job = db.get_job_by_id(job_id)
             track = db.get_track_by_id(job.track_id) if job is not None else None
@@ -520,14 +521,10 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
     # Track-DB, ausschließlich `mode=ro`, keine Schreibpfade.
     @app.get("/api/database/overview")
     def api_database_overview(request: Request):
-        if not _check_auth(request, password, allow_anonymous):
-            return _unauthorized()
         return JSONResponse(get_collection_overview(cfg["state"]["track_db_path"]).to_dict())
 
     @app.get("/api/tracks")
     def api_tracks(request: Request):
-        if not _check_auth(request, password, allow_anonymous):
-            return _unauthorized()
         params = request.query_params
         result = query_tracks(
             cfg["state"]["track_db_path"],
@@ -549,8 +546,6 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
     # erlauben das Springen im Track, ohne die Datei komplett zu laden.
     @app.get("/api/audio/{track_id}")
     def api_audio(request: Request, track_id: int):
-        if not _check_auth(request, password, allow_anonymous):
-            return _unauthorized()
         with TrackDB(cfg["state"]["track_db_path"]) as db:
             track = db.get_track_by_id(track_id)
         if track is None:
@@ -561,8 +556,6 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
     # und Treffertabelle serverseitig gerendert, Paginierung über offset.
     @app.get("/tracks", response_class=HTMLResponse)
     def tracks_page(request: Request):
-        if not _check_auth(request, password, allow_anonymous):
-            return _unauthorized()
         params = request.query_params
         filters = {
             "q": params.get("q") or "",
@@ -623,8 +616,6 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
         # Harmonic Mix Finder (Issue #231): dieselbe Auswahl wie der Telegram-Befehl /mix,
         # aber als Formular. Nur lesend – die Track-DB wird über mode=ro geöffnet, damit ein
         # GET keine Datei und kein Schema anlegt.
-        if not _check_auth(request, password, allow_anonymous):
-            return _unauthorized()
         params = request.query_params
         key = (params.get("key") or "").strip()
         bpm_raw = (params.get("bpm") or "").strip()
@@ -661,8 +652,6 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
     # lesen nur; die Playlist landet als M3U8 im Browser, nicht auf der Sammlung.
     @app.post("/api/set-builder")
     async def api_set_builder(request: Request):
-        if not _check_auth(request, password, allow_anonymous):
-            return _unauthorized()
         try:
             payload = await request.json()
         except Exception:
@@ -719,8 +708,6 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
 
     @app.get("/api/set-builder/m3u8")
     def api_set_builder_m3u8(request: Request):
-        if not _check_auth(request, password, allow_anonymous):
-            return _unauthorized()
         params = request.query_params
         name = (params.get("name") or "set").strip() or "set"
         raw_ids = (params.get("track_ids") or "").strip()
@@ -751,8 +738,6 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
     async def api_check_url(request: Request):
         # On-Demand-URL-Scanner (Issue #231): beliebiger SoundCloud-Link -> Trefferliste als JSON.
         # Origin-Prüfung wie bei den übrigen POST-Routen, obwohl hier nichts geschrieben wird.
-        if not _check_auth(request, password, allow_anonymous):
-            return _unauthorized()
         if not _same_origin(request):
             return JSONResponse({"ok": False, "error": "Ungültige Herkunft"}, status_code=403)
         try:
@@ -779,8 +764,6 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
 
     @app.get("/api/digest")
     def api_digest(request: Request):
-        if not _check_auth(request, password, allow_anonymous):
-            return _unauthorized()
         params = request.query_params
         result = query_digest(
             cfg["state"]["db_path"],
@@ -797,8 +780,6 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
 
     @app.get("/digest", response_class=HTMLResponse)
     def digest_page(request: Request):
-        if not _check_auth(request, password, allow_anonymous):
-            return _unauthorized()
         params = request.query_params
         filters = {
             "q": params.get("q") or "",
@@ -844,8 +825,6 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
     # JSON-API und Seite, Bewertungen laufen über das bestehende POST /api/feedback.
     @app.get("/api/kaufliste")
     def api_kaufliste(request: Request):
-        if not _check_auth(request, password, allow_anonymous):
-            return _unauthorized()
         params = request.query_params
         result = query_store_items(
             cfg["state"]["track_db_path"],
@@ -858,8 +837,6 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
 
     @app.get("/kaufliste", response_class=HTMLResponse)
     def kaufliste_page(request: Request):
-        if not _check_auth(request, password, allow_anonymous):
-            return _unauthorized()
         params = request.query_params
         filters = {
             "q": params.get("q") or "",
@@ -901,8 +878,6 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
     # nicht über einen Download: der Track wird nur für den nächsten regulären Lauf frei.
     @app.get("/api/rejected")
     def api_rejected(request: Request):
-        if not _check_auth(request, password, allow_anonymous):
-            return _unauthorized()
         params = request.query_params
         return JSONResponse(query_rejected_tracks(
             cfg["state"]["db_path"],
@@ -913,8 +888,6 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
 
     @app.get("/rejected", response_class=HTMLResponse)
     def rejected_page(request: Request):
-        if not _check_auth(request, password, allow_anonymous):
-            return _unauthorized()
         params = request.query_params
         filters = {"q": params.get("q") or ""}
         page_size = max(1, min(_query_int(params.get("limit"), DEFAULT_LIMIT), MAX_LIMIT))
@@ -952,8 +925,6 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
 
     @app.post("/api/retry")
     async def api_retry(request: Request):
-        if not _check_auth(request, password, allow_anonymous):
-            return _unauthorized()
         if not _same_origin(request):
             return JSONResponse({"ok": False, "error": "Ungültige Herkunft"}, status_code=403)
         try:
@@ -982,8 +953,6 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
     # sehen. Origin-Prüfung wie beim Konfigeditor, weil die Route schreibt (CSRF).
     @app.post("/api/feedback")
     async def api_feedback(request: Request):
-        if not _check_auth(request, password, allow_anonymous):
-            return _unauthorized()
         if not _same_origin(request):
             return JSONResponse({"ok": False, "error": "Ungültige Herkunft"}, status_code=403)
         try:
@@ -1016,8 +985,6 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
     # Feedback, weil die Route schreibt (CSRF).
     @app.post("/api/upload-intake")
     async def api_upload_intake(request: Request):
-        if not _check_auth(request, password, allow_anonymous):
-            return _unauthorized()
         if not _same_origin(request):
             return JSONResponse({"ok": False, "error": "Ungültige Herkunft"}, status_code=403)
         try:
@@ -1082,16 +1049,12 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
 
     @app.get("/config", response_class=HTMLResponse)
     def config_page(request: Request):
-        if not _check_auth(request, password, allow_anonymous):
-            return _unauthorized()
         base, local = _read_files()
         saved = request.query_params.get("saved") == "1"
         return _render_config(base, local, problems=[], saved=saved)
 
     @app.post("/config/preview")
     async def config_preview(request: Request):
-        if not _check_auth(request, password, allow_anonymous):
-            return _unauthorized()
         if not _same_origin(request):
             return PlainTextResponse("Ungültige Herkunft", status_code=403)
         form = {key: value for key, value in (await request.form()).items()}
@@ -1106,8 +1069,6 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
 
     @app.post("/config/save")
     async def config_save(request: Request):
-        if not _check_auth(request, password, allow_anonymous):
-            return _unauthorized()
         if not _same_origin(request):
             return PlainTextResponse("Ungültige Herkunft", status_code=403)
         form = {key: value for key, value in (await request.form()).items()}
@@ -1122,8 +1083,6 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
 
     @app.post("/config/reset")
     async def config_reset(request: Request):
-        if not _check_auth(request, password, allow_anonymous):
-            return _unauthorized()
         if not _same_origin(request):
             return PlainTextResponse("Ungültige Herkunft", status_code=403)
         path = str((await request.form()).get("path", ""))
