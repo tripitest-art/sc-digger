@@ -229,7 +229,7 @@ Ursprünglicher Plan:
 ### 3.10 In Arbeit / geplant
 * Tag-Rotation & Exploration-Modus (✅ #135 und #141, zu #56).
 * Artist-Reputation: Bonus/Malus aus Track-DB und Feedback (✅ #140, zu #57).
-* Live-Preview: Snippet-Extraktion (✅ #132) und `/preview` für heruntergeladene Tracks (✅ #147); offen: Stream-Preview für Digest-Tracks (#168).
+* Live-Preview: Snippet-Extraktion (✅ #132), `/preview` für heruntergeladene Tracks (✅ #147) und Stream-Preview für Digest-Tracks (✅ #168, Schalter `preview.stream_enabled` standardmäßig aus); offen: nichts.
 
 ### 3.11 Rekordbox-Komfort (🔵 Geplant)
 Zwei kleine Erweiterungen der bestehenden XML, ohne neue Analyse.
