@@ -220,6 +220,9 @@ FIELDS: tuple[Field, ...] = (
     _f("cues.auto_queue", "bool", "Cue-Jobs automatisch einreihen",
        "Für jeden neuen Inbox-Track einen Cue-Job (JobType.CUES) für den GPU-Worker einreihen; "
        "der Worker lädt die Datei über die Job-API und meldet First Kick, Drops und Breakdown zurück."),
+    _f("embeddings.auto_queue", "bool", "Embedding-Jobs automatisch einreihen",
+       "Für jeden neuen Inbox-Track einen Embedding-Job (JobType.EMBEDDING) für den GPU-Worker einreihen; "
+       "ohne Worker mit Embedding-Modell bleiben die Jobs offen (Standard: aus)."),
     # --- rekordbox ---
     _f("rekordbox.xml_enabled", "bool", "XML-Export aktiv",
        "Rekordbox-XML mit Playlists pro Kalenderwoche automatisch in die Inbox schreiben."),

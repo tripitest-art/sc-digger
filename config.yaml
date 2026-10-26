@@ -225,6 +225,11 @@ cues:
   # über /api/jobs/<id>/audio und meldet das Ergebnis über /api/jobs/<id>/complete zurück.
   auto_queue: true
 
+embeddings:
+  # Für jeden neuen Inbox-Track einen Embedding-Job in die Queue legen (GPU-Worker).
+  # Erst einschalten, wenn der Worker ein Embedding-Modell hat; sonst bleiben die Jobs offen.
+  auto_queue: false
+
 rekordbox:
   # Rekordbox-XML-Export: schreibt eine XML mit Playlists pro Woche in die Inbox
   xml_enabled: true

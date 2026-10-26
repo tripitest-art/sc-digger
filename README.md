@@ -196,6 +196,7 @@ Alle Optionen stehen in `config.yaml`; die folgende Liste nennt die Werte aus di
 | `telegram.max_items_per_digest` | Obergrenze der Tracks im Digest (nicht in `playlist`/`check`) | `25` |
 | `telegram.feedback_buttons` | Inline-Buttons für Feedback anzeigen | `true` |
 | `cues.auto_queue` | Cue-Jobs für neue Inbox-Tracks in die Queue legen (GPU-Worker) | `true` |
+| `embeddings.auto_queue` | Embedding-Jobs für neue Inbox-Tracks in die Queue legen (GPU-Worker) | `false` |
 | `rekordbox.xml_enabled` | Rekordbox-XML schreiben | `true` |
 | `rekordbox.xml_path` | Zielpfad der XML | `/music/inbox/sc-digger.xml` |
 | `rekordbox.path_map` | Mapping Server-Pfad zu Laptop-Pfad | `/music/inbox` → `Z:/Highres/_sc-digger-inbox` |
@@ -389,7 +390,7 @@ Gefundene Tracks werden gegen die lokale Sammlung abgeglichen, Duplikate übersp
 | `dj_export.py` | Harmonischer DJ-Export: M3U8-Playlists, CSV und Set-Reports nach Camelot-Nachbarschaft und ΔBPM |
 | `organize.py` | Inbox-Sortierung `<BPM>/<Camelot>/`, Tags schreiben (inkl. RIFF-INFO für WAV) |
 | `rekordbox.py` | Rekordbox-XML mit einer Playlist pro Woche aus der Inbox |
-| `embeddings.py` | Audio-Embeddings: Vektorspeicher in Track-DB, Queue-Job und Ergebnisverarbeitung — Bibliothek; Einreihen, Worker-Handler und Ergebnisspeicherung sind noch nicht angeschlossen |
+| `embeddings.py` | Audio-Embeddings: Vektorspeicher in Track-DB, Queue-Job und Ergebnisverarbeitung — Bibliothek; Einreihen im täglichen Lauf über `embeddings.auto_queue`, Worker-Handler und Ergebnisspeicherung sind noch nicht angeschlossen |
 | `similarity.py` | Ähnlichkeitssuche: Chromaprint-Fingerprints („Mehr davon“) und Kosinus-Ähnlichkeit auf Embeddings mit Fallback |
 | `taste.py` | Taste-Score: Logistische Regression auf Embeddings und Feedback zur Vorhersage des Gefallens — Bibliothek; kein Lauf, Bot-Befehl oder Dashboard ruft sie auf |
 | `db.py` | Zentrale Track-DB: Metadaten, Fingerprints, Jobs-Queue, versionierte Migrationen |

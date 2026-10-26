@@ -31,6 +31,7 @@ from .cloud import download_cloud
 from .collection import Collection, open_collection
 from .cues import write_breakdown_tag, write_drop_tag, write_first_kick_tag
 from .db import TrackDB
+from .embeddings import enqueue_embedding_job
 from .health import Health
 from .intake import AUDIO_EXTS, find_ready_files, track_from_file
 from .models import Config, DownloadKind, Track
@@ -254,6 +255,8 @@ def finish_file(t: Track, path: Path, inbox: Path, cfg: Config) -> Path | None:
                 # Der GPU-Worker holt den Job per API und schreibt Cues zurück (Issue #349).
                 if (cfg.raw.get("cues") or {}).get("auto_queue", True):
                     enqueue_cue_job(db, stored)
+                if (cfg.raw.get("embeddings") or {}).get("auto_queue", False):
+                    enqueue_embedding_job(db, stored)
         except Exception as e:
             log.warning("Persistieren in TrackDB fehlgeschlagen: %s", e)
 
