@@ -1,5 +1,5 @@
 requests>=2.31
-PyYAML>=6.0
+PyYAML>=6.0.3
 numpy>=1.26
 scipy>=1.11
 scdl>=3.0
