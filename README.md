@@ -94,7 +94,7 @@ Der Bot läuft dauerhaft (Hauptprozess des Containers) und antwortet nur im Chat
 | `/preview <Suchtext oder id>` | 20s-Sprachnachricht eines heruntergeladenen Tracks (Track-DB, seit #147) |
 | `/preview sc:<SoundCloud-ID>` | 20s-Sprachnachricht direkt aus dem SoundCloud-Stream, auch für nicht heruntergeladene Tracks (Schalter `preview.stream_enabled`, Standard aus, seit #168) |
 | `/sync_xml` | Schreibt die Rekordbox-XML der Inbox sofort neu (wie `python -m sc_digger.main rekordbox`) und nennt die Track-Zahl und den Zeitpunkt (seit #187) |
-| `/similar <SoundCloud-Link | Track-ID>` | Top-5 klanglich ähnliche Aufnahmen aus der Sammlung via Audio-Embeddings (Fallback auf Chromaprint) (seit #280, #378) |
+| `/similar <SoundCloud-Link | Track-ID>` | Top-5 klanglich ähnliche Aufnahmen aus der Sammlung, derzeit per Chromaprint-Fingerprint; die Embedding-Suche ist gebaut, bekommt aber noch keine Daten (seit #280, #378) |
 | `/cleanup_inbox` | Dubletten in der Inbox auflisten (nur lesend) |
 
 Zum Digest gehören Inline-Buttons pro Track (Like, Dislike, Später). Die Wahl landet in `sc_feedback` in `tracks.sqlite` und wird von `/mix` und `/curator_mining` ausgewertet. Die Kaufliste kommt zusätzlich sonntags um 20:00 (`0 20 * * 0`, aus `entrypoint.sh`).
@@ -217,7 +217,7 @@ Alle Optionen stehen in `config.yaml`; die folgende Liste nennt die Werte aus di
 | `rekordbox.matrix_colors` | Track-Farbe aus Hauptclustern der Schranz-Matrix ableiten | `false` |
 | `rekordbox.style_comments` | Track-Kommentar im Stil-Format überschreiben | `false` |
 | `rekordbox.compact_style_comments` | Kompakte Stil-Kürzel in Track-Kommentare schreiben | `false` |
-| `rekordbox.import_xml_path` | Pfad zur exportierten Rekordbox-XML als Rückkanal | `""` |
+| `rekordbox.import_xml_path` | Pfad zur exportierten Rekordbox-XML als Rückkanal — **noch ohne Wirkung**: kein Code liest den Wert | `""` |
 | `digest.kaufliste_max_items` | Obergrenze der Kaufliste | `30` |
 | `digest.sunday_summary` | Wochenstatistik im Sonntagslauf senden | `false` |
 | `digest.stats_chart` | Balkendiagramm zum Wochen-Digest | `false` |
@@ -325,7 +325,7 @@ Zusätzlich zu den Wochen-Playlists können Playlists nach Tempo, Tonart und der
 - `sc-digger/Key/<Camelot>` (z. B. `5A`) über `rekordbox.playlists_by_key: true`
 - `sc-digger/Stile/<Cluster>`, `sc-digger/Subgenres/<Subgenre>` und `sc-digger/Versionen/<Version>` über `rekordbox.playlists_by_style`, `rekordbox.playlists_by_subgenre` und `rekordbox.playlists_by_version` (jeweils Standard: `false`)
 
-Tracks ohne BPM bzw. ohne gültigen Camelot-Key landen in `unbekannt`. Tracks können zudem anhand des Versionstyps (`style_colors`) oder des Subgenres (`matrix_colors`) farblich markiert werden. Kommentare für CDJ/XDJ-Displays lassen sich im Standard- oder Kompakt-Stil-Format schreiben (`style_comments`, `compact_style_comments`). Über `rekordbox.import_xml_path` kann die vom Laptop re-exportierte XML als Rückkanal angegeben werden.
+Tracks ohne BPM bzw. ohne gültigen Camelot-Key landen in `unbekannt`. Tracks können zudem anhand des Versionstyps (`style_colors`) oder des Subgenres (`matrix_colors`) farblich markiert werden. Kommentare für CDJ/XDJ-Displays lassen sich im Standard- oder Kompakt-Stil-Format schreiben (`style_comments`, `compact_style_comments`). `rekordbox.import_xml_path` ist für den Rückkanal vorgesehen, aber **noch nicht angeschlossen**: `rekordbox.import_rekordbox_xml` hat keinen Aufrufer, ein gesetzter Pfad wird von keinem Code gelesen.
 
 **Vollständiges Cue-System:**
 Liegen in einer Audiodatei Cue-Tags aus der Strukturanalyse (`cues.py`, `structure.py`, `stems.py`), übernimmt der XML-Export diese Marken bei aktivem `rekordbox.cues_enabled: true`:
@@ -382,17 +382,16 @@ Gefundene Tracks werden gegen die lokale Sammlung abgeglichen, Duplikate übersp
 | `structure.py` | Strukturanalyse: Kick-Erkennung, Segmente (`intro`, `main`, `breakdown`, `outro`), erster Kick, Drop-Start und Breakdown-Anteil |
 | `phrase.py` | Phrasen-Quantisierung (16/32-Beat Alignment, Quantisierung auf Phrasengitter und Downbeat-Fallback) |
 | `cues.py` | Cue-Tags (`SCDIGGER_FIRST_KICK`, `SCDIGGER_DROP`, `SCDIGGER_BREAKDOWN`, `SCDIGGER_BREAKDOWN_KIND`) in Dateien lesen und schreiben |
-| `stems.py` | Stem-basierte Subbass- und Breakdown-Analyse (Demucs-Stems `bass.wav`/`drums.wav`, Fake-Drop-Validierung, Breakdown-Typisierung `silence`/`groove`) |
+| `stems.py` | Stem-basierte Subbass- und Breakdown-Analyse (Demucs-Stems `bass.wav`/`drums.wav`, Fake-Drop-Validierung, Breakdown-Typisierung `silence`/`groove`) — Bibliothek; im Lauf nicht verwendet, der Breakdown-Anteil kommt aus `structure.py` |
 | `style.py` | Schranz-Matrix (4 Cluster, 13 Subgenres, 3 Achsen, Versionstypen, Energie-Klassifizierung 1–5) |
 | `fingerprint.py` | Audio-Fingerprints (Chromaprint/fpcalc), gleiche Aufnahme erkennen |
-| `similarity.py` | Ähnlichkeitssuche über Chromaprint-Fingerprints gegen die Track-DB („Mehr davon“ im Bot per Audio-Datei-Upload) |
 | `harmonic.py` | Harmonische Kompatibilität (Camelot-Wheel), Suche nach Key und BPM (`/mix`) |
 | `dj_export.py` | Harmonischer DJ-Export: M3U8-Playlists, CSV und Set-Reports nach Camelot-Nachbarschaft und ΔBPM |
 | `organize.py` | Inbox-Sortierung `<BPM>/<Camelot>/`, Tags schreiben (inkl. RIFF-INFO für WAV) |
 | `rekordbox.py` | Rekordbox-XML mit einer Playlist pro Woche aus der Inbox |
-| `embeddings.py` | Audio-Embeddings: Vektorspeicher in Track-DB, Queue-Job und Ergebnisverarbeitung |
+| `embeddings.py` | Audio-Embeddings: Vektorspeicher in Track-DB, Queue-Job und Ergebnisverarbeitung — Bibliothek; Einreihen, Worker-Handler und Ergebnisspeicherung sind noch nicht angeschlossen |
 | `similarity.py` | Ähnlichkeitssuche: Chromaprint-Fingerprints („Mehr davon“) und Kosinus-Ähnlichkeit auf Embeddings mit Fallback |
-| `taste.py` | Taste-Score: Logistische Regression auf Embeddings und Feedback zur Vorhersage des Gefallens |
+| `taste.py` | Taste-Score: Logistische Regression auf Embeddings und Feedback zur Vorhersage des Gefallens — Bibliothek; kein Lauf, Bot-Befehl oder Dashboard ruft sie auf |
 | `db.py` | Zentrale Track-DB: Metadaten, Fingerprints, Jobs-Queue, versionierte Migrationen |
 | `audit.py` | Read-only Library-Audit, Fake-Erkennung, HTML-Dashboard |
 | `intake.py` | Eingangsordner: bereite Dateien finden und als `Track` vorbereiten |
@@ -419,7 +418,7 @@ im modernen Dark-Theme gestaltet und per HTTP-Basic-Auth geschützt:
 - **Digest-Explorer (`/digest` & `/api/digest`):** Historische Digest-Tracks aus `seen.sqlite` durchsuchen und nach Download-Weg (`Alle`, `Geladen`, `Gate`, `Store`, `Stream`), Zeitraum (`7d`, `14d`, `30d`, `Alle`) oder Text filtern. Ermöglicht direktes Track-Feedback (👍/👎/⏳) und enthält den direkten Link `[🌐 Gate öffnen ↗]` für Fangates (Hypeddit, Droploud etc.).
 - **Kaufliste (`/kaufliste`):** Übersicht aller Store-Tracks (Bandcamp, Beatport etc.) mit Filter auf gelikte Tracks.
 - **Track-Explorer mit Vorhören (`/tracks` & `GET /api/audio/{id}`):** durchsucht die Track-DB und spielt Tracks aus Inbox und Sammlung direkt im Browser ab (HTML5-Audio mit Range-Requests, Springen im Track). Die Dateien werden nur gelesen und ausschließlich aus `download.inbox_dir` und `download.collection_dir` ausgeliefert; fehlende Dateien, Pfade außerhalb und Symlinks aus den Ordnern heraus ergeben 404.
-- **Gate-Assistent & Drag & Drop Upload (`/intake` & `POST /api/upload-intake`):** Manuell am PC gelöste Gate-Tracks (WAV, FLAC, AIFF, MP3) einfach per Drag & Drop im Browser hochladen. Der Server übernimmt die Datei, prüft Audioqualität/Clipping, normalisiert den Pegel, analysiert BPM/Key, schreibt ID3/Vorbis-Tags und sortiert sie in die Rekordbox-Inbox ein.
+- **Gate-Assistent & Drag & Drop Upload (Digest-Explorer `/digest`, Endpunkt `POST /api/upload-intake`):** Manuell am PC gelöste Gate-Tracks (WAV, FLAC, AIFF, MP3) einfach per Drag & Drop im Browser hochladen. Eine eigene Seite `/intake` gibt es nicht; die Upload-Zone liegt im Digest-Explorer. Der Server übernimmt die Datei, prüft Audioqualität/Clipping, normalisiert den Pegel, analysiert BPM/Key, schreibt ID3/Vorbis-Tags und sortiert sie in die Rekordbox-Inbox ein.
 - **Mix & URL-Scanner (`/mix` & `POST /api/scan`):** Harmonic Mix Finder nach Camelot-Key und BPM sowie On-Demand-Analyse beliebiger SoundCloud-Links (Tracks, Playlists, Artist-Likes) direkt im Browser.
 - **Konfigeditor (`/config`):** Formular für Einstellungen aus `config.yaml` mit Diff-Vorschau (`/config/preview`) und sicherem Schreiben in die lokale Override-Datei (`SC_DIGGER_CONFIG_LOCAL`, z. B. `/data/config.local.yaml`).
 

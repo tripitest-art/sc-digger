@@ -277,7 +277,8 @@ rekordbox:
   # Track-Kommentar (Comments) kompakt für kleine CDJ/XDJ-Displays überschreiben:
   # [BPM|Key|Substil|D1:<Drop1>|D2:<Drop2>|L<LUFS>]. Hat Vorrang vor style_comments.
   compact_style_comments: false
-  # Import: Pfad zur exportierten Rekordbox-XML (Rückkanal vom DJ-Laptop). Leer = kein Import.
+  # Rückkanal vom DJ-Laptop: Pfad zur exportierten Rekordbox-XML.
+  # Noch ohne Wirkung: der Import ist nicht angeschlossen, kein Code liest den Wert.
   import_xml_path: ""
 
 digest:

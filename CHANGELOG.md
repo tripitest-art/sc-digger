@@ -7,6 +7,9 @@ unter „Unreleased“ (Regeln: `AGENTS.md`, Abschnitt „Doku und Changelog“)
 
 ## Unreleased
 
+### Geändert
+- Doku auf den echten Stand: README und ROADMAP kennzeichnen Features, die im Lauf nicht erreicht werden (Embedding-Kette ohne Einreihen und Worker-Handler, `taste.py` und `stems.py` ohne Aufrufer, wirkungsloser `rekordbox.import_xml_path`, keine eigene Seite `/intake`); Sonntags-Digest mit Grafik (#116) und Stream-Preview (#168) gelten jetzt als fertig, sind aber standardmäßig aus; doppelte `similarity.py`-Zeile entfernt (#396).
+
 ### Hinzugefügt
 - Telegram-Bot `/similar`: Klangliche Ähnlichkeitssuche per Audio-Embedding bevorzugt, transparenter Chromaprint-Fallback bei fehlendem Embedding, Unterstützung numerischer Track-IDs (`/similar <id>`) (#380).
 - `audit --export-xml` übernimmt die `rekordbox`-Optionen des Inbox-Exports: `hot_cue_layout` (auch `standard_8pad` inkl. Outro-Pad H), `grid_anchor` (`<TEMPO>`-Anker), `cues_phrase_align`, `cues_as_hotcues`, `cues_as_memory` und `compact_style_comments`; `TotalTime` trägt die in der TrackDB gespeicherte Dauer, die Sammlung bleibt unverändert (#381).
