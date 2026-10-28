@@ -339,8 +339,10 @@
           {% endif %}
         </td>
         <td>
-          {% if track.source_url %}
-          <a href="{{ track.source_url }}" target="_blank" rel="noopener noreferrer">SoundCloud</a>
+          {# Nur http/https verlinken: source_url stammt aus fremden Feeds. #}
+          {% set source_href = track.source_url if track.source_url and (track.source_url.startswith("http://") or track.source_url.startswith("https://")) else "" %}
+          {% if source_href %}
+          <a href="{{ source_href }}" target="_blank" rel="noopener noreferrer">SoundCloud</a>
           {% else %}—{% endif %}
         </td>
       </tr>

@@ -20,7 +20,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PASSWORD = "geheim-auth-alle-routen"
 
 
-def _app(tmp_path: Path):
+def _app(tmp_path: Path, password: str = PASSWORD):
     cfg = Config.load(ROOT / "config.yaml")
     cfg.raw["state"] = {
         "db_path": str(tmp_path / "seen.sqlite"),
@@ -28,7 +28,7 @@ def _app(tmp_path: Path):
     }
     # Beide Pfade gesetzt: auch die Editor-Routen sind registriert.
     return create_app(
-        cfg, password=PASSWORD,
+        cfg, password=password,
         base_path=ROOT / "config.yaml", local_path=tmp_path / "config.local.yaml",
     )
 
@@ -84,3 +84,12 @@ def test_healthz_stays_public(tmp_path):
 def test_correct_password_passes_the_gate(tmp_path):
     client = TestClient(_app(tmp_path))
     assert client.get("/api/status", headers=_basic(PASSWORD)).status_code != 401
+
+
+def test_password_with_umlaut_is_not_a_server_error(tmp_path):
+    # secrets.compare_digest wirft TypeError bei Nicht-ASCII-str; das ergab HTTP 500
+    # statt 401 und machte ein Passwort mit Umlaut unbenutzbar.
+    passwd = "Käse123Grün"
+    client = TestClient(_app(tmp_path, password=passwd))
+    assert client.get("/api/status", headers=_basic(passwd)).status_code == 200
+    assert client.get("/api/status", headers=_basic("Kaese123Gruen")).status_code == 401

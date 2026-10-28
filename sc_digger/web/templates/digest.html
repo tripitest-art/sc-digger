@@ -375,17 +375,22 @@
           </div>
         </td>
         <td style="white-space: nowrap;">
-          {% if item.url %}
-          <a href="{{ item.url }}" target="_blank" rel="noopener" class="btn-page" style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">
+          {# Nur http/https verlinken: die URLs stammen aus fremden Feeds, ein
+             javascript:-Wert darf nicht ins href. #}
+          {% set url_href = item.url if item.url and (item.url.startswith("http://") or item.url.startswith("https://")) else "" %}
+          {% set purchase_href = item.purchase_url if item.purchase_url and (item.purchase_url.startswith("http://") or item.purchase_url.startswith("https://")) else "" %}
+          {% set gate_href = item.gate_url if item.gate_url and (item.gate_url.startswith("http://") or item.gate_url.startswith("https://")) else "" %}
+          {% if url_href %}
+          <a href="{{ url_href }}" target="_blank" rel="noopener" class="btn-page" style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">
             SoundCloud ↗
           </a>
           {% endif %}
-          {% if item.purchase_url %}
-          <a href="{{ item.purchase_url }}" target="_blank" rel="noopener" class="btn-page" style="padding: 0.2rem 0.5rem; font-size: 0.75rem; border-color: rgba(139, 92, 246, 0.4);">
+          {% if purchase_href %}
+          <a href="{{ purchase_href }}" target="_blank" rel="noopener" class="btn-page" style="padding: 0.2rem 0.5rem; font-size: 0.75rem; border-color: rgba(139, 92, 246, 0.4);">
             🛒 Bandcamp / Kaufen ↗
           </a>
-          {% elif item.gate_url %}
-          <a href="{{ item.gate_url }}" target="_blank" rel="noopener" class="btn-page" style="padding: 0.2rem 0.5rem; font-size: 0.75rem; border-color: rgba(245, 158, 11, 0.4);">
+          {% elif gate_href %}
+          <a href="{{ gate_href }}" target="_blank" rel="noopener" class="btn-page" style="padding: 0.2rem 0.5rem; font-size: 0.75rem; border-color: rgba(245, 158, 11, 0.4);">
             🌐 Gate öffnen ↗
           </a>
           {% endif %}

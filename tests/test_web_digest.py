@@ -3,6 +3,7 @@ import sqlite3
 import pytest
 from starlette.testclient import TestClient
 
+from sc_digger.db import TrackDB
 from sc_digger.models import Config
 from sc_digger.web.app import create_app
 from sc_digger.web.database import DigestItem, DigestSearchResult, query_digest
@@ -207,3 +208,30 @@ def test_query_digest_matches_inbox_and_adopted_by_source_url(tmp_path: Path):
     assert adopted_item.in_collection is True
     assert adopted_item.in_inbox is False
     assert adopted_item.download_kind == "native"
+
+
+def test_digest_verlinkt_keine_javascript_urls(tmp_path: Path):
+    """Kauf-URLs stammen aus fremden Feeds: nur http/https darf ins href."""
+    root = Path(__file__).resolve().parents[1]
+    state_db = tmp_path / "seen.sqlite"
+    track_db = tmp_path / "tracks.sqlite"
+    with sqlite3.connect(state_db) as db:
+        db.execute(
+            "CREATE TABLE seen (id INTEGER PRIMARY KEY, url TEXT, title TEXT, reported_at TEXT)"
+        )
+        db.execute(
+            "INSERT INTO seen VALUES (1, 'https://soundcloud.com/dj/track', 'DJ - Title', '2026-10-14 12:00:00')"
+        )
+    with TrackDB(track_db) as tdb:
+        tdb.upsert_store_item(
+            sc_id=1, title="Title", artist="DJ",
+            purchase_url="javascript:alert(1)", purchase_title="Bandcamp",
+        )
+
+    cfg = Config.load(root / "config.yaml")
+    cfg.raw["state"] = {"db_path": str(state_db), "track_db_path": str(track_db)}
+    client = TestClient(create_app(cfg, password="geheim-digest"))
+
+    response = client.get("/digest", auth=("sc", "geheim-digest"))
+    assert response.status_code == 200
+    assert "javascript:alert(1)" not in response.text
