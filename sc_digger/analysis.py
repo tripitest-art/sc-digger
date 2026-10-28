@@ -45,19 +45,19 @@ _CAMELOT = {
     (9, 0): "8A",   # A minor
     (10, 0): "3A",  # A# / Bb minor
     (11, 0): "10A", # B minor
-    # Dur (B-Notation)
+    # Dur (B-Notation): gleiche Zahl wie die Moll-Parallele (3 Halbtöne tiefer)
     (0, 1): "8B",   # C major
     (1, 1): "3B",   # C# major
     (2, 1): "10B",  # D major
     (3, 1): "5B",   # D# / Eb major
     (4, 1): "12B",  # E major
     (5, 1): "7B",   # F major
-    (6, 1): "4B",   # F# major
-    (7, 1): "11B",  # G major
-    (8, 1): "6B",   # G# / Ab major
-    (9, 1): "1B",   # A major
-    (10, 1): "8B",  # A# / Bb major
-    (11, 1): "3B",  # B major
+    (6, 1): "2B",   # F# major
+    (7, 1): "9B",   # G major
+    (8, 1): "4B",   # G# / Ab major
+    (9, 1): "11B",  # A major
+    (10, 1): "6B",  # A# / Bb major
+    (11, 1): "1B",  # B major
 }
 
 # Pitch-Class -> Open-Key-Notation (Alternative zu Camelot, für ID3-Tags)
@@ -321,7 +321,8 @@ def detect_bpm(path: Path, snap_to: tuple[float, float] | None = None) -> float 
 
 def resolve_bpm(audio_bpm: float | None, text_bpm: float | None, *,
                 window: tuple[float, float], plausible: tuple[float, float] = (120.0, 200.0),
-                text_tolerance: float = 3.0) -> tuple[float | None, str]:
+                text_tolerance: float = 3.0, audio_confidence: float | None = None,
+                min_confidence: float = 0.6) -> tuple[float | None, str]:
     """Korrigiert Oktavfehler der Audio-BPM (halbes/doppeltes Tempo).
 
     Onset-basierte Tempoerkennung rastet bei Halftime-Passagen oder starken Offbeats
@@ -329,7 +330,10 @@ def resolve_bpm(audio_bpm: float | None, text_bpm: float | None, *,
 
     1. Nennt der Uploader eine BPM (text_bpm), gewinnt der Kandidat nahe daran.
        Liegt keiner innerhalb text_tolerance, wird der Textwert übernommen
-       (Uploader-Angaben sind bei Techno meist korrekt, Audio-Erkennung irrt eher).
+       (Uploader-Angaben sind bei Techno meist korrekt, Audio-Erkennung irrt eher) –
+       es sei denn, die Audio-Erkennung ist sicher: ab audio_confidence >= min_confidence
+       schlägt sie die Uploader-Angabe (falsche Titel-BPM wie "150" bei echten 155) und
+       durchläuft die Schritte 2 bis 4. Ohne audio_confidence (None) bleibt es beim Textwert.
     2. Sonst gewinnt der Kandidat im Suchfenster (z. B. 150–165).
     3. Sonst der Kandidat im plausiblen Genre-Bereich, der dem Fenster am nächsten liegt.
     4. Sonst bleibt der Audiowert unverändert.
@@ -350,7 +354,10 @@ def resolve_bpm(audio_bpm: float | None, text_bpm: float | None, *,
         best = min(candidates, key=lambda c: abs(c - text_bpm))
         if abs(best - text_bpm) <= text_tolerance:
             return round(best, 1), f"{label(best)}, bestätigt durch Text-BPM {text_bpm:.0f}"
-        return float(text_bpm), f"Text-BPM {text_bpm:.0f} statt Audio {audio_bpm:.1f} (kein Oktavbezug)"
+        if audio_confidence is None or audio_confidence < min_confidence:
+            return float(text_bpm), f"Text-BPM {text_bpm:.0f} statt Audio {audio_bpm:.1f} (kein Oktavbezug)"
+        bpm, why = resolve_bpm(audio_bpm, None, window=window, plausible=plausible)
+        return bpm, f"{why}; Text-BPM {text_bpm:.0f} überstimmt (Audio-Konfidenz {audio_confidence:.2f})"
 
     lo, hi = window
     in_window = [c for c in candidates if lo <= c <= hi]

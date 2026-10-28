@@ -28,7 +28,7 @@ Der Standardmodus heißt `discover` und läuft im Container täglich um 07:30 pe
 5. **Bewerten** (`score_tracks`): Uploads aus `scoring.blocked_accounts` aussortieren, dann Perzentil-Score aus Like-, Repost- und Kommentarverhältnis plus Engagement-Tempo und Aktualität; Bonus für Referenz-Hits, Malus bei Promo-Verdacht, Bonus/Malus aus der Artist-Reputation.
 6. **State-Check**: Tracks, die in `state.db_path` (Tabelle `seen`) stehen, entfallen.
 7. **Verarbeiten** (`process()`): Duplikat-Abgleich mit der Sammlung, Download-Weg klassifizieren, herunterladen. Danach `finish_file()` pro Datei:
-   - `finalize_quality()` prüft Bitrate und Spektrum (`quality.check_file`). Fakes landen in `inbox/_rejected/`, Brickwall-Master in `inbox/_rejected/clipped/`, per Fingerprint erkannte Doppelaufnahmen in `inbox/_rejected/duplicate/` (wenn `fingerprint.check_downloads` aktiv).
+   - `finalize_quality()` prüft Bitrate und Spektrum (`quality.check_file`). Fakes landen in `inbox/_rejected/`, nicht messbare Dateien in `inbox/_rejected/unmeasurable/`, Brickwall-Master in `inbox/_rejected/clipped/`, per Fingerprint erkannte Doppelaufnahmen in `inbox/_rejected/duplicate/` (wenn `fingerprint.check_downloads` aktiv).
    - `loudness.normalize_inbox_file()` gleicht den Pegel an, sofern `loudness.normalize_inbox` aktiv.
    - `analyze_track` und `resolve_bpm` bestimmen BPM (mit Oktav-Korrektur) und Camelot-Key.
    - `organize.write_tags` schreibt Tags, `organize.organize` verschiebt die Datei nach `inbox/<BPM-Bucket>/<Camelot-Key>/`.
@@ -172,7 +172,10 @@ Alle Optionen stehen in `config.yaml`; die folgende Liste nennt die Werte aus di
 | `organize.default_genre` | Genre, das geschrieben wird, wenn der Track keines liefert | `Schranz` |
 | `organize.detect_bpm` / `organize.detect_key` | BPM und Key via librosa erkennen | `true` / `true` |
 | `organize.bpm_plausible_min` / `organize.bpm_plausible_max` | plausibler Genre-Bereich für die Oktav-Korrektur | `120` / `200` |
-| `organize.write_tags` | Tags für Artist, Titel, BPM, Key, Genre und URL schreiben | `true` |
+| `organize.bpm_audio_min_confidence` | ab dieser Konfidenz (0–1) schlägt die Audio-BPM eine abweichende Uploader-Angabe; `1.0` = Text-BPM gewinnt immer | `0.6` |
+| `organize.write_tags` | Tags für Artist, Titel, BPM, Key, Genre und URL schreiben; `TKEY`/`initialkey` tragen den Camelot-Key, der Klarname steht in `TXXX:INITIALKEY` | `true` |
+| `organize.write_tags_padding_kb` | Reserve in kB hinter den ID3-Tags (MP3, AIFF, WAV), damit Rekordbox später Cues schreiben kann, ohne die Datei umzukopieren; `0` = mutagen-Standard | `4` |
+| `organize.wav_to_flac` | WAV-Downloads in der Inbox vor dem Taggen verlustfrei nach FLAC umwandeln (WAV trägt keine brauchbaren Tags) | `false` |
 | `quality.accepted_lossless` | als verlustfrei akzeptierte Endungen | `[wav, aiff, aif, flac, m4a]` |
 | `quality.min_mp3_bitrate_kbps` | Mindestbitrate für CBR-MP3 | `320` |
 | `quality.min_cutoff_hz_for_320` | Cutoff-Grenze für MP3-Container | `19000` |
@@ -254,7 +257,7 @@ Je Problem eine Zeile `FEHLER <pfad>: <meldung>` bzw. `WARNUNG <pfad>: <meldung>
 `quality.check_file` prüft jeden Download und jede Audit-Datei. `ffprobe` liefert Container, Codec, Samplerate und Bitrate; das Spektrum wird per FFT aus dem Audiosignal gemessen.
 
 - **Lossless = Endung und Codec:** Eine Datei gilt nur als verlustfrei, wenn die Dateiendung in `quality.accepted_lossless` steht **und** der Codec verlustfrei ist (alle `pcm_*` inkl. 24-/32-Bit und Float, `flac`, `alac`, `wavpack`, `ape`, `tta`). Lossy-Streams hinter einer Lossless-Endung (z. B. AAC oder MP3 in einem `.wav`-Container) werden abgewiesen und landen in `inbox/_rejected/`.
-- **Stille und unmessbares Spektrum:** Reine Stille, Signale unter dem Rauschboden (Spitze < 1e-4 bzw. ca. −80 dBFS) und Dateien unter etwa 3 s gelten als „Spektrum nicht messbar“ und werden abgewiesen (`inbox/_rejected/`). Vorher kamen sie mangels Cutoff als „echte Qualität“ durch; ohne messbares Signal erfolgt nun keine Freigabe mehr.
+- **Stille und unmessbares Spektrum:** Reine Stille, Signale unter dem Rauschboden (Spitze < 1e-4 bzw. ca. −80 dBFS) und Dateien unter etwa 3 s gelten als „Spektrum nicht messbar“ und werden abgewiesen (`inbox/_rejected/unmeasurable/`, im Report `unmeasurable: true`; getrennt von echten Fakes, weil kein Urteil möglich war). Vorher kamen sie mangels Cutoff als „echte Qualität“ durch; ohne messbares Signal erfolgt nun keine Freigabe mehr.
 - **Mehrere Messfenster:** Bei Tracks ab 150 s Dauer wird das Spektrum an zwei Stellen gemessen (bei 60 s und bei 60 % der Gesamtdauer), das Maximum zählt. Damit stuft ein leises oder langes Intro einen echten Track nicht ab; ein Fake-Transcode bleibt über den gesamten Track hinweg abgeschnitten und wird weiterhin erkannt. Kürzere Tracks werden an einem Fenster gemessen (30 s ab Sekunde 60, bei sehr kurzen Dateien ab Dateianfang).
 - **ALAC in `.m4a`:** ALAC in `.m4a` wird standardmäßig als verlustfrei akzeptiert, weil `m4a` in `quality.accepted_lossless` steht. Wer das abschalten möchte, nimmt `m4a` aus der Liste (in `config.yaml` oder im Dashboard unter Konfiguration → Qualität). AAC in `.m4a` fällt unabhängig davon weiterhin zuverlässig an der Codec-Prüfung durch.
 - **CBR/VBR-MP3:** CBR-MP3 unter `quality.min_mp3_bitrate_kbps` (Standard 320) wird abgelehnt. VBR-MP3 wird an einem Xing-/VBRI-Kopf erkannt und ausschließlich über das Spektrum bewertet.
@@ -262,7 +265,7 @@ Je Problem eine Zeile `FEHLER <pfad>: <meldung>` bzw. `WARNUNG <pfad>: <meldung>
 - **Lautheit & Dynamik:** Erst nach bestandener Bitraten- und Spektrumsprüfung wird die Lautheit mit EBU R128 gemessen. Der Report enthält `integrated_lufs`, `true_peak_dbfs` und `loudness_range_lu`; `clipped` wird gesetzt, wenn die LRA unter `min_loudness_range_lu` (2.5 LU) liegt oder der True Peak `max_true_peak_dbfs` (3.0 dBFS) erreicht.
 - **32-Bit/Float → 24-Bit-PCM:** Bleibt eine WAV- oder AIFF-Datei in der Inbox, prüft `quality.is_32bit_or_float` sie per `ffprobe` auf 32/64-Bit- oder Float-Samples (`pcm_f32le`, `pcm_s32le`, `sample_fmt` `flt`/`dbl`/`s32`, `bits_per_raw_sample == 32`). Solche Dateien konvertiert `quality.convert_to_pcm24` vor der Pegel-Angleichung atomar nach 24 Bit (WAV `pcm_s24le`, AIFF `pcm_s24be`, Metadaten per `-map_metadata 0`); Pioneer Rekordbox und CDJs weisen 32-Bit-WAVs sonst mit „Ungültiges Dateiformat“ ab. Der `quality_report` trägt danach den neuen Codec, `notes` den Hinweis „32-Bit-Audio für Rekordbox nach 24-Bit PCM konvertiert“. Schlägt die Konvertierung fehl, bleibt die Datei unverändert und der Lauf geht weiter.
 
-Abgelehnte Dateien werden verschoben, nie gelöscht: Fakes und nicht messbare Tracks nach `inbox/_rejected/`, Brickwall-Master nach `inbox/_rejected/clipped/`, Duplikate nach `inbox/_rejected/duplicate/`.
+Abgelehnte Dateien werden verschoben, nie gelöscht: Fakes nach `inbox/_rejected/`, nicht messbare Tracks nach `inbox/_rejected/unmeasurable/`, Brickwall-Master nach `inbox/_rejected/clipped/`, Duplikate nach `inbox/_rejected/duplicate/`.
 
 ### Pegel-Angleichung
 
@@ -285,7 +288,7 @@ Ablage: MP3, AIFF und WAV als ID3-`TXXX`-Frames, FLAC als Vorbis-Kommentar, M4A 
 
 ### BPM und Tonart
 
-`analysis.detect_bpm` nutzt librosa auf einem 60-Sekunden-Ausschnitt (ab Sekunde 30, sonst von vorne). `analysis.resolve_bpm` korrigiert Oktavfehler: Kandidaten sind das erkannte Tempo und dessen Hälfte bzw. Doppeltes. Vorrang hat ein Text-BPM aus Titel, Tags oder Beschreibung (`estimate_bpm`), danach das Suchfenster `search.bpm_min/max`, dann `organize.bpm_plausible_min/max`. `analysis.detect_key` erkennt die Tonart über Chroma-CQT und Krumhansl-Kessler-Profile und gibt Camelot-Key plus Klarnamen zurück.
+`analysis.analyze_track` dekodiert die Datei einmal (Mono, 44,1 kHz) und liefert daraus BPM mit Konfidenz (`detect_tempo`, harmonische Autokorrelation, ohne librosa/numba) und Key (`chroma`, oktav-gemittelte Halbton-Energie, Krumhansl-Kessler-Profile) samt Marge. `analysis.resolve_bpm` korrigiert Oktavfehler: Kandidaten sind das erkannte Tempo und dessen Hälfte bzw. Doppeltes. Vorrang hat ein Text-BPM aus Titel, Tags oder Beschreibung (`estimate_bpm`), danach das Suchfenster `search.bpm_min/max`, dann `organize.bpm_plausible_min/max`. Ausnahme: Ist die Audio-Erkennung sicher (`organize.bpm_audio_min_confidence`, Standard 0.6) und weicht ohne Oktavbezug von der Uploader-Angabe ab, gewinnt das Audio. Die Uploader-BPM bleibt dann als `TXXX:TEXTBPM` (FLAC `textbpm`) im Tag, und der Digest markiert den Track mit `⚠️ Uploader: <BPM>` (Abweichung über 2 BPM). Wurde die Oktave korrigiert, steht im Kommentar-Tag `BPM: 158 (Audio roh 79.0)`. Der Key kommt als Camelot-Key (`5A`) in `TKEY` bzw. FLAC-`initialkey`, der Klarname (`Cm`) in `TXXX:INITIALKEY`.
 
 ### Download-Wege
 

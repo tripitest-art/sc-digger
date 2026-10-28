@@ -144,11 +144,22 @@ organize:
   detect_bpm: true
   detect_key: true
   # Oktav-Korrektur: Audio-BPM wird per ×2/÷2 bevorzugt ins Suchfenster (search.bpm_min/max)
-  # geholt, sonst in diesen Genre-Bereich. Eine Uploader-Angabe im Text hat Vorrang.
+  # geholt, sonst in diesen Genre-Bereich. Eine Uploader-Angabe im Text hat Vorrang ...
   bpm_plausible_min: 120
   bpm_plausible_max: 200
-  # ID3/Vorbis-Tags automatisch schreiben (Artist, Title, BPM, Key, Genre, URL)
+  # ... außer die Audio-Erkennung ist sicher: ab dieser Konfidenz (0-1) gewinnt die Audio-BPM
+  # gegen eine abweichende Uploader-Angabe. Die Text-BPM bleibt als TXXX:TEXTBPM im Tag und
+  # wird im Digest mit ⚠️ markiert (Abweichung > 2 BPM). 1.0 = Text-BPM behält immer Vorrang.
+  bpm_audio_min_confidence: 0.6
+  # ID3/Vorbis-Tags automatisch schreiben (Artist, Title, BPM, Key, Genre, URL).
+  # TKEY/initialkey tragen den Camelot-Key (5A), der Klarname (Cm) steht in TXXX:INITIALKEY.
   write_tags: true
+  # Reserve in kB hinter den ID3-Tags (MP3, AIFF, WAV), damit Rekordbox später Cues in die
+  # Datei schreiben kann, ohne sie umzukopieren. 0 = mutagen-Standard.
+  write_tags_padding_kb: 4
+  # WAV-Downloads verlustfrei nach FLAC umwandeln, bevor getaggt wird (WAV trägt keine
+  # brauchbaren Tags; FLAC ist rund halb so groß). Nur in der Inbox, die Sammlung bleibt unberührt.
+  wav_to_flac: false
 
 quality:
   # m4a nur für ALAC; AAC in .m4a fällt am Codec durch.

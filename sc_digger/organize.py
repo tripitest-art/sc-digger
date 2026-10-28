@@ -117,10 +117,20 @@ def loudness_tag_values(report: dict | None) -> dict[str, str]:
 def write_tags(path: Path, *, artist: str, title: str, bpm: float | None = None,
                key_name: str | None = None, genre: str = "Schranz",
                comment: str | None = None, url: str | None = None,
-               loudness: dict | None = None, energy: int | None = None) -> bool:
+               loudness: dict | None = None, energy: int | None = None,
+               key_camelot: str | None = None, text_bpm: float | None = None,
+               padding_kb: float = 0) -> bool:
     """Schreibt Metadaten- und Lautheits-Tags in die Audio-Datei.
 
     Unterstützt: MP3, FLAC, AIFF, M4A, WAV.
+    - key_camelot: ID3 TKEY und FLAC `initialkey` tragen den Camelot-Key ("5A"), den DJ-Software
+      (Serato, Traktor, Rekordbox-Import) direkt anzeigt; der Klarname (key_name, "Cm") steht
+      dann zusätzlich in TXXX:INITIALKEY. Ohne key_camelot bleibt es beim Klarnamen in TKEY.
+    - text_bpm: Uploader-BPM aus dem Text, die die Audio-BPM überstimmt hat; MP3/AIFF/WAV als
+      TXXX:TEXTBPM, FLAC als `textbpm`, M4A als Freeform-Feld. Bei None unberührt.
+    - padding_kb: Reserve in kB hinter den ID3-Tags (MP3, AIFF, WAV). mutagen schreibt ID3 sonst
+      ohne Reserve; trägt Rekordbox später Cues in dieselbe Datei, müsste es sie komplett
+      umkopieren. 0 = mutagen-Standard.
     - loudness: quality_report; die Werte aus loudness_tag_values werden geschrieben.
       Vorhandene Felder mit diesen vier Namen werden vorher entfernt (kein Doppel).
     - energy: Energie-Stufe (1..5); MP3 als TXXX-Frame SCDIGGER_ENERGY,
@@ -148,23 +158,28 @@ def write_tags(path: Path, *, artist: str, title: str, bpm: float | None = None,
         if ext == ".mp3":
             _tag_mp3(path, artist=artist, title=title, bpm=bpm,
                      key_name=key_name, genre=genre, comment=comment, url=url,
-                     loudness=loudness, energy=energy)
+                     loudness=loudness, energy=energy, key_camelot=key_camelot,
+                     text_bpm=text_bpm, padding_kb=padding_kb)
         elif ext == ".flac":
             _tag_flac(path, artist=artist, title=title, bpm=bpm,
                       key_name=key_name, genre=genre, comment=comment, url=url,
-                      loudness=loudness, energy=energy)
+                      loudness=loudness, energy=energy, key_camelot=key_camelot,
+                      text_bpm=text_bpm, padding_kb=padding_kb)
         elif ext in (".aif", ".aiff"):
             _tag_aiff(path, artist=artist, title=title, bpm=bpm,
                       key_name=key_name, genre=genre, comment=comment, url=url,
-                      loudness=loudness, energy=energy)
+                      loudness=loudness, energy=energy, key_camelot=key_camelot,
+                      text_bpm=text_bpm, padding_kb=padding_kb)
         elif ext == ".m4a":
             _tag_m4a(path, artist=artist, title=title, bpm=bpm,
                      key_name=key_name, genre=genre, comment=comment, url=url,
-                     loudness=loudness, energy=energy)
+                     loudness=loudness, energy=energy, key_camelot=key_camelot,
+                     text_bpm=text_bpm, padding_kb=padding_kb)
         elif ext == ".wav":
             _tag_wav(path, artist=artist, title=title, bpm=bpm,
                      key_name=key_name, genre=genre, comment=comment, url=url,
-                     loudness=loudness, energy=energy)
+                     loudness=loudness, energy=energy, key_camelot=key_camelot,
+                     text_bpm=text_bpm, padding_kb=padding_kb)
         else:
             log.debug("Unbekanntes Format für Tagging: %s", ext)
             return False
@@ -220,6 +235,28 @@ def read_energy_tag(path: Path) -> int | None:
     return value if 1 <= value <= 5 else None
 
 
+_INITIALKEY_TAG_KEY = "INITIALKEY"
+_TEXTBPM_TAG_KEY = "TEXTBPM"
+
+
+def _replace_id3_txxx(tags: Any, desc: str, value: str) -> None:
+    """Ersetzt (ohne Rücksicht auf Groß/Klein) das TXXX-Frame `desc` durch genau einen Eintrag."""
+    from mutagen.id3 import TXXX
+    for k in list(tags.keys()):
+        if k.upper() == f"TXXX:{desc.upper()}":
+            del tags[k]
+    tags.add(TXXX(encoding=3, desc=desc, text=[value]))
+
+
+def _id3_save_kwargs(kw: dict[str, object]) -> dict[str, Any]:
+    """Speicher-Optionen für ID3-Container: feste Reserve hinter den Tags (padding_kb)."""
+    kb = kw.get("padding_kb")
+    if isinstance(kb, (int, float)) and kb > 0:
+        size = int(kb * 1024)
+        return {"padding": lambda info: size}
+    return {}
+
+
 def _replace_id3_energy(tags: Any, energy: object) -> None:
     """Schreibt bzw. ersetzt das Energie-Tag in einem ID3-Objekt (TXXX:SCDIGGER_ENERGY).
 
@@ -258,9 +295,13 @@ def _fill_id3(tags: Any, kw: dict[str, object]) -> None:
     if kw.get("bpm") is not None:
         tags.delall("TBPM")
         tags.add(TBPM(encoding=3, text=[str(int(round(kw["bpm"])))]))
-    if kw.get("key_name"):
+    if kw.get("key_camelot") or kw.get("key_name"):
         tags.delall("TKEY")
-        tags.add(TKEY(encoding=3, text=[str(kw["key_name"])]))
+        tags.add(TKEY(encoding=3, text=[str(kw.get("key_camelot") or kw["key_name"])]))
+    if kw.get("key_camelot") and kw.get("key_name"):
+        _replace_id3_txxx(tags, _INITIALKEY_TAG_KEY, str(kw["key_name"]))
+    if kw.get("text_bpm") is not None:
+        _replace_id3_txxx(tags, _TEXTBPM_TAG_KEY, f"{float(kw['text_bpm']):g}")
     if kw.get("comment"):
         tags.delall("COMM")
         tags.add(COMM(encoding=3, lang="deu", desc="sc-digger", text=[str(kw["comment"])]))
@@ -274,36 +315,13 @@ def _fill_id3(tags: Any, kw: dict[str, object]) -> None:
 
 
 def _tag_mp3(path: Path, **kw: object) -> None:
-    from mutagen.id3 import ID3, TIT2, TPE1, TBPM, TKEY, TCON, COMM, WXXX, ID3NoHeaderError
+    from mutagen.id3 import ID3, ID3NoHeaderError
     try:
         tags = ID3(str(path))
     except ID3NoHeaderError:
         tags = ID3()
-
-    tags.delall("TIT2")
-    tags.add(TIT2(encoding=3, text=[str(kw["title"])]))
-    tags.delall("TPE1")
-    tags.add(TPE1(encoding=3, text=[str(kw["artist"])]))
-    tags.delall("TCON")
-    tags.add(TCON(encoding=3, text=[str(kw["genre"])]))
-    if kw.get("bpm") is not None:
-        tags.delall("TBPM")
-        tags.add(TBPM(encoding=3, text=[str(int(round(kw["bpm"])))]))
-    if kw.get("key_name"):
-        tags.delall("TKEY")
-        tags.add(TKEY(encoding=3, text=[str(kw["key_name"])]))
-    if kw.get("comment"):
-        tags.delall("COMM")
-        tags.add(COMM(encoding=3, lang="deu", desc="sc-digger", text=[str(kw["comment"])]))
-    if kw.get("url"):
-        tags.delall("WXXX")
-        tags.add(WXXX(encoding=3, desc="SoundCloud", url=str(kw["url"])))
-
-    _replace_id3_energy(tags, kw.get("energy"))
-
-    _replace_id3_loudness(tags, kw.get("loudness"))
-
-    tags.save(str(path))
+    _fill_id3(tags, kw)
+    tags.save(str(path), **_id3_save_kwargs(kw))
 
 
 def _tag_flac(path: Path, **kw: object) -> None:
@@ -314,8 +332,10 @@ def _tag_flac(path: Path, **kw: object) -> None:
     audio["genre"] = str(kw["genre"])
     if kw.get("bpm") is not None:
         audio["bpm"] = str(int(round(kw["bpm"])))
-    if kw.get("key_name"):
-        audio["initialkey"] = str(kw["key_name"])
+    if kw.get("key_camelot") or kw.get("key_name"):
+        audio["initialkey"] = str(kw.get("key_camelot") or kw["key_name"])
+    if kw.get("text_bpm") is not None:
+        audio["textbpm"] = f"{float(kw['text_bpm']):g}"
     if kw.get("comment"):
         audio["comment"] = str(kw["comment"])
     if kw.get("url"):
@@ -343,7 +363,7 @@ def _tag_aiff(path: Path, **kw: object) -> None:
     if audio.tags is None:
         audio.add_tags()
     _fill_id3(audio.tags, kw)
-    audio.save()
+    audio.save(**_id3_save_kwargs(kw))
 
 
 _INFO_CHUNK_ID_RE = re.compile(r"^[A-Z0-9]{4}$")
@@ -506,7 +526,7 @@ def _tag_wav(path: Path, **kw: object) -> None:
     if audio.tags is None:
         audio.add_tags()
     _fill_id3(audio.tags, kw)
-    audio.save()
+    audio.save(**_id3_save_kwargs(kw))
 
     title = kw.get("title")
     artist = kw.get("artist")
@@ -538,6 +558,9 @@ def _tag_m4a(path: Path, **kw: object) -> None:
     # M4A hat kein Standard-Key-Feld, nutzen wir ein Freitext-Feld
     if kw.get("key_name"):
         audio["\xa9cmt"] = [f"Key: {kw['key_name']} | {kw.get('comment', '')}".strip(" |")]
+
+    if kw.get("text_bpm") is not None:
+        audio[f"----:com.apple.iTunes:{_TEXTBPM_TAG_KEY}"] = [f"{float(kw['text_bpm']):g}".encode("utf-8")]
 
     if audio.tags:
         for k in list(audio.tags.keys()):

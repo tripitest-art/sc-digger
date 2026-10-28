@@ -8,9 +8,13 @@ unter „Unreleased“ (Regeln: `AGENTS.md`, Abschnitt „Doku und Changelog“)
 ## Unreleased
 
 ### Geändert
+- Tags: `TKEY` (MP3/AIFF/WAV) und FLAC-`initialkey` tragen jetzt den Camelot-Key (`5A`), der Klarname (`Cm`) steht in `TXXX:INITIALKEY`; die Rekordbox-Playlists nach Key und der `Tonality`-Eintrag lasen schon bisher einen Camelot-Wert aus `TKEY`. ID3-Tags bekommen 4 kB Reserve (`organize.write_tags_padding_kb`), damit Rekordbox später Cues schreiben kann, ohne die Datei umzukopieren (Prüfbericht 2026-10-14, Schritt 6).
+- Audio-BPM schlägt eine abweichende Uploader-BPM, wenn die Konfidenz mindestens `organize.bpm_audio_min_confidence` (Standard 0.6) beträgt; die Uploader-BPM bleibt als `TXXX:TEXTBPM` im Tag, der Digest markiert den Track mit `⚠️ Uploader: <BPM>`, eine Oktavkorrektur steht im Kommentar-Tag (Prüfbericht Schritt 5).
+- Dateien, deren Spektrum sich nicht messen lässt (Stille, zu kurz), landen in `_rejected/unmeasurable/` statt zwischen den echten Fakes in `_rejected/` (Prüfbericht 6.1). `main.record_outcomes` hält die Quarantäne-Regel (abgelehnt → `rejected`, sonst `seen`) testbar zusammen (6.4).
 - Doku auf den echten Stand: README und ROADMAP kennzeichnen Features, die im Lauf nicht erreicht werden (Embedding-Kette ohne Einreihen und Worker-Handler, `taste.py` und `stems.py` ohne Aufrufer, wirkungsloser `rekordbox.import_xml_path`, keine eigene Seite `/intake`); Sonntags-Digest mit Grafik (#116) und Stream-Preview (#168) gelten jetzt als fertig, sind aber standardmäßig aus; doppelte `similarity.py`-Zeile entfernt (#396).
 
 ### Hinzugefügt
+- `organize.wav_to_flac` (Standard `false`): WAV-Downloads in der Inbox werden vor dem Taggen verlustfrei nach FLAC umgewandelt (`quality.convert_wav_to_flac`, atomar, Dauer-Kontrolle, WAV bleibt bei jedem Fehler liegen) (Prüfbericht Schritt 6).
 - `embeddings.auto_queue`: `finish_file` reiht für jeden neuen Inbox-Track einen Embedding-Job ein, wenn der Schlüssel auf `true` steht; Standard `false` bis der GPU-Worker ein Embedding-Modell hat (#394).
 - Telegram-Bot `/similar`: Klangliche Ähnlichkeitssuche per Audio-Embedding bevorzugt, transparenter Chromaprint-Fallback bei fehlendem Embedding, Unterstützung numerischer Track-IDs (`/similar <id>`) (#380).
 - `audit --export-xml` übernimmt die `rekordbox`-Optionen des Inbox-Exports: `hot_cue_layout` (auch `standard_8pad` inkl. Outro-Pad H), `grid_anchor` (`<TEMPO>`-Anker), `cues_phrase_align`, `cues_as_hotcues`, `cues_as_memory` und `compact_style_comments`; `TotalTime` trägt die in der TrackDB gespeicherte Dauer, die Sammlung bleibt unverändert (#381).
@@ -39,4 +43,5 @@ unter „Unreleased“ (Regeln: `AGENTS.md`, Abschnitt „Doku und Changelog“)
 - Doku-Pflicht: `CHANGELOG.md`, der Abschnitt „Doku und Changelog“ in `AGENTS.md` und `tests/test_doku.py` halten Doku und Changelog im selben PR wie die Änderung (#314).
 
 ### Behoben
+- Camelot-Zuordnung der Dur-Tonarten F#, G, G#, A, A# und B in `analysis._CAMELOT` war falsch (z. B. A-Dur `1B` statt `11B`); Moll und die übrigen Dur-Tonarten waren richtig. Bereits getaggte Tracks behalten ihren alten Wert, bis sie neu analysiert werden.
 - `entrypoint.sh` verschluckt Fehler beim Installieren der Cron-Jobs nicht mehr: scheitert `crontab` (oder fehlt es), bricht der Start mit Fehlermeldung auf stderr und Exit-Code 1 ab, statt ohne Kaufliste- und Scout-Lauf weiterzulaufen (#385).

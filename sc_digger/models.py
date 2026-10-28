@@ -63,6 +63,7 @@ class Track:
     exploration_tag: str | None = None  # Tag, falls Track über einen Explorations-Suchlauf entdeckt wurde
     breakdown_ratio: float | None = None  # Anteil kickloser Zeit zwischen Intro und Outro (0.0 bis 1.0)
     energy: int | None = None  # 1..5 Energie-Level (berechnet, siehe sc_digger.style)
+    text_bpm: float | None = None  # Uploader-BPM aus dem Text, nur gesetzt, wenn die Audio-BPM sie um > 2 BPM überstimmt
 
     @property
     def like_ratio(self) -> float:

@@ -19,7 +19,7 @@ Modul anlegt, trägt es in die Tabelle ein.
 | `sc_digger/output.py` | State-DB, Original-Download (scdl), `find_in_inbox` (schon in der Inbox?), `finalize_quality`, Telegram-Digest, Export-Datei, `telegram_call`, `send_telegram_photo` |
 | `sc_digger/retry.py` | Retry-Queue für fehlgeschlagene Original-Downloads |
 | `sc_digger/cloud.py` | Cloud-Downloads (Dropbox, Google Drive) |
-| `sc_digger/quality.py` | ffprobe, Codec-Prüfung (`is_lossless_codec`), Spektrum-Cutoff (Fake-Erkennung) mit Multi-Window-Messung (`spectral_cutoff_hz(..., offsets=...)`, `_cutoff_offsets`) und Stille-Erkennung, EBU R128 / LRA (Brickwall) |
+| `sc_digger/quality.py` | ffprobe, Codec-Prüfung (`is_lossless_codec`), Report-Flag `unmeasurable` (Ordner `_rejected/unmeasurable/`), `convert_wav_to_flac` (optional, `organize.wav_to_flac`), Spektrum-Cutoff (Fake-Erkennung) mit Multi-Window-Messung (`spectral_cutoff_hz(..., offsets=...)`, `_cutoff_offsets`) und Stille-Erkennung, EBU R128 / LRA (Brickwall) |
 | `sc_digger/loudness.py` | Pegel-Normalisierung neuer Inbox-Downloads (-8.5 LUFS, samplegenau, Metadaten-Erhalt) |
 | `sc_digger/analysis.py` | BPM/Key per librosa, BPM-Oktav-Korrektur `resolve_bpm` |
 | `sc_digger/structure.py` | Strukturanalyse: Kick-Erkennung, Segmente (`intro`, `main`, `breakdown`, `outro`), erster Kick, Drop-Start (`find_drop_start`) und Breakdown-Anteil (`calculate_breakdown_ratio`) |
@@ -29,7 +29,7 @@ Modul anlegt, trägt es in die Tabelle ein.
 | `sc_digger/similarity.py` | Ähnlichkeitssuche über Chromaprint-Fingerprints gegen die Track-DB („Mehr davon“ im Bot per Audio-Datei-Upload) |
 | `sc_digger/harmonic.py` | Harmonische Kompatibilität (Camelot-Wheel), Suche passender Tracks nach Key und BPM |
 | `sc_digger/dj_export.py` | Harmonischer DJ-Export (CLI `python -m sc_digger.dj_export`): M3U8-Playlists, CSV und Prüfbericht nach Camelot-Nachbarschaft und ΔBPM |
-| `sc_digger/organize.py` | Inbox-Sortierung `<BPM>/<Camelot>/`, Tags schreiben, Dateinamen in NFC-Namen |
+| `sc_digger/organize.py` | Inbox-Sortierung `<BPM>/<Camelot>/`, Tags schreiben (`TKEY` = Camelot, Klarname in `TXXX:INITIALKEY`, `TXXX:TEXTBPM`, ID3-Reserve `padding_kb`), Dateinamen in NFC-Namen |
 | `sc_digger/rekordbox.py` | Rekordbox-XML: Playlists pro Woche aus der Inbox, Locations in NFC-Namen, Beatgrid-Anker `<TEMPO>` an `first_kick_s` (`build_xml(grid_anchor=…)`, Konfiguration `rekordbox.grid_anchor`); lesender XML-Import (`parse_rekordbox_xml`, `import_rekordbox_xml`, Migration 9) für Ratings, Plays und Cues |
 | `sc_digger/cleanup.py` | Inbox-Dubletten per SoundCloud-ID finden, auflisten und optional nach `_rejected/duplicate/` verschieben |
 | `sc_digger/cues.py` | Cue-Tags `SCDIGGER_FIRST_KICK`, `SCDIGGER_DROP`, `SCDIGGER_BREAKDOWN`, `SCDIGGER_BREAKDOWN_KIND` (Sekunden) lesen und schreiben; `write_stem_cues` schreibt First Kick, Drop und Breakdown und richtet Drop/Breakdown optional per `phrase_align` am Phrasengitter aus; `apply_cue_result` übernimmt das Ergebnis eines `cues`-Jobs in die Track-DB (`rb_cues`, `breakdown_ratio`) und schreibt die Tags nur für Dateien in der Inbox (Sammlung bleibt unberührt) |
