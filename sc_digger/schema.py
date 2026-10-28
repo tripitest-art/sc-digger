@@ -152,8 +152,18 @@ FIELDS: tuple[Field, ...] = (
        "Plausibler Tempobereich: Erkannte Halbtempi (z. B. 78 BPM) werden auf 156 BPM verdoppelt (Standard 120).", min=1),
     _f("organize.bpm_plausible_max", "int", "Plausibles BPM Maximum",
        "Obergrenze für Oktavkorrekturen (Standard 200).", min=1),
+    _f("organize.bpm_audio_min_confidence", "float", "Mindest-Konfidenz Audio-BPM",
+       "Ab dieser Konfidenz (0 bis 1, Standard 0.6) schlägt die erkannte Audio-BPM eine abweichende "
+       "Uploader-Angabe; die Text-BPM bleibt als TEXTBPM im Tag, der Digest markiert sie mit ⚠️. "
+       "1.0 lässt die Text-BPM immer gewinnen.", min=0.0, max=1.0),
     _f("organize.write_tags", "bool", "Tags schreiben",
-       "ID3- und Vorbis-Tags automatisch in die Zieldatei schreiben (Artist, Title, BPM, Key, Genre, URL, Lautheit)."),
+       "ID3- und Vorbis-Tags automatisch in die Zieldatei schreiben (Artist, Title, BPM, Key, Genre, URL, Lautheit). "
+       "TKEY/initialkey tragen den Camelot-Key, der Klarname steht in TXXX:INITIALKEY."),
+    _f("organize.write_tags_padding_kb", "float", "Tag-Reserve (kB)",
+       "Reserve in kB hinter den ID3-Tags (MP3, AIFF, WAV), damit Rekordbox später Cues schreiben kann, "
+       "ohne die Datei umzukopieren (Standard 4, 0 = mutagen-Standard).", min=0.0),
+    _f("organize.wav_to_flac", "bool", "WAV nach FLAC",
+       "WAV-Downloads in der Inbox verlustfrei nach FLAC umwandeln, bevor getaggt wird (Standard aus)."),
     # --- quality ---
     _f("quality.accepted_lossless", "list", "Verlustfreie Formate",
        "Dateiendungen, die als verlustfreies Original akzeptiert werden (Standard: wav, aiff, aif, flac, m4a). "

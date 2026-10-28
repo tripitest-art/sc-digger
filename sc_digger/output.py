@@ -262,9 +262,10 @@ def reject_if_duplicate(t: Track, path: Path, inbox: Path, cfg: Config) -> Path 
 def finalize_quality(t: Track, path: Path, inbox: Path, cfg: Config) -> Path | None:
     """Prüft eine geladene Datei und räumt sie ggf. weg. Von main.py und bot.py geteilt.
 
-    Zwei getrennte Ablehnungsgründe, zwei getrennte Ordner: _rejected/ für Fake-Bitrate
-    (Codec/Spektrum stimmt nicht), _rejected/clipped/ für Brickwall-Mastering (Datei ist
-    technisch echt, aber vom Pegel her unbrauchbar).
+    Drei getrennte Ablehnungsgründe, drei Ordner: _rejected/ für Fake-Bitrate (Codec/Spektrum
+    stimmt nicht), _rejected/unmeasurable/ für Dateien, deren Spektrum sich nicht messen ließ
+    (Stille, zu kurz: kein Urteil möglich, also weder echt noch Fake) und _rejected/clipped/
+    für Brickwall-Mastering (Datei ist technisch echt, aber vom Pegel her unbrauchbar).
 
     Gibt den Pfad zurück, wenn die Datei in der Inbox bleibt, sonst None.
     """
@@ -275,6 +276,8 @@ def finalize_quality(t: Track, path: Path, inbox: Path, cfg: Config) -> Path | N
         return None
     if not t.quality_report["ok"]:
         target = inbox / "_rejected"
+        if t.quality_report.get("unmeasurable"):
+            target = target / "unmeasurable"
     elif t.quality_report.get("clipped"):
         target = inbox / "_rejected" / "clipped"
     else:
@@ -332,6 +335,8 @@ def _fmt_track(t: Track) -> str:
     )
     if t.bpm:
         line += f" · {t.bpm:.0f} BPM"
+        if t.text_bpm:
+            line += f" ⚠️ Uploader: {t.text_bpm:.0f}"
     if t.key_camelot:
         line += f" · 🔑 {t.key_camelot}"
     if t.set_minutes:

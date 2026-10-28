@@ -143,6 +143,62 @@ def convert_to_pcm24(path: Path) -> bool:
         return False
 
 
+def convert_wav_to_flac(path: Path) -> Path | None:
+    """Wandelt eine WAV-Datei verlustfrei in FLAC um (Compression-Level 8), atomar.
+
+    WAV kann keine brauchbaren Tags tragen; FLAC ist rund halb so groß und taggbar.
+    Geschrieben wird in eine Temp-Datei im selben Ordner; erst wenn ffmpeg sauber
+    durchlief und die Dauer der FLAC-Datei zur WAV passt (±0,1 s), wird sie unter
+    `<name>.flac` abgelegt und die WAV gelöscht. Existiert `<name>.flac` schon, wird
+    nichts überschrieben. Rückgabe: Pfad der FLAC-Datei oder None bei jedem Fehler
+    (dann bleibt die WAV unverändert liegen). Wirft nie.
+    """
+    tmp: Path | None = None
+    try:
+        path = Path(path)
+        if path.suffix.lower() != ".wav":
+            return None
+        target = path.with_suffix(".flac")
+        if target.exists():
+            log.warning("FLAC-Ziel existiert bereits, WAV bleibt: %s", target.name)
+            return None
+
+        fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.stem}-flac-", suffix=".flac")
+        os.close(fd)
+        tmp = Path(tmp_name)
+        r = _run([
+            "ffmpeg", "-v", "error", "-y", "-i", str(path),
+            "-map_metadata", "0", "-c:a", "flac", "-compression_level", "8", str(tmp),
+        ], timeout=600)
+        if r.returncode != 0:
+            log.warning("FLAC-Konvertierung fehlgeschlagen für %s: %s",
+                        path.name, r.stderr.decode(errors="replace").strip())
+            return None
+        src_s = float(probe(path).get("format", {}).get("duration") or 0)
+        dst_s = float(probe(tmp).get("format", {}).get("duration") or 0)
+        if src_s <= 0 or abs(src_s - dst_s) > 0.1:
+            log.warning("FLAC-Konvertierung für %s verworfen: Dauer %.2f s statt %.2f s",
+                        path.name, dst_s, src_s)
+            return None
+        os.chmod(tmp, stat.S_IMODE(path.stat().st_mode))
+        os.replace(tmp, target)
+        tmp = None
+        try:
+            path.unlink()
+        except OSError as e:
+            log.warning("WAV nach FLAC-Konvertierung nicht gelöscht (%s): %s", path.name, e)
+        return target
+    except Exception as e:
+        log.warning("FLAC-Konvertierung fehlgeschlagen für %s: %s", path, e)
+        return None
+    finally:
+        if tmp is not None:
+            try:
+                tmp.unlink(missing_ok=True)
+            except OSError:
+                pass
+
+
 # Abtastrate, auf die für die Spektrumsmessung dekodiert wird (Nyquist = 22,05 kHz).
 _SR = 44100
 # Maximalamplitude (Vollaussteuerung = 1.0), unter der nichts Messbares mehr liegt (≈ -80 dBFS).
@@ -310,7 +366,8 @@ def check_file(path: Path, cfg: Config) -> dict:
       ist (is_lossless_codec: alle pcm_*, flac, alac, wavpack, ape, tta). Ein Lossy-Stream
       (z. B. AAC in .wav) wird abgewiesen, ein verlustfreier Codec hinter einer nicht
       akzeptierten Endung ebenfalls.
-    - cutoff <= 0.0 -> ok=False, reason="Spektrum nicht messbar (Stille oder kein Signal)"
+    - cutoff <= 0.0 -> ok=False, unmeasurable=True,
+      reason="Spektrum nicht messbar (Stille oder kein Signal)"
     - cutoff < limit -> ok=False, reason="{kind}, aber Spektrum endet bei ... kHz (...)"
     - cutoff >= limit -> ok=True, reason="echte Qualität"
     Bei Dateien ab _MULTI_WINDOW_MIN_S wird an zwei Stellen gemessen (Maximum zählt).
@@ -361,6 +418,8 @@ def check_file(path: Path, cfg: Config) -> dict:
     report["cutoff_hz"] = round(cutoff)
     if cutoff <= 0.0:
         # Stille, ultrakurzer Ausschnitt oder nicht messbar: ohne Messung keine Freigabe.
+        # Eigenes Flag, damit finalize_quality die Datei von echten Fakes trennt.
+        report["unmeasurable"] = True
         report["reason"] = "Spektrum nicht messbar (Stille oder kein Signal)"
         return report
     limit = q["min_cutoff_hz_for_lossless"] if is_lossless else q["min_cutoff_hz_for_320"]

@@ -37,6 +37,7 @@ from .intake import AUDIO_EXTS, find_ready_files, track_from_file
 from .models import Config, DownloadKind, Track
 from .organize import organize, write_tags
 from .phrase import quantize_to_phrase
+from .quality import convert_wav_to_flac
 from .redact import install_redacting_logging, redact
 from .output import (DigestMessage, State, TelegramError, build_digest, build_digest_messages, build_export_txt, download_native,
                      finalize_quality, find_in_inbox, send_digest, send_scout_digest, send_scout_error, send_telegram,
@@ -79,6 +80,18 @@ def _rejection_reason(t: Track) -> str | None:
         if note.startswith(_DOWNLOAD_FAILED_NOTE) or "Qualitätsprüfung fehlgeschlagen" in note:
             return note
     return None
+
+
+def record_outcomes(state: State, tracks: list[Track]) -> None:
+    """Schreibt das Ergebnis des Laufs in die State-DB: abgelehnte Tracks in die Quarantäne
+    (`rejected`, mit Grund), alle anderen in `seen`. Abgelehnte kommen bewusst nicht nach `seen`,
+    damit der nächste Lauf sie erneut prüft und `/retry` sie freigeben kann."""
+    for t in tracks:
+        reason = _rejection_reason(t)
+        if reason:
+            state.mark_rejected(t, reason=reason)
+        else:
+            state.mark_one(t)
 
 
 def process(tracks: list[Track], cfg: Config, *, dry_run: bool,
@@ -148,7 +161,20 @@ def finish_file(t: Track, path: Path, inbox: Path, cfg: Config) -> Path | None:
     if not path:
         return None
 
+    # WAV nach FLAC (optional): WAV trägt keine brauchbaren Tags; FLAC ist verlustfrei, rund
+    # halb so groß und taggbar. Vor Analyse und Tagging, damit die Tags in der FLAC-Datei landen.
+    if org.get("wav_to_flac", False) and path.suffix.lower() == ".wav":
+        flac = convert_wav_to_flac(path)
+        if flac:
+            path = flac
+            if t.quality_report:
+                t.quality_report.update(file=flac.name, ext="flac", codec="flac")
+            t.notes.append("WAV verlustfrei nach FLAC konvertiert")
+        else:
+            t.notes.append("WAV→FLAC fehlgeschlagen, WAV bleibt")
+
     # Audio-Analyse: BPM + Key aus dem Audiomaterial erkennen
+    audio_bpm: float | None = None
     if org.get("detect_bpm", True) or org.get("detect_key", True):
         try:
             analysis = analyze_track(path)
@@ -156,15 +182,22 @@ def finish_file(t: Track, path: Path, inbox: Path, cfg: Config) -> Path | None:
                 # Text-BPM als Anker: in playlist/similar lief filter_bpm nicht
                 text_bpm = t.bpm or estimate_bpm(t)
                 s = cfg["search"]
+                # Oktav-Snapping ins Suchfenster erledigt resolve_bpm (x/2, x, 2x); eine sichere
+                # Audio-BPM (Konfidenz) schlägt dabei eine abweichende Uploader-Angabe.
                 t.bpm, reason = resolve_bpm(
                     analysis["bpm"], text_bpm,
                     window=(s["bpm_min"], s["bpm_max"]),
                     plausible=(org.get("bpm_plausible_min", 120), org.get("bpm_plausible_max", 200)),
+                    audio_confidence=analysis.get("bpm_confidence"),
+                    min_confidence=float(org.get("bpm_audio_min_confidence", 0.6)),
                 )
                 log.debug("BPM %s für %s: %s", t.bpm, t.title, reason)
                 audio_bpm = analysis["bpm"]
                 if audio_bpm and t.bpm and abs(t.bpm - audio_bpm) > 1.0:
                     t.notes.append(f"BPM korrigiert: {reason}")
+                # Uploader-Angabe um mehr als 2 BPM überstimmt: behalten und im Digest markieren
+                if text_bpm and t.bpm and abs(t.bpm - text_bpm) > 2.0:
+                    t.text_bpm = float(text_bpm)
             if org.get("detect_key", True):
                 t.key_camelot = analysis["key_camelot"]
                 t.key_name = analysis["key_name"]
@@ -176,12 +209,18 @@ def finish_file(t: Track, path: Path, inbox: Path, cfg: Config) -> Path | None:
         comment = f"Score: {t.percentile:.0f}p" if t.percentile else ""
         if t.key_camelot:
             comment += f" | Key: {t.key_camelot}"
+        # Oktave korrigiert: beide Notierungen ins Kommentarfeld, damit sich im Zweifel
+        # selbst entscheiden lässt, ob 79 oder 158 gemeint ist.
+        if audio_bpm and t.bpm and abs(t.bpm - audio_bpm) > 1.0:
+            comment += f" | BPM: {t.bpm:.0f} (Audio roh {audio_bpm:.1f})"
         try:
             write_tags(
                 path, artist=t.artist, title=t.title, bpm=t.bpm, key_name=t.key_name,
                 genre=t.genre or org.get("default_genre", "Schranz"),
                 comment=comment.strip(" |"), url=t.url,
                 loudness=t.quality_report,
+                key_camelot=t.key_camelot, text_bpm=t.text_bpm,
+                padding_kb=float(org.get("write_tags_padding_kb", 4)),
             )
         except Exception as e:
             t.notes.append(f"Tagging fehlgeschlagen: {e}")
@@ -719,12 +758,7 @@ def _discover(cfg: Config, dry_run: bool, no_telegram: bool) -> int:
             # werden Tracks beim nächsten Lauf erneut gemeldet statt verloren zu gehen.
             # Abgelehnte Downloads kommen in die Quarantäne statt in seen – sonst wären
             # sie nach einer fehlerhaften Qualitätsprüfung dauerhaft stumm verloren.
-            for t in fresh:
-                reason = _rejection_reason(t)
-                if reason:
-                    state.mark_rejected(t, reason=reason)
-                else:
-                    state.mark_one(t)
+            record_outcomes(state, fresh)
     if not dry_run:
         write_rekordbox_xml(cfg)
     # Sonntags-Digest hängt nur am täglichen Lauf, Standard aus. Ein Fehler hier darf

@@ -135,7 +135,9 @@ def test_analysepfad_braucht_weder_librosa_noch_numba(tmp_path):
         key = A.detect_key(track)
     assert res["bpm"] is not None and abs(res["bpm"] - 155.0) <= 2.0
     assert bpm is not None and abs(bpm - 155.0) <= 2.0
-    assert key == ("1B", "A")
+    # A-Dur ist 11B auf dem Camelot-Rad (Parallele F#m = 11A). Die frühere Erwartung "1B" hielt
+    # einen Fehler der Dur-Tabelle fest (F#, G, G#, A, A#, B waren falsch belegt).
+    assert key == ("11B", "A")
 
 
 def test_defekte_oder_fehlende_datei_liefert_none_statt_ausnahme(tmp_path):
