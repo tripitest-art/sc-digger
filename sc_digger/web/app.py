@@ -100,7 +100,9 @@ def _check_auth(request: Request, password: str | None, allow_anonymous: bool) -
     except Exception:
         return False
     _, _, given = decoded.partition(":")
-    return secrets.compare_digest(given, password or "")
+    # compare_digest wirft TypeError, sobald ein str Nicht-ASCII enthält (z. B. ein
+    # Passwort mit Umlaut). Deshalb als bytes vergleichen: gleiche Prüfung, kein 500.
+    return secrets.compare_digest(given.encode("utf-8"), (password or "").encode("utf-8"))
 
 
 # Einzige Pfade ohne Anmeldung. Alles andere (auch unbekannte Pfade) verlangt Basic-Auth:

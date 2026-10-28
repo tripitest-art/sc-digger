@@ -226,3 +226,17 @@ def test_status_page_links_to_tracks_and_lists_collection(tmp_path):
     assert 'href="/tracks"' in r.text
     assert "Sammlung &amp; Track-DB" in r.text
     assert "Tracks gesamt" in r.text
+
+
+def test_tracks_ui_verlinkt_keine_javascript_urls(tmp_path):
+    """source_url stammt aus fremden Feeds: nur http/https darf ins href."""
+    with TrackDB(tmp_path / "tracks.sqlite") as db:
+        db.upsert_track(TrackRecord(
+            path="/music/Schranz/150/x.wav", mtime=1.0, size=10,
+            artist="X", title="Y", format="wav", bitrate_kbps=1411.0,
+            cutoff_hz=21000, quality_status=QualityStatus.OK, bpm=150.0,
+            key_camelot="8A", status=TrackStatus.ARCHIVE,
+            source_url="javascript:alert(1)",
+        ))
+    r = get_tracks(tmp_path)
+    assert "javascript:alert(1)" not in r.text

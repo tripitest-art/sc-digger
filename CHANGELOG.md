@@ -8,6 +8,7 @@ unter „Unreleased“ (Regeln: `AGENTS.md`, Abschnitt „Doku und Changelog“)
 ## Unreleased
 
 ### Sicherheit
+- Web-Dashboard: Kauf-, Gate- und Quell-URLs aus fremden Feeds werden nur noch als `http://`/`https://` verlinkt. `digest.html` und `tracks.html` prüften das Schema nicht und hätten ein `javascript:`-Ziel ins `href` übernommen (`kaufliste.html` machte es schon richtig). Ein Passwort mit Nicht-ASCII-Zeichen (Umlaut) ergab beim Login HTTP 500, weil `secrets.compare_digest` nur ASCII-`str` vergleicht; der Vergleich läuft jetzt über `bytes` (#413).
 - Web-Dashboard: Login-Sperre gegen Durchprobieren des Passworts. Nach fünf Fehlversuchen in fünf Minuten antwortet die App der Client-IP 15 Minuten lang mit `429` und `Retry-After`, auch bei richtigem Passwort; `SC_DIGGER_WEB_RATE_LIMIT=0` schaltet sie ab, `SC_DIGGER_WEB_TRUST_PROXY=1` wertet `X-Forwarded-For` aus (#410).
 
 ### Geändert
