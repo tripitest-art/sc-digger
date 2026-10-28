@@ -18,7 +18,11 @@ import logging
 import mimetypes
 import re
 import secrets
+import math
 import sqlite3
+import time
+from collections import deque
+from collections.abc import Callable
 from contextlib import closing
 from dataclasses import asdict
 from pathlib import Path
@@ -102,6 +106,75 @@ def _check_auth(request: Request, password: str | None, allow_anonymous: bool) -
 # Einzige Pfade ohne Anmeldung. Alles andere (auch unbekannte Pfade) verlangt Basic-Auth:
 # Die Prüfung sitzt in einer Middleware (Default-deny), nicht in den einzelnen Handlern.
 PUBLIC_PATHS = frozenset({"/healthz"})
+
+# Login-Sperre: Basic-Auth kennt nur ein Passwort, ohne Bremse ließe es sich beliebig oft
+# durchprobieren. Fünf Fehlversuche in fünf Minuten sperren die Client-IP für 15 Minuten.
+LOGIN_MAX_FAILURES = 5
+LOGIN_WINDOW_SECONDS = 300.0
+LOGIN_LOCKOUT_SECONDS = 900.0
+
+
+class FailureTracker:
+    """Zählt Fehlversuche je Schlüssel (Client-IP) im Gleitfenster und sperrt zeitweise.
+
+    Nur im Arbeitsspeicher: Ein Neustart hebt Sperren auf. Das ist bewusst so, die Sperre
+    bremst Durchprobieren, sie ist keine Buchführung.
+    """
+
+    def __init__(
+        self,
+        *,
+        max_failures: int = LOGIN_MAX_FAILURES,
+        window_seconds: float = LOGIN_WINDOW_SECONDS,
+        lockout_seconds: float = LOGIN_LOCKOUT_SECONDS,
+        clock: Callable[[], float] | None = None,
+    ) -> None:
+        self._max = max_failures
+        self._window = window_seconds
+        self._lockout = lockout_seconds
+        self._clock = clock or time.monotonic
+        self._failures: dict[str, deque[float]] = {}
+        self._locked_until: dict[str, float] = {}
+
+    def is_locked(self, key: str) -> float:
+        """Restsekunden der Sperre; 0.0 heißt frei. Abgelaufene Sperren räumt der Aufruf ab."""
+        until = self._locked_until.get(key)
+        if until is None:
+            return 0.0
+        remaining = until - self._clock()
+        if remaining <= 0:
+            del self._locked_until[key]
+            return 0.0
+        return remaining
+
+    def fail(self, key: str) -> None:
+        now = self._clock()
+        stamps = self._failures.setdefault(key, deque())
+        stamps.append(now)
+        # Fehlversuche außerhalb des Fensters zählen nicht mehr.
+        while stamps and now - stamps[0] > self._window:
+            stamps.popleft()
+        if len(stamps) >= self._max:
+            self._locked_until[key] = now + self._lockout
+            del self._failures[key]
+
+    def reset(self, key: str) -> None:
+        self._failures.pop(key, None)
+        self._locked_until.pop(key, None)
+
+
+def client_key(request: Request, *, trust_proxy: bool = False) -> str:
+    """Schlüssel für die Login-Sperre: der Socket-Peer, hinter einem Proxy die letzte Station.
+
+    Die erste Adresse in X-Forwarded-For kann der Client frei erfinden; erst die letzte hat
+    der eigene Proxy angehängt. Ohne trust_proxy bleibt der Header ganz unbeachtet.
+    """
+    if trust_proxy:
+        forwarded = request.headers.get("x-forwarded-for", "")
+        last = forwarded.split(",")[-1].strip()
+        if last:
+            return last
+    return request.client.host if request.client else "unbekannt"
 
 
 def _same_origin(request: Request) -> bool:
@@ -398,12 +471,16 @@ def _audio_response(request: Request, path_value: str | None, cfg: Config) -> Re
 
 
 def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = False,
-               base_path: Path | None = None, local_path: Path | None = None) -> FastAPI:
+               base_path: Path | None = None, local_path: Path | None = None,
+               login_limit: FailureTracker | None = None,
+               trust_proxy: bool = False) -> FastAPI:
     """Erzeugt die Status-App.
 
     password leer/None und allow_anonymous False: ValueError (nie versehentlich offen starten).
     Keine API-Dokumentation ausliefern. app.state.cfg = cfg.
     Nur wenn base_path UND local_path gesetzt sind, gibt es die Editor-Routen; sonst 404.
+    login_limit: ohne Tracker keine Sperre (401 wie bisher); mit Tracker 429 nach zu vielen
+    Fehlversuchen. trust_proxy wertet für die Sperre die letzte Station aus X-Forwarded-For aus.
     """
     if not password and not allow_anonymous:
         raise ValueError("SC_DIGGER_WEB_PASSWORD ist nicht gesetzt; Start abgelehnt")
@@ -415,13 +492,29 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
     app.state.cfg = cfg
     app.state.password = password
     app.state.allow_anonymous = allow_anonymous
+    app.state.login_limit = login_limit
 
     @app.middleware("http")
     async def require_login(request: Request, call_next):
-        if request.url.path not in PUBLIC_PATHS and not _check_auth(
-            request, password, allow_anonymous
-        ):
+        if request.url.path in PUBLIC_PATHS:
+            return await call_next(request)
+        key = client_key(request, trust_proxy=trust_proxy) if login_limit else ""
+        if login_limit is not None:
+            # Die Sperre gilt vor der Passwortprüfung, sonst wäre sie mit dem richtigen
+            # Passwort nach dem Durchprobieren sofort umgangen.
+            locked = login_limit.is_locked(key)
+            if locked > 0:
+                return PlainTextResponse(
+                    "Zu viele Fehlversuche. Bitte später erneut versuchen.",
+                    status_code=429,
+                    headers={"Retry-After": str(max(1, math.ceil(locked)))},
+                )
+        if not _check_auth(request, password, allow_anonymous):
+            if login_limit is not None:
+                login_limit.fail(key)
             return _unauthorized()
+        if login_limit is not None:
+            login_limit.reset(key)
         return await call_next(request)
 
     @app.get("/healthz")
