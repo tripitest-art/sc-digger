@@ -17,6 +17,7 @@ unter „Unreleased“ (Regeln: `AGENTS.md`, Abschnitt „Doku und Changelog“)
 - Doku auf den echten Stand: README und ROADMAP kennzeichnen Features, die im Lauf nicht erreicht werden (Embedding-Kette ohne Einreihen und Worker-Handler, `taste.py` und `stems.py` ohne Aufrufer, wirkungsloser `rekordbox.import_xml_path`, keine eigene Seite `/intake`); Sonntags-Digest mit Grafik (#116) und Stream-Preview (#168) gelten jetzt als fertig, sind aber standardmäßig aus; doppelte `similarity.py`-Zeile entfernt (#396).
 
 ### Hinzugefügt
+- Rekordbox-Rückkanal angeschlossen: Der tägliche Lauf importiert die in `rekordbox.import_xml_path` konfigurierte XML nach dem XML-Export (`rekordbox.import_configured_xml`, `main.run_rekordbox_import`; Rating, Plays, BPM, Key, Cues, Auto-Like in `tracks.sqlite`). Importfehler und XML ohne Treffer melden sich über den Health-Modus `rekordbox_import` per Telegram-Alarm (#397).
 - `organize.wav_to_flac` (Standard `false`): WAV-Downloads in der Inbox werden vor dem Taggen verlustfrei nach FLAC umgewandelt (`quality.convert_wav_to_flac`, atomar, Dauer-Kontrolle, WAV bleibt bei jedem Fehler liegen) (Prüfbericht Schritt 6).
 - `embeddings.auto_queue`: `finish_file` reiht für jeden neuen Inbox-Track einen Embedding-Job ein, wenn der Schlüssel auf `true` steht; Standard `false` bis der GPU-Worker ein Embedding-Modell hat (#394).
 - Telegram-Bot `/similar`: Klangliche Ähnlichkeitssuche per Audio-Embedding bevorzugt, transparenter Chromaprint-Fallback bei fehlendem Embedding, Unterstützung numerischer Track-IDs (`/similar <id>`) (#380).

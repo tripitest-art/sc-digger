@@ -44,7 +44,7 @@ from .output import (DigestMessage, State, TelegramError, build_digest, build_di
                      send_telegram_document)
 from .pipeline import (classify_download, dedupe, estimate_bpm, filter_bpm, filter_sets,
                        genre_relevant, mark_sets, score_tracks)
-from .rekordbox import write_rekordbox_xml
+from .rekordbox import import_configured_xml, write_rekordbox_xml
 from .retry import RetryQueue
 from .scout.bandcamp import fetch_bandcamp_feeds
 from .scout.beatport import fetch_beatport_charts
@@ -465,6 +465,35 @@ def _notify_health(cfg: Config, message: str | None, no_telegram: bool) -> None:
         log.error("Health-Alarm konnte nicht gesendet werden: %s", e)
 
 
+def run_rekordbox_import(cfg: Config, no_telegram: bool = False) -> None:
+    """Rückkanal-Import im täglichen Lauf. Wirft nie.
+
+    Eigener Health-Modus "rekordbox_import": ein kaputter Import soll `discover` nicht als
+    gescheitert werten, aber über den Telegram-Alarm sichtbar sein (Regel 7). Eine XML ohne
+    einen Treffer (falsche path_map) zählt über found == 0 als schlechter Lauf.
+    """
+    try:
+        threshold = cfg.raw.get("health", {}).get("alert_after_bad_runs", 2)
+        with TrackDB(cfg["state"]["track_db_path"]) as db:
+            try:
+                summary = import_configured_xml(db, cfg)
+                error = None
+            except Exception as e:
+                log.exception("Rekordbox-Rückkanal-Import fehlgeschlagen")
+                summary = None
+                error = f"{type(e).__name__}: {e}"
+        if summary is None and error is None:
+            return  # Feature aus oder Datei fehlt: kein Health-Eintrag
+        with Health(cfg["state"]["db_path"]) as health:
+            if error is None:
+                health.record("rekordbox_import", ok=True, found=summary.matched)
+            else:
+                health.record("rekordbox_import", ok=False, found=0, error=error)
+            _notify_health(cfg, health.evaluate("rekordbox_import", threshold), no_telegram)
+    except Exception:
+        log.exception("Rekordbox-Rückkanal: Import oder Health-Eintrag fehlgeschlagen")
+
+
 @dataclass
 class Discovery:
     tracks: list[Track]                 # alle Treffer aller erfolgreichen Quellen (noch nicht dedupliziert)
@@ -761,6 +790,7 @@ def _discover(cfg: Config, dry_run: bool, no_telegram: bool) -> int:
             record_outcomes(state, fresh)
     if not dry_run:
         write_rekordbox_xml(cfg)
+        run_rekordbox_import(cfg, no_telegram)
     # Sonntags-Digest hängt nur am täglichen Lauf, Standard aus. Ein Fehler hier darf
     # die Discovery nicht als gescheitert erscheinen lassen.
     if is_sunday() and cfg["digest"].get("sunday_summary", False):
