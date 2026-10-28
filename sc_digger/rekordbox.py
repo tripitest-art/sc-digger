@@ -1282,3 +1282,38 @@ def import_rekordbox_xml(
 
     return summary
 
+
+def import_configured_xml(db: TrackDB, cfg: Config) -> RekordboxImportSummary | None:
+    """Importiert die in rekordbox.import_xml_path konfigurierte Rückkanal-XML.
+
+    Liest cfg.raw["rekordbox"] defensiv (fehlender Abschnitt oder Schlüssel -> kein Fehler).
+    import_xml_path leer/fehlt/kein str -> None ohne Log-Meldung (Feature aus). Datei existiert
+    nicht -> log.warning mit dem Pfad und None: der Laptop hat evtl. noch nicht synchronisiert.
+    Sonst import_rekordbox_xml mit rekordbox.path_map (fehlt/kein dict -> {}) und auto_like=True.
+    Die Map geht unverändert wie beim Export hinein; das Umkehren Laptop->Server erledigt
+    parse_rekordbox_xml. Lese-/Parse-Fehler werden nicht geschluckt, damit der Aufrufer sie
+    sichtbar machen kann (Goldene Regel 7). Schreibt nur in die TrackDB.
+    """
+    rb_cfg = cfg.raw.get("rekordbox")
+    if not isinstance(rb_cfg, dict):
+        return None
+    xml_path_str = rb_cfg.get("import_xml_path")
+    if not isinstance(xml_path_str, str) or not xml_path_str.strip():
+        return None
+
+    xml_path = Path(xml_path_str.strip())
+    if not xml_path.is_file():
+        log.warning("Rekordbox-Rückkanal: %s nicht gefunden – Import übersprungen", xml_path)
+        return None
+
+    path_map = rb_cfg.get("path_map")
+    if not isinstance(path_map, dict):
+        path_map = {}
+
+    summary = import_rekordbox_xml(db, xml_path, path_map, auto_like=True)
+    log.info(
+        "Rekordbox-Rückkanal: %d Tracks in der XML, %d zugeordnet, %d nicht gefunden",
+        summary.total_tracks, summary.matched, summary.unmatched,
+    )
+    return summary
+
