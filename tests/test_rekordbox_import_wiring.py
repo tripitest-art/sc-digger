@@ -1,4 +1,5 @@
 """Rekordbox-Rückkanal im täglichen Lauf: Verdrahtung in _discover und Health-Alarm (Issue #397)."""
+import logging
 import sqlite3
 from pathlib import Path
 
@@ -84,14 +85,19 @@ def test_discover_laeuft_trotz_kaputter_xml_durch(cfg, tmp_path, monkeypatch):
 # ------------------------------------------------------------------ run_rekordbox_import
 
 
-def test_import_fehler_im_trackdb_oeffnen_wirft_nicht(cfg, tmp_path, monkeypatch):
+def test_import_fehler_im_trackdb_oeffnen_wirft_nicht(cfg, tmp_path, monkeypatch, caplog):
     cfg.raw["rekordbox"] = {"import_xml_path": str(tmp_path / "x.xml")}
 
     def boom(*a, **k):
         raise OSError("db kaputt")
 
     monkeypatch.setattr(m, "TrackDB", boom)
-    m.run_rekordbox_import(cfg, no_telegram=True)  # wirft nicht
+    with caplog.at_level(logging.ERROR, logger=m.log.name):
+        m.run_rekordbox_import(cfg, no_telegram=True)  # wirft nicht
+
+    assert "Import oder Health-Eintrag fehlgeschlagen" in caplog.text
+    # Eine kaputte TrackDB darf keinen Health-Eintrag erzeugen: state.db bleibt unberührt.
+    assert not Path(cfg["state"]["db_path"]).exists()
 
 
 def test_alarm_nach_zwei_schlechten_laeufen_ueber_telegram(cfg, tmp_path, monkeypatch):

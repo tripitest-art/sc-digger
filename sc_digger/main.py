@@ -491,7 +491,7 @@ def run_rekordbox_import(cfg: Config, no_telegram: bool = False) -> None:
                 health.record("rekordbox_import", ok=False, found=0, error=error)
             _notify_health(cfg, health.evaluate("rekordbox_import", threshold), no_telegram)
     except Exception:
-        log.exception("Rekordbox-Rückkanal: Health-Eintrag fehlgeschlagen")
+        log.exception("Rekordbox-Rückkanal: Import oder Health-Eintrag fehlgeschlagen")
 
 
 @dataclass
