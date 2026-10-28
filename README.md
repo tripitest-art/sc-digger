@@ -425,6 +425,15 @@ im modernen Dark-Theme gestaltet und per HTTP-Basic-Auth geschützt:
 
 Für den Zugriff aus dem LAN ist in `docker-compose.yml` eine Port-Freigabe vorbereitet.
 
+**Login-Sperre:** Fünf Fehlversuche (falsche oder fehlende Zugangsdaten) innerhalb von fünf
+Minuten sperren die Client-IP für 15 Minuten; die Antwort ist `429` mit `Retry-After`. Die Sperre
+gilt auch für das richtige Passwort, ein erfolgreicher Login setzt den Zähler zurück, `/healthz`
+bleibt davon unberührt. Der Zähler liegt nur im Arbeitsspeicher. `SC_DIGGER_WEB_RATE_LIMIT=0`
+schaltet die Sperre ab. Hinter einem Proxy (z. B. Caddy) sähe der Server sonst für alle Clients
+dieselbe Adresse: `SC_DIGGER_WEB_TRUST_PROXY=1` zählt stattdessen die letzte Station aus
+`X-Forwarded-For`. Nur setzen, wenn der Webserver ausschließlich über den Proxy erreichbar ist,
+sonst kann ein Client den Header selbst setzen.
+
 ### Wartung: Gate-Backfill
 
 Wurden in früheren Läufen Gated Tracks im Telegram-Digest gemeldet, bevor die Tabelle `gate_items` existierte, können deren Gate-Links mit dem Wartungsskript nachträglich per SoundCloud-Batch-Abfrage in wenigen Sekunden nachgeladen werden:

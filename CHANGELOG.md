@@ -7,6 +7,9 @@ unter „Unreleased“ (Regeln: `AGENTS.md`, Abschnitt „Doku und Changelog“)
 
 ## Unreleased
 
+### Sicherheit
+- Web-Dashboard: Login-Sperre gegen Durchprobieren des Passworts. Nach fünf Fehlversuchen in fünf Minuten antwortet die App der Client-IP 15 Minuten lang mit `429` und `Retry-After`, auch bei richtigem Passwort; `SC_DIGGER_WEB_RATE_LIMIT=0` schaltet sie ab, `SC_DIGGER_WEB_TRUST_PROXY=1` wertet `X-Forwarded-For` aus (#410).
+
 ### Geändert
 - Doku auf den echten Stand: README und ROADMAP kennzeichnen Features, die im Lauf nicht erreicht werden (Embedding-Kette ohne Einreihen und Worker-Handler, `taste.py` und `stems.py` ohne Aufrufer, wirkungsloser `rekordbox.import_xml_path`, keine eigene Seite `/intake`); Sonntags-Digest mit Grafik (#116) und Stream-Preview (#168) gelten jetzt als fertig, sind aber standardmäßig aus; doppelte `similarity.py`-Zeile entfernt (#396).
 
