@@ -395,7 +395,7 @@ Gefundene Tracks werden gegen die lokale Sammlung abgeglichen, Duplikate übersp
 | `dj_export.py` | Harmonischer DJ-Export: M3U8-Playlists, CSV und Set-Reports nach Camelot-Nachbarschaft und ΔBPM |
 | `organize.py` | Inbox-Sortierung `<BPM>/<Camelot>/`, Tags schreiben (inkl. RIFF-INFO für WAV) |
 | `rekordbox.py` | Rekordbox-XML mit einer Playlist pro Woche aus der Inbox |
-| `embeddings.py` | Audio-Embeddings: Vektorspeicher in Track-DB, Queue-Job und Ergebnisverarbeitung — Bibliothek; Einreihen im täglichen Lauf über `embeddings.auto_queue`, Worker-Handler und Ergebnisspeicherung sind noch nicht angeschlossen |
+| `embeddings.py` | Audio-Embeddings: Vektorspeicher in Track-DB, Queue-Job und Ergebnisverarbeitung; Embedder für den Worker: MAEST (`discogs-maest-30s-pw-129e`, braucht `torch` und `transformers`, nur Workstation) und deterministischer MFCC-Fallback (`make_mfcc_embedder`, `select_embedder`). Einreihen im täglichen Lauf über `embeddings.auto_queue` |
 | `similarity.py` | Ähnlichkeitssuche: Chromaprint-Fingerprints („Mehr davon“) und Kosinus-Ähnlichkeit auf Embeddings mit Fallback |
 | `taste.py` | Taste-Score: Logistische Regression auf Embeddings und Feedback zur Vorhersage des Gefallens — Bibliothek; kein Lauf, Bot-Befehl oder Dashboard ruft sie auf |
 | `db.py` | Zentrale Track-DB: Metadaten, Fingerprints, Jobs-Queue, versionierte Migrationen |
@@ -411,7 +411,7 @@ Gefundene Tracks werden gegen die lokale Sammlung abgeglichen, Duplikate übersp
 | `preview.py` | Live-Preview: energiereichstes Segment per ffmpeg, OGG-Opus-Snippet (`find_loudest_segment`, `extract_preview`). Eingebunden über den Bot-Befehl `/preview` (`bot.py`, seit #147). Seit #168 zusätzlich `extract_preview_from_url` für `/preview sc:<SoundCloud-ID>` direkt aus dem Stream. |
 | `redact.py` | Zugangsdaten aus Texten, Logs und Fehlermeldungen entfernen |
 | `models.py` | Datenmodelle (`Track`, `Config`) und Config-Loader |
-| `worker.py` | Standalone-Worker-Client für externe GPU-Workstations (Audio-Embeddings, Cue-Berechnung) |
+| `worker.py` | Standalone-Worker-Client für externe GPU-Workstations (Embedding- und Cue-Jobs); `--embedder {maest,mfcc,none}` (Standard `maest`), ohne `torch`/`transformers` beansprucht er nur Cue-Jobs; legt die `job_id` in den Payload, damit der Audio-Download klappt |
 | `gpu_wake.py` | Weckt die GPU-Workstation per Wake-on-LAN-Proxy, wenn Cue-Jobs offen sind (täglicher Timer, `BETRIEB.md`); der Runner beendet sich mit `--idle-exit` bei Leerlauf |
 
 ### Web-Dashboard (Live-Cockpit, Digest-Explorer, Gate-Assistent)
