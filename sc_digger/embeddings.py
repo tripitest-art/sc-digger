@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import math
 import struct
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Sequence
 
@@ -100,6 +101,69 @@ def enqueue_embedding_job(db: TrackDB, track: TrackRecord) -> JobRecord | None:
         return active
     payload = {"track_id": track.id, "path": track.path, "format": track.format}
     return db.enqueue_job(track.id, JobType.EMBEDDING, payload=payload)
+
+
+# Ein Track gilt als bewertet, wenn Stephan ihn irgendwo markiert hat. `later` zählt bewusst nicht:
+# „später ansehen“ sagt nichts darüber, ob der Track gefällt, und taugt nicht als Trainingslabel.
+# Die Digest-Buttons landen in `sc_feedback` (je SoundCloud-ID), nicht in `tracks.feedback`; eine
+# übernommene Inbox-Datei liegt meist nicht mehr dort, ihre Archivzeile trägt dieselbe `sc_id`.
+_LABELED_SQL = """(
+    t.feedback IN ('like', 'dislike')
+    OR t.adopted_at IS NOT NULL
+    OR t.rb_rating IS NOT NULL
+    OR (t.sc_id IS NOT NULL AND (
+        EXISTS (SELECT 1 FROM sc_feedback f WHERE f.sc_id = t.sc_id AND f.value IN ('like', 'dislike'))
+        OR EXISTS (SELECT 1 FROM tracks o WHERE o.sc_id = t.sc_id AND o.adopted_at IS NOT NULL)
+    ))
+)"""
+
+
+@dataclass
+class BackfillSummary:
+    candidates: int = 0       # Tracks ohne Embedding nach Filter, vor dem Limit
+    queued: int = 0           # neu eingereiht (dry_run: würden eingereiht)
+    already_queued: int = 0   # offener oder laufender Embedding-Job vorhanden
+    missing_file: int = 0     # Datei auf dem Server fehlt
+
+
+def backfill_embedding_jobs(
+    db: TrackDB,
+    *,
+    labeled_only: bool = True,
+    limit: int | None = None,
+    dry_run: bool = False,
+) -> BackfillSummary:
+    """Reiht Embedding-Jobs für vorhandene Tracks ohne Embedding nach.
+
+    `embeddings.auto_queue` erfasst nur neue Inbox-Tracks; bewertete Altbestände (Inbox und
+    Sammlung) hätten sonst nie Trainingsdaten für den Taste-Score. Mit `labeled_only` nur
+    bewertete Tracks, sonst alle (bewertete zuerst, je Gruppe nach Track-ID). Fehlende Dateien
+    und schon aktive Jobs werden gezählt, nicht eingereiht. `limit` begrenzt die neu
+    eingereihten Jobs; danach wird nichts mehr gezählt.
+    """
+    where = "NOT EXISTS (SELECT 1 FROM track_embeddings e WHERE e.track_id = t.id)"
+    if labeled_only:
+        where += f" AND {_LABELED_SQL}"
+    ids = [r[0] for r in db.db.execute(
+        f"SELECT t.id FROM tracks t WHERE {where} ORDER BY {_LABELED_SQL} DESC, t.id ASC"
+    ).fetchall()]
+
+    summary = BackfillSummary(candidates=len(ids))
+    for track_id in ids:
+        if limit is not None and summary.queued >= limit:
+            break
+        track = db.get_track_by_id(track_id)
+        if track is None:
+            continue
+        if not Path(track.path).is_file():
+            summary.missing_file += 1
+        elif db.find_active_job(JobType.EMBEDDING, track_id) is not None:
+            summary.already_queued += 1
+        else:
+            if not dry_run:
+                enqueue_embedding_job(db, track)
+            summary.queued += 1
+    return summary
 
 
 def apply_embedding_result(db: TrackDB, job_id: int, result: dict[str, Any]) -> bool:

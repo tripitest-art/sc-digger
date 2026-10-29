@@ -7,6 +7,7 @@
   python -m sc_digger.main intake [--dry-run]                # Manuell abgelegte Tracks verarbeiten
   python -m sc_digger.main audit [--path ...] [--report ...] # Library-Audit (read-only)
   python -m sc_digger.main scout [--dry-run]                 # Bandcamp-Feeds + Beatport-Charts in store_items
+  python -m sc_digger.main embed-backfill [--all] [--limit N] # Embedding-Jobs für vorhandene Tracks einreihen
 
 Alle Modi: --dry-run (nichts laden/senden), -v, --config, --no-telegram
 """
@@ -31,7 +32,7 @@ from .cloud import download_cloud
 from .collection import Collection, open_collection
 from .cues import write_breakdown_tag, write_drop_tag, write_first_kick_tag
 from .db import TrackDB
-from .embeddings import enqueue_embedding_job
+from .embeddings import backfill_embedding_jobs, enqueue_embedding_job
 from .health import Health
 from .intake import AUDIO_EXTS, find_ready_files, track_from_file
 from .models import Config, DownloadKind, Track
@@ -925,6 +926,23 @@ def run_cleanup_inbox(
     return sum(len(g.duplicates) for g in groups)
 
 
+def run_embed_backfill(
+    cfg: Config,
+    *,
+    labeled_only: bool = True,
+    limit: int | None = None,
+    dry_run: bool = False,
+) -> str:
+    """Reiht Embedding-Jobs für vorhandene Tracks ohne Embedding nach, druckt und liefert die Zeile."""
+    with TrackDB(cfg["state"]["track_db_path"]) as db:
+        s = backfill_embedding_jobs(db, labeled_only=labeled_only, limit=limit, dry_run=dry_run)
+    verb = "würden eingereiht" if dry_run else "eingereiht"
+    text = (f"Embedding-Backfill: {s.queued} {verb}, {s.already_queued} schon in der Queue, "
+            f"{s.missing_file} ohne Datei ({s.candidates} Kandidaten)")
+    print(text)
+    return text
+
+
 def run_scout(cfg: Config, *, dry_run: bool = False) -> int:
     """Führt Bandcamp- und Beatport-Scout aus.
 
@@ -1080,6 +1098,11 @@ def cli() -> None:
                     help="Überzählige Dateien nach <inbox>/_rejected/duplicate/ verschieben")
     ci.add_argument("--inbox", help="Inbox-Pfad (Standard: aus config.yaml)")
 
+    eb = sub.add_parser("embed-backfill", parents=[common],
+                        help="Embedding-Jobs für vorhandene Tracks ohne Embedding einreihen (Standard: nur bewertete)")
+    eb.add_argument("--all", action="store_true", help="Auch unbewertete Tracks einreihen (bewertete zuerst)")
+    eb.add_argument("--limit", type=int, help="Höchstens N neue Jobs einreihen")
+
     a = ap.parse_args()
     install_redacting_logging(logging.DEBUG if a.verbose else logging.INFO)
     cfg = Config.load(a.config)
@@ -1122,6 +1145,8 @@ def cli() -> None:
         elif a.mode == "cleanup-inbox":
             run_cleanup_inbox(cfg, move=a.move, inbox_path=a.inbox,
                               dry_run=a.dry_run, no_telegram=a.no_telegram)
+        elif a.mode == "embed-backfill":
+            run_embed_backfill(cfg, labeled_only=not a.all, limit=a.limit, dry_run=a.dry_run)
         else:
             run_discover(cfg, a.dry_run, a.no_telegram)
     except Exception:
