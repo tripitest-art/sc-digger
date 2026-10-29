@@ -410,6 +410,7 @@ Gefundene Tracks werden gegen die lokale Sammlung abgeglichen, Duplikate übersp
 | `redact.py` | Zugangsdaten aus Texten, Logs und Fehlermeldungen entfernen |
 | `models.py` | Datenmodelle (`Track`, `Config`) und Config-Loader |
 | `worker.py` | Standalone-Worker-Client für externe GPU-Workstations (Audio-Embeddings, Cue-Berechnung) |
+| `gpu_wake.py` | Weckt die GPU-Workstation per Wake-on-LAN-Proxy, wenn Cue-Jobs offen sind (täglicher Timer, `BETRIEB.md`); der Runner beendet sich mit `--idle-exit` bei Leerlauf |
 
 ### Web-Dashboard (Live-Cockpit, Digest-Explorer, Gate-Assistent)
 
