@@ -370,8 +370,13 @@ def _known_sc_statuses(cfg: Config) -> dict[int, str]:
     return statuses
 
 
+# Feste Meldung für den Browser. Die Route gibt die Konstante zurück, nicht str(exc):
+# so fließt kein Ausnahmetext nach außen (CodeQL py/stack-trace-exposure).
+_SCAN_NOT_TRACK_OR_PLAYLIST = "Das ist weder ein Track- noch ein Playlist-Link."
+
+
 class _ScanLinkError(SoundCloudError):
-    """Meldung, die der Browser im Wortlaut sehen darf (Eingabefehler, kein Ausnahmetext)."""
+    """Eingabefehler im URL-Scanner; der Browser sieht _SCAN_NOT_TRACK_OR_PLAYLIST."""
 
 
 def _scan_url(cfg: Config, url: str) -> dict:
@@ -389,7 +394,7 @@ def _scan_url(cfg: Config, url: str) -> dict:
         label, tracks = sc.track_station(url, limit=50)
         source = f"Station zu: {label}"
     else:
-        raise _ScanLinkError("Das ist weder ein Track- noch ein Playlist-Link.")
+        raise _ScanLinkError(_SCAN_NOT_TRACK_OR_PLAYLIST)
 
     statuses = _known_sc_statuses(cfg)
     items = []
@@ -860,8 +865,10 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
             # Threadpool: _scan_url macht mehrere blockierende Netzwerkaufrufe, die sonst die
             # Event-Loop (und damit die ganze App) anhalten.
             result = await run_in_threadpool(_scan_url, app.state.cfg, url)
-        except _ScanLinkError as exc:
-            return JSONResponse({"ok": False, "error": str(exc)}, status_code=422)
+        except _ScanLinkError:
+            return JSONResponse(
+                {"ok": False, "error": _SCAN_NOT_TRACK_OR_PLAYLIST}, status_code=422
+            )
         except Exception as exc:  # SoundCloud-Fehler, Netz, Client-ID: feste Meldung (Regel 7);
             # Ausnahmetexte enthalten URLs und gehören nur geschwärzt ins Log.
             log.warning("URL-Scanner fehlgeschlagen: %s", redact(exc))
