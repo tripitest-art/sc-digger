@@ -374,6 +374,10 @@ def main(argv: list[str] | None = None) -> int:
             job_type = "cues"
 
     stop_event = threading.Event()
+    # idle_exit_s nur mitgeben, wenn --idle-exit gesetzt ist: Ohne die Option bleibt der Aufruf
+    # unverändert (Standard: nie von selbst beenden), und Attrappen von run_worker_loop in
+    # Tests ohne diesen Parameter laufen weiter.
+    loop_extra = {} if args.idle_exit is None else {"idle_exit_s": args.idle_exit}
     try:
         processed = run_worker_loop(
             client,
@@ -382,7 +386,7 @@ def main(argv: list[str] | None = None) -> int:
             max_jobs=1 if args.once else None,
             handler_map=handler_map,
             stop_event=stop_event,
-            idle_exit_s=args.idle_exit,
+            **loop_extra,
         )
     except KeyboardInterrupt:
         stop_event.set()
