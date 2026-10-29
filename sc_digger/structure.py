@@ -15,6 +15,7 @@ import sys
 import numpy as np
 
 from sc_digger import phrase
+from sc_digger.quality import LOCAL_ONLY
 
 log = logging.getLogger(__name__)
 
@@ -35,7 +36,7 @@ def _decode_audio(path: Path, sr: int = 22050) -> np.ndarray | None:
     if not path.is_file():
         return None
     cmd = [
-        "ffmpeg", "-v", "error",
+        "ffmpeg", "-v", "error", *LOCAL_ONLY,
         "-i", str(path),
         "-ac", "1", "-ar", str(sr), "-f", "f32le", "-",
     ]

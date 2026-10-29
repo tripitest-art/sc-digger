@@ -8,8 +8,10 @@ und ändern weder State noch Sammlung – anders als ``main.run_link``, das dies
 verschickt und als gesehen markiert.
 
 Ist zusätzlich ein Pfad zur lokalen Override-Datei gesetzt (Issue #145), kommen die schreibenden
-Editor-Routen unter `/config` dazu. Dann wird bei jeder Anfrage die Basis- und die lokale Datei
-frisch gelesen; die versionierte `config.yaml` bleibt unangetastet.
+Editor-Routen unter `/config` dazu. Dann wird bei jeder Anfrage der Editor-Seite die Basis- und die
+lokale Datei frisch gelesen; nach dem Speichern ersetzt `app.state.cfg` den Stand, und alle anderen
+Routen (Digest, Tracks, Vorhören, Status) lesen ihn bei jeder Anfrage von dort. Die versionierte
+`config.yaml` bleibt unangetastet.
 """
 from __future__ import annotations
 
@@ -39,6 +41,7 @@ from fastapi.responses import (
     StreamingResponse,
 )
 from jinja2 import Environment, FileSystemLoader, select_autoescape
+from starlette.concurrency import run_in_threadpool
 
 from ..db import FEEDBACK_VALUES, JobType, TrackDB
 from ..dj_export import Playlist, order_harmonic
@@ -46,6 +49,7 @@ from ..embeddings import apply_embedding_result
 from ..harmonic import find_mix_candidates
 from ..models import Config
 from ..pipeline import classify_download, dedupe, estimate_bpm
+from ..redact import redact
 from ..schema import FIELDS, SECTION_DESCRIPTIONS, SECTION_TITLES, Problem, deep_merge, get_field
 from ..soundcloud import SoundCloudClient, SoundCloudError
 from .audio import parse_range_header, resolve_playable_path
@@ -68,7 +72,7 @@ from .database import (
     retry_quarantined_track,
     save_track_feedback,
 )
-from .intake import process_uploaded_audio
+from .intake import MAX_UPLOAD_BYTES, process_uploaded_audio
 from .status import collect_status
 
 _TEMPLATES = Path(__file__).parent / "templates"
@@ -111,6 +115,8 @@ PUBLIC_PATHS = frozenset({"/healthz"})
 
 # Login-Sperre: Basic-Auth kennt nur ein Passwort, ohne Bremse ließe es sich beliebig oft
 # durchprobieren. Fünf Fehlversuche in fünf Minuten sperren die Client-IP für 15 Minuten.
+# Multipart-Rahmen (Grenzen, Feldnamen) zählt zur Content-Length, aber nicht zur Dateigröße.
+_UPLOAD_OVERHEAD_BYTES = 1024 * 1024
 LOGIN_MAX_FAILURES = 5
 LOGIN_WINDOW_SECONDS = 300.0
 LOGIN_LOCKOUT_SECONDS = 900.0
@@ -364,6 +370,15 @@ def _known_sc_statuses(cfg: Config) -> dict[int, str]:
     return statuses
 
 
+# Feste Meldung für den Browser. Die Route gibt die Konstante zurück, nicht str(exc):
+# so fließt kein Ausnahmetext nach außen (CodeQL py/stack-trace-exposure).
+_SCAN_NOT_TRACK_OR_PLAYLIST = "Das ist weder ein Track- noch ein Playlist-Link."
+
+
+class _ScanLinkError(SoundCloudError):
+    """Eingabefehler im URL-Scanner; der Browser sieht _SCAN_NOT_TRACK_OR_PLAYLIST."""
+
+
 def _scan_url(cfg: Config, url: str) -> dict:
     """On-Demand-Check eines SoundCloud-Links für den Browser.
 
@@ -379,7 +394,7 @@ def _scan_url(cfg: Config, url: str) -> dict:
         label, tracks = sc.track_station(url, limit=50)
         source = f"Station zu: {label}"
     else:
-        raise SoundCloudError("Das ist weder ein Track- noch ein Playlist-Link.")
+        raise _ScanLinkError(_SCAN_NOT_TRACK_OR_PLAYLIST)
 
     statuses = _known_sc_statuses(cfg)
     items = []
@@ -525,8 +540,8 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
 
     @app.get("/", response_class=HTMLResponse)
     def index(request: Request):
-        snap = collect_status(cfg)
-        overview = get_collection_overview(cfg["state"]["track_db_path"])
+        snap = collect_status(app.state.cfg)
+        overview = get_collection_overview(app.state.cfg["state"]["track_db_path"])
         template = _env.get_template("status.html")
         return HTMLResponse(template.render(
             snap=snap, overview=overview, editor_available=editor_available
@@ -534,7 +549,7 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
 
     @app.get("/api/status")
     def api_status(request: Request):
-        return JSONResponse(collect_status(cfg).to_dict())
+        return JSONResponse(collect_status(app.state.cfg).to_dict())
 
     # Job-Queue für externe GPU-Worker (Issue #330): claimen, Lebenszeichen und Ergebnis
     # melden über HTTP, damit die Workstation die Track-DB nicht per SMB/NFS einbinden muss.
@@ -553,13 +568,13 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
                 return JSONResponse({"ok": False, "error": "Ungültiger Payload"}, status_code=400)
         job_type = payload.get("job_type")
         job = claim_job_for_worker(
-            cfg["state"]["track_db_path"], str(job_type) if job_type else None
+            app.state.cfg["state"]["track_db_path"], str(job_type) if job_type else None
         )
         return JSONResponse({"ok": True, "job": job})
 
     @app.post("/api/jobs/{job_id}/heartbeat")
     def api_jobs_heartbeat(request: Request, job_id: int):
-        if heartbeat_job(cfg["state"]["track_db_path"], job_id):
+        if heartbeat_job(app.state.cfg["state"]["track_db_path"], job_id):
             return JSONResponse({"ok": True})
         return JSONResponse(
             {"ok": False, "error": "Job nicht gefunden oder nicht im Status running"},
@@ -582,16 +597,16 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
                 status_code=422,
             )
         done = finish_job(
-            cfg["state"]["track_db_path"],
+            app.state.cfg["state"]["track_db_path"],
             job_id,
             status,
             result=payload.get("result"),
             error=payload.get("error"),
-            inbox_dir=(cfg.raw.get("download") or {}).get("inbox_dir"),
+            inbox_dir=(app.state.cfg.raw.get("download") or {}).get("inbox_dir"),
         )
         if done:
             if status == "completed":
-                with TrackDB(cfg["state"]["track_db_path"]) as db:
+                with TrackDB(app.state.cfg["state"]["track_db_path"]) as db:
                     job = db.get_job_by_id(job_id)
                     if job is not None and (job.job_type == JobType.EMBEDDING or job.job_type == "embedding"):
                         apply_embedding_result(db, job_id, payload.get("result") or {})
@@ -605,24 +620,24 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
         Gleiche Wurzeln und derselbe Schutz wie /api/audio/{track_id}: nur lesend,
         404 bei unbekanntem Job, fehlendem Track oder Datei außerhalb von Inbox/Sammlung.
         """
-        with TrackDB(cfg["state"]["track_db_path"]) as db:
+        with TrackDB(app.state.cfg["state"]["track_db_path"]) as db:
             job = db.get_job_by_id(job_id)
             track = db.get_track_by_id(job.track_id) if job is not None else None
         if track is None:
             return PlainTextResponse("Track nicht gefunden", status_code=404)
-        return _audio_response(request, track.path, cfg)
+        return _audio_response(request, track.path, app.state.cfg)
 
     # Rein lesende Track-Abfragen für den Explorer (Teil 1 des Dashboards): nur die
     # Track-DB, ausschließlich `mode=ro`, keine Schreibpfade.
     @app.get("/api/database/overview")
     def api_database_overview(request: Request):
-        return JSONResponse(get_collection_overview(cfg["state"]["track_db_path"]).to_dict())
+        return JSONResponse(get_collection_overview(app.state.cfg["state"]["track_db_path"]).to_dict())
 
     @app.get("/api/tracks")
     def api_tracks(request: Request):
         params = request.query_params
         result = query_tracks(
-            cfg["state"]["track_db_path"],
+            app.state.cfg["state"]["track_db_path"],
             status=params.get("status") or None,
             search=params.get("q") or None,
             bpm_min=_query_float(params.get("bpm_min")),
@@ -641,11 +656,11 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
     # erlauben das Springen im Track, ohne die Datei komplett zu laden.
     @app.get("/api/audio/{track_id}")
     def api_audio(request: Request, track_id: int):
-        with TrackDB(cfg["state"]["track_db_path"]) as db:
+        with TrackDB(app.state.cfg["state"]["track_db_path"]) as db:
             track = db.get_track_by_id(track_id)
         if track is None:
             return PlainTextResponse("Track nicht gefunden", status_code=404)
-        return _audio_response(request, track.path, cfg)
+        return _audio_response(request, track.path, app.state.cfg)
 
     # DJ-Ansicht auf dieselben rein lesenden Abfragen (Teil 2 des Dashboards): Filter-Formular
     # und Treffertabelle serverseitig gerendert, Paginierung über offset.
@@ -665,7 +680,7 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
         page_size = max(1, min(_query_int(params.get("limit"), DEFAULT_LIMIT), MAX_LIMIT))
         offset = max(0, _query_int(params.get("offset"), 0))
         result = query_tracks(
-            cfg["state"]["track_db_path"],
+            app.state.cfg["state"]["track_db_path"],
             status=filters["status"] or None,
             search=filters["q"] or None,
             bpm_min=_query_float(filters["bpm_min"]),
@@ -679,7 +694,7 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
         )
 
         # Nur Zeilen mit vorhandener lokaler Datei bekommen einen Abspiel-Knopf.
-        roots = _playable_roots(cfg)
+        roots = _playable_roots(app.state.cfg)
         for item in result.items:
             item["playable"] = (
                 resolve_playable_path(str(item.get("path") or ""), roots) is not None
@@ -727,7 +742,7 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
                 if tolerance is None or tolerance <= 0:
                     tolerance = 3.0
                 try:
-                    with closing(_connect_readonly(cfg["state"]["track_db_path"])) as db:
+                    with closing(_connect_readonly(app.state.cfg["state"]["track_db_path"])) as db:
                         candidates = find_mix_candidates(
                             _ReadOnlyTrackDB(db), key, bpm,
                             bpm_tolerance=tolerance, limit=30,
@@ -770,7 +785,7 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
             )
 
         playlist = _build_set_playlist(
-            cfg["state"]["track_db_path"],
+            app.state.cfg["state"]["track_db_path"],
             bpm_min=_payload_float(payload.get("bpm_min")),
             bpm_max=_payload_float(payload.get("bpm_max")),
             status=str(payload.get("status") or "").strip() or None,
@@ -815,7 +830,7 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
                     "track_ids müssen Zahlen sein", status_code=400
                 )
         playlist = _build_set_playlist(
-            cfg["state"]["track_db_path"],
+            app.state.cfg["state"]["track_db_path"],
             bpm_min=_query_float(params.get("bpm_min")),
             bpm_max=_query_float(params.get("bpm_max")),
             status=(params.get("status") or "").strip() or None,
@@ -847,11 +862,16 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
                 {"ok": False, "error": "Kein SoundCloud-Link angegeben"}, status_code=400
             )
         try:
-            result = _scan_url(cfg, url)
-        except SoundCloudError as exc:
-            return JSONResponse({"ok": False, "error": str(exc)}, status_code=422)
-        except Exception as exc:  # Netz/Client-ID/…: dem Browser eine Meldung geben (Regel 7)
-            log.warning("URL-Scanner fehlgeschlagen: %s", exc)
+            # Threadpool: _scan_url macht mehrere blockierende Netzwerkaufrufe, die sonst die
+            # Event-Loop (und damit die ganze App) anhalten.
+            result = await run_in_threadpool(_scan_url, app.state.cfg, url)
+        except _ScanLinkError:
+            return JSONResponse(
+                {"ok": False, "error": _SCAN_NOT_TRACK_OR_PLAYLIST}, status_code=422
+            )
+        except Exception as exc:  # SoundCloud-Fehler, Netz, Client-ID: feste Meldung (Regel 7);
+            # Ausnahmetexte enthalten URLs und gehören nur geschwärzt ins Log.
+            log.warning("URL-Scanner fehlgeschlagen: %s", redact(exc))
             return JSONResponse(
                 {"ok": False, "error": "SoundCloud-Abfrage fehlgeschlagen"}, status_code=502
             )
@@ -861,9 +881,9 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
     def api_digest(request: Request):
         params = request.query_params
         result = query_digest(
-            cfg["state"]["db_path"],
-            cfg["state"]["track_db_path"],
-            inbox_dir=(cfg.raw.get("download") or {}).get("inbox_dir"),
+            app.state.cfg["state"]["db_path"],
+            app.state.cfg["state"]["track_db_path"],
+            inbox_dir=(app.state.cfg.raw.get("download") or {}).get("inbox_dir"),
             search=params.get("q") or "",
             status_filter=params.get("status") or "",
             download_kind=params.get("download_kind") or "",
@@ -885,9 +905,9 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
         page_size = max(1, min(_query_int(params.get("limit"), DEFAULT_LIMIT), MAX_LIMIT))
         offset = max(0, _query_int(params.get("offset"), 0))
         result = query_digest(
-            cfg["state"]["db_path"],
-            cfg["state"]["track_db_path"],
-            inbox_dir=(cfg.raw.get("download") or {}).get("inbox_dir"),
+            app.state.cfg["state"]["db_path"],
+            app.state.cfg["state"]["track_db_path"],
+            inbox_dir=(app.state.cfg.raw.get("download") or {}).get("inbox_dir"),
             search=filters["q"],
             status_filter=filters["status"],
             download_kind=filters["download_kind"],
@@ -922,7 +942,7 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
     def api_kaufliste(request: Request):
         params = request.query_params
         result = query_store_items(
-            cfg["state"]["track_db_path"],
+            app.state.cfg["state"]["track_db_path"],
             search=params.get("q") or None,
             feedback=params.get("feedback") or None,
             limit=_query_int(params.get("limit"), DEFAULT_LIMIT),
@@ -940,7 +960,7 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
         page_size = max(1, min(_query_int(params.get("limit"), DEFAULT_LIMIT), MAX_LIMIT))
         offset = max(0, _query_int(params.get("offset"), 0))
         result = query_store_items(
-            cfg["state"]["track_db_path"],
+            app.state.cfg["state"]["track_db_path"],
             search=filters["q"] or None,
             feedback=filters["feedback"] or None,
             limit=page_size,
@@ -975,7 +995,7 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
     def api_rejected(request: Request):
         params = request.query_params
         return JSONResponse(query_rejected_tracks(
-            cfg["state"]["db_path"],
+            app.state.cfg["state"]["db_path"],
             search=params.get("q") or None,
             limit=_query_int(params.get("limit"), DEFAULT_LIMIT),
             offset=_query_int(params.get("offset"), 0),
@@ -988,7 +1008,7 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
         page_size = max(1, min(_query_int(params.get("limit"), DEFAULT_LIMIT), MAX_LIMIT))
         offset = max(0, _query_int(params.get("offset"), 0))
         result = query_rejected_tracks(
-            cfg["state"]["db_path"],
+            app.state.cfg["state"]["db_path"],
             search=filters["q"] or None,
             limit=page_size,
             offset=offset,
@@ -1039,7 +1059,7 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
             return JSONResponse(
                 {"ok": False, "error": "track_id muss eine Zahl sein"}, status_code=400
             )
-        if retry_quarantined_track(cfg["state"]["db_path"], track_id_int):
+        if retry_quarantined_track(app.state.cfg["state"]["db_path"], track_id_int):
             return JSONResponse({"ok": True})
         return JSONResponse({"ok": False, "error": "Track nicht in Quarantäne"})
 
@@ -1067,7 +1087,7 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
             sc_id_int = int(sc_id)
         except (TypeError, ValueError):
             return JSONResponse({"ok": False, "error": "Ungültige sc_id"}, status_code=400)
-        if not save_track_feedback(cfg["state"]["track_db_path"], sc_id_int, str(value)):
+        if not save_track_feedback(app.state.cfg["state"]["track_db_path"], sc_id_int, str(value)):
             return JSONResponse(
                 {"ok": False, "sc_id": sc_id_int, "value": str(value)}, status_code=500
             )
@@ -1082,6 +1102,19 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
     async def api_upload_intake(request: Request):
         if not _same_origin(request):
             return JSONResponse({"ok": False, "error": "Ungültige Herkunft"}, status_code=403)
+        # Vor dem Einlesen prüfen: request.form() spoolt den ganzen Body in eine Temp-Datei.
+        # Der Header allein ist nicht verlässlich (fehlt bei Chunked), darum zählt
+        # process_uploaded_audio beim Kopieren noch einmal mit.
+        declared = request.headers.get("content-length")
+        if declared is not None:
+            try:
+                declared_bytes = int(declared)
+            except ValueError:
+                return JSONResponse({"ok": False, "error": "Ungültige Content-Length"}, status_code=400)
+            if declared_bytes > MAX_UPLOAD_BYTES + _UPLOAD_OVERHEAD_BYTES:
+                return JSONResponse(
+                    {"ok": False, "error": "Datei zu groß"}, status_code=413
+                )
         try:
             form = await request.form()
         except Exception:
@@ -1092,10 +1125,20 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
             return JSONResponse(
                 {"ok": False, "error": "Feld 'file' mit einer Audiodatei fehlt"}, status_code=400
             )
-        result = process_uploaded_audio(upload.file, upload.filename or "", cfg)
+        # Threadpool: ffmpeg, librosa und Normalisierung laufen Minuten und würden sonst die
+        # Event-Loop blockieren (auch /healthz und Vorhören).
+        result = await run_in_threadpool(
+            process_uploaded_audio, upload.file, upload.filename or "", app.state.cfg
+        )
         # 200 nur, wenn die Datei wirklich in der Inbox liegt; abgelehnt/fehlgeschlagen ist 422,
-        # damit ein Upload-Skript den Unterschied sieht, ohne den Text zu lesen.
-        return JSONResponse(asdict(result), status_code=200 if result.ok else 422)
+        # damit ein Upload-Skript den Unterschied sieht, ohne den Text zu lesen. Zu groß: 413.
+        if result.ok:
+            status_code = 200
+        elif result.status == "too_large":
+            status_code = 413
+        else:
+            status_code = 422
+        return JSONResponse(asdict(result), status_code=status_code)
 
     if base_path is None or local_path is None:
         return app

@@ -19,6 +19,8 @@ from pathlib import Path
 
 import numpy as np
 
+from .quality import LOCAL_ONLY
+
 log = logging.getLogger(__name__)
 
 # Abtastrate des gemeinsamen Decodes und Rate der Chroma-Berechnung. Die Rate
@@ -83,7 +85,7 @@ def _decode_audio(path: Path, sr: int = 22050, duration: int = 60,
     Systemen Probleme machen. ffmpeg ist ohnehin bereits für quality.py nötig.
     """
     cmd = [
-        "ffmpeg", "-v", "error",
+        "ffmpeg", "-v", "error", *LOCAL_ONLY,
         "-ss", str(offset), "-t", str(duration),
         "-i", str(path),
         "-ac", "1", "-ar", str(sr), "-f", "f32le", "-",
@@ -95,7 +97,7 @@ def _decode_audio(path: Path, sr: int = 22050, duration: int = 60,
         # zweite Aufruf identisch zum ersten und kostete nur I/O; der
         # Analysepfad dekodiert mit Offset 0 und braucht genau einen Aufruf.
         cmd_start = [
-            "ffmpeg", "-v", "error",
+            "ffmpeg", "-v", "error", *LOCAL_ONLY,
             "-t", str(duration),
             "-i", str(path),
             "-ac", "1", "-ar", str(sr), "-f", "f32le", "-",

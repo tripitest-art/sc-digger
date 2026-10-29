@@ -30,13 +30,19 @@ _PEAK_RE = re.compile(r"^\s*Peak:\s*(-?\d+\.?\d*)\s*dBFS", re.M)
 _LRA_RE = re.compile(r"^\s*LRA:\s*(-?\d+\.?\d*)\s*LU\b", re.M)
 
 
+# Eingaben nur aus Datei oder Pipe: eine hochgeladene Datei, die ffmpeg am Inhalt als Playlist
+# (HLS, concat) erkennt, darf keine weiteren Ressourcen (http, tcp, andere Pfade per Protokoll) laden.
+# Muss vor jedem ``-i`` stehen (Eingabe-Option).
+LOCAL_ONLY = ("-protocol_whitelist", "file,pipe")
+
+
 def _run(cmd: list[str], timeout: int = 120) -> subprocess.CompletedProcess:
     return subprocess.run(cmd, capture_output=True, timeout=timeout)
 
 
 def probe(path: Path) -> dict:
     r = _run([
-        "ffprobe", "-v", "error", "-select_streams", "a:0",
+        "ffprobe", "-v", "error", *LOCAL_ONLY, "-select_streams", "a:0",
         "-show_entries", "stream=codec_name,sample_rate,channels,bit_rate,bits_per_raw_sample",
         "-show_entries", "format=format_name,duration,bit_rate",
         "-of", "json", str(path),
@@ -67,7 +73,7 @@ def is_32bit_or_float(path: Path) -> bool:
     """
     try:
         r = _run([
-            "ffprobe", "-v", "error", "-select_streams", "a:0",
+            "ffprobe", "-v", "error", *LOCAL_ONLY, "-select_streams", "a:0",
             "-show_entries", "stream=codec_name,sample_fmt,bits_per_raw_sample",
             "-of", "json", str(path),
         ])
@@ -120,7 +126,7 @@ def convert_to_pcm24(path: Path) -> bool:
         try:
             mode = stat.S_IMODE(path.stat().st_mode)
             r = _run([
-                "ffmpeg", "-v", "error", "-y", "-i", str(path),
+                "ffmpeg", "-v", "error", "-y", *LOCAL_ONLY, "-i", str(path),
                 "-map_metadata", "0", "-c:a", codec, str(tmp),
             ], timeout=600)
             if r.returncode != 0:
@@ -167,7 +173,7 @@ def convert_wav_to_flac(path: Path) -> Path | None:
         os.close(fd)
         tmp = Path(tmp_name)
         r = _run([
-            "ffmpeg", "-v", "error", "-y", "-i", str(path),
+            "ffmpeg", "-v", "error", "-y", *LOCAL_ONLY, "-i", str(path),
             "-map_metadata", "0", "-c:a", "flac", "-compression_level", "8", str(tmp),
         ], timeout=600)
         if r.returncode != 0:
@@ -221,7 +227,7 @@ def is_lossless_codec(codec: str) -> bool:
 
 def _decode_window(path: Path, seconds: int, offset: int | None) -> np.ndarray:
     """Dekodiert einen Ausschnitt als Mono-float32 bei 44,1 kHz. offset=None: ab Dateianfang."""
-    cmd = ["ffmpeg", "-v", "error"]
+    cmd = ["ffmpeg", "-v", "error", *LOCAL_ONLY]
     if offset is not None:
         cmd += ["-ss", str(offset)]
     cmd += ["-t", str(seconds), "-i", str(path), "-ac", "1", "-ar", str(_SR), "-f", "f32le", "-"]
@@ -314,7 +320,7 @@ def loudness_report(path: Path) -> dict:
     ohne jede Dynamik zeigt sich zuverlässiger als sehr niedrige LRA, nicht als hohe Lautheit.
     """
     r = _run([
-        "ffmpeg", "-v", "info", "-i", str(path),
+        "ffmpeg", "-v", "info", *LOCAL_ONLY, "-i", str(path),
         "-filter:a", "ebur128=peak=true", "-f", "null", "-",
     ], timeout=180)
     stderr = r.stderr.decode(errors="replace")
