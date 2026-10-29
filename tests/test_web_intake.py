@@ -195,7 +195,7 @@ def test_processing_error_is_reported_and_upload_removed(tmp_path, monkeypatch):
     assert result.ok is False
     assert result.status == "error"
     assert "Verarbeitung fehlgeschlagen" in result.message
-    assert "librosa kaputt" in result.message
+    assert "librosa kaputt" not in result.message  # Ausnahmetext nur im Log (Befund 6, #414)
     assert list((tmp_path / "intake").iterdir()) == []
 
 
@@ -213,7 +213,7 @@ def test_failed_check_moves_file_to_fehler(tmp_path, monkeypatch):
 
     assert result.ok is False
     assert result.status == "error"
-    assert result.message == "ffprobe nicht verfügbar"
+    assert result.message == "Prüfung fehlgeschlagen, Details im Log"
     assert result.dest_path == str(tmp_path / "intake" / "_fehler" / "unkenntlich.wav")
     assert (tmp_path / "intake" / "_fehler" / "unkenntlich.wav").exists()
     assert list((tmp_path / "intake").glob("*.wav")) == []

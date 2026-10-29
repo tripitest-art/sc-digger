@@ -14,6 +14,8 @@ import time
 from datetime import datetime, timedelta, timezone
 from typing import Iterator
 
+from urllib.parse import urljoin, urlparse
+
 import requests
 
 from .models import Track
@@ -26,6 +28,21 @@ UA = (
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"
 )
+_SHORTLINK_HOST = "on.soundcloud.com"
+_MAX_REDIRECTS = 5
+
+
+def _is_soundcloud_host(host: str) -> bool:
+    return host == "soundcloud.com" or host.endswith(".soundcloud.com")
+
+
+def _is_https_host(url: str, host_ok) -> bool:
+    """True, wenn ``url`` https ist und der per urlparse gelesene Host ``host_ok`` erfüllt."""
+    try:
+        parsed = urlparse(url.strip())
+        return parsed.scheme.lower() == "https" and host_ok((parsed.hostname or "").lower())
+    except ValueError:
+        return False
 
 
 class SoundCloudError(RuntimeError):
@@ -383,14 +400,30 @@ class SoundCloudClient:
         """Löst on.soundcloud.com-Share-Links (App 'Teilen'-Button) zur echten URL auf.
 
         Der api-v2 /resolve-Endpunkt kennt nur soundcloud.com-URLs, keine Kurzlinks.
+        Abgerufen wird nur ein https-Link mit exakt diesem Host (Substring-Treffer wie
+        ``http://intern:8123/?on.soundcloud.com`` ließen den Server sonst beliebige Ziele im
+        Heimnetz anfragen). Weiterleitungen folgt die Methode von Hand: jedes Ziel muss https auf
+        soundcloud.com sein, sonst wird es nicht abgerufen und die Original-URL zurückgegeben.
         """
-        if "on.soundcloud.com" not in url.lower():
+        if not _is_https_host(url, lambda h: h == _SHORTLINK_HOST):
             return url
+        current = url
         try:
-            return self.s.get(url, allow_redirects=True, timeout=15).url
+            for _ in range(_MAX_REDIRECTS + 1):
+                r = self.s.get(current, allow_redirects=False, timeout=15)
+                location = r.headers.get("Location") if 300 <= r.status_code < 400 else None
+                if not location:
+                    return current
+                nxt = urljoin(current, location)
+                if not _is_https_host(nxt, _is_soundcloud_host):
+                    log.warning("Kurzlink leitet auf ein fremdes Ziel um, wird nicht gefolgt: %s", url)
+                    return url
+                current = nxt
         except requests.RequestException:
             log.warning("Konnte Kurzlink nicht auflösen, versuche Original-URL: %s", url)
             return url
+        log.warning("Kurzlink: zu viele Weiterleitungen, versuche Original-URL: %s", url)
+        return url
 
     def resolve_kind(self, url: str) -> str | None:
         """'track' | 'playlist' | 'user' | None für eine beliebige SoundCloud-URL."""

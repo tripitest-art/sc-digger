@@ -15,6 +15,8 @@ from typing import Sequence
 
 import numpy as np
 
+from .quality import LOCAL_ONLY
+
 log = logging.getLogger(__name__)
 
 _SR = 22050
@@ -59,7 +61,7 @@ def _decode_audio(path: Path | str, sr: int = _SR) -> np.ndarray | None:
     if not p.is_file():
         return None
     cmd = [
-        "ffmpeg", "-v", "error",
+        "ffmpeg", "-v", "error", *LOCAL_ONLY,
         "-i", str(p),
         "-ac", "1", "-ar", str(sr), "-f", "f32le", "-",
     ]

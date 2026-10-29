@@ -39,6 +39,7 @@ from fastapi.responses import (
     StreamingResponse,
 )
 from jinja2 import Environment, FileSystemLoader, select_autoescape
+from starlette.concurrency import run_in_threadpool
 
 from ..db import FEEDBACK_VALUES, JobType, TrackDB
 from ..dj_export import Playlist, order_harmonic
@@ -46,6 +47,7 @@ from ..embeddings import apply_embedding_result
 from ..harmonic import find_mix_candidates
 from ..models import Config
 from ..pipeline import classify_download, dedupe, estimate_bpm
+from ..redact import redact
 from ..schema import FIELDS, SECTION_DESCRIPTIONS, SECTION_TITLES, Problem, deep_merge, get_field
 from ..soundcloud import SoundCloudClient, SoundCloudError
 from .audio import parse_range_header, resolve_playable_path
@@ -68,7 +70,7 @@ from .database import (
     retry_quarantined_track,
     save_track_feedback,
 )
-from .intake import process_uploaded_audio
+from .intake import MAX_UPLOAD_BYTES, process_uploaded_audio
 from .status import collect_status
 
 _TEMPLATES = Path(__file__).parent / "templates"
@@ -111,6 +113,8 @@ PUBLIC_PATHS = frozenset({"/healthz"})
 
 # Login-Sperre: Basic-Auth kennt nur ein Passwort, ohne Bremse ließe es sich beliebig oft
 # durchprobieren. Fünf Fehlversuche in fünf Minuten sperren die Client-IP für 15 Minuten.
+# Multipart-Rahmen (Grenzen, Feldnamen) zählt zur Content-Length, aber nicht zur Dateigröße.
+_UPLOAD_OVERHEAD_BYTES = 1024 * 1024
 LOGIN_MAX_FAILURES = 5
 LOGIN_WINDOW_SECONDS = 300.0
 LOGIN_LOCKOUT_SECONDS = 900.0
@@ -364,6 +368,10 @@ def _known_sc_statuses(cfg: Config) -> dict[int, str]:
     return statuses
 
 
+class _ScanLinkError(SoundCloudError):
+    """Meldung, die der Browser im Wortlaut sehen darf (Eingabefehler, kein Ausnahmetext)."""
+
+
 def _scan_url(cfg: Config, url: str) -> dict:
     """On-Demand-Check eines SoundCloud-Links für den Browser.
 
@@ -379,7 +387,7 @@ def _scan_url(cfg: Config, url: str) -> dict:
         label, tracks = sc.track_station(url, limit=50)
         source = f"Station zu: {label}"
     else:
-        raise SoundCloudError("Das ist weder ein Track- noch ein Playlist-Link.")
+        raise _ScanLinkError("Das ist weder ein Track- noch ein Playlist-Link.")
 
     statuses = _known_sc_statuses(cfg)
     items = []
@@ -847,11 +855,14 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
                 {"ok": False, "error": "Kein SoundCloud-Link angegeben"}, status_code=400
             )
         try:
-            result = _scan_url(cfg, url)
-        except SoundCloudError as exc:
+            # Threadpool: _scan_url macht mehrere blockierende Netzwerkaufrufe, die sonst die
+            # Event-Loop (und damit die ganze App) anhalten.
+            result = await run_in_threadpool(_scan_url, cfg, url)
+        except _ScanLinkError as exc:
             return JSONResponse({"ok": False, "error": str(exc)}, status_code=422)
-        except Exception as exc:  # Netz/Client-ID/…: dem Browser eine Meldung geben (Regel 7)
-            log.warning("URL-Scanner fehlgeschlagen: %s", exc)
+        except Exception as exc:  # SoundCloud-Fehler, Netz, Client-ID: feste Meldung (Regel 7);
+            # Ausnahmetexte enthalten URLs und gehören nur geschwärzt ins Log.
+            log.warning("URL-Scanner fehlgeschlagen: %s", redact(exc))
             return JSONResponse(
                 {"ok": False, "error": "SoundCloud-Abfrage fehlgeschlagen"}, status_code=502
             )
@@ -1082,6 +1093,19 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
     async def api_upload_intake(request: Request):
         if not _same_origin(request):
             return JSONResponse({"ok": False, "error": "Ungültige Herkunft"}, status_code=403)
+        # Vor dem Einlesen prüfen: request.form() spoolt den ganzen Body in eine Temp-Datei.
+        # Der Header allein ist nicht verlässlich (fehlt bei Chunked), darum zählt
+        # process_uploaded_audio beim Kopieren noch einmal mit.
+        declared = request.headers.get("content-length")
+        if declared is not None:
+            try:
+                declared_bytes = int(declared)
+            except ValueError:
+                return JSONResponse({"ok": False, "error": "Ungültige Content-Length"}, status_code=400)
+            if declared_bytes > MAX_UPLOAD_BYTES + _UPLOAD_OVERHEAD_BYTES:
+                return JSONResponse(
+                    {"ok": False, "error": "Datei zu groß"}, status_code=413
+                )
         try:
             form = await request.form()
         except Exception:
@@ -1092,10 +1116,20 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
             return JSONResponse(
                 {"ok": False, "error": "Feld 'file' mit einer Audiodatei fehlt"}, status_code=400
             )
-        result = process_uploaded_audio(upload.file, upload.filename or "", cfg)
+        # Threadpool: ffmpeg, librosa und Normalisierung laufen Minuten und würden sonst die
+        # Event-Loop blockieren (auch /healthz und Vorhören).
+        result = await run_in_threadpool(
+            process_uploaded_audio, upload.file, upload.filename or "", cfg
+        )
         # 200 nur, wenn die Datei wirklich in der Inbox liegt; abgelehnt/fehlgeschlagen ist 422,
-        # damit ein Upload-Skript den Unterschied sieht, ohne den Text zu lesen.
-        return JSONResponse(asdict(result), status_code=200 if result.ok else 422)
+        # damit ein Upload-Skript den Unterschied sieht, ohne den Text zu lesen. Zu groß: 413.
+        if result.ok:
+            status_code = 200
+        elif result.status == "too_large":
+            status_code = 413
+        else:
+            status_code = 422
+        return JSONResponse(asdict(result), status_code=status_code)
 
     if base_path is None or local_path is None:
         return app

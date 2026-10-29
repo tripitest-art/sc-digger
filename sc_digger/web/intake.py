@@ -16,18 +16,33 @@ from typing import BinaryIO
 
 from ..intake import AUDIO_EXTS, track_from_file
 from ..models import Config, Track
+from ..redact import redact
 
 log = logging.getLogger(__name__)
 
 # In Stücken lesen und schreiben: Originale können mehrere hundert MB groß sein (Server: 1 GB RAM).
 _CHUNK_SIZE = 1024 * 1024
 
+# Obergrenze für einen Upload (Originale: WAV/AIFF bis wenige hundert MB). Ohne Limit schreibt
+# ``_copy_stream`` bis die Platte voll ist, nachdem Starlette den Body schon einmal gespoolt hat.
+MAX_UPLOAD_BYTES = 1024 * 1024 * 1024
+
+# Feste Meldungen für den Browser: Ausnahmetexte enthalten Containerpfade (/music/inbox, /data) und
+# ffmpeg-Ausgaben. Die Ursache steht (mit ``redact``) im Log.
+MSG_UPLOAD_FAILED = "Upload fehlgeschlagen, Details im Log"
+MSG_PROCESSING_FAILED = "Verarbeitung fehlgeschlagen, Details im Log"
+MSG_CHECK_FAILED = "Prüfung fehlgeschlagen, Details im Log"
+
+
+class UploadTooLarge(Exception):
+    """Der Upload überschreitet ``MAX_UPLOAD_BYTES``."""
+
 
 @dataclass
 class UploadResult:
     ok: bool
     filename: str
-    status: str  # 'inbox', 'rejected', 'error'
+    status: str  # 'inbox', 'rejected', 'error', 'too_large'
     message: str
     dest_path: str | None = None
     bpm: float | None = None
@@ -38,6 +53,7 @@ def process_uploaded_audio(
     file_bytes: BinaryIO,
     filename: str,
     cfg: Config,
+    max_bytes: int | None = None,
 ) -> UploadResult:
     """Nimmt einen Audio-Upload entgegen, speichert die Datei temporär im intake_dir,
     prüft Format und Fake-Status via finish_file(), analysiert BPM/Key und sortiert
@@ -45,6 +61,7 @@ def process_uploaded_audio(
     Gibt ein strukturiertes UploadResult zurück. Wirft nie unkontrolliert.
     """
     # Nur der reine Dateiname: „../../etc/x.wav“ darf den Eingangsordner nicht verlassen.
+    limit = MAX_UPLOAD_BYTES if max_bytes is None else max_bytes
     name = Path(str(filename or "")).name.strip()
     if not name or Path(name).suffix.lower() not in AUDIO_EXTS:
         return UploadResult(
@@ -54,17 +71,21 @@ def process_uploaded_audio(
             message=f"Kein Audio-Format: {name or 'Datei ohne Namen'}",
         )
     try:
-        return _ingest(file_bytes, name, cfg)
+        return _ingest(file_bytes, name, cfg, limit)
+    except UploadTooLarge:
+        log.warning("Upload von %s abgelehnt: größer als %d MB", name, limit // (1024 * 1024))
+        return UploadResult(
+            ok=False, filename=name, status="too_large",
+            message=f"Datei zu groß (max. {limit // (1024 * 1024)} MB)",
+        )
     except Exception as e:
         # Vertrag der Route: auch ein unerwarteter Fehler kommt als UploadResult zurück (Regel 7
         # bleibt gewahrt, der Aufrufer sieht die Ursache im Feld message).
-        log.warning("Upload von %s fehlgeschlagen: %s", name, e)
-        return UploadResult(
-            ok=False, filename=name, status="error", message=f"Upload fehlgeschlagen: {e}"
-        )
+        log.warning("Upload von %s fehlgeschlagen: %s", name, redact(e))
+        return UploadResult(ok=False, filename=name, status="error", message=MSG_UPLOAD_FAILED)
 
 
-def _ingest(file_bytes: BinaryIO, name: str, cfg: Config) -> UploadResult:
+def _ingest(file_bytes: BinaryIO, name: str, cfg: Config, max_bytes: int) -> UploadResult:
     """Speichert den Upload im Eingangsordner und verarbeitet ihn über ``finish_file``."""
     download = cfg.raw.get("download") or {}
     intake_dir_str = download.get("intake_dir") or ""
@@ -86,7 +107,7 @@ def _ingest(file_bytes: BinaryIO, name: str, cfg: Config) -> UploadResult:
     staging = intake_dir / f".{target.name}.part"
     try:
         with open(staging, "wb") as handle:
-            _copy_stream(file_bytes, handle)
+            _copy_stream(file_bytes, handle, max_bytes)
         os.replace(staging, target)
     except BaseException:
         _remove(staging)
@@ -100,9 +121,9 @@ def _ingest(file_bytes: BinaryIO, name: str, cfg: Config) -> UploadResult:
         result_path = finish_file(t, target, inbox, cfg)
     except Exception as e:
         _remove(target)
-        log.warning("Verarbeitung von %s fehlgeschlagen: %s", name, e)
+        log.warning("Verarbeitung von %s fehlgeschlagen: %s", name, redact(e))
         return UploadResult(ok=False, filename=name, status="error",
-                            message=f"Verarbeitung fehlgeschlagen: {e}")
+                            message=MSG_PROCESSING_FAILED)
 
     if result_path is not None:
         bpm = f"{t.bpm:.0f}" if t.bpm else "?"
@@ -123,8 +144,11 @@ def _ingest(file_bytes: BinaryIO, name: str, cfg: Config) -> UploadResult:
         except OSError as e:
             log.warning("Datei konnte nicht nach _fehler verschoben werden: %s", e)
             dest_path = str(target)
-        reason = t.notes[-1] if t.notes else "Prüfung fehlgeschlagen"
-        return UploadResult(ok=False, filename=name, status="error", message=reason,
+        # Die letzte Notiz kann einen Ausnahmetext mit Pfaden enthalten (z. B. „Audio-Analyse
+        # fehlgeschlagen: …“): nur geschwärzt ins Log, der Browser bekommt die feste Meldung.
+        if t.notes:
+            log.warning("Prüfung von %s fehlgeschlagen: %s", name, redact(t.notes[-1]))
+        return UploadResult(ok=False, filename=name, status="error", message=MSG_CHECK_FAILED,
                             dest_path=dest_path)
 
     if t.duplicate_of:
@@ -136,12 +160,21 @@ def _ingest(file_bytes: BinaryIO, name: str, cfg: Config) -> UploadResult:
                         dest_path=_rejected_path(inbox, target.name))
 
 
-def _copy_stream(src: BinaryIO, dst: BinaryIO) -> None:
-    """Kopiert den Stream blockweise, ohne die ganze Datei in den Speicher zu laden."""
+def _copy_stream(src: BinaryIO, dst: BinaryIO, max_bytes: int) -> None:
+    """Kopiert den Stream blockweise, ohne die ganze Datei in den Speicher zu laden.
+
+    Zählt mit und bricht bei mehr als ``max_bytes`` mit ``UploadTooLarge`` ab (der Aufrufer
+    räumt die Teil-Datei weg). Der Content-Length-Header allein genügt nicht: er fehlt bei
+    Chunked-Uploads und kann falsch sein.
+    """
+    total = 0
     while True:
         chunk = src.read(_CHUNK_SIZE)
         if not chunk:
             return
+        total += len(chunk)
+        if total > max_bytes:
+            raise UploadTooLarge
         dst.write(chunk)
 
 

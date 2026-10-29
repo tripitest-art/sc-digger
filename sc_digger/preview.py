@@ -18,6 +18,7 @@ from pathlib import Path
 import numpy as np
 
 from sc_digger import structure
+from sc_digger.quality import LOCAL_ONLY
 
 log = logging.getLogger(__name__)
 
@@ -38,7 +39,7 @@ def _decode_mono(path: Path, sample_rate: int) -> np.ndarray | None:
     try:
         result = subprocess.run(
             [
-                "ffmpeg", "-v", "error",
+                "ffmpeg", "-v", "error", *LOCAL_ONLY,
                 "-i", str(path),
                 "-vn", "-ac", "1", "-ar", str(sample_rate),
                 "-f", "f32le", "-",
@@ -83,7 +84,7 @@ def _has_audio_stream(path: Path) -> bool:
     try:
         result = subprocess.run(
             [
-                "ffprobe", "-v", "error", "-select_streams", "a:0",
+                "ffprobe", "-v", "error", *LOCAL_ONLY, "-select_streams", "a:0",
                 "-show_entries", "stream=codec_name",
                 "-of", "default=noprint_wrappers=1:nokey=1", str(path),
             ],
@@ -162,6 +163,7 @@ def extract_preview_from_url(
     out = Path(output_path)
     try:
         out.parent.mkdir(parents=True, exist_ok=True)
+        # Ohne LOCAL_ONLY: die Quelle ist hier eine https-URL (SoundCloud-Stream), kein Upload.
         result = subprocess.run(
             [
                 "ffmpeg", "-y", "-v", "error",
@@ -254,7 +256,7 @@ def extract_preview(
 
         result = subprocess.run(
             [
-                "ffmpeg", "-y", "-v", "error",
+                "ffmpeg", "-y", "-v", "error", *LOCAL_ONLY,
                 "-ss", f"{start:.3f}",
                 "-t", f"{float(duration_s):.3f}",
                 "-i", str(source),
