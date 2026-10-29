@@ -2,8 +2,9 @@
 
 BPM und Key kommen aus einem gemeinsamen Analysepfad in reinem NumPy/SciPy
 (Mel-Fluss-Onsets, harmonische Autokorrelation, oktav-gemitteltes Chroma). Der
-Pfad wurde in `_eval/analysis_v2.py` erprobt und in `_eval/REVIEW-2026-10-14.md`
-(Abschnitte 1-5, 8.4, 10) nachgewiesen. Das Audio wird dafür genau einmal
+Pfad wurde in einem Evaluationswerkzeug erprobt und im Prüfbericht
+`REVIEW-2026-10-14.md` (Abschnitte 1-5, 8.4, 10) nachgewiesen; beides liegt nur noch in der
+Git-Historie. Das Audio wird dafür genau einmal
 dekodiert (Mono, 44,1 kHz) statt je einmal pro Kennwert.
 
 Warum numba-frei: `librosa.beat.beat_track()` und `librosa.onset.onset_strength()`

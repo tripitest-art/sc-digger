@@ -19,8 +19,8 @@ Aufruf:
   python -m sc_digger.dj_export --folder <ordner> --out <ziel> [--bpm 150 165]
                                 [--name set] [--from-csv]
 
-Die Logik stammt aus dem Evaluationswerkzeug `_eval/dj_export.py`; dort steht nur
-noch ein Kompatibilitaets-Shim, damit alte Aufrufe weiterlaufen.
+Die Logik stammt aus einem früheren Evaluationswerkzeug, das nur noch in der
+Git-Historie liegt.
 """
 from __future__ import annotations
 
@@ -105,7 +105,7 @@ def camelot_relation(k1: str | None, k2: str | None) -> str:
     return "fern"
 
 
-# Alte Bezeichnung; wird von _eval/dj_export.py weiterverwendet.
+# Alte Bezeichnung, bleibt als Alias für bestehende Aufrufer erhalten.
 harmonic_relation = camelot_relation
 
 
