@@ -8,8 +8,10 @@ und ändern weder State noch Sammlung – anders als ``main.run_link``, das dies
 verschickt und als gesehen markiert.
 
 Ist zusätzlich ein Pfad zur lokalen Override-Datei gesetzt (Issue #145), kommen die schreibenden
-Editor-Routen unter `/config` dazu. Dann wird bei jeder Anfrage die Basis- und die lokale Datei
-frisch gelesen; die versionierte `config.yaml` bleibt unangetastet.
+Editor-Routen unter `/config` dazu. Dann wird bei jeder Anfrage der Editor-Seite die Basis- und die
+lokale Datei frisch gelesen; nach dem Speichern ersetzt `app.state.cfg` den Stand, und alle anderen
+Routen (Digest, Tracks, Vorhören, Status) lesen ihn bei jeder Anfrage von dort. Die versionierte
+`config.yaml` bleibt unangetastet.
 """
 from __future__ import annotations
 
@@ -533,8 +535,8 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
 
     @app.get("/", response_class=HTMLResponse)
     def index(request: Request):
-        snap = collect_status(cfg)
-        overview = get_collection_overview(cfg["state"]["track_db_path"])
+        snap = collect_status(app.state.cfg)
+        overview = get_collection_overview(app.state.cfg["state"]["track_db_path"])
         template = _env.get_template("status.html")
         return HTMLResponse(template.render(
             snap=snap, overview=overview, editor_available=editor_available
@@ -542,7 +544,7 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
 
     @app.get("/api/status")
     def api_status(request: Request):
-        return JSONResponse(collect_status(cfg).to_dict())
+        return JSONResponse(collect_status(app.state.cfg).to_dict())
 
     # Job-Queue für externe GPU-Worker (Issue #330): claimen, Lebenszeichen und Ergebnis
     # melden über HTTP, damit die Workstation die Track-DB nicht per SMB/NFS einbinden muss.
@@ -561,13 +563,13 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
                 return JSONResponse({"ok": False, "error": "Ungültiger Payload"}, status_code=400)
         job_type = payload.get("job_type")
         job = claim_job_for_worker(
-            cfg["state"]["track_db_path"], str(job_type) if job_type else None
+            app.state.cfg["state"]["track_db_path"], str(job_type) if job_type else None
         )
         return JSONResponse({"ok": True, "job": job})
 
     @app.post("/api/jobs/{job_id}/heartbeat")
     def api_jobs_heartbeat(request: Request, job_id: int):
-        if heartbeat_job(cfg["state"]["track_db_path"], job_id):
+        if heartbeat_job(app.state.cfg["state"]["track_db_path"], job_id):
             return JSONResponse({"ok": True})
         return JSONResponse(
             {"ok": False, "error": "Job nicht gefunden oder nicht im Status running"},
@@ -590,16 +592,16 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
                 status_code=422,
             )
         done = finish_job(
-            cfg["state"]["track_db_path"],
+            app.state.cfg["state"]["track_db_path"],
             job_id,
             status,
             result=payload.get("result"),
             error=payload.get("error"),
-            inbox_dir=(cfg.raw.get("download") or {}).get("inbox_dir"),
+            inbox_dir=(app.state.cfg.raw.get("download") or {}).get("inbox_dir"),
         )
         if done:
             if status == "completed":
-                with TrackDB(cfg["state"]["track_db_path"]) as db:
+                with TrackDB(app.state.cfg["state"]["track_db_path"]) as db:
                     job = db.get_job_by_id(job_id)
                     if job is not None and (job.job_type == JobType.EMBEDDING or job.job_type == "embedding"):
                         apply_embedding_result(db, job_id, payload.get("result") or {})
@@ -613,24 +615,24 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
         Gleiche Wurzeln und derselbe Schutz wie /api/audio/{track_id}: nur lesend,
         404 bei unbekanntem Job, fehlendem Track oder Datei außerhalb von Inbox/Sammlung.
         """
-        with TrackDB(cfg["state"]["track_db_path"]) as db:
+        with TrackDB(app.state.cfg["state"]["track_db_path"]) as db:
             job = db.get_job_by_id(job_id)
             track = db.get_track_by_id(job.track_id) if job is not None else None
         if track is None:
             return PlainTextResponse("Track nicht gefunden", status_code=404)
-        return _audio_response(request, track.path, cfg)
+        return _audio_response(request, track.path, app.state.cfg)
 
     # Rein lesende Track-Abfragen für den Explorer (Teil 1 des Dashboards): nur die
     # Track-DB, ausschließlich `mode=ro`, keine Schreibpfade.
     @app.get("/api/database/overview")
     def api_database_overview(request: Request):
-        return JSONResponse(get_collection_overview(cfg["state"]["track_db_path"]).to_dict())
+        return JSONResponse(get_collection_overview(app.state.cfg["state"]["track_db_path"]).to_dict())
 
     @app.get("/api/tracks")
     def api_tracks(request: Request):
         params = request.query_params
         result = query_tracks(
-            cfg["state"]["track_db_path"],
+            app.state.cfg["state"]["track_db_path"],
             status=params.get("status") or None,
             search=params.get("q") or None,
             bpm_min=_query_float(params.get("bpm_min")),
@@ -649,11 +651,11 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
     # erlauben das Springen im Track, ohne die Datei komplett zu laden.
     @app.get("/api/audio/{track_id}")
     def api_audio(request: Request, track_id: int):
-        with TrackDB(cfg["state"]["track_db_path"]) as db:
+        with TrackDB(app.state.cfg["state"]["track_db_path"]) as db:
             track = db.get_track_by_id(track_id)
         if track is None:
             return PlainTextResponse("Track nicht gefunden", status_code=404)
-        return _audio_response(request, track.path, cfg)
+        return _audio_response(request, track.path, app.state.cfg)
 
     # DJ-Ansicht auf dieselben rein lesenden Abfragen (Teil 2 des Dashboards): Filter-Formular
     # und Treffertabelle serverseitig gerendert, Paginierung über offset.
@@ -673,7 +675,7 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
         page_size = max(1, min(_query_int(params.get("limit"), DEFAULT_LIMIT), MAX_LIMIT))
         offset = max(0, _query_int(params.get("offset"), 0))
         result = query_tracks(
-            cfg["state"]["track_db_path"],
+            app.state.cfg["state"]["track_db_path"],
             status=filters["status"] or None,
             search=filters["q"] or None,
             bpm_min=_query_float(filters["bpm_min"]),
@@ -687,7 +689,7 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
         )
 
         # Nur Zeilen mit vorhandener lokaler Datei bekommen einen Abspiel-Knopf.
-        roots = _playable_roots(cfg)
+        roots = _playable_roots(app.state.cfg)
         for item in result.items:
             item["playable"] = (
                 resolve_playable_path(str(item.get("path") or ""), roots) is not None
@@ -735,7 +737,7 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
                 if tolerance is None or tolerance <= 0:
                     tolerance = 3.0
                 try:
-                    with closing(_connect_readonly(cfg["state"]["track_db_path"])) as db:
+                    with closing(_connect_readonly(app.state.cfg["state"]["track_db_path"])) as db:
                         candidates = find_mix_candidates(
                             _ReadOnlyTrackDB(db), key, bpm,
                             bpm_tolerance=tolerance, limit=30,
@@ -778,7 +780,7 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
             )
 
         playlist = _build_set_playlist(
-            cfg["state"]["track_db_path"],
+            app.state.cfg["state"]["track_db_path"],
             bpm_min=_payload_float(payload.get("bpm_min")),
             bpm_max=_payload_float(payload.get("bpm_max")),
             status=str(payload.get("status") or "").strip() or None,
@@ -823,7 +825,7 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
                     "track_ids müssen Zahlen sein", status_code=400
                 )
         playlist = _build_set_playlist(
-            cfg["state"]["track_db_path"],
+            app.state.cfg["state"]["track_db_path"],
             bpm_min=_query_float(params.get("bpm_min")),
             bpm_max=_query_float(params.get("bpm_max")),
             status=(params.get("status") or "").strip() or None,
@@ -857,7 +859,7 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
         try:
             # Threadpool: _scan_url macht mehrere blockierende Netzwerkaufrufe, die sonst die
             # Event-Loop (und damit die ganze App) anhalten.
-            result = await run_in_threadpool(_scan_url, cfg, url)
+            result = await run_in_threadpool(_scan_url, app.state.cfg, url)
         except _ScanLinkError as exc:
             return JSONResponse({"ok": False, "error": str(exc)}, status_code=422)
         except Exception as exc:  # SoundCloud-Fehler, Netz, Client-ID: feste Meldung (Regel 7);
@@ -872,9 +874,9 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
     def api_digest(request: Request):
         params = request.query_params
         result = query_digest(
-            cfg["state"]["db_path"],
-            cfg["state"]["track_db_path"],
-            inbox_dir=(cfg.raw.get("download") or {}).get("inbox_dir"),
+            app.state.cfg["state"]["db_path"],
+            app.state.cfg["state"]["track_db_path"],
+            inbox_dir=(app.state.cfg.raw.get("download") or {}).get("inbox_dir"),
             search=params.get("q") or "",
             status_filter=params.get("status") or "",
             download_kind=params.get("download_kind") or "",
@@ -896,9 +898,9 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
         page_size = max(1, min(_query_int(params.get("limit"), DEFAULT_LIMIT), MAX_LIMIT))
         offset = max(0, _query_int(params.get("offset"), 0))
         result = query_digest(
-            cfg["state"]["db_path"],
-            cfg["state"]["track_db_path"],
-            inbox_dir=(cfg.raw.get("download") or {}).get("inbox_dir"),
+            app.state.cfg["state"]["db_path"],
+            app.state.cfg["state"]["track_db_path"],
+            inbox_dir=(app.state.cfg.raw.get("download") or {}).get("inbox_dir"),
             search=filters["q"],
             status_filter=filters["status"],
             download_kind=filters["download_kind"],
@@ -933,7 +935,7 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
     def api_kaufliste(request: Request):
         params = request.query_params
         result = query_store_items(
-            cfg["state"]["track_db_path"],
+            app.state.cfg["state"]["track_db_path"],
             search=params.get("q") or None,
             feedback=params.get("feedback") or None,
             limit=_query_int(params.get("limit"), DEFAULT_LIMIT),
@@ -951,7 +953,7 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
         page_size = max(1, min(_query_int(params.get("limit"), DEFAULT_LIMIT), MAX_LIMIT))
         offset = max(0, _query_int(params.get("offset"), 0))
         result = query_store_items(
-            cfg["state"]["track_db_path"],
+            app.state.cfg["state"]["track_db_path"],
             search=filters["q"] or None,
             feedback=filters["feedback"] or None,
             limit=page_size,
@@ -986,7 +988,7 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
     def api_rejected(request: Request):
         params = request.query_params
         return JSONResponse(query_rejected_tracks(
-            cfg["state"]["db_path"],
+            app.state.cfg["state"]["db_path"],
             search=params.get("q") or None,
             limit=_query_int(params.get("limit"), DEFAULT_LIMIT),
             offset=_query_int(params.get("offset"), 0),
@@ -999,7 +1001,7 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
         page_size = max(1, min(_query_int(params.get("limit"), DEFAULT_LIMIT), MAX_LIMIT))
         offset = max(0, _query_int(params.get("offset"), 0))
         result = query_rejected_tracks(
-            cfg["state"]["db_path"],
+            app.state.cfg["state"]["db_path"],
             search=filters["q"] or None,
             limit=page_size,
             offset=offset,
@@ -1050,7 +1052,7 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
             return JSONResponse(
                 {"ok": False, "error": "track_id muss eine Zahl sein"}, status_code=400
             )
-        if retry_quarantined_track(cfg["state"]["db_path"], track_id_int):
+        if retry_quarantined_track(app.state.cfg["state"]["db_path"], track_id_int):
             return JSONResponse({"ok": True})
         return JSONResponse({"ok": False, "error": "Track nicht in Quarantäne"})
 
@@ -1078,7 +1080,7 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
             sc_id_int = int(sc_id)
         except (TypeError, ValueError):
             return JSONResponse({"ok": False, "error": "Ungültige sc_id"}, status_code=400)
-        if not save_track_feedback(cfg["state"]["track_db_path"], sc_id_int, str(value)):
+        if not save_track_feedback(app.state.cfg["state"]["track_db_path"], sc_id_int, str(value)):
             return JSONResponse(
                 {"ok": False, "sc_id": sc_id_int, "value": str(value)}, status_code=500
             )
@@ -1119,7 +1121,7 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
         # Threadpool: ffmpeg, librosa und Normalisierung laufen Minuten und würden sonst die
         # Event-Loop blockieren (auch /healthz und Vorhören).
         result = await run_in_threadpool(
-            process_uploaded_audio, upload.file, upload.filename or "", cfg
+            process_uploaded_audio, upload.file, upload.filename or "", app.state.cfg
         )
         # 200 nur, wenn die Datei wirklich in der Inbox liegt; abgelehnt/fehlgeschlagen ist 422,
         # damit ein Upload-Skript den Unterschied sieht, ohne den Text zu lesen. Zu groß: 413.

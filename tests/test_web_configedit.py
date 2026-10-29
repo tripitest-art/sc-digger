@@ -125,6 +125,41 @@ def test_reset_of_last_key_removes_the_file(tmp_path):
     assert app.state.cfg["search"]["bpm_min"] == 150
 
 
+# ------------------------------------------------------------------ Gespeicherter Stand gilt sofort (#417)
+def _seed_old_run(state_db: Path, hours_ago: int) -> None:
+    import sqlite3
+    from datetime import datetime, timedelta, timezone
+    finished = (datetime.now(timezone.utc) - timedelta(hours=hours_ago)).strftime("%Y-%m-%d %H:%M:%S")
+    with sqlite3.connect(state_db) as db:
+        db.executescript(
+            "CREATE TABLE runs (id INTEGER PRIMARY KEY AUTOINCREMENT, mode TEXT NOT NULL,"
+            " finished_at TEXT, ok INTEGER NOT NULL, found INTEGER NOT NULL, error TEXT);"
+        )
+        db.execute("INSERT INTO runs (mode, finished_at, ok, found) VALUES ('discover', ?, 1, 3)",
+                   (finished,))
+
+
+def test_saved_value_applies_to_other_routes_immediately(tmp_path):
+    # Die Handler lasen früher die Closure-Variable cfg; nach „Speichern“ galt der neue Stand
+    # nur auf der Editor-Seite. /api/status liest health.max_hours_since_run aus der Konfiguration.
+    state = {"db_path": str(tmp_path / "seen.sqlite"), "track_db_path": str(tmp_path / "tracks.sqlite")}
+    _seed_old_run(tmp_path / "seen.sqlite", hours_ago=40)
+    _, c, _ = make_app(tmp_path, local={"state": state})
+    assert c.get("/api/status", auth=AUTH).json()["healthy"] is False  # 40 h > 36 h (Standard)
+    r = c.post("/config/save", auth=AUTH, data=full_form(**{"health.max_hours_since_run": "48"}),
+               headers=ORIGIN, follow_redirects=False)
+    assert r.status_code == 303
+    assert c.get("/api/status", auth=AUTH).json()["healthy"] is True  # 40 h <= 48 h
+
+
+def test_state_cfg_is_a_config_before_and_after_save(tmp_path):
+    app, c, _ = make_app(tmp_path)
+    assert isinstance(app.state.cfg, Config)
+    c.post("/config/save", auth=AUTH, data=full_form(**{"search.bpm_min": "140"}), headers=ORIGIN)
+    assert isinstance(app.state.cfg, Config)
+    assert app.state.cfg["search"]["bpm_min"] == 140
+
+
 # ------------------------------------------------------------------ Schreiben nur minimal
 def test_save_writes_only_the_changed_leaf(tmp_path):
     _, c, local = make_app(tmp_path)
