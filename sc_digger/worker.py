@@ -316,6 +316,13 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Embedder für embedding-Jobs: maest (GPU, torch+transformers), mfcc (Fallback), "
         "none (nur Cue-Jobs); Standard: maest",
     )
+    parser.add_argument(
+        "--cue-engine",
+        choices=("allin1", "local"),
+        default="allin1",
+        help="Engine für cues-Jobs: allin1 (GPU, all-in-one mit beat_this), local (librosa, "
+        "Rückfall); fehlt allin1, nutzt der Worker local; Standard: allin1",
+    )
     parser.add_argument("--poll-interval", type=float, default=5.0, help="Pause bei leerer Queue")
     parser.add_argument(
         "--once",
@@ -354,7 +361,16 @@ def main(argv: list[str] | None = None) -> int:
     # Cue- und Embedding-Jobs brauchen die Audiodatei per HTTP; die Handler werden mit
     # diesem Client gebunden.
     from . import embeddings
-    from .cue_infer import build_handler_map
+    from .cue_infer import CueEngineUnavailable, build_handler_map, select_cue_engine
+
+    # Ohne all-in-one (z. B. Umgebung ohne allin1_infer) soll der Runner trotzdem Cue-Jobs
+    # abarbeiten; die lokale Analyse ist schlechter, aber besser als liegen gebliebene Jobs.
+    try:
+        infer_fn, cue_engine = select_cue_engine(args.cue_engine)
+    except CueEngineUnavailable as exc:
+        log.warning("Cue-Engine allin1 nicht verfügbar, nutze die lokale Analyse: %s", exc)
+        infer_fn, cue_engine = select_cue_engine("local")
+    log.info("Cue-Engine: %s", cue_engine)
 
     selection = None
     try:
@@ -365,9 +381,11 @@ def main(argv: list[str] | None = None) -> int:
     job_type = args.job_type
     if selection is not None:
         embedder, embedding_model = selection
-        handler_map = build_handler_map(client, embedder=embedder, embedding_model=embedding_model)
+        handler_map = build_handler_map(
+            client, infer_fn, embedder=embedder, embedding_model=embedding_model
+        )
     else:
-        handler_map = build_handler_map(client)
+        handler_map = build_handler_map(client, infer_fn)
         # Ohne Embedding-Handler würde der Worker Embedding-Jobs als "Kein Handler" auf
         # failed setzen; sie sollen stattdessen pending bleiben, bis ein Embedder da ist.
         if not job_type:

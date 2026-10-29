@@ -104,6 +104,13 @@ dauernd laufen, deshalb weckt der Server sie einmal am Tag, wenn Jobs offen sind
    HTTP vom Dashboard und beendet sich nach 300 s ohne Job (`--idle-exit 300`).
 4. Das vorhandene `ollama-idle-shutdown` fährt den PC danach herunter.
 
+**Cue-Engine:** Der Runner rechnet Cues standardmäßig mit all-in-one (`--cue-engine allin1`:
+`allin1_infer.analyze`, Modell `harmonix-all`, `beat_this`-Beats, GPU) aus `allin1_env`. Fehlt
+`allin1_infer` in der Umgebung, steht im Journal eine WARNING mit „allin1“ und der Runner nutzt
+die lokale `librosa`-Analyse (`--cue-engine local` wählt sie ausdrücklich, ohne Warnung). Die
+Engine steht im Ergebnis (`engine`); schlägt die Analyse selbst fehl, scheitert der Job, es gibt
+keinen stillen Rückfall. Alte Cues in der Datenbank bleiben unverändert.
+
 **Lücke im Idle-Skript:** `/usr/local/bin/ollama-idle-shutdown.sh` prüft nicht, ob der Runner
 arbeitet, und könnte den PC mitten in einem Job abschalten. Stephan trägt (als root, vor der
 Abschaltung) diese Zeile ein:

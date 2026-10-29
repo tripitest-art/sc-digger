@@ -36,6 +36,22 @@ _LABEL_BY_KIND = {
 _DROP_LABELS = ("drop", "chorus")
 _BREAKDOWN_LABELS = ("breakdown", "bridge")
 
+CUE_ENGINES = ("allin1", "local")
+
+# all-in-one (Modell harmonix-all) kennt Pop-Abschnitte; für Schranz fallen Strophe, Refrain,
+# Instrumental und Solo alle in "drop", weil dort nur der Wechsel Intro/Drop/Break zählt.
+# Unbekannte Labels werden ebenfalls zu "drop", damit ein neues Modell nicht still Cues verliert.
+_ALLIN1_LABELS = {
+    "start": "intro", "intro": "intro",
+    "chorus": "drop", "verse": "drop", "inst": "drop", "solo": "drop",
+    "break": "breakdown", "bridge": "breakdown",
+    "outro": "outro", "end": "outro",
+}
+
+
+class CueEngineUnavailable(RuntimeError):
+    """Die gewünschte Cue-Engine ist nicht installiert (all-in-one nur auf der Workstation)."""
+
 
 def _finite(value: Any) -> float | None:
     """Wert als endliche Zahl oder None; wirft nie."""
@@ -181,7 +197,110 @@ def infer_cues_from_audio(path: Path) -> dict[str, Any]:
     first_kick = find_first_kick(audio_path)
     beats = [first_kick] if first_kick is not None else []
     duration = segments[-1]["end"] if segments else 0.0
-    return extract_cues_from_segments(segments, beats=beats, duration=duration)
+    cues = extract_cues_from_segments(segments, beats=beats, duration=duration)
+    cues["engine"] = "local"
+    return cues
+
+
+def _allin1_segments(raw_segments: Any) -> list[dict[str, Any]]:
+    """all-in-one-Segmente (Objekte mit start/end/label) als Dicts in unseren Labels.
+
+    Aufeinanderfolgende Segmente mit gleichem Label werden zusammengefasst: Strophe gefolgt
+    von Refrain sind für uns ein einziger Drop, sonst würde der zweite Abschnitt als
+    "Drop 2" gelten.
+    """
+    plain = [
+        {
+            "start": getattr(segment, "start", None),
+            "end": getattr(segment, "end", None),
+            "label": _ALLIN1_LABELS.get(str(getattr(segment, "label", "")).strip().lower(), "drop"),
+        }
+        for segment in raw_segments
+    ]
+    merged: list[dict[str, Any]] = []
+    for start, end, label in _normalize_segments(plain):
+        if merged and merged[-1]["label"] == label:
+            merged[-1]["end"] = max(merged[-1]["end"], end)
+        else:
+            merged.append({"start": start, "end": end, "label": label})
+    return merged
+
+
+def make_allin1_infer(
+    *,
+    analyze_fn: Callable[..., Any] | None = None,
+    model: str = "harmonix-all",
+    device: str = "cuda",
+) -> Callable[[Path], dict[str, Any]]:
+    """Cue-Inferenz mit all-in-one (``beat_this``-Beats plus Abschnittserkennung).
+
+    ``allin1_infer`` wird erst hier importiert, nicht beim Laden des Moduls: Server und
+    Tests haben weder ``torch`` noch das Paket. Fehlt es, gibt es ``CueEngineUnavailable``.
+    Fehler der Analyse selbst werden durchgereicht, es gibt keinen stillen Rückfall auf
+    ``librosa``: Der Job soll sichtbar scheitern (Goldene Regel 7), nicht schlechte Cues liefern.
+    """
+    if analyze_fn is None:
+        try:
+            import allin1_infer  # type: ignore[import-not-found]
+        except ImportError as exc:
+            raise CueEngineUnavailable(
+                "Cue-Engine allin1 nicht verfügbar: Paket allin1_infer fehlt "
+                "(läuft nur in ~/allin1_env auf der Workstation)"
+            ) from exc
+        analyze_fn = allin1_infer.analyze
+
+    def infer(path: Path) -> dict[str, Any]:
+        audio_path = Path(path)
+        # Ein Pfad (keine Liste) liefert ein einzelnes Ergebnis; eine Liste nehmen wir
+        # trotzdem an, falls eine andere Version sie zurückgibt.
+        result = analyze_fn(
+            paths=audio_path,
+            model=model,
+            device=device,
+            keep_byproducts=False,
+            multiprocess=False,  # im Runner keine Kindprozesse
+        )
+        if isinstance(result, (list, tuple)):
+            result = result[0] if result else None
+        raw_segments = getattr(result, "segments", None)
+        if not raw_segments:
+            raise RuntimeError(f"all-in-one lieferte keine Segmente für {audio_path.name}")
+
+        segments = _allin1_segments(raw_segments)
+        beats = [b for b in (_finite(x) for x in getattr(result, "beats", None) or []) if b is not None]
+
+        # Erster Kick = erster Schlag nach dem Intro: Beat-Tracker liefern Schläge auch im
+        # kicklosen Intro, dort liegt der erste Kick also nicht.
+        intro_end = 0.0
+        for segment in segments:
+            if segment["label"] != "intro":
+                break
+            intro_end = segment["end"]
+        after_intro = [b for b in beats if b >= intro_end - 1e-9]
+        if beats and not after_intro:
+            after_intro = [intro_end]
+
+        duration = segments[-1]["end"] if segments else 0.0
+        cues = extract_cues_from_segments(segments, beats=after_intro, duration=duration)
+        bpm = _finite(getattr(result, "bpm", None))
+        cues["engine"] = "allin1"
+        cues["bpm"] = bpm if bpm is not None and bpm > 0 else None
+        return cues
+
+    return infer
+
+
+def select_cue_engine(name: str) -> tuple[Callable[[Path], dict[str, Any]], str]:
+    """Wählt die Cue-Inferenz: ``local`` (librosa) oder ``allin1`` (GPU).
+
+    Gibt die Funktion und den Engine-Namen zurück. ``allin1`` wirft
+    ``CueEngineUnavailable``, wenn das Paket fehlt; der Aufrufer entscheidet über den Rückfall.
+    """
+    if name == "local":
+        return infer_cues_from_audio, "local"
+    if name == "allin1":
+        return make_allin1_infer(), "allin1"
+    raise ValueError(f"Unbekannte cue-engine {name!r}, erlaubt: {', '.join(CUE_ENGINES)}")
 
 
 def _local_audio_path(payload: dict[str, Any]) -> Path | None:

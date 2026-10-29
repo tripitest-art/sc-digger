@@ -411,7 +411,7 @@ Gefundene Tracks werden gegen die lokale Sammlung abgeglichen, Duplikate übersp
 | `preview.py` | Live-Preview: energiereichstes Segment per ffmpeg, OGG-Opus-Snippet (`find_loudest_segment`, `extract_preview`). Eingebunden über den Bot-Befehl `/preview` (`bot.py`, seit #147). Seit #168 zusätzlich `extract_preview_from_url` für `/preview sc:<SoundCloud-ID>` direkt aus dem Stream. |
 | `redact.py` | Zugangsdaten aus Texten, Logs und Fehlermeldungen entfernen |
 | `models.py` | Datenmodelle (`Track`, `Config`) und Config-Loader |
-| `worker.py` | Standalone-Worker-Client für externe GPU-Workstations (Embedding- und Cue-Jobs); `--embedder {maest,mfcc,none}` (Standard `maest`), ohne `torch`/`transformers` beansprucht er nur Cue-Jobs; legt die `job_id` in den Payload, damit der Audio-Download klappt |
+| `worker.py` | Standalone-Worker-Client für externe GPU-Workstations (Embedding- und Cue-Jobs); `--embedder {maest,mfcc,none}` (Standard `maest`), ohne `torch`/`transformers` beansprucht er nur Cue-Jobs; `--cue-engine {allin1,local}` (Standard `allin1`, all-in-one mit `beat_this`-Beats; fehlt das Paket, Warnung und Rückfall auf die lokale `librosa`-Analyse, siehe `cue_infer.py`); legt die `job_id` in den Payload, damit der Audio-Download klappt |
 | `gpu_wake.py` | Weckt die GPU-Workstation per Wake-on-LAN-Proxy, wenn Cue-Jobs offen sind (täglicher Timer, `BETRIEB.md`); der Runner beendet sich mit `--idle-exit` bei Leerlauf |
 
 ### Web-Dashboard (Live-Cockpit, Digest-Explorer, Gate-Assistent)
