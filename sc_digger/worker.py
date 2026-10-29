@@ -158,6 +158,19 @@ def execute_job(job: dict, handler_map: dict[str, Any] | None = None) -> dict:
         return {"status": "failed", "error": str(exc) or exc.__class__.__name__}
 
 
+def _with_job_id(job: dict) -> dict:
+    """Job mit ``payload["job_id"] = job["id"]``, wenn der Payload keine ``job_id`` trägt.
+
+    Der Server legt die ``job_id`` nicht in den Payload, die Handler brauchen sie aber für
+    ``GET /api/jobs/{id}/audio``. Ohne Payload-Objekt oder ohne id bleibt der Job unverändert.
+    """
+    payload = job.get("payload")
+    job_id = job.get("id")
+    if isinstance(payload, dict) and payload.get("job_id") is None and job_id is not None:
+        return {**job, "payload": {**payload, "job_id": job_id}}
+    return job
+
+
 def _heartbeat_until_stopped(client: JobWorkerClient, job_id: int, stop: threading.Event) -> None:
     """Sendet Lebenszeichen, bis ``stop`` gesetzt wird; erster Schlag nach einem Intervall."""
     while not stop.wait(HEARTBEAT_INTERVAL_SECONDS):
@@ -254,7 +267,7 @@ def run_worker_loop(
         )
         heartbeat_thread.start()
         try:
-            outcome = execute_job(job, handler_map)
+            outcome = execute_job(_with_job_id(job), handler_map)
         finally:
             stop_heartbeat.set()
             heartbeat_thread.join(timeout=1.0)
@@ -296,6 +309,13 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--worker-id", default=None, help="Kennung dieses Runners im Log")
     parser.add_argument("--job-type", default=None, help="Nur Jobs dieses Typs beanspruchen")
+    parser.add_argument(
+        "--embedder",
+        choices=("maest", "mfcc", "none"),
+        default="maest",
+        help="Embedder für embedding-Jobs: maest (GPU, torch+transformers), mfcc (Fallback), "
+        "none (nur Cue-Jobs); Standard: maest",
+    )
     parser.add_argument("--poll-interval", type=float, default=5.0, help="Pause bei leerer Queue")
     parser.add_argument(
         "--once",
@@ -331,17 +351,36 @@ def main(argv: list[str] | None = None) -> int:
         args.api_url, password=args.password, worker_id=args.worker_id, timeout=args.timeout
     )
 
-    # Cue-Jobs brauchen die Audiodatei per HTTP; der Handler wird mit diesem Client gebunden.
+    # Cue- und Embedding-Jobs brauchen die Audiodatei per HTTP; die Handler werden mit
+    # diesem Client gebunden.
+    from . import embeddings
     from .cue_infer import build_handler_map
+
+    selection = None
+    try:
+        selection = embeddings.select_embedder(args.embedder)
+    except embeddings.EmbedderUnavailable as exc:
+        log.warning("Embedding-Jobs abgeschaltet: %s", exc)
+
+    job_type = args.job_type
+    if selection is not None:
+        embedder, embedding_model = selection
+        handler_map = build_handler_map(client, embedder=embedder, embedding_model=embedding_model)
+    else:
+        handler_map = build_handler_map(client)
+        # Ohne Embedding-Handler würde der Worker Embedding-Jobs als "Kein Handler" auf
+        # failed setzen; sie sollen stattdessen pending bleiben, bis ein Embedder da ist.
+        if not job_type:
+            job_type = "cues"
 
     stop_event = threading.Event()
     try:
         processed = run_worker_loop(
             client,
-            job_type=args.job_type,
+            job_type=job_type,
             poll_interval=args.poll_interval,
             max_jobs=1 if args.once else None,
-            handler_map=build_handler_map(client),
+            handler_map=handler_map,
             stop_event=stop_event,
             idle_exit_s=args.idle_exit,
         )

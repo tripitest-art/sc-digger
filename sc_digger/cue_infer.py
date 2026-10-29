@@ -10,9 +10,11 @@ from __future__ import annotations
 import logging
 import math
 import tempfile
+from contextlib import contextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any, Callable, Iterator
 
+from .embeddings import Embedder
 from .structure import analyze_structure, find_first_kick
 
 if TYPE_CHECKING:  # Nur für Typen; zur Laufzeit vermeidet das den Import-Zyklus zu worker.py.
@@ -202,23 +204,19 @@ def _audio_suffix(payload: dict[str, Any]) -> str:
     return ".audio"
 
 
-def handle_cues_job(
-    payload: dict[str, Any],
-    client: "JobWorkerClient | None" = None,
-    *,
-    infer_fn: Callable[[Path], dict[str, Any]] | None = None,
-) -> dict[str, Any]:
-    """Führt einen ``cues``-Job aus: Audiodatei besorgen, Inferenz rechnen, aufräumen.
+@contextmanager
+def _job_audio(
+    payload: dict[str, Any], client: "JobWorkerClient | None", kind: str
+) -> Iterator[Path]:
+    """Liefert den Pfad der Audiodatei eines Jobs (``kind`` nur für Fehlermeldungen).
 
-    Lokale Dateien werden direkt analysiert. Fehlt die Datei auf der Workstation (der
-    Payload-Pfad ist ein Serverpfad), lädt ``client.get_job_audio`` die Rohdaten in eine
-    temporäre Datei. Die temporäre Datei wird im ``finally`` gelöscht, auch wenn die
-    Inferenz scheitert; Fehler werden durchgereicht und von ``execute_job`` zu ``failed``.
+    Lokale Dateien werden direkt genutzt und nie gelöscht. Fehlt die Datei auf der
+    Workstation (der Payload-Pfad ist ein Serverpfad), lädt ``client.get_job_audio`` die
+    Rohdaten in eine temporäre Datei, die im ``finally`` gelöscht wird, auch bei Fehlern.
     """
     if not isinstance(payload, dict):
-        raise ValueError("cues-Payload ist kein Objekt")
+        raise ValueError(f"{kind}-Payload ist kein Objekt")
 
-    infer = infer_fn or infer_cues_from_audio
     audio_path = _local_audio_path(payload)
     temp_path: Path | None = None
     try:
@@ -229,7 +227,7 @@ def handle_cues_job(
                 )
             job_id = payload.get("job_id")
             if job_id is None:
-                raise ValueError("cues-Payload enthält keine job_id für den Audio-Download")
+                raise ValueError(f"{kind}-Payload enthält keine job_id für den Audio-Download")
             data = client.get_job_audio(int(job_id))
             with tempfile.NamedTemporaryFile(
                 delete=False, suffix=_audio_suffix(payload)
@@ -237,7 +235,7 @@ def handle_cues_job(
                 handle.write(data)
                 temp_path = Path(handle.name)
             audio_path = temp_path
-        return infer(audio_path)
+        yield audio_path
     finally:
         if temp_path is not None:
             try:
@@ -246,17 +244,65 @@ def handle_cues_job(
                 log.warning("Temporäre Audiodatei %s nicht gelöscht: %s", temp_path, exc)
 
 
+def handle_cues_job(
+    payload: dict[str, Any],
+    client: "JobWorkerClient | None" = None,
+    *,
+    infer_fn: Callable[[Path], dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Führt einen ``cues``-Job aus: Audiodatei besorgen, Inferenz rechnen, aufräumen.
+
+    Die Audiodatei kommt lokal oder per Download (siehe ``_job_audio``). Fehler der
+    Inferenz werden durchgereicht und von ``execute_job`` zu ``failed``.
+    """
+    infer = infer_fn or infer_cues_from_audio
+    with _job_audio(payload, client, "cues") as audio_path:
+        return infer(audio_path)
+
+
+def handle_embedding_job(
+    payload: dict[str, Any],
+    client: "JobWorkerClient | None" = None,
+    *,
+    embedder: Embedder,
+    model: str,
+) -> dict[str, Any]:
+    """Führt einen ``embedding``-Job aus; Ergebnis ``{"model": ..., "vector": [...]}``.
+
+    Audio besorgen wie bei ``cues`` (lokal oder per Download, temporäre Datei wird
+    gelöscht). Das Format passt zu ``embeddings.apply_embedding_result``.
+    """
+    with _job_audio(payload, client, "embedding") as audio_path:
+        vector = embedder(audio_path)
+    return {"model": model, "vector": [float(x) for x in vector]}
+
+
 def build_handler_map(
     client: "JobWorkerClient | None" = None,
     infer_fn: Callable[[Path], dict[str, Any]] | None = None,
+    *,
+    embedder: Embedder | None = None,
+    embedding_model: str | None = None,
 ) -> dict[str, Callable[[dict[str, Any]], Any]]:
     """Standard-Handler-Mapping für ``execute_job``/``run_worker_loop``.
 
     Der ``cues``-Handler wird mit dem übergebenen Client und der optionalen Inferenz
-    gebunden; Tests ersetzen die GPU-Inferenz so durch eine reine Funktion.
+    gebunden; Tests ersetzen die GPU-Inferenz so durch eine reine Funktion. Der
+    ``embedding``-Handler kommt nur dazu, wenn ein ``embedder`` übergeben wird; ohne
+    Modellname würde das Ergebnis ohne Herkunft gespeichert, daher ValueError.
     """
+    if embedder is not None and not (isinstance(embedding_model, str) and embedding_model.strip()):
+        raise ValueError("embedder braucht ein nicht-leeres embedding_model")
 
     def _handle_cues(payload: dict[str, Any]) -> dict[str, Any]:
         return handle_cues_job(payload, client=client, infer_fn=infer_fn)
 
-    return {"cues": _handle_cues}
+    handlers: dict[str, Callable[[dict[str, Any]], Any]] = {"cues": _handle_cues}
+    if embedder is not None:
+        model = str(embedding_model)
+
+        def _handle_embedding(payload: dict[str, Any]) -> dict[str, Any]:
+            return handle_embedding_job(payload, client=client, embedder=embedder, model=model)
+
+        handlers["embedding"] = _handle_embedding
+    return handlers

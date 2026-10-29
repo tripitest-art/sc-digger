@@ -5,6 +5,8 @@ Embedding-Jobs für die GPU-Workstation und die Auswertung von Embedding-Ergebni
 """
 from __future__ import annotations
 
+import importlib.util
+import logging
 import math
 import struct
 from dataclasses import dataclass
@@ -16,7 +18,23 @@ from .db import JobType
 if TYPE_CHECKING:
     from .db import JobRecord, TrackDB, TrackRecord
 
+log = logging.getLogger("sc_digger.embeddings")
+
 Embedder = Callable[[Path], Sequence[float]]
+
+MFCC_EMBEDDING_MODEL = "mfcc-stat-v1"
+MAEST_EMBEDDING_MODEL = "discogs-maest-30s-pw-129e"
+MAEST_HF_MODEL_ID = "mtg-upf/discogs-maest-30s-pw-129e"
+# Feste Revision: das Modell läuft mit trust_remote_code, fremder Code darf sich nicht still ändern.
+MAEST_HF_REVISION = "e5d670316c61b18aaef46ce66242fcd73870d792"
+MAEST_SAMPLE_RATE = 16000
+MAEST_EMBEDDING_LAYER = 7  # Token-Mittelwert dieses Transformer-Blocks
+
+_MFCC_SAMPLE_RATE = 22050
+
+
+class EmbedderUnavailable(RuntimeError):
+    """Der gewünschte Embedder lässt sich auf diesem Rechner nicht betreiben (Pakete fehlen)."""
 
 
 def pack_vector(vector: Sequence[float]) -> bytes:
@@ -210,3 +228,148 @@ def make_embedding_handler(
         return {"model": model, "vector": [float(x) for x in vec]}
 
     return handler
+
+
+def make_mfcc_embedder(n_mfcc: int = 20) -> Embedder:
+    """Deterministischer MFCC-Embedder (Mittelwert und Std je Koeffizient, 2*n_mfcc Floats).
+
+    Läuft ohne GPU und ohne Zusatzpakete; gedacht als Fallback für Tests und Server.
+    Nicht-endliche Werte (z. B. bei Stille) werden zu 0.0, eine leere Datei ergibt ValueError.
+    """
+    def embed(path: Path) -> list[float]:
+        # librosa erst hier importieren: der Import ist langsam und nur für diesen Embedder nötig.
+        import librosa
+        import numpy as np
+
+        try:
+            samples, sr = librosa.load(str(path), sr=_MFCC_SAMPLE_RATE, mono=True)
+        except Exception as exc:  # noqa: BLE001 – leere/kaputte Datei einheitlich melden
+            if Path(path).is_file() and Path(path).stat().st_size == 0:
+                raise ValueError(f"Audiodatei ist leer: {path}") from exc
+            raise
+        if len(samples) == 0:
+            raise ValueError(f"Audiodatei ist leer: {path}")
+        mfcc = librosa.feature.mfcc(y=samples, sr=sr, n_mfcc=n_mfcc)
+        values = np.concatenate([mfcc.mean(axis=1), mfcc.std(axis=1)])
+        values = np.where(np.isfinite(values), values, 0.0)
+        return [float(x) for x in values]
+
+    return embed
+
+
+def split_windows(samples: Any, sr: int, window_s: float = 30.0, max_windows: int = 8) -> list:
+    """Schneidet bis zu ``max_windows`` gleichmäßig verteilte Fenster aus ``samples``.
+
+    MAEST sieht je Durchlauf nur ``window_s`` Sekunden; ein ganzer Track wird deshalb über
+    mehrere Fenster abgetastet (erstes am Anfang, letztes am Ende). Leer ergibt ``[]``, ein
+    Track höchstens einer Fensterlänge ein Fenster mit allen Samples.
+    """
+    total = len(samples)
+    if total == 0:
+        return []
+    size = round(window_s * sr)
+    if total <= size:
+        return [samples]
+    count = max(1, min(max_windows, total // size))
+    if count == 1:
+        start = (total - size) // 2
+        return [samples[start:start + size]]
+    starts = [round(i * (total - size) / (count - 1)) for i in range(count)]
+    return [samples[start:start + size] for start in starts]
+
+
+def _load_audio_16k(path: Path) -> Any:
+    """Standard-Lader für MAEST: Mono bei 16 kHz."""
+    import librosa
+
+    samples, _sr = librosa.load(str(path), sr=MAEST_SAMPLE_RATE, mono=True)
+    return samples
+
+
+def _load_maest_window_fn() -> Callable[[Any], Sequence[float]]:
+    """Lädt MAEST und liefert eine Funktion Fenster -> Vektor (nur auf der Workstation).
+
+    Der Import von torch/transformers steht bewusst nur hier, damit Server und Tests ohne
+    diese Pakete auskommen. ``cuda`` gilt auch für ROCm-Builds von torch.
+    """
+    import torch
+    from transformers import AutoFeatureExtractor, AutoModel
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    extractor = AutoFeatureExtractor.from_pretrained(
+        MAEST_HF_MODEL_ID, revision=MAEST_HF_REVISION, trust_remote_code=True
+    )
+    model = AutoModel.from_pretrained(
+        MAEST_HF_MODEL_ID, revision=MAEST_HF_REVISION, trust_remote_code=True
+    )
+    model.to(device)
+    model.eval()
+    log.info("MAEST geladen (Gerät: %s)", device)
+
+    def window_fn(window: Any) -> Sequence[float]:
+        inputs = extractor(window, sampling_rate=MAEST_SAMPLE_RATE, return_tensors="pt")
+        inputs = {key: value.to(device) for key, value in inputs.items()}
+        with torch.no_grad():
+            outputs = model(**inputs, output_hidden_states=True)
+        hidden = outputs.hidden_states[MAEST_EMBEDDING_LAYER]
+        return hidden.mean(dim=1)[0].float().cpu().numpy().tolist()
+
+    return window_fn
+
+
+def make_maest_embedder(
+    *,
+    window_fn_factory: Callable[[], Callable[[Any], Sequence[float]]] | None = None,
+    load_audio: Callable[[Path], Any] | None = None,
+    window_s: float = 30.0,
+    max_windows: int = 8,
+) -> Embedder:
+    """MAEST-Embedder: Fenster einzeln rechnen, mitteln und auf Länge 1 normieren.
+
+    Ohne ``window_fn_factory`` müssen torch und transformers installiert sein, sonst
+    ``EmbedderUnavailable``. Das Modell wird erst beim ersten Embedding geladen und danach
+    wiederverwendet (das Laden dauert; der Worker soll dafür nicht beim Start warten).
+    """
+    if window_fn_factory is None:
+        missing = [
+            name for name in ("torch", "transformers") if importlib.util.find_spec(name) is None
+        ]
+        if missing:
+            raise EmbedderUnavailable(f"Paket(e) fehlen: {', '.join(missing)}")
+        window_fn_factory = _load_maest_window_fn
+    loader = load_audio or _load_audio_16k
+    state: dict[str, Any] = {}
+
+    def embed(path: Path) -> list[float]:
+        import numpy as np
+
+        windows = split_windows(loader(path), MAEST_SAMPLE_RATE, window_s, max_windows)
+        if not windows:
+            raise ValueError(f"Audiodatei ist leer: {path}")
+        if "window_fn" not in state:
+            state["window_fn"] = window_fn_factory()
+        window_fn = state["window_fn"]
+        vectors = np.asarray([window_fn(window) for window in windows], dtype=np.float64)
+        mean = vectors.mean(axis=0)
+        if not np.all(np.isfinite(mean)):
+            raise ValueError("Embedding enthält nicht-endliche Werte")
+        norm = float(np.linalg.norm(mean))
+        if norm > 0.0:
+            mean = mean / norm
+        return [float(x) for x in mean]
+
+    return embed
+
+
+def select_embedder(name: str) -> tuple[Embedder, str] | None:
+    """Embedder samt Modellname für ``--embedder``; ``none`` ergibt ``None``.
+
+    Ruft ``make_maest_embedder`` über den Modulnamen auf, damit Tests ihn ersetzen können.
+    """
+    if name == "maest":
+        return make_maest_embedder(), MAEST_EMBEDDING_MODEL
+    if name == "mfcc":
+        return make_mfcc_embedder(), MFCC_EMBEDDING_MODEL
+    if name == "none":
+        return None
+    raise ValueError(f"Unbekannter Embedder {name!r} (erlaubt: maest, mfcc, none)")
