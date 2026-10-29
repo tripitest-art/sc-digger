@@ -20,7 +20,7 @@ unter „Unreleased“ (Regeln: `AGENTS.md`, Abschnitt „Doku und Changelog“)
 - Doku auf den echten Stand: README und ROADMAP kennzeichnen Features, die im Lauf nicht erreicht werden (Embedding-Kette ohne Einreihen und Worker-Handler, `taste.py` und `stems.py` ohne Aufrufer, wirkungsloser `rekordbox.import_xml_path`, keine eigene Seite `/intake`); Sonntags-Digest mit Grafik (#116) und Stream-Preview (#168) gelten jetzt als fertig, sind aber standardmäßig aus; doppelte `similarity.py`-Zeile entfernt (#396).
 
 ### Entfernt
-- `_eval/` (140 KB Auswertungsskripte aus der Analysephase, von keinem Produktionscode benutzt) samt Windows-Befehlen in der README; `tests/test_dj_workflow.py` läuft jetzt gegen `sc_digger.analysis` und `sc_digger.dj_export`, die Messwerte stehen weiter in der README, der Prüfbericht in der Git-Historie (#TBD).
+- `_eval/` (140 KB Auswertungsskripte aus der Analysephase, von keinem Produktionscode benutzt) samt Windows-Befehlen in der README; `tests/test_dj_workflow.py` läuft jetzt gegen `sc_digger.analysis` und `sc_digger.dj_export`, die Messwerte stehen weiter in der README, der Prüfbericht in der Git-Historie (#425).
 
 ### Hinzugefügt
 - GPU-Worker rechnet Embedding-Jobs: `embeddings.select_embedder` liefert MAEST (`discogs-maest-30s-pw-129e` über `torch`/`transformers`, gepinnte Revision, 30-s-Fenster gemittelt und normiert) oder den MFCC-Fallback; neuer Schalter `python -m sc_digger.worker --embedder {maest,mfcc,none}`. Fehlen die Pakete, beansprucht der Worker nur Cue-Jobs. Dazu behoben: Der Worker legt die `job_id` in den Payload, ohne sie scheiterte jeder entfernte `cues`-Job am Audio-Download (#421).
