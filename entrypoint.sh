@@ -27,6 +27,13 @@ if [ -f /etc/cron.d/sc-digger ] && ! grep -q "sc_digger.main scout" /etc/cron.d/
     install_crontab
 fi
 
+# Täglicher Übernommen-Abgleich (06:45, vor dem discover-Lauf): inkrementelles audit der
+# Sammlung (Cache über mtime/Größe) und Fingerprint-Abgleich Inbox -> Sammlung (ROADMAP 3.12).
+if [ -f /etc/cron.d/sc-digger ] && ! grep -q "audit --check-adopted" /etc/cron.d/sc-digger; then
+    echo "45 6 * * * . /app/cron.env; cd /app && python -m sc_digger.main audit --check-adopted >> /proc/1/fd/1 2>&1" >> /etc/cron.d/sc-digger
+    install_crontab
+fi
+
 cron
 
 # Web-Oberfläche nur, wenn ein Passwort gesetzt ist (Standard: aus)

@@ -86,7 +86,7 @@ flowchart TD
 | **Phase 1** | Basis & DJ-Ready Pipeline | ✅ **Abgeschlossen** | Native Downloads, FFT-Fake-Check, BPM/Key, Tagging, Inbox-Organize, Modi discover/playlist/similar |
 | **Phase 1.5** | Robustheit | ✅ **Abgeschlossen** | BPM-Oktav-Korrektur, Health-Alarm |
 | **Phase 2** | Track-DB & Library Audit | 🟡 **Fast fertig** | Zentrale DB ✅, `audit` ✅, Fingerprint-Duplikate ✅, LUFS-Tags ✅, Container-Healthcheck ✅, Inbox-Normalisierung ✅, robuste Discovery ✅, Retry-Queue ✅, Engagement-Tempo ✅, `/stats` ✅, Sonntags-Digest mit Grafik ✅ (#116, Standard aus); offen: nichts |
-| **Phase 3** | Feedback & Smart Ingestion | 🟡 **Laufend** | 👍/👎 ✅, Cloud-Downloads ✅, DJ-Sets inkl. kurzer Mixe ✅, Rekordbox-Wochen-XML ✅, Curator-Mining 🟡 (Vorschläge ✅), Cloud-Quellen erweitern ✅, Kaufliste ✅, Eingangsordner ✅, Promo-Abzug und Sperrliste ✅, Tag-Rotation/Exploration ✅ (#135, #141), Artist-Reputation ✅ (#140), Live-Preview ✅ (Snippet #132, `/preview` #147, Stream-Preview #168, beide Schalter standardmäßig aus), Rekordbox-Komfort 🔵 (3.11), Status „übernommen“ 🔵 (3.12) |
+| **Phase 3** | Feedback & Smart Ingestion | 🟡 **Laufend** | 👍/👎 ✅, Cloud-Downloads ✅, DJ-Sets inkl. kurzer Mixe ✅, Rekordbox-Wochen-XML ✅, Curator-Mining 🟡 (Vorschläge ✅), Cloud-Quellen erweitern ✅, Kaufliste ✅, Eingangsordner ✅, Promo-Abzug und Sperrliste ✅, Tag-Rotation/Exploration ✅ (#135, #141), Artist-Reputation ✅ (#140), Live-Preview ✅ (Snippet #132, `/preview` #147, Stream-Preview #168, beide Schalter standardmäßig aus), Rekordbox-Komfort 🔵 (3.11), Status „übernommen“ ✅ (3.12) |
 | **Phase 4** | Geschmacksmodell & KI-Copilot | 🔵 Geplant | Audio-Embeddings, persönlicher Taste-Score, Qwen-Copilot via Tool-Calling; begonnen: Trend-Radar (#122) |
 | **Phase 5** | DJ-Performance & Set-Tools | 🔵 5.1–5.4 geplant, Rest 🟣 Vision | Harmonic Mixing per `/mix` ✅; Strukturanalyse, Auto-Cues, Drop-Preview, Breakdown-Anteil; später Embedding-Recommender, Web-Dashboard, Stem-Extraktion |
 
@@ -242,10 +242,10 @@ Zwei kleine Erweiterungen der bestehenden XML, ohne neue Analyse.
 * **Bot-Befehl `/sync_xml`:** schreibt die XML sofort neu (wie `python -m sc_digger.main rekordbox`), z. B. nach
   dem Befüllen von `_eingang/`. Antwort: Anzahl der Tracks in der XML und Zeitpunkt.
 
-### 3.12 Implizites Feedback: Status „übernommen“ (🟡 Teilweise umgesetzt)
+### 3.12 Implizites Feedback: Status „übernommen“ (✅ Implementiert)
 Ein Track, der aus der Inbox in die Sammlung gewandert ist, ist das stärkste Positiv-Signal, das es gibt.
 
-* Umgesetzt: `python -m sc_digger.main audit --check-adopted` markiert übernommene Tracks per Fingerprint mit Datum (`adopted_at`); das Dashboard zählt sie, der Web-Filter `adopted` nutzt das Feld. Im täglichen Lauf passiert der Abgleich noch nicht.
+* Umgesetzt: `python -m sc_digger.main audit --check-adopted` markiert übernommene Tracks per Fingerprint mit Datum (`adopted_at`); das Dashboard zählt sie, der Web-Filter `adopted` nutzt das Feld. Der tägliche Cron-Lauf um 06:45 (`entrypoint.sh`, vor dem `discover`-Lauf um 07:30) führt den Abgleich inkrementell aus (#420).
 * Beim täglichen Lauf bzw. beim `audit`: Tracks, die sc-digger in die Inbox geliefert hat und die jetzt in
   `/music/Schranz` liegen, werden in der Track-DB als **übernommen** markiert (mit Datum).
 * **Abgleich per Audio-Fingerprint**, nicht per Dateiname: Beim Übernehmen werden Dateien meist umbenannt.
