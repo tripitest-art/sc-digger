@@ -245,7 +245,7 @@ Zwei kleine Erweiterungen der bestehenden XML, ohne neue Analyse.
 ### 3.12 Implizites Feedback: Status „übernommen“ (✅ Implementiert)
 Ein Track, der aus der Inbox in die Sammlung gewandert ist, ist das stärkste Positiv-Signal, das es gibt.
 
-* Umgesetzt: `python -m sc_digger.main audit --check-adopted` markiert übernommene Tracks per Fingerprint mit Datum (`adopted_at`); das Dashboard zählt sie, der Web-Filter `adopted` nutzt das Feld. Der tägliche Cron-Lauf um 06:45 (`entrypoint.sh`, vor dem `discover`-Lauf um 07:30) führt den Abgleich inkrementell aus (#TBD).
+* Umgesetzt: `python -m sc_digger.main audit --check-adopted` markiert übernommene Tracks per Fingerprint mit Datum (`adopted_at`); das Dashboard zählt sie, der Web-Filter `adopted` nutzt das Feld. Der tägliche Cron-Lauf um 06:45 (`entrypoint.sh`, vor dem `discover`-Lauf um 07:30) führt den Abgleich inkrementell aus (#420).
 * Beim täglichen Lauf bzw. beim `audit`: Tracks, die sc-digger in die Inbox geliefert hat und die jetzt in
   `/music/Schranz` liegen, werden in der Track-DB als **übernommen** markiert (mit Datum).
 * **Abgleich per Audio-Fingerprint**, nicht per Dateiname: Beim Übernehmen werden Dateien meist umbenannt.
