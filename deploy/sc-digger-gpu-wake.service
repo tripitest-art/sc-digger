@@ -1,0 +1,9 @@
+[Unit]
+Description=sc-digger Workstation wecken, wenn Cue-Jobs offen sind
+
+[Service]
+Type=oneshot
+WorkingDirectory=/root/sc-digger
+# SC_DIGGER_WAKE_URL steht in dieser Datei, nicht im Repo (BETRIEB.md).
+EnvironmentFile=/root/sc-digger/gpu-wake.env
+ExecStart=/usr/bin/docker compose exec -T -e SC_DIGGER_WAKE_URL sc-digger python -m sc_digger.gpu_wake

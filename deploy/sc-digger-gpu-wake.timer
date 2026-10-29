@@ -1,0 +1,8 @@
+[Unit]
+Description=sc-digger Workstation täglich nach dem 07:30-Lauf wecken
+
+[Timer]
+OnCalendar=*-*-* 08:30:00
+
+[Install]
+WantedBy=timers.target

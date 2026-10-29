@@ -1,0 +1,17 @@
+[Unit]
+Description=sc-digger GPU-Worker (Cue-Jobs der Job-Queue abarbeiten)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=stephanv
+# SC_DIGGER_WEB_PASSWORD und SC_DIGGER_API_URL stehen in dieser Datei, nicht im Repo (BETRIEB.md).
+EnvironmentFile=/etc/sc-digger-gpu-worker.env
+WorkingDirectory=/home/stephanv/sc-digger
+ExecStart=/home/stephanv/allin1_env/bin/python -m sc_digger.worker --api-url ${SC_DIGGER_API_URL} --job-type cues --idle-exit 300 --poll-interval 20
+# Kein automatischer Neustart: der Runner beendet sich bei Leerlauf, und der PC soll danach herunterfahren.
+Restart=no
+
+[Install]
+WantedBy=multi-user.target

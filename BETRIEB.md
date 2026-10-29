@@ -88,6 +88,81 @@ systemctl disable --now sc-digger-deploy.timer    # Auto-Deploy wieder aus
 Der Timer ist durch `flock /run/sc-digger-deploy.lock` gegen Überholung geschützt; ein
 laufender Deploy wird nicht von einem zweiten überholt.
 
+## GPU-Worker: Workstation täglich wecken (Cue-Jobs)
+
+Die Cue-Jobs (First Kick, Drop, Breakdown) rechnet die Workstation `nobara-pc`. Sie soll nicht
+dauernd laufen, deshalb weckt der Server sie einmal am Tag, wenn Jobs offen sind.
+
+**Ablauf**
+
+1. Der Tageslauf (07:30) reiht Cue-Jobs für neue Inbox-Tracks ein.
+2. Um 08:30 startet `sc-digger-gpu-wake.timer` den Dienst `sc-digger-gpu-wake`. Der zählt die
+   offenen Cue-Jobs (`python -m sc_digger.gpu_wake`, im Container). Sind es 0, passiert nichts.
+   Sonst schickt er eine Anfrage an den Wake-Proxy; der weckt den PC und antwortet, sobald er
+   da ist (Kaltstart 35 bis 50 s). Schlägt das fehl, kommt eine Telegram-Meldung, Exit 1.
+3. Auf der Workstation startet `sc-digger-gpu-worker` beim Hochfahren, holt die Cue-Jobs per
+   HTTP vom Dashboard und beendet sich nach 300 s ohne Job (`--idle-exit 300`).
+4. Das vorhandene `ollama-idle-shutdown` fährt den PC danach herunter.
+
+**Lücke im Idle-Skript:** `/usr/local/bin/ollama-idle-shutdown.sh` prüft nicht, ob der Runner
+arbeitet, und könnte den PC mitten in einem Job abschalten. Stephan trägt (als root, vor der
+Abschaltung) diese Zeile ein:
+
+```bash
+systemctl is-active --quiet sc-digger-gpu-worker && exit 0
+```
+
+Probelauf: Runner mit `systemctl start sc-digger-gpu-worker` starten, dann das Skript von Hand
+ausführen (`sudo /usr/local/bin/ollama-idle-shutdown.sh`). Der PC darf nicht herunterfahren,
+solange der Runner läuft; nach seinem Ende (`systemctl is-active sc-digger-gpu-worker` zeigt
+`inactive`) schon.
+
+**Einrichtung auf dem Server (einmalig, nach dem Merge)**
+
+Die Adresse des Wake-Proxys steht in `gpu-wake.env`, nicht im Repo und nicht im Befehl:
+
+```bash
+cd /root/sc-digger && git pull
+read -rsp "Wake-Adresse: " WAKE_URL; echo
+install -m 600 /dev/null gpu-wake.env
+printf 'SC_DIGGER_WAKE_URL=%s\n' "$WAKE_URL" > gpu-wake.env; unset WAKE_URL
+cp deploy/sc-digger-gpu-wake.service deploy/sc-digger-gpu-wake.timer /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now sc-digger-gpu-wake.timer
+```
+
+**Einrichtung auf der Workstation (einmalig)**
+
+Voraussetzung: ein Klon von sc-digger unter `/home/stephanv/sc-digger` und das venv
+`/home/stephanv/allin1_env` (`allin1`, `beat-this`, `torch`). Die Env-Datei enthält API-Adresse
+und Dashboard-Passwort:
+
+```bash
+read -rp "Dashboard-Adresse: " API_URL
+read -rsp "Dashboard-Passwort: " PW; echo
+sudo install -m 600 -o root -g root /dev/null /etc/sc-digger-gpu-worker.env
+printf 'SC_DIGGER_API_URL=%s\nSC_DIGGER_WEB_PASSWORD=%s\n' "$API_URL" "$PW" \
+  | sudo tee /etc/sc-digger-gpu-worker.env > /dev/null
+unset API_URL PW
+sudo cp deploy/workstation/sc-digger-gpu-worker.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable sc-digger-gpu-worker.service
+```
+
+Nur `enable`, nicht `--now`: der Runner startet beim nächsten Hochfahren. Die Datei ist für
+root lesbar; der Dienst liest sie als root über `EnvironmentFile=` und reicht die Werte an
+den Prozess von `stephanv` weiter.
+
+**Prüfen**
+
+```bash
+systemctl list-timers sc-digger-gpu-wake.timer           # Server: nächster Lauf
+journalctl -u sc-digger-gpu-wake.service -n 50           # Server: Ausgabe des letzten Laufs
+systemctl start sc-digger-gpu-wake.service               # Server: sofort wecken (nur bei offenen Jobs)
+systemctl status sc-digger-gpu-worker                    # Workstation: Runner
+journalctl -u sc-digger-gpu-worker -n 50                 # Workstation: abgearbeitete Jobs
+```
+
 ## Inbox auf den Laptop syncen (Syncthing)
 
 Die Inbox (`/music/inbox`) wird per Syncthing auf den Laptop gespiegelt, damit Rekordbox die

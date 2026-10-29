@@ -182,6 +182,8 @@ def run_worker_loop(
     max_jobs: int | None = None,
     handler_map: dict[str, Any] | None = None,
     stop_event: Any | None = None,
+    idle_exit_s: float | None = None,
+    clock: Callable[[], float] = time.monotonic,
 ) -> int:
     """Hauptschleife: Jobs holen, ausführen, Status melden.
 
@@ -191,10 +193,18 @@ def run_worker_loop(
     ``stop_event`` ist ein ``threading.Event``-kompatibles Objekt für sauberes Stoppen.
     Ohne ``handler_map`` kommt das Standard-Mapping aus ``cue_infer.build_handler_map`` mit
     dem Cue-Handler zum Einsatz.
+    ``idle_exit_s`` beendet die Schleife, wenn so viele Sekunden lang kein Job vergeben wurde
+    (leere Queue oder Server nicht erreichbar); nach jedem vergebenen Job beginnt die Frist
+    neu. So endet der Runner auf der per Wake-on-LAN geweckten Workstation von selbst und das
+    Idle-Skript kann den PC herunterfahren. ``None``: kein Eigen-Ende.
     Rückgabe: Anzahl der Jobs mit gemeldetem Endstatus.
     """
     handled = 0
     interval = max(0.0, float(poll_interval))
+    last_job_at = clock()
+
+    def idle_expired() -> bool:
+        return idle_exit_s is not None and clock() - last_job_at >= idle_exit_s
 
     if handler_map is None:
         from .cue_infer import build_handler_map
@@ -212,10 +222,16 @@ def run_worker_loop(
         except Exception as exc:  # noqa: BLE001 – Server kurz weg: warten, nicht sterben
             log.warning("Job-Abruf fehlgeschlagen: %s", exc)
             _sleep(interval, stop_event)
+            if idle_expired():
+                log.info("Leerlauf seit %.0f s, Runner beendet sich", idle_exit_s)
+                break
             continue
 
         if not job:
             _sleep(interval, stop_event)
+            if idle_expired():
+                log.info("Leerlauf seit %.0f s, Runner beendet sich", idle_exit_s)
+                break
             continue
 
         job_id = job.get("id")
@@ -223,6 +239,8 @@ def run_worker_loop(
             log.warning("Job ohne id übersprungen: %s", job)
             _sleep(interval, stop_event)
             continue
+
+        last_job_at = clock()
 
         # Erstes Lebenszeichen sofort: der Job steht nach dem Claim auf "running", und
         # der Server setzt ihn sonst nach seinem Timeout wieder auf "pending".
@@ -249,6 +267,9 @@ def run_worker_loop(
         ):
             handled += 1
             log.info("Job %s (%s): %s", job_id, job.get("job_type"), outcome["status"])
+            # Die Frist läuft ab dem Ende des Jobs, nicht ab seinem Beginn: ein langer Job
+            # darf den Runner nicht gleich nach dem Abschluss beenden.
+            last_job_at = clock()
         else:
             # Nicht gezählt: der Job bleibt serverseitig "running" und wird nach dem
             # Timeout erneut freigegeben. Ein neuer Claim würde ihn nur doppelt starten.
@@ -280,6 +301,13 @@ def _build_parser() -> argparse.ArgumentParser:
         "--once",
         action="store_true",
         help="Genau einen Job bearbeiten und beenden",
+    )
+    parser.add_argument(
+        "--idle-exit",
+        type=float,
+        default=None,
+        metavar="SEKUNDEN",
+        help="Beenden, wenn so lange kein Job vergeben wurde (Standard: nie)",
     )
     parser.add_argument("--timeout", type=float, default=10.0, help="HTTP-Timeout in Sekunden")
     parser.add_argument("-v", "--verbose", action="store_true", help="Debug-Logging")
@@ -315,6 +343,7 @@ def main(argv: list[str] | None = None) -> int:
             max_jobs=1 if args.once else None,
             handler_map=build_handler_map(client),
             stop_event=stop_event,
+            idle_exit_s=args.idle_exit,
         )
     except KeyboardInterrupt:
         stop_event.set()
