@@ -97,7 +97,7 @@ Der Bot läuft dauerhaft (Hauptprozess des Containers) und antwortet nur im Chat
 | `/similar <SoundCloud-Link | Track-ID>` | Top-5 klanglich ähnliche Aufnahmen aus der Sammlung, derzeit per Chromaprint-Fingerprint; die Embedding-Suche ist gebaut, bekommt aber noch keine Daten (seit #280, #378) |
 | `/cleanup_inbox` | Dubletten in der Inbox auflisten (nur lesend) |
 
-Zum Digest gehören Inline-Buttons pro Track (Like, Dislike, Später). Die Wahl landet in `sc_feedback` in `tracks.sqlite` und wird von `/mix` und `/curator_mining` ausgewertet. Die Kaufliste kommt zusätzlich sonntags um 20:00 (`0 20 * * 0`, aus `entrypoint.sh`).
+Zum Digest gehören Inline-Buttons pro Track (Like, Dislike, Später). Die Wahl landet in `sc_feedback` in `tracks.sqlite` und wird von `/mix` und `/curator_mining` ausgewertet. Die Kaufliste kommt zusätzlich sonntags um 20:00 (`0 20 * * 0`, aus `entrypoint.sh`). Täglich um 06:45 (`45 6 * * *`, ebenfalls aus `entrypoint.sh`) läuft vor dem `discover`-Lauf `audit --check-adopted`: Es liest nur neue oder geänderte Sammlungsdateien ein (Cache über `mtime` und Größe), füllt Fingerprints und markiert Inbox-Tracks, die jetzt in der Sammlung liegen, als übernommen (`adopted_at`, Feedback `like`; ein 👎 bleibt stehen).
 
 ## Installation
 
