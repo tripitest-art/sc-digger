@@ -389,6 +389,7 @@ Gefundene Tracks werden gegen die lokale Sammlung abgeglichen, Duplikate übersp
 | `structure.py` | Strukturanalyse: Kick-Erkennung, Segmente (`intro`, `main`, `breakdown`, `outro`), erster Kick, Drop-Start und Breakdown-Anteil |
 | `phrase.py` | Phrasen-Quantisierung (16/32-Beat Alignment, Quantisierung auf Phrasengitter und Downbeat-Fallback) |
 | `cues.py` | Cue-Tags (`SCDIGGER_FIRST_KICK`, `SCDIGGER_DROP`, `SCDIGGER_BREAKDOWN`, `SCDIGGER_BREAKDOWN_KIND`) in Dateien lesen und schreiben |
+| `cue_infer.py` | Cue-Inferenz auf der Workstation: Cue-Erkennung über `all-in-one` (`beat_this`-Beats und Abschnittserkennung) oder lokale `librosa`-Analyse als Rückfall (`select_cue_engine`, `make_allin1_infer`); Handler für die Job-Queue (`handle_cues_job`, `build_handler_map`) |
 | `stems.py` | Stem-basierte Subbass- und Breakdown-Analyse (Demucs-Stems `bass.wav`/`drums.wav`, Fake-Drop-Validierung, Breakdown-Typisierung `silence`/`groove`) — Bibliothek; im Lauf nicht verwendet, der Breakdown-Anteil kommt aus `structure.py` |
 | `style.py` | Schranz-Matrix (4 Cluster, 13 Subgenres, 3 Achsen, Versionstypen, Energie-Klassifizierung 1–5) |
 | `fingerprint.py` | Audio-Fingerprints (Chromaprint/fpcalc), gleiche Aufnahme erkennen |

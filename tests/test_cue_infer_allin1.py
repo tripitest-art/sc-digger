@@ -111,7 +111,8 @@ def test_ein_pfad_als_str_wird_zu_path():
 def test_fehlende_datei_lokal_ergibt_standardwerte_mit_engine():
     cues = infer_cues_from_audio(Path("/gibt/es/nicht.wav"))
     assert cues["engine"] == "local"
-    assert cues["cues"] == [] or cues["first_kick_s"] == 0.0
+    assert cues["cues"] == []
+    assert cues["first_kick_s"] == 0.0
 
 
 def test_fehlendes_paket_meldet_engine_nicht_verfuegbar(monkeypatch):
@@ -145,3 +146,20 @@ def test_worker_local_gibt_keine_warnung(monkeypatch, caplog):
         assert worker.main(["--api-url", "http://127.0.0.1:9", "--password", "x", "--once",
                             "--cue-engine", "local", "--embedder", "none"]) == 0
     assert "allin1" not in caplog.text.lower()
+
+
+def test_build_handler_map_ruft_uebergebene_infer_fn_auf(tmp_path):
+    import sc_digger.cue_infer as ci
+    audio_file = tmp_path / "track.wav"
+    audio_file.write_bytes(b"RIFF dummy")
+    called = []
+
+    def fake_infer(p):
+        called.append(p)
+        return {"engine": "custom", "first_kick_s": 10.0, "cues": []}
+
+    handlers = ci.build_handler_map(client=None, infer_fn=fake_infer)
+    res = handlers["cues"]({"path": str(audio_file)})
+    assert called == [audio_file]
+    assert res["engine"] == "custom"
+
