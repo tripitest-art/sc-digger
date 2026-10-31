@@ -1241,6 +1241,8 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
             status_code = 200
         elif ok_count > 0:
             status_code = 207
+        elif any(r.status == "too_large" for r in results) and (len(results) == 1 or all(r.status == "too_large" for r in results)):
+            status_code = 413
         else:
             status_code = 422
 
