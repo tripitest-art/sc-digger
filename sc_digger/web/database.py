@@ -582,12 +582,35 @@ class DigestSearchResult:
         return {"total": self.total, "items": [i.to_dict() for i in self.items]}
 
 
+_LEADING_FREE_TAG_RE = re.compile(
+    r"^\s*(?:\(\s*free\s*(?:download|dl)\s*\)|\[\s*free\s*(?:download|dl)\s*\])",
+    re.IGNORECASE,
+)
+
+
 def _parse_artist_title(raw: str) -> tuple[str | None, str]:
-    """Trennt 'Artist - Title' oder 'Artist – Title' sauber; sonst (None, raw)."""
+    """Trennt wie bisher am ersten ' - ' oder ' – ' (zuerst ' - ', dann ' – ').
+    Neu: Vom abgetrennten Künstlerteil wird ein führender Gratis-Hinweis entfernt, danach
+    getrimmt. Gratis-Hinweis = eine Klammer (rund oder eckig) am Anfang, deren Inhalt ohne
+    Berücksichtigung der Groß-/Kleinschreibung 'free dl', 'free download' oder 'freedl' ist
+    (Leerraum innen und danach egal), z. B. '(FREE DL)', '[Free Download]', '[FREEDL]'.
+    Mehrere solche Hinweise hintereinander werden alle entfernt. Hinweise, die nicht am Anfang
+    des Künstlerteils stehen, bleiben ('Artist (FREE DL)' bleibt unverändert), ebenso Namen,
+    die nur mit dem Wort 'Free' beginnen ('Free Spirit').
+    Ist der Künstlerteil danach leer, ist das Ergebnis (None, <Rest nach dem Trenner>).
+    Der Titelteil bleibt unverändert. Ohne Trenner weiter (None, raw.strip())."""
     for sep in (" - ", " – "):
         if sep in raw:
             parts = raw.split(sep, 1)
-            return parts[0].strip(), parts[1].strip()
+            artist_part = parts[0].strip()
+            title_part = parts[1].strip()
+            while True:
+                m = _LEADING_FREE_TAG_RE.match(artist_part)
+                if not m:
+                    break
+                artist_part = artist_part[m.end():].lstrip()
+            artist = artist_part.strip() or None
+            return artist, title_part
     return None, raw.strip()
 
 
