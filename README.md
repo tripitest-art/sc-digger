@@ -389,6 +389,7 @@ Gefundene Tracks werden gegen die lokale Sammlung abgeglichen, Duplikate übersp
 | `structure.py` | Strukturanalyse: Kick-Erkennung, Segmente (`intro`, `main`, `breakdown`, `outro`), erster Kick, Drop-Start und Breakdown-Anteil |
 | `phrase.py` | Phrasen-Quantisierung (16/32-Beat Alignment, Quantisierung auf Phrasengitter und Downbeat-Fallback) |
 | `cues.py` | Cue-Tags (`SCDIGGER_FIRST_KICK`, `SCDIGGER_DROP`, `SCDIGGER_BREAKDOWN`, `SCDIGGER_BREAKDOWN_KIND`) in Dateien lesen und schreiben |
+| `cue_infer.py` | Cue-Inferenz auf der Workstation: Cue-Erkennung über `all-in-one` (`beat_this`-Beats und Abschnittserkennung) oder lokale `librosa`-Analyse als Rückfall (`select_cue_engine`, `make_allin1_infer`); Handler für die Job-Queue (`handle_cues_job`, `build_handler_map`) |
 | `stems.py` | Stem-basierte Subbass- und Breakdown-Analyse (Demucs-Stems `bass.wav`/`drums.wav`, Fake-Drop-Validierung, Breakdown-Typisierung `silence`/`groove`) — Bibliothek; im Lauf nicht verwendet, der Breakdown-Anteil kommt aus `structure.py` |
 | `style.py` | Schranz-Matrix (4 Cluster, 13 Subgenres, 3 Achsen, Versionstypen, Energie-Klassifizierung 1–5) |
 | `fingerprint.py` | Audio-Fingerprints (Chromaprint/fpcalc), gleiche Aufnahme erkennen |
@@ -412,7 +413,7 @@ Gefundene Tracks werden gegen die lokale Sammlung abgeglichen, Duplikate übersp
 | `preview.py` | Live-Preview: energiereichstes Segment per ffmpeg, OGG-Opus-Snippet (`find_loudest_segment`, `extract_preview`). Eingebunden über den Bot-Befehl `/preview` (`bot.py`, seit #147). Seit #168 zusätzlich `extract_preview_from_url` für `/preview sc:<SoundCloud-ID>` direkt aus dem Stream. |
 | `redact.py` | Zugangsdaten aus Texten, Logs und Fehlermeldungen entfernen |
 | `models.py` | Datenmodelle (`Track`, `Config`) und Config-Loader |
-| `worker.py` | Standalone-Worker-Client für externe GPU-Workstations (Embedding- und Cue-Jobs); `--embedder {maest,mfcc,none}` (Standard `maest`), ohne `torch`/`transformers` beansprucht er nur Cue-Jobs; legt die `job_id` in den Payload, damit der Audio-Download klappt |
+| `worker.py` | Standalone-Worker-Client für externe GPU-Workstations (Embedding- und Cue-Jobs); `--embedder {maest,mfcc,none}` (Standard `maest`), ohne `torch`/`transformers` beansprucht er nur Cue-Jobs; `--cue-engine {allin1,local}` (Standard `allin1`, all-in-one mit `beat_this`-Beats; fehlt das Paket, Warnung und Rückfall auf die lokale `librosa`-Analyse, siehe `cue_infer.py`); legt die `job_id` in den Payload, damit der Audio-Download klappt |
 | `gpu_wake.py` | Weckt die GPU-Workstation per Wake-on-LAN-Proxy, wenn Cue-Jobs offen sind (täglicher Timer, `BETRIEB.md`); der Runner beendet sich mit `--idle-exit` bei Leerlauf |
 
 ### Web-Dashboard (Live-Cockpit, Digest-Explorer, Gate-Assistent)
