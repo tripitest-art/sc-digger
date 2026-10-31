@@ -56,7 +56,9 @@ from .audio import parse_range_header, resolve_playable_path
 from .configedit import apply_form, diff_config, format_form_value, get_path, remove_key, save_local
 from .database import (
     DEFAULT_LIMIT,
+    DIGEST_SORT_FIELDS,
     MAX_LIMIT,
+    TRACK_SORT_FIELDS,
     _connect_readonly,
     _sc_id_from_path,
     _set_builder_entries,
@@ -636,6 +638,8 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
     @app.get("/api/tracks")
     def api_tracks(request: Request):
         params = request.query_params
+        sort = params.get("sort") or None
+        direction = (params.get("dir") or "asc").lower()
         result = query_tracks(
             app.state.cfg["state"]["track_db_path"],
             status=params.get("status") or None,
@@ -646,6 +650,8 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
             quality_status=params.get("quality") or None,
             adopted=_query_bool(params.get("adopted")),
             breakdown_ratio_max=_query_float(params.get("breakdown_max")),
+            sort=sort,
+            descending=(direction == "desc"),
             limit=_query_int(params.get("limit"), DEFAULT_LIMIT),
             offset=_query_int(params.get("offset"), 0),
         )
@@ -677,8 +683,14 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
             "adopted": params.get("adopted") or "",
             "breakdown_max": params.get("breakdown_max") or "",
         }
-        page_size = max(1, min(_query_int(params.get("limit"), DEFAULT_LIMIT), MAX_LIMIT))
+        raw_limit = params.get("limit")
+        limit_val = DEFAULT_LIMIT if raw_limit == "" else _query_int(raw_limit, DEFAULT_LIMIT)
+        page_size = max(1, min(limit_val, MAX_LIMIT))
         offset = max(0, _query_int(params.get("offset"), 0))
+        sort = params.get("sort") or None
+        direction = (params.get("dir") or "asc").lower()
+        descending = (direction == "desc")
+
         result = query_tracks(
             app.state.cfg["state"]["track_db_path"],
             status=filters["status"] or None,
@@ -689,6 +701,8 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
             quality_status=filters["quality"] or None,
             adopted=_query_bool(filters["adopted"]),
             breakdown_ratio_max=_query_float(filters["breakdown_max"]),
+            sort=sort,
+            descending=descending,
             limit=page_size,
             offset=offset,
         )
@@ -704,8 +718,22 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
             """Link auf eine andere Seite, aktive Filter bleiben erhalten."""
             query = {key: value for key, value in filters.items() if value}
             query["limit"] = str(page_size)
+            if sort:
+                query["sort"] = sort
+                query["dir"] = direction
             if new_offset > 0:
                 query["offset"] = str(new_offset)
+            return "/tracks?" + urlencode(query)
+
+        def sort_url(field: str) -> str:
+            """Link zum Umschalten der Sortierung; Filter und Zeilenmenge bleiben erhalten."""
+            query = {key: value for key, value in filters.items() if value}
+            query["limit"] = str(page_size)
+            query["sort"] = field
+            if sort == field:
+                query["dir"] = "desc" if direction == "asc" else "asc"
+            else:
+                query["dir"] = "asc"
             return "/tracks?" + urlencode(query)
 
         total_pages = max(1, (result.total + page_size - 1) // page_size)
@@ -717,6 +745,9 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
             page=offset // page_size + 1,
             total_pages=total_pages,
             filters=filters,
+            current_sort=sort,
+            current_dir=direction,
+            sort_url=sort_url,
             prev_url=page_url(max(0, offset - page_size)) if offset > 0 else None,
             next_url=page_url(offset + page_size) if offset + page_size < result.total else None,
         ))
@@ -880,6 +911,8 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
     @app.get("/api/digest")
     def api_digest(request: Request):
         params = request.query_params
+        sort = params.get("sort") or None
+        direction = (params.get("dir") or "asc").lower()
         result = query_digest(
             app.state.cfg["state"]["db_path"],
             app.state.cfg["state"]["track_db_path"],
@@ -888,6 +921,8 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
             status_filter=params.get("status") or "",
             download_kind=params.get("download_kind") or "",
             feedback=params.get("feedback") or "",
+            sort=sort,
+            descending=(direction == "desc"),
             limit=_query_int(params.get("limit"), DEFAULT_LIMIT),
             offset=_query_int(params.get("offset"), 0),
         )
@@ -902,8 +937,14 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
             "download_kind": params.get("download_kind") or "",
             "feedback": params.get("feedback") or "",
         }
-        page_size = max(1, min(_query_int(params.get("limit"), DEFAULT_LIMIT), MAX_LIMIT))
+        raw_limit = params.get("limit")
+        limit_val = DEFAULT_LIMIT if raw_limit == "" else _query_int(raw_limit, DEFAULT_LIMIT)
+        page_size = max(1, min(limit_val, MAX_LIMIT))
         offset = max(0, _query_int(params.get("offset"), 0))
+        sort = params.get("sort") or None
+        direction = (params.get("dir") or "asc").lower()
+        descending = (direction == "desc")
+
         result = query_digest(
             app.state.cfg["state"]["db_path"],
             app.state.cfg["state"]["track_db_path"],
@@ -912,6 +953,8 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
             status_filter=filters["status"],
             download_kind=filters["download_kind"],
             feedback=filters["feedback"],
+            sort=sort,
+            descending=descending,
             limit=page_size,
             offset=offset,
         )
@@ -919,8 +962,22 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
         def page_url(new_offset: int) -> str:
             query = {key: value for key, value in filters.items() if value}
             query["limit"] = str(page_size)
+            if sort:
+                query["sort"] = sort
+                query["dir"] = direction
             if new_offset > 0:
                 query["offset"] = str(new_offset)
+            return "/digest?" + urlencode(query)
+
+        def sort_url(field: str) -> str:
+            """Link zum Umschalten der Sortierung; Filter und Zeilenmenge bleiben erhalten."""
+            query = {key: value for key, value in filters.items() if value}
+            query["limit"] = str(page_size)
+            query["sort"] = field
+            if sort == field:
+                query["dir"] = "desc" if direction == "asc" else "asc"
+            else:
+                query["dir"] = "asc"
             return "/digest?" + urlencode(query)
 
         total_pages = max(1, (result.total + page_size - 1) // page_size)
@@ -932,6 +989,9 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
             page=offset // page_size + 1,
             total_pages=total_pages,
             filters=filters,
+            current_sort=sort,
+            current_dir=direction,
+            sort_url=sort_url,
             prev_url=page_url(max(0, offset - page_size)) if offset > 0 else None,
             next_url=page_url(offset + page_size) if offset + page_size < result.total else None,
         ))

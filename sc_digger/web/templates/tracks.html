@@ -171,7 +171,8 @@
     <h2 class="card-title" style="margin: 0;">Filter</h2>
   </div>
   <form class="filter-form" method="get" action="/tracks">
-    <input type="hidden" name="limit" value="{{ page_size }}">
+    {% if current_sort %}<input type="hidden" name="sort" value="{{ current_sort }}">{% endif %}
+    {% if current_dir %}<input type="hidden" name="dir" value="{{ current_dir }}">{% endif %}
     <div class="filter-grid">
       <div class="filter-field">
         <label for="f-q">Artist / Titel</label>
@@ -222,6 +223,15 @@
         <input type="text" id="f-breakdown-max" name="breakdown_max" value="{{ filters.breakdown_max }}"
                placeholder="z. B. 0.2">
       </div>
+      <div class="filter-field">
+        <label for="f-limit">Zeilen</label>
+        <select id="f-limit" name="limit">
+          <option value="25" {% if page_size == 25 %}selected{% endif %}>25</option>
+          <option value="50" {% if page_size == 50 %}selected{% endif %}>50</option>
+          <option value="100" {% if page_size == 100 %}selected{% endif %}>100</option>
+          <option value="200" {% if page_size == 200 %}selected{% endif %}>200</option>
+        </select>
+      </div>
     </div>
     <div class="filter-actions">
       <button type="submit">Filtern</button>
@@ -237,13 +247,25 @@
   <table>
     <thead>
       <tr>
-        <th>Artist</th>
-        <th>Titel</th>
+        <th aria-sort="{% if current_sort == 'artist' %}{{ 'ascending' if current_dir == 'asc' else 'descending' }}{% else %}none{% endif %}">
+          <a href="{{ sort_url('artist') }}">Artist{% if current_sort == 'artist' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
+        </th>
+        <th aria-sort="{% if current_sort == 'title' %}{{ 'ascending' if current_dir == 'asc' else 'descending' }}{% else %}none{% endif %}">
+          <a href="{{ sort_url('title') }}">Titel{% if current_sort == 'title' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
+        </th>
         <th>Format</th>
-        <th>BPM</th>
-        <th>Key</th>
-        <th>Qualität</th>
-        <th>Status</th>
+        <th aria-sort="{% if current_sort == 'bpm' %}{{ 'ascending' if current_dir == 'asc' else 'descending' }}{% else %}none{% endif %}">
+          <a href="{{ sort_url('bpm') }}">BPM{% if current_sort == 'bpm' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
+        </th>
+        <th aria-sort="{% if current_sort == 'key_camelot' %}{{ 'ascending' if current_dir == 'asc' else 'descending' }}{% else %}none{% endif %}">
+          <a href="{{ sort_url('key_camelot') }}">Key{% if current_sort == 'key_camelot' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
+        </th>
+        <th aria-sort="{% if current_sort == 'quality' %}{{ 'ascending' if current_dir == 'asc' else 'descending' }}{% else %}none{% endif %}">
+          <a href="{{ sort_url('quality') }}">Qualität{% if current_sort == 'quality' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
+        </th>
+        <th aria-sort="{% if current_sort == 'status' %}{{ 'ascending' if current_dir == 'asc' else 'descending' }}{% else %}none{% endif %}">
+          <a href="{{ sort_url('status') }}">Status{% if current_sort == 'status' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
+        </th>
         <th>Anhören</th>
         <th>Übernahme</th>
         <th>Feedback</th>
