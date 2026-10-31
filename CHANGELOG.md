@@ -25,15 +25,12 @@ unter „Unreleased“ (Regeln: `AGENTS.md`, Abschnitt „Doku und Changelog“)
 - `_eval/` (140 KB Auswertungsskripte aus der Analysephase, von keinem Produktionscode benutzt) samt Windows-Befehlen in der README; `tests/test_dj_workflow.py` läuft jetzt gegen `sc_digger.analysis` und `sc_digger.dj_export`, die Messwerte stehen weiter in der README, der Prüfbericht in der Git-Historie (#425).
 
 ### Hinzugefügt
-<<<<<<< HEAD
 - GPU-Worker rechnet Cue-Jobs mit all-in-one: `cue_infer.make_allin1_infer` nutzt `allin1_infer.analyze` (`harmonix-all`, `beat_this`-Beats) statt nur `librosa`; neuer Schalter `python -m sc_digger.worker --cue-engine {allin1,local}` (Standard `allin1`). Fehlt das Paket, warnt der Worker und nutzt die lokale Analyse; Ergebnisse tragen `engine` und `bpm` (#426).
-=======
 - Rückfüll-Werkzeug: `sc_digger.backfill_artist` ergänzt fehlende Künstlernamen in `seen.artist` und `rejected.artist` aus `tracks.artist` per SoundCloud-ID oder normalisierter URL (Probelauf, Pflicht-Backup bei `--apply`) (#446).
 - Engagement-Snapshots: On-Demand-Läufe per Bot-Link, Playlist und Similar erfassen Plays, Likes, Reposts und Kommentare in `track_snapshots` (#443).
 - Web-Dashboard: Tabellen in Tracks (`/tracks`) und Digest (`/digest`) per Spaltenklick sortierbar (Weißliste, Richtungsumschaltung, NULL-Werte am Ende), Zeilenmenge wählbar (25/50/100/200, Kappung bei 200) bei Erhalt aller aktiven Filter (#441).
 - Telegram-Bot: Beim Senden eines Track-Links wird der verlinkte Track selbst mitverarbeitet und geladen (sofern direkt ladbar), statt nur seine Station zu prüfen (#444).
 - Vorschläge und Abgelehnt: Künstler wird beim Eintragen in `seen` und `rejected` mitgespeichert und im Web-Dashboard angezeigt, wenn der Track-Titel keinen Uploader-Trennstrich enthält (#442).
->>>>>>> origin/main
 - GPU-Worker rechnet Embedding-Jobs: `embeddings.select_embedder` liefert MAEST (`discogs-maest-30s-pw-129e` über `torch`/`transformers`, gepinnte Revision, 30-s-Fenster gemittelt und normiert) oder den MFCC-Fallback; neuer Schalter `python -m sc_digger.worker --embedder {maest,mfcc,none}`. Fehlen die Pakete, beansprucht der Worker nur Cue-Jobs. Dazu behoben: Der Worker legt die `job_id` in den Payload, ohne sie scheiterte jeder entfernte `cues`-Job am Audio-Download (#421).
 - Modus `embed-backfill`: reiht Embedding-Jobs für vorhandene Tracks ohne Embedding ein, standardmäßig nur für bewertete (👍/👎 in `tracks` und `sc_feedback`, übernommen, Rekordbox-Rating), mit `--all` für alle, `--limit N` und `--dry-run`; Grundlage für Trainingsdaten des Taste-Scores (`embeddings.backfill_embedding_jobs`, `main.run_embed_backfill`) (#422).
 - Täglicher Übernommen-Abgleich: `entrypoint.sh` trägt um 06:45 (vor dem `discover`-Lauf) `audit --check-adopted` als Cron-Job ein. Das inkrementelle Audit nimmt neue Sammlungsdateien auf, füllt Fingerprints und markiert übernommene Inbox-Tracks (`adopted_at`, Feedback `like`, 👎 bleibt) (ROADMAP 3.12, #420).
