@@ -83,16 +83,23 @@ class State:
         self.db.execute(
             "CREATE TABLE IF NOT EXISTS seen ("
             "id INTEGER PRIMARY KEY, url TEXT, title TEXT, "
-            "reported_at TEXT DEFAULT CURRENT_TIMESTAMP)"
+            "reported_at TEXT DEFAULT CURRENT_TIMESTAMP, artist TEXT)"
         )
         # Quarantäne: abgelehnte Downloads dürfen nicht in seen landen, sonst wären sie
         # nach einer falschen Qualitätsprüfung dauerhaft verloren.
         self.db.execute(
             "CREATE TABLE IF NOT EXISTS rejected ("
             "id INTEGER PRIMARY KEY, url TEXT, title TEXT, reason TEXT, "
-            "cutoff_hz REAL, rejected_at TEXT DEFAULT CURRENT_TIMESTAMP)"
+            "cutoff_hz REAL, rejected_at TEXT DEFAULT CURRENT_TIMESTAMP, artist TEXT)"
         )
+        self._ensure_column("seen", "artist", "TEXT")
+        self._ensure_column("rejected", "artist", "TEXT")
         self.db.commit()
+
+    def _ensure_column(self, table: str, column: str, col_type: str) -> None:
+        cols = {r[1] for r in self.db.execute(f"PRAGMA table_info({table})")}
+        if column not in cols:
+            self.db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}")
 
     def __enter__(self) -> "State":
         return self
@@ -108,16 +115,21 @@ class State:
 
     def mark_one(self, t: Track) -> None:
         """Markiert einen einzelnen Track als gesendet."""
+        artist = t.artist.strip() if t.artist and t.artist.strip() else None
         self.db.execute(
-            "INSERT OR IGNORE INTO seen (id, url, title) VALUES (?,?,?)",
-            (t.id, t.url, t.title),
+            "INSERT OR IGNORE INTO seen (id, url, title, artist) VALUES (?,?,?,?)",
+            (t.id, t.url, t.title, artist),
         )
         self.db.commit()
 
     def mark(self, tracks: list[Track]) -> None:
+        rows = [
+            (t.id, t.url, t.title, t.artist.strip() if t.artist and t.artist.strip() else None)
+            for t in tracks
+        ]
         self.db.executemany(
-            "INSERT OR IGNORE INTO seen (id, url, title) VALUES (?,?,?)",
-            [(t.id, t.url, t.title) for t in tracks],
+            "INSERT OR IGNORE INTO seen (id, url, title, artist) VALUES (?,?,?,?)",
+            rows,
         )
         self.db.commit()
 
@@ -125,10 +137,11 @@ class State:
         """Erfasst einen abgelehnten Track in der Quarantäne-Tabelle rejected (INSERT OR REPLACE)."""
         if cutoff_hz is None and t.quality_report:
             cutoff_hz = t.quality_report.get("cutoff_hz")
+        artist = t.artist.strip() if t.artist and t.artist.strip() else None
         self.db.execute(
-            "INSERT OR REPLACE INTO rejected (id, url, title, reason, cutoff_hz, rejected_at) "
-            "VALUES (?,?,?,?,?, CURRENT_TIMESTAMP)",
-            (t.id, t.url, t.title, reason, cutoff_hz),
+            "INSERT OR REPLACE INTO rejected (id, url, title, reason, cutoff_hz, rejected_at, artist) "
+            "VALUES (?,?,?,?,?, CURRENT_TIMESTAMP, ?)",
+            (t.id, t.url, t.title, reason, cutoff_hz, artist),
         )
         self.db.commit()
 
