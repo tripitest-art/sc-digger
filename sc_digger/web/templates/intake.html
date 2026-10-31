@@ -1,0 +1,275 @@
+{% extends "base.html" %}
+
+{% block title %}sc-digger Upload &amp; Intake{% endblock %}
+{% block nav_intake %}active{% endblock %}
+
+{% block meta %}
+<style>
+  .upload-zone {
+    padding: 2.5rem 1.5rem;
+    border: 2px dashed var(--border);
+    border-radius: 8px;
+    background-color: var(--bg-card-subtle);
+    text-align: center;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+  }
+  .upload-zone:hover,
+  .upload-zone:focus-visible {
+    border-color: var(--accent-primary);
+    color: var(--text-main);
+    outline: none;
+  }
+  .upload-zone.dragover {
+    border-color: var(--accent-primary);
+    background-color: rgba(59, 130, 246, 0.12);
+    color: var(--text-main);
+  }
+  .upload-zone.busy {
+    opacity: 0.6;
+    cursor: progress;
+  }
+  .upload-actions {
+    margin-top: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+  }
+  .results-summary {
+    padding: 0.75rem 1rem;
+    border-radius: 6px;
+    margin-bottom: 1rem;
+    font-weight: 500;
+  }
+  .results-summary.ok {
+    background-color: rgba(16, 185, 129, 0.15);
+    color: var(--accent-ok);
+  }
+  .results-summary.warn {
+    background-color: rgba(245, 158, 11, 0.15);
+    color: var(--accent-warn);
+  }
+  .results-summary.err {
+    background-color: rgba(239, 68, 68, 0.15);
+    color: var(--accent-err);
+  }
+  .result-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  .result-item {
+    padding: 0.75rem 1rem;
+    border-radius: 6px;
+    background-color: var(--bg-card-subtle);
+    border: 1px solid var(--border);
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .result-item.ok {
+    border-left: 4px solid var(--accent-ok);
+  }
+  .result-item.rejected {
+    border-left: 4px solid var(--accent-warn);
+  }
+  .result-item.error {
+    border-left: 4px solid var(--accent-err);
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-header">
+    <h2 class="card-title" style="margin: 0;">Dateien in die Inbox hochladen</h2>
+  </div>
+  <p class="meta" style="margin-top: 0.5rem;">
+    Audiodateien nach einem Download-Gate (Hypeddit, Droploud, …) oder Kauf hier ablegen.
+    Mehrere Dateien können gleichzeitig ausgewählt oder per Drag &amp; Drop abgelegt werden.
+    Jede Datei läuft durch dieselbe Pipeline wie der tägliche Lauf: Format- und Fake-Check,
+    BPM/Key-Analyse, Tagging und Sortierung in die Inbox.
+  </p>
+
+  <form id="upload-form" action="/api/upload-intake" method="post" enctype="multipart/form-data">
+    <div id="upload-zone" class="upload-zone" role="button" tabindex="0"
+         aria-label="Audiodateien in die Inbox hochladen">
+      <strong>Audiodateien hierher ziehen</strong>
+      <div class="meta" style="font-size: 0.85rem; margin-top: 0.4rem;">
+        oder klicken zum Auswählen · wav, aiff, aif, flac, mp3, m4a (Mehrfachauswahl möglich)
+      </div>
+      <input type="file" id="upload-input" name="files" multiple
+             accept=".wav,.aiff,.aif,.flac,.mp3,.m4a,audio/*" style="display: none;">
+    </div>
+
+    <div class="upload-actions">
+      <button type="submit" id="upload-btn">Hochladen</button>
+      <span id="file-info" class="meta"></span>
+      <p id="upload-status" class="upload-status" role="status" aria-live="polite"></p>
+    </div>
+  </form>
+
+  <div id="results-area" style="margin-top: 1.5rem; {% if not results %}display: none;{% endif %}">
+    <div id="results-summary" class="results-summary {% if ok %}ok{% elif summary and summary.ok > 0 %}warn{% else %}err{% endif %}">
+      {% if summary %}
+      {{ summary.ok }} erfolgreich, {{ summary.rejected }} abgelehnt, {{ summary.error }} Fehler
+      {% endif %}
+    </div>
+    <ul id="results-list" class="result-list">
+      {% if results %}
+      {% for r in results %}
+      <li class="result-item {% if r.ok %}ok{% elif r.status == 'rejected' %}rejected{% else %}error{% endif %}">
+        <div>
+          <strong>{{ r.filename }}</strong>
+          <span class="meta" style="margin-left: 0.5rem;">{{ r.message or r.status }}</span>
+        </div>
+        {% if r.bpm %}
+        <span class="meta">[{{ r.key_camelot }} · {{ r.bpm }} BPM]</span>
+        {% endif %}
+      </li>
+      {% endfor %}
+      {% endif %}
+    </ul>
+  </div>
+</div>
+
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    const form = document.getElementById('upload-form');
+    const zone = document.getElementById('upload-zone');
+    const input = document.getElementById('upload-input');
+    const btn = document.getElementById('upload-btn');
+    const fileInfo = document.getElementById('file-info');
+    const resultsArea = document.getElementById('results-area');
+    const resultsSummary = document.getElementById('results-summary');
+    const resultsList = document.getElementById('results-list');
+
+    let stagedFiles = [];
+
+    function updateFileInfo() {
+      if (stagedFiles.length === 0) {
+        fileInfo.textContent = '';
+      } else if (stagedFiles.length === 1) {
+        fileInfo.textContent = stagedFiles[0].name;
+      } else {
+        fileInfo.textContent = stagedFiles.length + ' Dateien ausgewählt';
+      }
+    }
+
+    zone.addEventListener('click', () => input.click());
+    zone.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        input.click();
+      }
+    });
+
+    ['dragenter', 'dragover'].forEach((ev) => {
+      zone.addEventListener(ev, (e) => {
+        e.preventDefault();
+        zone.classList.add('dragover');
+      });
+    });
+
+    ['dragleave', 'drop'].forEach((ev) => {
+      zone.addEventListener(ev, (e) => {
+        e.preventDefault();
+        zone.classList.remove('dragover');
+      });
+    });
+
+    zone.addEventListener('drop', (e) => {
+      if (e.dataTransfer && e.dataTransfer.files) {
+        stagedFiles = Array.from(e.dataTransfer.files);
+        updateFileInfo();
+      }
+    });
+
+    input.addEventListener('change', () => {
+      if (input.files) {
+        stagedFiles = Array.from(input.files);
+        updateFileInfo();
+      }
+    });
+
+    form.addEventListener('submit', async (e) => {
+      // Wenn JavaScript aktiv ist, führen wir den Upload asynchron aus
+      e.preventDefault();
+      const filesToUpload = stagedFiles.length > 0 ? stagedFiles : Array.from(input.files || []);
+      if (filesToUpload.length === 0) {
+        fileInfo.textContent = 'Bitte mindestens eine Datei auswählen.';
+        return;
+      }
+
+      zone.classList.add('busy');
+      btn.disabled = true;
+      fileInfo.textContent = 'Verarbeite ' + filesToUpload.length + ' Datei(en) nacheinander…';
+
+      const formData = new FormData();
+      for (const file of filesToUpload) {
+        formData.append('files', file, file.name);
+      }
+
+      try {
+        const response = await fetch('/api/upload-intake', {
+          method: 'POST',
+          body: formData,
+        });
+        const data = await response.json();
+
+        resultsArea.style.display = 'block';
+        resultsList.innerHTML = '';
+
+        const summary = data.summary || { ok: 0, rejected: 0, error: 0 };
+        const isAllOk = data.ok;
+        resultsSummary.className = 'results-summary ' + (isAllOk ? 'ok' : (summary.ok > 0 ? 'warn' : 'err'));
+        resultsSummary.textContent = summary.ok + ' erfolgreich, ' + summary.rejected + ' abgelehnt, ' + summary.error + ' Fehler';
+
+        const results = data.results || [];
+        for (const r of results) {
+          const li = document.createElement('li');
+          const cls = r.ok ? 'ok' : (r.status === 'rejected' ? 'rejected' : 'error');
+          li.className = 'result-item ' + cls;
+
+          const div = document.createElement('div');
+          const strong = document.createElement('strong');
+          strong.textContent = r.filename || 'Datei';
+          div.appendChild(strong);
+          if (r.message || r.status) {
+            const span = document.createElement('span');
+            span.className = 'meta';
+            span.style.marginLeft = '0.5rem';
+            span.textContent = r.message || r.status;
+            div.appendChild(span);
+          }
+          li.appendChild(div);
+
+          if (r.bpm) {
+            const bpmSpan = document.createElement('span');
+            bpmSpan.className = 'meta';
+            bpmSpan.textContent = '[' + (r.key_camelot || '') + ' · ' + r.bpm + ' BPM]';
+            li.appendChild(bpmSpan);
+          }
+          resultsList.appendChild(li);
+        }
+      } catch (err) {
+        resultsArea.style.display = 'block';
+        resultsSummary.className = 'results-summary err';
+        resultsSummary.textContent = 'Upload fehlgeschlagen: ' + err;
+      } finally {
+        zone.classList.remove('busy');
+        btn.disabled = false;
+        stagedFiles = [];
+        input.value = '';
+        updateFileInfo();
+      }
+    });
+  });
+</script>
+{% endblock %}

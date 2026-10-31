@@ -26,6 +26,7 @@ unter „Unreleased“ (Regeln: `AGENTS.md`, Abschnitt „Doku und Changelog“)
 
 ### Hinzugefügt
 - GPU-Worker rechnet Cue-Jobs mit all-in-one: `cue_infer.make_allin1_infer` nutzt `allin1_infer.analyze` (`harmonix-all`, `beat_this`-Beats) statt nur `librosa`; neuer Schalter `python -m sc_digger.worker --cue-engine {allin1,local}` (Standard `allin1`). Fehlt das Paket, warnt der Worker und nutzt die lokale Analyse; Ergebnisse tragen `engine` und `bpm` (#426).
+- Web-Dashboard: Eigene Seite für Uploads (`/intake`) mit Mehrfach-Upload per Drag & Drop oder Dateiauswahl; `POST /api/upload-intake` verarbeitet mehrere Dateien nacheinander bei stabiler Reihenfolge (#447).
 - Rückfüll-Werkzeug: `sc_digger.backfill_artist` ergänzt fehlende Künstlernamen in `seen.artist` und `rejected.artist` aus `tracks.artist` per SoundCloud-ID oder normalisierter URL (Probelauf, Pflicht-Backup bei `--apply`) (#446).
 - Engagement-Snapshots: On-Demand-Läufe per Bot-Link, Playlist und Similar erfassen Plays, Likes, Reposts und Kommentare in `track_snapshots` (#443).
 - Web-Dashboard: Tabellen in Tracks (`/tracks`) und Digest (`/digest`) per Spaltenklick sortierbar (Weißliste, Richtungsumschaltung, NULL-Werte am Ende), Zeilenmenge wählbar (25/50/100/200, Kappung bei 200) bei Erhalt aller aktiven Filter (#441).
