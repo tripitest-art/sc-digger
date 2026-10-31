@@ -25,6 +25,7 @@ unter „Unreleased“ (Regeln: `AGENTS.md`, Abschnitt „Doku und Changelog“)
 - `_eval/` (140 KB Auswertungsskripte aus der Analysephase, von keinem Produktionscode benutzt) samt Windows-Befehlen in der README; `tests/test_dj_workflow.py` läuft jetzt gegen `sc_digger.analysis` und `sc_digger.dj_export`, die Messwerte stehen weiter in der README, der Prüfbericht in der Git-Historie (#425).
 
 ### Hinzugefügt
+- Web-Dashboard: Eigene Seite für Uploads (`/intake`) mit Mehrfach-Upload per Drag & Drop oder Dateiauswahl; `POST /api/upload-intake` verarbeitet mehrere Dateien nacheinander bei stabiler Reihenfolge (#447).
 - Rückfüll-Werkzeug: `sc_digger.backfill_artist` ergänzt fehlende Künstlernamen in `seen.artist` und `rejected.artist` aus `tracks.artist` per SoundCloud-ID oder normalisierter URL (Probelauf, Pflicht-Backup bei `--apply`) (#446).
 - Engagement-Snapshots: On-Demand-Läufe per Bot-Link, Playlist und Similar erfassen Plays, Likes, Reposts und Kommentare in `track_snapshots` (#443).
 - Web-Dashboard: Tabellen in Tracks (`/tracks`) und Digest (`/digest`) per Spaltenklick sortierbar (Weißliste, Richtungsumschaltung, NULL-Werte am Ende), Zeilenmenge wählbar (25/50/100/200, Kappung bei 200) bei Erhalt aller aktiven Filter (#441).
