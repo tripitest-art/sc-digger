@@ -34,6 +34,7 @@ from .rekordbox import (
     HOT_CUE_LAYOUT_LEGACY,
     KINDS,
     InboxTrack,
+    VERSION_TYPE_PLAYLISTS,
     _bpm_sort_key,
     _camelot_sort_key,
     _playlist_folder,
@@ -907,8 +908,6 @@ def export_collection_xml(
             extra_folders += 1
 
     if playlists_by_version:
-        from .rekordbox import VERSION_TYPE_PLAYLISTS
-        from .style import classify_track
         version_dict: dict[Any, list[str]] = {}
         for track_id, t, _ in mapped:
             analysis = classify_track(bpm=t.bpm, title=t.title)
@@ -981,14 +980,18 @@ def run_audit(
     with TrackDB(db_path) as db:
         # Nur bei Bedarf weiterreichen: bestehende Aufrufer mit der alten Signatur
         # (z. B. Test-Fakes für audit_collection) bleiben unverändert gültig.
-        if analyze_structure or write_tags:
+        if write_tags:
             summary = audit_collection(
                 target_dir,
                 cfg,
                 db,
                 force=force,
                 analyze_structure=analyze_structure,
-                write_tags=write_tags,
+                write_tags=True,
+            )
+        elif analyze_structure:
+            summary = audit_collection(
+                target_dir, cfg, db, force=force, analyze_structure=True,
             )
         else:
             summary = audit_collection(target_dir, cfg, db, force=force)
