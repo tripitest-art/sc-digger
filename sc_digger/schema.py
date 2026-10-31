@@ -279,6 +279,8 @@ FIELDS: tuple[Field, ...] = (
        "Rekordbox-Track-Kommentar kompakt für kleine CDJ/XDJ-Displays überschreiben ([BPM|Key|Substil|D1:Drop1|D2:Drop2|L<LUFS>]). Hat Vorrang vor style_comments."),
     _f("rekordbox.import_xml_path", "str", "Import-XML-Pfad",
        "Optionaler Pfad zur exportierten Rekordbox-XML aus dem Syncthing-Rückkanal vom Laptop. Der tägliche Lauf importiert sie nach dem XML-Export (Rating, Plays, BPM, Key, Cues, Auto-Like); leer = aus.", editable=False),
+    _f("rekordbox.import_match_by_name", "bool", "Rückkanal: Namens-Fallback",
+       "Dateinamen-Fallback beim Rekordbox-Import; false erfordert exakte Pfad-Treffer über path_map."),
     # --- digest ---
     _f("digest.kaufliste_max_items", "int", "Max. Kaufliste",
        "Maximale Einträge in der wöchentlichen Telegram-Kaufliste für Store-Tracks (Standard 30).", min=0),

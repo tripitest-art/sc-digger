@@ -88,7 +88,7 @@ Der Bot läuft dauerhaft (Hauptprozess des Containers) und antwortet nur im Chat
 |---|---|
 | `/start`, `/help` | Hilfe mit Befehlsübersicht |
 | Playlist- oder Set-Link | Alle Tracks der Playlist, mit Sammlungsabgleich, Download-Weg und Export-Datei |
-| Track-Link | Track-Station (SoundCloud-Radio) zum Track, ebenso aufbereitet |
+| Track-Link | Der verlinkte Track selbst (Download falls freigegeben) plus seine Track-Station (SoundCloud-Radio), ebenso aufbereitet |
 | `/kaufliste` | Offene Store-Tracks aus `store_items` mit Kauflink |
 | `/curator_mining` (auch `/curator-mining`) | Profile, die eigene Like-Tracks auffällig oft geliked oder repostet haben, als Kandidaten für `search.reference_accounts`; die Inline-Buttons „➕ <Name>“ tragen einen Account per Klick in `search.followed_users` der lokalen Override-Datei (`SC_DIGGER_CONFIG_LOCAL`) ein |
 | `/mix <Key> <BPM> [Toleranz]` | Harmonisch und tempomäßig passende Tracks aus der Track-DB, mit Camelot-Abstand; Toleranz in BPM, Standard 3.0 |
@@ -224,6 +224,7 @@ Alle Optionen stehen in `config.yaml`; die folgende Liste nennt die Werte aus di
 | `rekordbox.style_comments` | Track-Kommentar im Stil-Format überschreiben | `false` |
 | `rekordbox.compact_style_comments` | Kompakte Stil-Kürzel in Track-Kommentare schreiben | `false` |
 | `rekordbox.import_xml_path` | Pfad zur exportierten Rekordbox-XML als Rückkanal — der tägliche Lauf importiert sie nach dem XML-Export (siehe „Rückkanal“); leer = aus | `""` |
+| `rekordbox.import_match_by_name` | Dateinamen-Fallback beim Rekordbox-Import (aus: nur exakte Pfad-Treffer über path_map) | `true` |
 | `digest.kaufliste_max_items` | Obergrenze der Kaufliste | `30` |
 | `digest.sunday_summary` | Wochenstatistik im Sonntagslauf senden | `false` |
 | `digest.stats_chart` | Balkendiagramm zum Wochen-Digest | `false` |
@@ -331,7 +332,7 @@ Zusätzlich zu den Wochen-Playlists können Playlists nach Tempo, Tonart und der
 - `sc-digger/Key/<Camelot>` (z. B. `5A`) über `rekordbox.playlists_by_key: true`
 - `sc-digger/Stile/<Cluster>`, `sc-digger/Subgenres/<Subgenre>` und `sc-digger/Versionen/<Version>` über `rekordbox.playlists_by_style`, `rekordbox.playlists_by_subgenre` und `rekordbox.playlists_by_version` (jeweils Standard: `false`)
 
-Tracks ohne BPM bzw. ohne gültigen Camelot-Key landen in `unbekannt`. Tracks können zudem anhand des Versionstyps (`style_colors`) oder des Subgenres (`matrix_colors`) farblich markiert werden. Kommentare für CDJ/XDJ-Displays lassen sich im Standard- oder Kompakt-Stil-Format schreiben (`style_comments`, `compact_style_comments`). Der **Rückkanal** läuft über `rekordbox.import_xml_path`: Zeigt der Pfad (in der lokalen Override-Datei) auf die vom DJ-Laptop zurückgelieferte XML, importiert der tägliche Lauf (`discover`, nicht Dry-Run) sie direkt nach dem XML-Export. Übernommen werden Rating, PlayCount, BPM, Key und Cues in `tracks.sqlite`; ein noch leeres Feedback wird bei Rating ≥ 4 oder ≥ 2 Plays auf `like` gesetzt. Dieselbe `rekordbox.path_map` wie beim Export ordnet Laptop-Pfade den Server-Pfaden zu. Audiodateien und Sammlung bleiben unberührt. Fehlt die Datei, wird der Import übersprungen (Warnung im Log). Ein Importfehler oder eine XML ohne einen einzigen Treffer (meist falsche `path_map`) bricht den Lauf nicht ab, erscheint aber als Health-Modus `rekordbox_import` und löst nach `health.alert_after_bad_runs` schlechten Läufen den Telegram-Alarm aus.
+Tracks ohne BPM bzw. ohne gültigen Camelot-Key landen in `unbekannt`. Tracks können zudem anhand des Versionstyps (`style_colors`) oder des Subgenres (`matrix_colors`) farblich markiert werden. Kommentare für CDJ/XDJ-Displays lassen sich im Standard- oder Kompakt-Stil-Format schreiben (`style_comments`, `compact_style_comments`). Der **Rückkanal** läuft über `rekordbox.import_xml_path`: Zeigt der Pfad (in der lokalen Override-Datei) auf die vom DJ-Laptop zurückgelieferte XML, importiert der tägliche Lauf (`discover`, nicht Dry-Run) sie direkt nach dem XML-Export. Übernommen werden Rating, PlayCount, BPM, Key und Cues in `tracks.sqlite`; ein noch leeres Feedback wird bei Rating ≥ 4 oder ≥ 2 Plays auf `like` gesetzt. Dieselbe `rekordbox.path_map` wie beim Export ordnet Laptop-Pfade den Server-Pfaden zu. Audiodateien und Sammlung bleiben unberührt. Fehlt die Datei, wird der Import übersprungen (Warnung im Log). Ein Importfehler, eine XML ohne einen einzigen Treffer oder ein Lauf mit reinen Dateinamen-Treffern ohne Pfad-Treffer (Hinweis auf falsche `path_map`) bricht den Lauf nicht ab, erscheint aber als Health-Modus `rekordbox_import` und löst nach `health.alert_after_bad_runs` schlechten Läufen den Telegram-Alarm aus. Über `rekordbox.import_match_by_name: false` lässt sich der Namens-Fallback abschalten, sodass nur exakte Pfad-Treffer zugeordnet werden.
 
 **Vollständiges Cue-System:**
 Liegen in einer Audiodatei Cue-Tags aus der Strukturanalyse (`cues.py`, `structure.py`, `stems.py`), übernimmt der XML-Export diese Marken bei aktivem `rekordbox.cues_enabled: true`:
@@ -422,14 +423,14 @@ Passwort startet er nicht (Standard aus), es wird kein zusätzlicher Port geöff
 im modernen Dark-Theme gestaltet und per HTTP-Basic-Auth geschützt:
 
 - **Status (`/` & `/api/status`):** Ampel gesund/Achtung, letzter `discover`-Lauf mit Alter und Rohtreffern, aktiver Health-Alarm, Inbox-Größe, die letzten 10 Läufe und die Wochenstatistik.
-- **Digest-Explorer (`/digest` & `/api/digest`):** Historische Digest-Tracks aus `seen.sqlite` durchsuchen und nach Download-Weg (`Alle`, `Geladen`, `Gate`, `Store`, `Stream`), Zeitraum (`7d`, `14d`, `30d`, `Alle`) oder Text filtern. Ermöglicht direktes Track-Feedback (👍/👎/⏳) und enthält den direkten Link `[🌐 Gate öffnen ↗]` für Fangates (Hypeddit, Droploud etc.).
+- **Digest-Explorer (`/digest` & `/api/digest`):** Historische Digest-Tracks aus `seen.sqlite` durchsuchen und nach Download-Weg (`Alle`, `Geladen`, `Gate`, `Store`, `Stream`), Zeitraum (`7d`, `14d`, `30d`, `Alle`) oder Text filtern; Tabellensortierung per Klick auf die Spaltenköpfe und wählbare Zeilenmenge (25/50/100/200). Ermöglicht direktes Track-Feedback (👍/👎/⏳) und enthält den direkten Link `[🌐 Gate öffnen ↗]` für Fangates (Hypeddit, Droploud etc.).
 - **Kaufliste (`/kaufliste`):** Übersicht aller Store-Tracks (Bandcamp, Beatport etc.) mit Filter auf gelikte Tracks.
-- **Track-Explorer mit Vorhören (`/tracks` & `GET /api/audio/{id}`):** durchsucht die Track-DB und spielt Tracks aus Inbox und Sammlung direkt im Browser ab (HTML5-Audio mit Range-Requests, Springen im Track). Die Dateien werden nur gelesen und ausschließlich aus `download.inbox_dir` und `download.collection_dir` ausgeliefert; fehlende Dateien, Pfade außerhalb und Symlinks aus den Ordnern heraus ergeben 404.
+- **Track-Explorer mit Vorhören (`/tracks` & `GET /api/audio/{id}`):** durchsucht die Track-DB und spielt Tracks aus Inbox und Sammlung direkt im Browser ab (HTML5-Audio mit Range-Requests, Springen im Track); Tabellensortierung per Klick auf Spaltenköpfe und wählbare Zeilenmenge (25/50/100/200). Die Dateien werden nur gelesen und ausschließlich aus `download.inbox_dir` und `download.collection_dir` ausgeliefert; fehlende Dateien, Pfade außerhalb und Symlinks aus den Ordnern heraus ergeben 404.
 - **Gate-Assistent & Drag & Drop Upload (Digest-Explorer `/digest`, Endpunkt `POST /api/upload-intake`):** Manuell am PC gelöste Gate-Tracks (WAV, FLAC, AIFF, MP3) einfach per Drag & Drop im Browser hochladen. Eine eigene Seite `/intake` gibt es nicht; die Upload-Zone liegt im Digest-Explorer. Der Server übernimmt die Datei, prüft Audioqualität/Clipping, normalisiert den Pegel, analysiert BPM/Key, schreibt ID3/Vorbis-Tags und sortiert sie in die Rekordbox-Inbox ein. Das Limit pro Datei ist 1 GiB (sonst HTTP 413); bei Fehlern zeigt der Browser nur eine feste Meldung, die Ursache steht im Log.
 - **Mix & URL-Scanner (`/mix` & `POST /api/scan`):** Harmonic Mix Finder nach Camelot-Key und BPM sowie On-Demand-Analyse beliebiger SoundCloud-Links (Tracks, Playlists, Artist-Likes) direkt im Browser.
 - **Konfigeditor (`/config`):** Formular für Einstellungen aus `config.yaml` mit Diff-Vorschau (`/config/preview`) und sicherem Schreiben in die lokale Override-Datei (`SC_DIGGER_CONFIG_LOCAL`, z. B. `/data/config.local.yaml`).
 
-Für den Zugriff aus dem LAN ist in `docker-compose.yml` eine Port-Freigabe vorbereitet.
+Für den Zugriff aus dem LAN ist in `docker-compose.yml` eine Port-Freigabe vorbereitet. Auf schmalen Bildschirmen und Laptops passen sich Navigation und Filterformulare responsive an; breite Tabellen erhalten einen horizontalen Scrollbereich.
 
 **Login-Sperre:** Fünf Fehlversuche (falsche oder fehlende Zugangsdaten) innerhalb von fünf
 Minuten sperren die Client-IP für 15 Minuten; die Antwort ist `429` mit `Retry-After`. Die Sperre
@@ -473,24 +474,12 @@ docker compose exec sc-digger python scripts/fix_32bit_wavs.py /music/inbox
 
 ## Projektprüfung (Trackanalyse & DJ-Workflow)
 
-Die vollständige Prüfung der Analyse-Pipeline mit Messwerten, gefundenen Fehlern und
-priorisierten Änderungsvorschlägen liegt in [`_eval/REVIEW-2026-10-14.md`](_eval/REVIEW-2026-10-14.md).
-Kernpunkte:
-
-- BPM-Erkennung auf einem Ground-Truth-Korpus (29 bekannte Tempo-/Tonart-Fälle)
-  **0/29 → 29/29** exakt, Key **83 % → 100 %** (Kandidat in `_eval/analysis_v2.py`).
-- Ein Decode statt zwei, Chroma über oktav-gemittelte Halbton-Energie statt FFT-Bin-Summen,
-  Anti-Alias-Resampling, Konfidenzwerte je BPM und Key.
-- Harmonisch sortierte Playlists sind gebaut: `_eval/dj_export.py` erzeugt M3U8 + CSV + Report.
-
-```powershell
-# Set aus einem Ordner bauen (Tempo-Fenster wie in config.yaml)
-python _eval\dj_export.py --folder "$env:USERPROFILE\Music\Schranz" --out .\sets --name peaktime --bpm 150 165
-
-# Messungen reproduzieren
-python _eval\gen_corpus.py _eval\corpus
-python _eval\bench.py mix
-```
+Die Analyse-Pipeline wurde im Oktober 2026 auf einem Ground-Truth-Korpus mit 29 bekannten
+Tempo-/Tonart-Fällen geprüft: BPM **29/29** exakt (vorher 0/29), Key **100 %** (vorher 83 %).
+Der Code dazu steht in `sc_digger/analysis.py` (BPM/Key), die harmonisch sortierten Playlists
+(M3U8, CSV, Report) baut `sc_digger/dj_export.py`; abgesichert ist die Kette durch
+`tests/test_dj_workflow.py`. Das frühere Auswertungswerkzeug samt Prüfbericht ist entfernt und
+nur noch über die Git-Historie erreichbar.
 
 ## Mitentwickeln
 

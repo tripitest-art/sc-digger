@@ -248,7 +248,8 @@
   </details>
 
   <form class="filter-form" method="get" action="/digest">
-    <input type="hidden" name="limit" value="{{ page_size }}">
+    {% if current_sort %}<input type="hidden" name="sort" value="{{ current_sort }}">{% endif %}
+    {% if current_dir %}<input type="hidden" name="dir" value="{{ current_dir }}">{% endif %}
     <div class="filter-grid">
       <div class="filter-field">
         <label for="f-q">Artist / Titel</label>
@@ -284,6 +285,15 @@
           <option value="none" {% if filters.feedback == "none" %}selected{% endif %}>Ohne Bewertung</option>
         </select>
       </div>
+      <div class="filter-field">
+        <label for="f-limit">Zeilen</label>
+        <select id="f-limit" name="limit">
+          <option value="25" {% if page_size == 25 %}selected{% endif %}>25</option>
+          <option value="50" {% if page_size == 50 %}selected{% endif %}>50</option>
+          <option value="100" {% if page_size == 100 %}selected{% endif %}>100</option>
+          <option value="200" {% if page_size == 200 %}selected{% endif %}>200</option>
+        </select>
+      </div>
     </div>
     <div class="filter-actions">
       <button type="submit">Filtern</button>
@@ -317,15 +327,28 @@
   <div class="card-header">
     <h2 class="card-title" style="margin: 0;">Vorschläge</h2>
   </div>
+  <div class="table-scroll">
   <table>
     <thead>
       <tr>
-        <th>Datum</th>
-        <th>Artist</th>
-        <th>Titel</th>
-        <th>Download-Art</th>
-        <th>Status</th>
-        <th>Feedback</th>
+        <th aria-sort="{% if current_sort == 'date' %}{{ 'ascending' if current_dir == 'asc' else 'descending' }}{% else %}none{% endif %}">
+          <a href="{{ sort_url('date') }}">Datum{% if current_sort == 'date' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
+        </th>
+        <th aria-sort="{% if current_sort == 'artist' %}{{ 'ascending' if current_dir == 'asc' else 'descending' }}{% else %}none{% endif %}">
+          <a href="{{ sort_url('artist') }}">Artist{% if current_sort == 'artist' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
+        </th>
+        <th aria-sort="{% if current_sort == 'title' %}{{ 'ascending' if current_dir == 'asc' else 'descending' }}{% else %}none{% endif %}">
+          <a href="{{ sort_url('title') }}">Titel{% if current_sort == 'title' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
+        </th>
+        <th aria-sort="{% if current_sort == 'download_kind' %}{{ 'ascending' if current_dir == 'asc' else 'descending' }}{% else %}none{% endif %}">
+          <a href="{{ sort_url('download_kind') }}">Download-Art{% if current_sort == 'download_kind' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
+        </th>
+        <th aria-sort="{% if current_sort == 'status' %}{{ 'ascending' if current_dir == 'asc' else 'descending' }}{% else %}none{% endif %}">
+          <a href="{{ sort_url('status') }}">Status{% if current_sort == 'status' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
+        </th>
+        <th aria-sort="{% if current_sort == 'feedback' %}{{ 'ascending' if current_dir == 'asc' else 'descending' }}{% else %}none{% endif %}">
+          <a href="{{ sort_url('feedback') }}">Feedback{% if current_sort == 'feedback' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
+        </th>
         <th>Links</th>
       </tr>
     </thead>
@@ -405,6 +428,7 @@
       {% endfor %}
     </tbody>
   </table>
+  </div>
 
   {% if total > 0 %}
   <div class="pager">

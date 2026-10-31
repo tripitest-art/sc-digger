@@ -1090,6 +1090,8 @@ class RekordboxImportSummary:
     ratings_count: int = 0          # Gematchte Tracks mit Rating
     played_count: int = 0           # Gematchte Tracks mit play_count > 0
     auto_likes_count: int = 0       # Neu durch Auto-Like auf 'like' gesetzte Tracks
+    matched_by_path: int = 0        # Neu: Treffer über db.get_track_by_path
+    matched_by_name: int = 0        # Neu: Treffer erst über den Dateinamen-Fallback
 
 
 def _decode_location(location: str) -> str:
@@ -1230,12 +1232,15 @@ def import_rekordbox_xml(
     path_map: dict[str, str],
     *,
     auto_like: bool = True,
+    match_by_name: bool = True,
 ) -> RekordboxImportSummary:
     """Importiert Metadaten aus einer Rekordbox-XML in die TrackDB.
 
     Matching-Reihenfolge je Track:
     1. Direkt über db.get_track_by_path(local_path)
     2. Fallback über den Dateinamen: Path(local_path).name via db.get_track_by_filename(...)
+    Bei match_by_name=False: nur db.get_track_by_path; db.get_track_by_filename wird nicht
+    aufgerufen, ein Track ohne Pfad-Treffer zählt als unmatched und wird nicht geschrieben.
     Bei Treffer werden Rating, PlayCount, BPM, Key und Cues gespeichert; auto_like=True
     setzt bei hoher Bewertung (Rating >= 4 oder Plays >= 2) ein noch leeres Feedback auf
     'like' (nie ein bestehendes). Nicht gefundene Tracks zählen als unmatched und werden
@@ -1245,14 +1250,21 @@ def import_rekordbox_xml(
     summary = RekordboxImportSummary(total_tracks=len(parsed))
 
     for track in parsed:
+        matched_by_path = False
         record = db.get_track_by_path(track.local_path)
-        if record is None:
+        if record is not None:
+            matched_by_path = True
+        elif match_by_name:
             record = db.get_track_by_filename(Path(track.local_path).name)
         if record is None or record.id is None:
             summary.unmatched += 1
             continue
 
         summary.matched += 1
+        if matched_by_path:
+            summary.matched_by_path += 1
+        else:
+            summary.matched_by_name += 1
         if track.rating is not None:
             summary.ratings_count += 1
         if track.play_count is not None and track.play_count > 0:
@@ -1310,7 +1322,11 @@ def import_configured_xml(db: TrackDB, cfg: Config) -> RekordboxImportSummary | 
     if not isinstance(path_map, dict):
         path_map = {}
 
-    summary = import_rekordbox_xml(db, xml_path, path_map, auto_like=True)
+    match_by_name = rb_cfg.get("import_match_by_name") is not False
+
+    summary = import_rekordbox_xml(
+        db, xml_path, path_map, auto_like=True, match_by_name=match_by_name
+    )
     log.info(
         "Rekordbox-Rückkanal: %d Tracks in der XML, %d zugeordnet, %d nicht gefunden",
         summary.total_tracks, summary.matched, summary.unmatched,

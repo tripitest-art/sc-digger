@@ -494,6 +494,30 @@
     border-top: 1px solid var(--border);
     line-height: 1.5;
   }
+
+  /* Viewport-Anpassung & Medien (Issue #428) */
+  .table-scroll {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  img, audio, video {
+    max-width: 100%;
+  }
+  .filter-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 0.75rem;
+  }
+
+@media (max-width: 800px) {
+  .site-header { padding: 0.5rem 1rem; }
+}
+
+@media (max-width: 580px) {
+  .nav-tabs { font-size: 0.8rem; }
+  .filter-grid { grid-template-columns: 1fr; }
+  table, td { word-break: break-word; }
+}
 </style>
 </head>
 <body>

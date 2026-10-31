@@ -8,17 +8,13 @@ einer Musikbibliothek abhaengt. Laeuft ohne librosa/numba.
 """
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 import numpy as np
 import pytest
 
-EVAL = Path(__file__).resolve().parents[1] / "_eval"
-sys.path.insert(0, str(EVAL))
-
-import analysis_v2 as A          # noqa: E402
-import dj_export as D            # noqa: E402
+from sc_digger import analysis as A
+from sc_digger import dj_export as D
 
 SR = 44100
 
@@ -89,7 +85,7 @@ def _written_pad(path: Path, root_pc: int, mode: int, bpm: float = 155.0,
 
 def _entry(name: str, bpm: float | None, key: str | None, margin: float = 0.2) -> D.Entry:
     return D.Entry(path=Path(f"/x/{name}.wav"), artist="A", title=name,
-                   bpm=bpm, bpm_confidence=0.8, key=key, key_margin=margin)
+                   bpm=bpm, bpm_confidence=0.8, camelot=key, key_margin=margin)
 
 
 # ------------------------------------------------------------------ Camelot
@@ -134,7 +130,8 @@ def test_transition_cost_ordering():
 
 
 def test_transition_cost_rejects_hard_bpm_jump():
-    assert D.transition_cost(_entry("a", 155, "5A"), _entry("b", 170, "5A")) == -1.0
+    cost, _ = D.transition_cost(_entry("a", 155, "5A"), _entry("b", 170, "5A"))
+    assert cost == float("inf")
 
 
 def test_transition_cost_rejects_anything_beyond_comfort():
@@ -144,20 +141,20 @@ def test_transition_cost_rejects_anything_beyond_comfort():
     5-BPM-Sprung nur 1.0 (Toleranzgrenze) und passierte die Segmentpruefung.
     """
     a = _entry("a", 155, "5A")
-    assert D.transition_cost(a, _entry("b", 155 + D.BPM_COMFORT, "5A")) >= 0
+    assert D.transition_cost(a, _entry("b", 155 + D.BPM_COMFORT, "5A"))[0] < float("inf")
     for jump in (D.BPM_COMFORT + 0.5, 5.0, 8.0, 15.0):
-        assert D.transition_cost(a, _entry("c", 155 + jump, "5A")) == -1.0, jump
+        assert D.transition_cost(a, _entry("c", 155 + jump, "5A"))[0] == float("inf"), jump
 
 
 def test_transition_cost_bpm_penalty_grows_linearly():
     a = _entry("a", 155, "5A")
-    c3 = D.transition_cost(a, _entry("b", 158, "5A"))
-    c4 = D.transition_cost(a, _entry("c", 159, "5A"))
+    c3, _ = D.transition_cost(a, _entry("b", 158, "5A"))
+    c4, _ = D.transition_cost(a, _entry("c", 159, "5A"))
     assert c3 == 0.0 and c4 == 1.0
 
 
 def test_unknown_bpm_is_penalised_but_allowed():
-    cost = D.transition_cost(_entry("a", 155, "5A"), _entry("b", None, "5A"))
+    cost, _ = D.transition_cost(_entry("a", 155, "5A"), _entry("b", None, "5A"))
     assert cost > 0
     assert cost < D.TRANSITION_COST["fern"]
 
@@ -263,7 +260,7 @@ def test_write_outputs_and_reload(tmp_path):
     reloaded = D.load_entries(csv_path)
     assert len(reloaded) == 6
     assert [e.bpm for e in reloaded] == [round(e.bpm, 1) for e in pl.entries]
-    assert [e.key for e in reloaded] == [e.key for e in pl.entries]
+    assert [e.camelot for e in reloaded] == [e.camelot for e in pl.entries]
 
     rtext = rep.read_text(encoding="utf-8")
     assert "Tracks insgesamt" in rtext
@@ -286,15 +283,14 @@ def test_end_to_end_analysis_to_playlist(tmp_path):
     entries: list[D.Entry] = []
     for name, root, mode, bpm, want_key in cases:
         p = _written_pad(tmp_path / f"{name}.wav", root, mode, bpm=bpm)
-        r = A.analyze(p)
+        r = A.analyze_track(p)
         assert r["bpm"] is not None, r
         assert abs(r["bpm"] - bpm) <= 2.0, (name, r["bpm"])
         assert r["key_camelot"] == want_key, (name, r["key_camelot"], want_key)
         entries.append(D.Entry(path=p, artist="T", title=name, bpm=r["bpm"],
                                bpm_confidence=r["bpm_confidence"],
-                               key=r["key_camelot"], key_name=r["key_name"],
-                               key_margin=r["key_candidates"][0]["r"]
-                               - r["key_candidates"][1]["r"]))
+                               camelot=r["key_camelot"], key_name=r["key_name"],
+                               key_margin=r["key_margin"]))
 
     pl = D.order_harmonic(entries)
     assert len(pl.entries) == 3
@@ -309,19 +305,17 @@ def test_end_to_end_writes_playlist(tmp_path):
     for name, bpm, key in (("a", 155.0, "5A"), ("b", 156.0, "4A")):
         p = _written_pad(tmp_path / f"{name}.wav", 0 if name == "a" else 5, 0, bpm=bpm)
         entries.append(D.Entry(path=p, artist="T", title=name, bpm=bpm,
-                               bpm_confidence=0.9, key=key, key_margin=0.2))
+                               bpm_confidence=0.9, camelot=key, key_margin=0.2))
     pl = D.order_harmonic(entries)
     out = D.write_m3u8(pl, tmp_path / "set.m3u8")
     assert out.read_text(encoding="utf-8").startswith("#EXTM3U")
 
 
-def test_decode_has_no_implicit_sample_rate():
+def test_key_detection_takes_the_sample_rate_explicitly():
     """Regression: eine implizite Abtastrate hat die Tonart schon einmal verschoben."""
     import inspect
-    sig = inspect.signature(A.decode)
-    assert "sr" not in sig.parameters
-    # detect_key verlangt die Rate explizit und respektiert sie
-    assert "sr" in inspect.signature(A.detect_key).parameters
+    # Die Tonartbestimmung auf Audiodaten verlangt die Rate und respektiert sie
+    assert "sr" in inspect.signature(A._detect_key_from_audio).parameters
 
 
 def test_resample_preserves_pitch_class(tmp_path):

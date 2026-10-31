@@ -104,8 +104,8 @@ def test_query_rejected_tracks_sortiert_und_liefert_felder(tmp_path: Path):
     assert neuester["reason"] == "Clipping True Peak +4.0"
     assert neuester["cutoff_hz"] == 21000.0
     assert neuester["rejected_at"] == "2026-10-02 08:00:00"
-    # Ohne "Artist - Titel" im gespeicherten Text bleibt artist leer.
-    assert neuester["artist"] is None
+    # Ohne Trenner im Titel kommt der gespeicherte Künstler.
+    assert neuester["artist"] == "Test Artist"
 
 
 def test_query_rejected_tracks_leitet_uploader_aus_titel_ab(tmp_path: Path):

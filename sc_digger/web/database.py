@@ -40,7 +40,20 @@ _TRACK_COLUMNS = (
 
 # Schutz vor versehentlich riesigen Antworten; das Frontend blättert über offset.
 DEFAULT_LIMIT = 100
-MAX_LIMIT = 500
+MAX_LIMIT = 200
+
+# Erlaubte Sortierfelder für Tracks und Digest (Issue #427).
+TRACK_SORT_FIELDS = ("artist", "title", "bpm", "key_camelot", "quality", "status")
+DIGEST_SORT_FIELDS = ("date", "artist", "title", "download_kind", "status", "feedback")
+
+_TRACK_SORT_MAP = {
+    "artist": "artist",
+    "title": "title",
+    "bpm": "bpm",
+    "key_camelot": "key_camelot",
+    "quality": "quality_status",
+    "status": "status",
+}
 
 
 @dataclass
@@ -230,6 +243,8 @@ def query_tracks(
     quality_status: str | None = None,
     adopted: bool | None = None,
     breakdown_ratio_max: float | None = None,
+    sort: str | None = None,
+    descending: bool = False,
     limit: int = DEFAULT_LIMIT,
     offset: int = 0,
 ) -> TrackSearchResult:
@@ -301,9 +316,19 @@ def query_tracks(
                 f"SELECT COUNT(*) FROM tracks{clause_sql}", params
             ).fetchone()[0])
             columns = ", ".join(col for col in _TRACK_COLUMNS if col in available)
+            if sort and sort in _TRACK_SORT_MAP:
+                col = _TRACK_SORT_MAP[sort]
+                direction = "DESC" if descending else "ASC"
+                if sort in ("artist", "title", "key_camelot", "quality", "status"):
+                    order_by = f"{col} COLLATE NOCASE {direction} NULLS LAST, id ASC"
+                else:
+                    order_by = f"{col} {direction} NULLS LAST, id ASC"
+            else:
+                order_by = "id ASC"
+
             rows = db.execute(
                 f"SELECT {columns} FROM tracks{clause_sql} "
-                "ORDER BY id ASC LIMIT ? OFFSET ?",
+                f"ORDER BY {order_by} LIMIT ? OFFSET ?",
                 [*params, limit, offset],
             ).fetchall()
             paths = [str(row["path"] or "") for row in rows]
@@ -582,12 +607,35 @@ class DigestSearchResult:
         return {"total": self.total, "items": [i.to_dict() for i in self.items]}
 
 
+_LEADING_FREE_TAG_RE = re.compile(
+    r"^\s*(?:\(\s*free\s*(?:download|dl)\s*\)|\[\s*free\s*(?:download|dl)\s*\])",
+    re.IGNORECASE,
+)
+
+
 def _parse_artist_title(raw: str) -> tuple[str | None, str]:
-    """Trennt 'Artist - Title' oder 'Artist – Title' sauber; sonst (None, raw)."""
+    """Trennt wie bisher am ersten ' - ' oder ' – ' (zuerst ' - ', dann ' – ').
+    Neu: Vom abgetrennten Künstlerteil wird ein führender Gratis-Hinweis entfernt, danach
+    getrimmt. Gratis-Hinweis = eine Klammer (rund oder eckig) am Anfang, deren Inhalt ohne
+    Berücksichtigung der Groß-/Kleinschreibung 'free dl', 'free download' oder 'freedl' ist
+    (Leerraum innen und danach egal), z. B. '(FREE DL)', '[Free Download]', '[FREEDL]'.
+    Mehrere solche Hinweise hintereinander werden alle entfernt. Hinweise, die nicht am Anfang
+    des Künstlerteils stehen, bleiben ('Artist (FREE DL)' bleibt unverändert), ebenso Namen,
+    die nur mit dem Wort 'Free' beginnen ('Free Spirit').
+    Ist der Künstlerteil danach leer, ist das Ergebnis (None, <Rest nach dem Trenner>).
+    Der Titelteil bleibt unverändert. Ohne Trenner weiter (None, raw.strip())."""
     for sep in (" - ", " – "):
         if sep in raw:
             parts = raw.split(sep, 1)
-            return parts[0].strip(), parts[1].strip()
+            artist_part = parts[0].strip()
+            title_part = parts[1].strip()
+            while True:
+                m = _LEADING_FREE_TAG_RE.match(artist_part)
+                if not m:
+                    break
+                artist_part = artist_part[m.end():].lstrip()
+            artist = artist_part.strip() or None
+            return artist, title_part
     return None, raw.strip()
 
 
@@ -600,6 +648,8 @@ def query_digest(
     status_filter: str = "",  # '', 'collection', 'inbox', 'open'
     download_kind: str = "",  # '', 'native', 'gate', 'store', 'stream'
     feedback: str = "",       # '', 'like', 'dislike', 'later', 'none'
+    sort: str | None = None,
+    descending: bool = False,
     limit: int = 50,
     offset: int = 0,
 ) -> DigestSearchResult:
@@ -761,8 +811,11 @@ def query_digest(
         with closing(_connect_readonly(state_path)) as sdb:
             if not _table_exists(sdb, "seen"):
                 return DigestSearchResult()
+            seen_cols = {col["name"] for col in sdb.execute("PRAGMA table_info(seen)").fetchall()}
+            has_artist = "artist" in seen_cols
+            select_cols = "id, url, title, reported_at, artist" if has_artist else "id, url, title, reported_at"
             rows = sdb.execute(
-                "SELECT id, url, title, reported_at FROM seen ORDER BY reported_at DESC, id DESC"
+                f"SELECT {select_cols} FROM seen ORDER BY reported_at DESC, id DESC"
             ).fetchall()
     except sqlite3.Error:
         return DigestSearchResult()
@@ -772,6 +825,9 @@ def query_digest(
         sc_id = int(r["id"])
         raw_title = str(r["title"] or "")
         artist, title = _parse_artist_title(raw_title)
+        if artist is None and has_artist and r["artist"] and str(r["artist"]).strip():
+            artist = str(r["artist"]).strip()
+            title = raw_title
         url = str(r["url"] or "")
         reported_at = str(r["reported_at"] or "")
 
@@ -863,6 +919,34 @@ def query_digest(
                 continue
 
         items.append(item)
+
+    if sort and sort in DIGEST_SORT_FIELDS:
+        def _digest_sort_key(it: DigestItem) -> tuple[bool, Any]:
+            if sort == "date":
+                v = it.reported_at or ""
+            elif sort == "artist":
+                v = (it.artist or "").lower()
+            elif sort == "title":
+                v = (it.title or "").lower()
+            elif sort == "download_kind":
+                v = (it.download_kind or "").lower()
+            elif sort == "status":
+                if it.in_collection:
+                    v = "sammlung"
+                elif it.in_inbox:
+                    v = "inbox"
+                else:
+                    v = "offen"
+            elif sort == "feedback":
+                v = (it.feedback or "").lower()
+            else:
+                v = ""
+            is_empty = (v == "")
+            if descending:
+                return (not is_empty, v)
+            return (is_empty, v)
+
+        items.sort(key=_digest_sort_key, reverse=descending)
 
     limit = max(0, min(int(limit), 200))
     offset = max(0, int(offset))
@@ -968,11 +1052,18 @@ def query_rejected_tracks(
         with closing(_connect_readonly(state_db_path)) as db:
             if not _table_exists(db, "rejected"):
                 return {"total": 0, "items": []}
+            rej_cols = {col["name"] for col in db.execute("PRAGMA table_info(rejected)").fetchall()}
+            has_artist = "artist" in rej_cols
             total = int(db.execute(
                 f"SELECT COUNT(*) FROM rejected{clause_sql}", params
             ).fetchone()[0])
+            select_cols = (
+                "id, url, title, reason, cutoff_hz, rejected_at, artist"
+                if has_artist else
+                "id, url, title, reason, cutoff_hz, rejected_at"
+            )
             rows = db.execute(
-                "SELECT id, url, title, reason, cutoff_hz, rejected_at "
+                f"SELECT {select_cols} "
                 f"FROM rejected{clause_sql} "
                 "ORDER BY rejected_at DESC, id DESC LIMIT ? OFFSET ?",
                 [*params, limit, offset],
@@ -984,6 +1075,8 @@ def query_rejected_tracks(
     for row in rows:
         title = str(row["title"] or "")
         artist, _ = _parse_artist_title(title)
+        if artist is None and has_artist and row["artist"] and str(row["artist"]).strip():
+            artist = str(row["artist"]).strip()
         items.append({
             "id": int(row["id"]),
             "url": str(row["url"] or ""),
