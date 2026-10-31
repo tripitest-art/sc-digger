@@ -298,6 +298,9 @@ rekordbox:
   # Rating, Plays, BPM, Key, Cues und Auto-Like landen in tracks.sqlite (path_map wie beim Export).
   # Leer = aus. Fehlt die Datei, wird sie übersprungen; Fehler melden sich per Health-Alarm.
   import_xml_path: ""
+  # Dateinamen-Fallback beim Rekordbox-Import (Standard: true).
+  # Bei gleichnamigen Dateien besteht das Risiko falscher Zuordnungen; false verlangt exakte Pfad-Treffer.
+  import_match_by_name: true
 
 digest:
   kaufliste_max_items: 30   # Maximale Einträge in der wöchentlichen Kaufliste
