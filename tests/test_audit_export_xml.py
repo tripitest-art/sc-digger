@@ -79,6 +79,23 @@ def test_export_playlists_bpm_und_key(tmp_path):
     assert "Key" in child_names
 
 
+def test_export_playlists_versionen(tmp_path):
+    db_file = tmp_path / "t.sqlite"
+    _seed(db_file)
+    xml_out = tmp_path / "out.xml"
+    with TrackDB(str(db_file)) as db:
+        audit.export_collection_xml(
+            db, xml_out, PATH_MAP,
+            playlists_by_bpm=False, playlists_by_key=False, playlists_by_version=True,
+        )
+    root = ET.parse(xml_out).getroot()
+    nodes = _sc_digger_folder(root)
+    child_names = [n.get("Name") for n in nodes.findall("NODE")]
+    assert "Versionen" in child_names
+    vers_node = next(n for n in nodes.findall("NODE") if n.get("Name") == "Versionen")
+    assert len(vers_node.findall("NODE")) > 0
+
+
 def test_export_ohne_playlists(tmp_path):
     db_file = tmp_path / "t.sqlite"
     _seed(db_file)
