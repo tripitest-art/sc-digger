@@ -191,3 +191,23 @@ def test_tracks_html_limit_und_sort_im_formular(client: TestClient, tmp_path: Pa
     assert '<input type="hidden" name="sort" value="bpm">' in html
     assert '<input type="hidden" name="dir" value="desc">' in html
     assert '<option value="50" selected>50</option>' in html
+
+
+def test_query_digest_nulls_last_in_beiden_richtungen(tmp_path: Path):
+    """Prüft, dass Einträge ohne Wert (z.B. Artist=None) sowohl bei asc als auch bei desc am Ende stehen (NULLS LAST)."""
+    seen_path = tmp_path / "seen.sqlite"
+    track_path = tmp_path / "tracks.sqlite"
+    with sqlite3.connect(seen_path) as db:
+        db.execute("CREATE TABLE seen (id INTEGER PRIMARY KEY, url TEXT, title TEXT, reported_at TEXT)")
+        # 1: Artist Z, 2: kein Artist (Titel ohne Trenner), 3: Artist A
+        db.execute("INSERT INTO seen VALUES (1, 'u1', 'Zebra - Track', '2026-10-01 10:00:00')")
+        db.execute("INSERT INTO seen VALUES (2, 'u2', 'KeinTrennstrich', '2026-10-02 10:00:00')")
+        db.execute("INSERT INTO seen VALUES (3, 'u3', 'Alpha - Track', '2026-10-03 10:00:00')")
+
+    res_asc = query_digest(seen_path, track_path, sort="artist", descending=False)
+    artists_asc = [it.artist for it in res_asc.items]
+    assert artists_asc == ["Alpha", "Zebra", None]
+
+    res_desc = query_digest(seen_path, track_path, sort="artist", descending=True)
+    artists_desc = [it.artist for it in res_desc.items]
+    assert artists_desc == ["Zebra", "Alpha", None]

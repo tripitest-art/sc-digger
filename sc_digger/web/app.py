@@ -56,9 +56,7 @@ from .audio import parse_range_header, resolve_playable_path
 from .configedit import apply_form, diff_config, format_form_value, get_path, remove_key, save_local
 from .database import (
     DEFAULT_LIMIT,
-    DIGEST_SORT_FIELDS,
     MAX_LIMIT,
-    TRACK_SORT_FIELDS,
     _connect_readonly,
     _sc_id_from_path,
     _set_builder_entries,
