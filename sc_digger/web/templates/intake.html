@@ -111,6 +111,7 @@
     <div class="upload-actions">
       <button type="submit" id="upload-btn">Hochladen</button>
       <span id="file-info" class="meta"></span>
+      <p id="upload-status" class="upload-status" role="status" aria-live="polite"></p>
     </div>
   </form>
 
@@ -236,16 +237,25 @@
           const cls = r.ok ? 'ok' : (r.status === 'rejected' ? 'rejected' : 'error');
           li.className = 'result-item ' + cls;
 
-          let infoHtml = '<div><strong>' + (r.filename || 'Datei') + '</strong>';
+          const div = document.createElement('div');
+          const strong = document.createElement('strong');
+          strong.textContent = r.filename || 'Datei';
+          div.appendChild(strong);
           if (r.message || r.status) {
-            infoHtml += '<span class="meta" style="margin-left: 0.5rem;">' + (r.message || r.status) + '</span>';
+            const span = document.createElement('span');
+            span.className = 'meta';
+            span.style.marginLeft = '0.5rem';
+            span.textContent = r.message || r.status;
+            div.appendChild(span);
           }
-          infoHtml += '</div>';
+          li.appendChild(div);
 
           if (r.bpm) {
-            infoHtml += '<span class="meta">[' + (r.key_camelot || '') + ' · ' + r.bpm + ' BPM]</span>';
+            const bpmSpan = document.createElement('span');
+            bpmSpan.className = 'meta';
+            bpmSpan.textContent = '[' + (r.key_camelot || '') + ' · ' + r.bpm + ' BPM]';
+            li.appendChild(bpmSpan);
           }
-          li.innerHTML = infoHtml;
           resultsList.appendChild(li);
         }
       } catch (err) {

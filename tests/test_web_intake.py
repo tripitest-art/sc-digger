@@ -381,10 +381,10 @@ def test_api_upload_without_intake_dir_is_unprocessable(tmp_path):
 
 
 # ------------------------------------------------------------------ Uploadzone im HTML
-def test_digest_page_has_drag_and_drop_zone(tmp_path):
+def test_intake_page_has_drag_and_drop_zone(tmp_path):
     client = client_for(make_cfg(tmp_path))
 
-    r = client.get("/digest", auth=("sc", PASSWORD))
+    r = client.get("/intake", auth=("sc", PASSWORD))
 
     assert r.status_code == 200
     assert 'id="upload-zone"' in r.text

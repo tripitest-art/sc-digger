@@ -421,46 +421,4 @@
 
 
 </script>
-{% if legacy_digest_upload %}
-<style>
-  .upload-zone {
-    padding: 1.5rem 1rem;
-    border: 2px dashed var(--border);
-    border-radius: 8px;
-    background-color: var(--bg-card-subtle);
-    text-align: center;
-    color: var(--text-muted);
-    cursor: pointer;
-  }
-  .upload-status {
-    margin: 0.75rem 0 0;
-    min-height: 1.2em;
-    font-size: 0.85rem;
-  }
-  .upload-status.ok { color: var(--accent-ok); }
-  .upload-status.err { color: var(--accent-err); }
-</style>
-<div class="card">
-  <div class="card-header">
-    <h2 class="card-title" style="margin: 0;">Gate-Datei in die Inbox</h2>
-  </div>
-  <div id="upload-zone" class="upload-zone" role="button" tabindex="0">
-    <strong>Audiodatei hierher ziehen</strong>
-    <input type="file" id="upload-input" hidden accept=".wav,.aiff,.aif,.flac,.mp3,.m4a,audio/*">
-  </div>
-  <p id="upload-status" class="upload-status" role="status" aria-live="polite"></p>
-</div>
-<script>
-  document.addEventListener('DOMContentLoaded', () => {
-    const zone = document.getElementById('upload-zone');
-    const input = document.getElementById('upload-input');
-    const status = document.getElementById('upload-status');
-    if (!zone || !input || !status) return;
-    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach((name) => {
-      zone.addEventListener(name, (event) => { event.preventDefault(); });
-    });
-    // fetch('/api/upload-intake')
-  });
-</script>
-{% endif %}
 {% endblock %}

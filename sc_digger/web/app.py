@@ -14,8 +14,6 @@ Routen (Digest, Tracks, Vorhören, Status) lesen ihn bei jeder Anfrage von dort.
 `config.yaml` bleibt unangetastet.
 """
 from __future__ import annotations
-import sys
-import types
 
 import json
 import logging
@@ -983,7 +981,6 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
         total_pages = max(1, (result.total + page_size - 1) // page_size)
         template = _env.get_template("digest.html")
         return HTMLResponse(template.render(
-            legacy_digest_upload=(password == "geheim-230"),
             items=result.items,
             total=result.total,
             page_size=page_size,
@@ -1384,24 +1381,4 @@ def _section_title(path: str) -> str:
     return parts[0] if len(parts) > 1 else "Allgemein"
 
 
-class _AppModule(types.ModuleType):
-    def __setattr__(self, name: str, value: Any) -> None:
-        if name == "process_uploaded_audio":
-            old = getattr(self, "process_uploaded_audio", None)
-            if old is not None and hasattr(old, "aufrufe") and hasattr(value, "aufrufe"):
-                old_list = old.aufrufe
-                orig_fn = value
 
-                def chained(*args: Any, **kwargs: Any) -> Any:
-                    res = orig_fn(*args, **kwargs)
-                    old_list.clear()
-                    old_list.extend(getattr(orig_fn, "aufrufe", []))
-                    return res
-
-                chained.aufrufe = getattr(value, "aufrufe", [])
-                super().__setattr__(name, chained)
-                return
-        super().__setattr__(name, value)
-
-
-sys.modules[__name__].__class__ = _AppModule

@@ -127,6 +127,6 @@ def test_herkunft_wird_weiterhin_geprueft(tmp_path, monkeypatch):
 def test_mehrere_dateien_werden_der_reihe_nach_verarbeitet(tmp_path, monkeypatch):
     fake = _fake_process()
     monkeypatch.setattr(webapp, "process_uploaded_audio", fake)
-    client = client_for(tmp_path, monkeypatch)
+    client = client_for(tmp_path)
     _post(client, [("a.mp3", b"1"), ("b.mp3", b"2"), ("c.mp3", b"3")])
     assert fake.aufrufe == ["a.mp3", "b.mp3", "c.mp3"]
