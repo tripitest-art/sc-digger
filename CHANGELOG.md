@@ -24,6 +24,7 @@ unter „Unreleased“ (Regeln: `AGENTS.md`, Abschnitt „Doku und Changelog“)
 - `_eval/` (140 KB Auswertungsskripte aus der Analysephase, von keinem Produktionscode benutzt) samt Windows-Befehlen in der README; `tests/test_dj_workflow.py` läuft jetzt gegen `sc_digger.analysis` und `sc_digger.dj_export`, die Messwerte stehen weiter in der README, der Prüfbericht in der Git-Historie (#425).
 
 ### Hinzugefügt
+- Engagement-Snapshots: On-Demand-Läufe per Bot-Link, Playlist und Similar erfassen Plays, Likes, Reposts und Kommentare in `track_snapshots` (#443).
 - Web-Dashboard: Tabellen in Tracks (`/tracks`) und Digest (`/digest`) per Spaltenklick sortierbar (Weißliste, Richtungsumschaltung, NULL-Werte am Ende), Zeilenmenge wählbar (25/50/100/200, Kappung bei 200) bei Erhalt aller aktiven Filter (#441).
 - Telegram-Bot: Beim Senden eines Track-Links wird der verlinkte Track selbst mitverarbeitet und geladen (sofern direkt ladbar), statt nur seine Station zu prüfen (#444).
 - Vorschläge und Abgelehnt: Künstler wird beim Eintragen in `seen` und `rejected` mitgespeichert und im Web-Dashboard angezeigt, wenn der Track-Titel keinen Uploader-Trennstrich enthält (#442).
