@@ -761,8 +761,11 @@ def query_digest(
         with closing(_connect_readonly(state_path)) as sdb:
             if not _table_exists(sdb, "seen"):
                 return DigestSearchResult()
+            seen_cols = {col["name"] for col in sdb.execute("PRAGMA table_info(seen)").fetchall()}
+            has_artist = "artist" in seen_cols
+            select_cols = "id, url, title, reported_at, artist" if has_artist else "id, url, title, reported_at"
             rows = sdb.execute(
-                "SELECT id, url, title, reported_at FROM seen ORDER BY reported_at DESC, id DESC"
+                f"SELECT {select_cols} FROM seen ORDER BY reported_at DESC, id DESC"
             ).fetchall()
     except sqlite3.Error:
         return DigestSearchResult()
@@ -772,6 +775,9 @@ def query_digest(
         sc_id = int(r["id"])
         raw_title = str(r["title"] or "")
         artist, title = _parse_artist_title(raw_title)
+        if artist is None and has_artist and r["artist"] and str(r["artist"]).strip():
+            artist = str(r["artist"]).strip()
+            title = raw_title
         url = str(r["url"] or "")
         reported_at = str(r["reported_at"] or "")
 
@@ -968,11 +974,18 @@ def query_rejected_tracks(
         with closing(_connect_readonly(state_db_path)) as db:
             if not _table_exists(db, "rejected"):
                 return {"total": 0, "items": []}
+            rej_cols = {col["name"] for col in db.execute("PRAGMA table_info(rejected)").fetchall()}
+            has_artist = "artist" in rej_cols
             total = int(db.execute(
                 f"SELECT COUNT(*) FROM rejected{clause_sql}", params
             ).fetchone()[0])
+            select_cols = (
+                "id, url, title, reason, cutoff_hz, rejected_at, artist"
+                if has_artist else
+                "id, url, title, reason, cutoff_hz, rejected_at"
+            )
             rows = db.execute(
-                "SELECT id, url, title, reason, cutoff_hz, rejected_at "
+                f"SELECT {select_cols} "
                 f"FROM rejected{clause_sql} "
                 "ORDER BY rejected_at DESC, id DESC LIMIT ? OFFSET ?",
                 [*params, limit, offset],
@@ -984,6 +997,8 @@ def query_rejected_tracks(
     for row in rows:
         title = str(row["title"] or "")
         artist, _ = _parse_artist_title(title)
+        if artist is None and has_artist and row["artist"] and str(row["artist"]).strip():
+            artist = str(row["artist"]).strip()
         items.append({
             "id": int(row["id"]),
             "url": str(row["url"] or ""),
