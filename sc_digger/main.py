@@ -1093,6 +1093,8 @@ def cli() -> None:
                      help="Archivierte Tracks der TrackDB als Rekordbox-XML in diese Datei exportieren")
     aud.add_argument("--check-adopted", action="store_true",
                      help="Inbox-Tracks per Fingerprint gegen die Sammlung abgleichen und als übernommen markieren")
+    aud.add_argument("--write-tags", action="store_true",
+                     help="Ermittelte Metadaten (BPM, Key, Artist, Title) als ID3/FLAC-Tags in die Dateien schreiben")
 
     sub.add_parser("rekordbox", parents=[common], help="Rekordbox-XML der Inbox neu schreiben")
 
@@ -1140,6 +1142,7 @@ def cli() -> None:
                 export_xml_path=a.export_xml,
                 check_adopted=a.check_adopted,
                 analyze_structure=a.analyze_structure,
+                write_tags=a.write_tags,
             )
         elif a.mode == "rekordbox":
             write_rekordbox_xml(cfg)

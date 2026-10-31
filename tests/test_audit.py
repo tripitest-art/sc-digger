@@ -276,3 +276,81 @@ def test_run_audit_rejects_report_inside_collection(tmp_path: Path, test_cfg: Co
     with pytest.raises(ValueError, match="Report-Pfad darf nicht im Sammlungsordner liegen"):
         run_audit(test_cfg, path=coll_dir, report_path=bad_nested_report)
     assert not bad_nested_report.exists()
+
+
+def test_audit_snap_to_and_unplausible_bpm_correction(tmp_path: Path, test_cfg: Config):
+    """Prüft, dass audit_file unplausible Tag-BPMs (< 100) per Audio-Analyse korrigiert und snap_to nutzt."""
+    from unittest.mock import patch, MagicMock
+    from sc_digger.audit import audit_file
+    from sc_digger.db import TrackDB
+
+    f = tmp_path / "track.wav"
+    f.write_bytes(b"dummy wav data")
+    db_file = tmp_path / "db.sqlite"
+
+    mock_report = {
+        "codec": "wav", "ext": "wav", "bitrate_kbps": 1411, "cutoff_hz": 20000,
+        "ok": True, "reason": "ok", "integrated_lufs": -8.0, "true_peak_dbfs": 0.0,
+        "loudness_range_lu": 4.0, "clipped": False,
+    }
+
+    test_cfg.raw["search"] = {"bpm_min": 140, "bpm_max": 170}
+
+    with TrackDB(str(db_file)) as db:
+        with patch("sc_digger.audit.check_file", return_value=mock_report), \
+             patch("sc_digger.audit.read_existing_tags", return_value={"bpm": 78.0, "key": "8A"}), \
+             patch("sc_digger.audit.analyze_track", return_value={"bpm": 156.0, "key_camelot": "8A", "key_name": "Am"}) as mock_analyze:
+            res = audit_file(f, test_cfg, db)
+
+            assert mock_analyze.called
+            _, kwargs = mock_analyze.call_args
+            assert kwargs.get("snap_to") == (140.0, 170.0)
+            assert res.bpm == 156.0
+            assert res.bpm_source == "audio"
+
+
+def test_audit_write_tags_invokes_writer(tmp_path: Path, test_cfg: Config):
+    """Prüft, dass write_tags=True Metadaten über do_write_tags schreibt."""
+    from unittest.mock import patch
+    from sc_digger.audit import audit_file
+    from sc_digger.db import TrackDB
+
+    f = tmp_path / "track.wav"
+    f.write_bytes(b"dummy wav data")
+    db_file = tmp_path / "db.sqlite"
+
+    mock_report = {
+        "codec": "wav", "ext": "wav", "bitrate_kbps": 1411, "cutoff_hz": 20000,
+        "ok": True, "reason": "ok", "integrated_lufs": -8.0, "true_peak_dbfs": 0.0,
+        "loudness_range_lu": 4.0, "clipped": False,
+    }
+
+    with TrackDB(str(db_file)) as db:
+        with patch("sc_digger.audit.check_file", return_value=mock_report), \
+             patch("sc_digger.audit.read_existing_tags", return_value={"bpm": 155.0, "key": "8A"}), \
+             patch("sc_digger.organize.write_tags") as mock_writer:
+            audit_file(f, test_cfg, db, write_tags=True)
+            assert mock_writer.called
+            _, kwargs = mock_writer.call_args
+            assert kwargs["bpm"] == 155.0
+            assert kwargs["key_camelot"] == "8A"
+
+
+def test_cli_audit_supports_write_tags():
+    """Prüft, dass der ArgumentParser das Argument --write-tags kennt."""
+    from sc_digger.main import cli
+    import argparse
+    from unittest.mock import patch
+
+    with patch("argparse.ArgumentParser.parse_args") as mock_args, \
+         patch("sc_digger.main.run_audit") as mock_run_audit, \
+         patch("sc_digger.main.Config.load"):
+        mock_args.return_value = argparse.Namespace(
+            mode="audit", path=None, report=None, force=False, dry_run=False,
+            no_telegram=True, export_xml=None, check_adopted=False,
+            analyze_structure=False, write_tags=True, verbose=False, config="config.yaml"
+        )
+        cli()
+        assert mock_run_audit.called
+        _, kwargs = mock_run_audit.call_args
+        assert kwargs.get("write_tags") is True

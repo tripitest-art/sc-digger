@@ -34,6 +34,7 @@ from .rekordbox import (
     HOT_CUE_LAYOUT_LEGACY,
     KINDS,
     InboxTrack,
+    VERSION_TYPE_PLAYLISTS,
     _bpm_sort_key,
     _camelot_sort_key,
     _playlist_folder,
@@ -181,6 +182,7 @@ def audit_file(
     *,
     force: bool = False,
     analyze_structure: bool = False,
+    write_tags: bool = False,
 ) -> AuditResult:
     """Prüft eine einzelne Datei gegen Qualitätskriterien und aktualisiert die TrackDB.
 
@@ -247,13 +249,25 @@ def audit_file(
     bpm = existing_tags.get("bpm")
     key_name = existing_tags.get("key")
     key_camelot: str | None = None
+    if key_name and _CAMELOT_RE.match(key_name.strip().upper()):
+        key_camelot = key_name.strip().upper()
     bpm_source = "tag" if bpm is not None else None
 
-    # 3. Audio-Analyse falls BPM oder Key fehlen
-    if bpm is None or key_name is None:
+    # Zielfenster für Oktav-Korrektur aus Config (search.bpm_min/max)
+    search_cfg = cfg.raw.get("search", {}) if hasattr(cfg, "raw") and isinstance(cfg.raw, dict) else {}
+    bpm_min = search_cfg.get("bpm_min", 140.0)
+    bpm_max = search_cfg.get("bpm_max", 170.0)
+    snap_to = (float(bpm_min), float(bpm_max)) if bpm_min and bpm_max else None
+
+    # Plausibilitätscheck: Liegt der Tag-BPM weit außerhalb des Zielbereichs (< 100 oder > 220),
+    # wird er als unplausibel/Oktavfehler eingestuft und per Audio-Analyse korrigiert.
+    unplausible_bpm = bpm is not None and (bpm < 100.0 or bpm > 220.0)
+
+    # 3. Audio-Analyse falls BPM oder Key fehlen oder Tag-BPM unplausibel ist
+    if bpm is None or key_name is None or unplausible_bpm:
         try:
-            analysis = analyze_track(path)
-            if bpm is None and analysis.get("bpm"):
+            analysis = analyze_track(path, snap_to=snap_to)
+            if (bpm is None or unplausible_bpm) and analysis.get("bpm"):
                 bpm = float(analysis["bpm"])
                 bpm_source = "audio"
             if key_name is None:
@@ -261,6 +275,25 @@ def audit_file(
                 key_camelot = analysis.get("key_camelot")
         except Exception as e:
             log.debug("Audio-Analyse bei Audit übersprungen/fehlgeschlagen für %s: %s", path.name, e)
+
+    # 3a. Tags in Datei schreiben, falls explizit aktiviert (--write-tags)
+    if write_tags and status in (QualityStatus.OK, QualityStatus.CLIPPED):
+        from .organize import write_tags as do_write_tags
+        art = existing_tags.get("artist") or ""
+        tit = existing_tags.get("title") or path.stem
+        try:
+            do_write_tags(
+                path,
+                artist=art,
+                title=tit,
+                bpm=bpm,
+                key_name=key_name,
+                key_camelot=key_camelot,
+                genre=existing_tags.get("genre") or "Schranz",
+                padding_kb=4,
+            )
+        except Exception as e:
+            log.warning("Tags schreiben fehlgeschlagen für %s: %s", path.name, e)
 
     # 3b. Strukturanalyse rein lesend (kein Schreiben von ID3-Tags, Goldene Regel 4)
     breakdown_ratio: float | None = None
@@ -326,6 +359,7 @@ def audit_collection(
     *,
     force: bool = False,
     analyze_structure: bool = False,
+    write_tags: bool = False,
 ) -> AuditSummary:
     """Führt ein vollständiges Audit über den angegebenen Sammlungs-Ordner aus."""
     folder = Path(collection_dir)
@@ -345,7 +379,14 @@ def audit_collection(
         if i % 25 == 0 or i == len(files):
             log.info("Audit Fortschritt: %d/%d Dateien...", i, len(files))
 
-        res = audit_file(file_path, cfg, db, force=force, analyze_structure=analyze_structure)
+        res = audit_file(
+            file_path,
+            cfg,
+            db,
+            force=force,
+            analyze_structure=analyze_structure,
+            write_tags=write_tags,
+        )
         summary.results.append(res)
 
         if res.cached:
@@ -736,6 +777,7 @@ def export_collection_xml(
     collection_dir: str | Path | None = None,
     playlists_by_bpm: bool = True,
     playlists_by_key: bool = True,
+    playlists_by_version: bool = False,
     hot_cues: bool = True,
     memory_cues: bool = True,
     hot_cue_layout: str = HOT_CUE_LAYOUT_LEGACY,
@@ -865,6 +907,16 @@ def export_collection_xml(
             _playlist_folder(folder, "Key", groups)
             extra_folders += 1
 
+    if playlists_by_version:
+        version_dict: dict[Any, list[str]] = {}
+        for track_id, t, _ in mapped:
+            analysis = classify_track(bpm=t.bpm, title=t.title)
+            version_dict.setdefault(analysis.version_type, []).append(track_id)
+        groups = [(name, version_dict[vt]) for vt, name in VERSION_TYPE_PLAYLISTS if version_dict.get(vt)]
+        if groups:
+            _playlist_folder(folder, "Versionen", groups)
+            extra_folders += 1
+
     folder.set("Count", str(extra_folders))
 
     xml_content = '<?xml version="1.0" encoding="UTF-8"?>\n' + ET.tostring(root, encoding="unicode")
@@ -899,6 +951,7 @@ def run_audit(
     export_xml_path: str | Path | None = None,
     check_adopted: bool = False,
     analyze_structure: bool = False,
+    write_tags: bool = False,
 ) -> AuditSummary:
     """Einstiegspunkt für den CLI-Befehl `audit`."""
     target_dir = Path(path or cfg["download"]["collection_dir"]).resolve()
@@ -927,7 +980,16 @@ def run_audit(
     with TrackDB(db_path) as db:
         # Nur bei Bedarf weiterreichen: bestehende Aufrufer mit der alten Signatur
         # (z. B. Test-Fakes für audit_collection) bleiben unverändert gültig.
-        if analyze_structure:
+        if write_tags:
+            summary = audit_collection(
+                target_dir,
+                cfg,
+                db,
+                force=force,
+                analyze_structure=analyze_structure,
+                write_tags=True,
+            )
+        elif analyze_structure:
             summary = audit_collection(
                 target_dir, cfg, db, force=force, analyze_structure=True,
             )
@@ -978,6 +1040,9 @@ def run_audit(
                 phrase_align_cues=bool(rb_cfg.get("cues_phrase_align", False)),
                 grid_anchor=grid_anchor,
                 compact_style_comments=bool(rb_cfg.get("compact_style_comments", False)),
+                playlists_by_bpm=bool(rb_cfg.get("playlists_by_bpm", True)),
+                playlists_by_key=bool(rb_cfg.get("playlists_by_key", True)),
+                playlists_by_version=bool(rb_cfg.get("playlists_by_version", False)),
             )
             print(f"\n🎛️  Sammlungs-XML geschrieben: {Path(export_xml_path).resolve()} ({count} Tracks)")
 
