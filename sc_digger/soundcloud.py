@@ -432,9 +432,16 @@ class SoundCloudClient:
         return "playlist" if kind == "system-playlist" else kind
 
     def track_station(self, url: str, limit: int = 50) -> tuple[str, list[Track]]:
-        """Station (Algorithmus-Radio) zu einem Track-Link. Gibt (Label, Tracks) zurück."""
+        """Station (Algorithmus-Radio) zu einem Track-Link. Gibt (Label, Tracks) zurück.
+
+        Der Seed-Track steht an erster Stelle der Ergebnisliste; Duplikate des Seeds aus
+        der gelieferten Station werden entfernt. Das Limit gilt für die Station (die
+        Ergebnisliste hat damit bis zu limit + 1 Einträge). Ist die Station leer, besteht
+        die Liste nur aus dem Seed.
+        """
         seed = self.resolve_track(url)
-        tracks = [t for t in self.station(seed.id, limit) if t.id != seed.id]
+        station_tracks = [t for t in self.station(seed.id, limit) if t.id != seed.id]
+        tracks = [seed, *station_tracks]
         label = f"{seed.artist} – {seed.title}".strip(" –")
         return label, tracks
 
