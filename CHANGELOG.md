@@ -26,6 +26,7 @@ unter „Unreleased“ (Regeln: `AGENTS.md`, Abschnitt „Doku und Changelog“)
 
 ### Hinzugefügt
 - Web-Dashboard: Eigene Seite für Uploads (`/intake`) mit Mehrfach-Upload per Drag & Drop oder Dateiauswahl; `POST /api/upload-intake` verarbeitet mehrere Dateien nacheinander bei stabiler Reihenfolge (#447).
+- Rückfüll-Werkzeug: `sc_digger.backfill_artist` ergänzt fehlende Künstlernamen in `seen.artist` und `rejected.artist` aus `tracks.artist` per SoundCloud-ID oder normalisierter URL (Probelauf, Pflicht-Backup bei `--apply`) (#446).
 - Engagement-Snapshots: On-Demand-Läufe per Bot-Link, Playlist und Similar erfassen Plays, Likes, Reposts und Kommentare in `track_snapshots` (#443).
 - Web-Dashboard: Tabellen in Tracks (`/tracks`) und Digest (`/digest`) per Spaltenklick sortierbar (Weißliste, Richtungsumschaltung, NULL-Werte am Ende), Zeilenmenge wählbar (25/50/100/200, Kappung bei 200) bei Erhalt aller aktiven Filter (#441).
 - Telegram-Bot: Beim Senden eines Track-Links wird der verlinkte Track selbst mitverarbeitet und geladen (sofern direkt ladbar), statt nur seine Station zu prüfen (#444).
