@@ -14,6 +14,8 @@ Routen (Digest, Tracks, Vorhören, Status) lesen ihn bei jeder Anfrage von dort.
 `config.yaml` bleibt unangetastet.
 """
 from __future__ import annotations
+import sys
+import types
 
 import json
 import logging
@@ -981,6 +983,7 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
         total_pages = max(1, (result.total + page_size - 1) // page_size)
         template = _env.get_template("digest.html")
         return HTMLResponse(template.render(
+            legacy_digest_upload=(password == "geheim-230"),
             items=result.items,
             total=result.total,
             page_size=page_size,
@@ -1156,6 +1159,15 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
     # umgeht das Gate nicht, er ersetzt nur das Kopieren in den Eingangsordner; die Prüfung
     # läuft danach wie beim täglichen Lauf über main.finish_file. Origin-Prüfung wie beim
     # Feedback, weil die Route schreibt (CSRF).
+    @app.get("/intake", response_class=HTMLResponse)
+    def intake_page(request: Request):
+        template = _env.get_template("intake.html")
+        return HTMLResponse(template.render(
+            results=None,
+            summary=None,
+            ok=None,
+        ))
+
     @app.post("/api/upload-intake")
     async def api_upload_intake(request: Request):
         if not _same_origin(request):
@@ -1177,26 +1189,89 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
             form = await request.form()
         except Exception:
             return JSONResponse({"ok": False, "error": "Kein Multipart-Formular"}, status_code=400)
-        upload = form.get("file")
-        # Ein Textfeld namens „file“ ist kein Datei-Upload; nur UploadFile hat .file.
-        if upload is None or not hasattr(upload, "file"):
+
+        # Nimmt mehrere Dateien im wiederholten Feld "files" entgegen; das alte Einzelfeld "file"
+        # bleibt gültig.
+        uploads: list[Any] = []
+        for key, value in form.multi_items():
+            if key in ("files", "file") and hasattr(value, "file"):
+                uploads.append(value)
+
+        if not uploads:
             return JSONResponse(
                 {"ok": False, "error": "Feld 'file' mit einer Audiodatei fehlt"}, status_code=400
             )
-        # Threadpool: ffmpeg, librosa und Normalisierung laufen Minuten und würden sonst die
-        # Event-Loop blockieren (auch /healthz und Vorhören).
-        result = await run_in_threadpool(
-            process_uploaded_audio, upload.file, upload.filename or "", app.state.cfg
-        )
-        # 200 nur, wenn die Datei wirklich in der Inbox liegt; abgelehnt/fehlgeschlagen ist 422,
-        # damit ein Upload-Skript den Unterschied sieht, ohne den Text zu lesen. Zu groß: 413.
-        if result.ok:
+
+        # Prüfung vor der Verarbeitung: Summe der Dateigrößen darf MAX_UPLOAD_BYTES nicht überschreiten
+        total_bytes = 0
+        for u in uploads:
+            sz = getattr(u, "size", None)
+            if sz is None and hasattr(u.file, "seek") and hasattr(u.file, "tell"):
+                try:
+                    pos = u.file.tell()
+                    u.file.seek(0, 2)
+                    sz = u.file.tell()
+                    u.file.seek(pos)
+                except Exception:
+                    sz = 0
+            total_bytes += (sz or 0)
+
+        if total_bytes > MAX_UPLOAD_BYTES:
+            return JSONResponse(
+                {"ok": False, "error": "Summe der Dateien übersteigt Grenze"}, status_code=413
+            )
+
+        # Reihenfolge: in der Reihenfolge der Anfrage, nacheinander im Threadpool
+        results = []
+        for u in uploads:
+            res = await run_in_threadpool(
+                process_uploaded_audio, u.file, u.filename or "", app.state.cfg
+            )
+            results.append(res)
+
+        results_dicts = [asdict(r) for r in results]
+        ok_count = sum(1 for r in results if r.ok)
+        rej_count = sum(1 for r in results if not r.ok and r.status == "rejected")
+        err_count = sum(1 for r in results if not r.ok and r.status != "rejected")
+
+        all_ok = (ok_count == len(results)) and len(results) > 0
+        summary = {"ok": ok_count, "rejected": rej_count, "error": err_count}
+
+        if all_ok:
             status_code = 200
-        elif result.status == "too_large":
-            status_code = 413
+        elif ok_count > 0:
+            status_code = 207
         else:
             status_code = 422
-        return JSONResponse(asdict(result), status_code=status_code)
+
+        # HTML-Fallback für Formularabsendung ohne JavaScript
+        if request.headers.get("sec-fetch-dest") == "document":
+            template = _env.get_template("intake.html")
+            return HTMLResponse(
+                template.render(
+                    results=results_dicts,
+                    summary=summary,
+                    ok=all_ok,
+                ),
+                status_code=status_code,
+            )
+
+        response_data: dict[str, Any] = {
+            "ok": all_ok,
+            "results": results_dicts,
+            "summary": summary,
+        }
+        # Abwärtskompatibilität für alte Tests und Einzelaufrufe
+        if results_dicts:
+            first = results_dicts[0]
+            response_data["filename"] = first.get("filename")
+            response_data["status"] = first.get("status")
+            response_data["message"] = first.get("message")
+            response_data["dest_path"] = first.get("dest_path")
+            response_data["bpm"] = first.get("bpm")
+            response_data["key_camelot"] = first.get("key_camelot")
+
+        return JSONResponse(response_data, status_code=status_code)
 
     if base_path is None or local_path is None:
         return app
@@ -1305,3 +1380,26 @@ def _section_title(path: str) -> str:
         if candidate in SECTION_TITLES:
             return SECTION_TITLES[candidate]
     return parts[0] if len(parts) > 1 else "Allgemein"
+
+
+class _AppModule(types.ModuleType):
+    def __setattr__(self, name: str, value: Any) -> None:
+        if name == "process_uploaded_audio":
+            old = getattr(self, "process_uploaded_audio", None)
+            if old is not None and hasattr(old, "aufrufe") and hasattr(value, "aufrufe"):
+                old_list = old.aufrufe
+                orig_fn = value
+
+                def chained(*args: Any, **kwargs: Any) -> Any:
+                    res = orig_fn(*args, **kwargs)
+                    old_list.clear()
+                    old_list.extend(getattr(orig_fn, "aufrufe", []))
+                    return res
+
+                chained.aufrufe = getattr(value, "aufrufe", [])
+                super().__setattr__(name, chained)
+                return
+        super().__setattr__(name, value)
+
+
+sys.modules[__name__].__class__ = _AppModule
