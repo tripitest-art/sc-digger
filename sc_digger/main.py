@@ -466,6 +466,11 @@ def _notify_health(cfg: Config, message: str | None, no_telegram: bool) -> None:
         log.error("Health-Alarm konnte nicht gesendet werden: %s", e)
 
 
+REKORDBOX_NUR_NAMENSTREFFER = (
+    "Nur Dateinamen-Treffer, kein Pfad-Treffer – rekordbox.path_map prüfen"
+)
+
+
 def run_rekordbox_import(cfg: Config, no_telegram: bool = False) -> None:
     """Rückkanal-Import im täglichen Lauf. Wirft nie.
 
@@ -486,10 +491,17 @@ def run_rekordbox_import(cfg: Config, no_telegram: bool = False) -> None:
         if summary is None and error is None:
             return  # Feature aus oder Datei fehlt: kein Health-Eintrag
         with Health(cfg["state"]["db_path"]) as health:
-            if error is None:
-                health.record("rekordbox_import", ok=True, found=summary.matched)
-            else:
+            if error is not None:
                 health.record("rekordbox_import", ok=False, found=0, error=error)
+            elif summary.matched > 0 and summary.matched_by_path == 0:
+                health.record(
+                    "rekordbox_import",
+                    ok=False,
+                    found=summary.matched,
+                    error=REKORDBOX_NUR_NAMENSTREFFER,
+                )
+            else:
+                health.record("rekordbox_import", ok=True, found=summary.matched)
             _notify_health(cfg, health.evaluate("rekordbox_import", threshold), no_telegram)
     except Exception:
         log.exception("Rekordbox-Rückkanal: Import oder Health-Eintrag fehlgeschlagen")

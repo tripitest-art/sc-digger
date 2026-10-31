@@ -1090,6 +1090,8 @@ class RekordboxImportSummary:
     ratings_count: int = 0          # Gematchte Tracks mit Rating
     played_count: int = 0           # Gematchte Tracks mit play_count > 0
     auto_likes_count: int = 0       # Neu durch Auto-Like auf 'like' gesetzte Tracks
+    matched_by_path: int = 0        # Neu: Treffer über db.get_track_by_path
+    matched_by_name: int = 0        # Neu: Treffer erst über den Dateinamen-Fallback
 
 
 def _decode_location(location: str) -> str:
@@ -1245,14 +1247,21 @@ def import_rekordbox_xml(
     summary = RekordboxImportSummary(total_tracks=len(parsed))
 
     for track in parsed:
+        matched_by_path = False
         record = db.get_track_by_path(track.local_path)
-        if record is None:
+        if record is not None:
+            matched_by_path = True
+        else:
             record = db.get_track_by_filename(Path(track.local_path).name)
         if record is None or record.id is None:
             summary.unmatched += 1
             continue
 
         summary.matched += 1
+        if matched_by_path:
+            summary.matched_by_path += 1
+        else:
+            summary.matched_by_name += 1
         if track.rating is not None:
             summary.ratings_count += 1
         if track.play_count is not None and track.play_count > 0:
