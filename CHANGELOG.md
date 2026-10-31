@@ -25,6 +25,7 @@ unter „Unreleased“ (Regeln: `AGENTS.md`, Abschnitt „Doku und Changelog“)
 
 ### Hinzugefügt
 - Engagement-Snapshots: On-Demand-Läufe per Bot-Link, Playlist und Similar erfassen Plays, Likes, Reposts und Kommentare in `track_snapshots` (#443).
+- Web-Dashboard: Tabellen in Tracks (`/tracks`) und Digest (`/digest`) per Spaltenklick sortierbar (Weißliste, Richtungsumschaltung, NULL-Werte am Ende), Zeilenmenge wählbar (25/50/100/200, Kappung bei 200) bei Erhalt aller aktiven Filter (#441).
 - Telegram-Bot: Beim Senden eines Track-Links wird der verlinkte Track selbst mitverarbeitet und geladen (sofern direkt ladbar), statt nur seine Station zu prüfen (#444).
 - Vorschläge und Abgelehnt: Künstler wird beim Eintragen in `seen` und `rejected` mitgespeichert und im Web-Dashboard angezeigt, wenn der Track-Titel keinen Uploader-Trennstrich enthält (#442).
 - GPU-Worker rechnet Embedding-Jobs: `embeddings.select_embedder` liefert MAEST (`discogs-maest-30s-pw-129e` über `torch`/`transformers`, gepinnte Revision, 30-s-Fenster gemittelt und normiert) oder den MFCC-Fallback; neuer Schalter `python -m sc_digger.worker --embedder {maest,mfcc,none}`. Fehlen die Pakete, beansprucht der Worker nur Cue-Jobs. Dazu behoben: Der Worker legt die `job_id` in den Payload, ohne sie scheiterte jeder entfernte `cues`-Job am Audio-Download (#421).

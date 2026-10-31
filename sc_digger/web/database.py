@@ -40,7 +40,20 @@ _TRACK_COLUMNS = (
 
 # Schutz vor versehentlich riesigen Antworten; das Frontend blättert über offset.
 DEFAULT_LIMIT = 100
-MAX_LIMIT = 500
+MAX_LIMIT = 200
+
+# Erlaubte Sortierfelder für Tracks und Digest (Issue #427).
+TRACK_SORT_FIELDS = ("artist", "title", "bpm", "key_camelot", "quality", "status")
+DIGEST_SORT_FIELDS = ("date", "artist", "title", "download_kind", "status", "feedback")
+
+_TRACK_SORT_MAP = {
+    "artist": "artist",
+    "title": "title",
+    "bpm": "bpm",
+    "key_camelot": "key_camelot",
+    "quality": "quality_status",
+    "status": "status",
+}
 
 
 @dataclass
@@ -230,6 +243,8 @@ def query_tracks(
     quality_status: str | None = None,
     adopted: bool | None = None,
     breakdown_ratio_max: float | None = None,
+    sort: str | None = None,
+    descending: bool = False,
     limit: int = DEFAULT_LIMIT,
     offset: int = 0,
 ) -> TrackSearchResult:
@@ -301,9 +316,19 @@ def query_tracks(
                 f"SELECT COUNT(*) FROM tracks{clause_sql}", params
             ).fetchone()[0])
             columns = ", ".join(col for col in _TRACK_COLUMNS if col in available)
+            if sort and sort in _TRACK_SORT_MAP:
+                col = _TRACK_SORT_MAP[sort]
+                direction = "DESC" if descending else "ASC"
+                if sort in ("artist", "title", "key_camelot", "quality", "status"):
+                    order_by = f"{col} COLLATE NOCASE {direction} NULLS LAST, id ASC"
+                else:
+                    order_by = f"{col} {direction} NULLS LAST, id ASC"
+            else:
+                order_by = "id ASC"
+
             rows = db.execute(
                 f"SELECT {columns} FROM tracks{clause_sql} "
-                "ORDER BY id ASC LIMIT ? OFFSET ?",
+                f"ORDER BY {order_by} LIMIT ? OFFSET ?",
                 [*params, limit, offset],
             ).fetchall()
             paths = [str(row["path"] or "") for row in rows]
@@ -600,6 +625,8 @@ def query_digest(
     status_filter: str = "",  # '', 'collection', 'inbox', 'open'
     download_kind: str = "",  # '', 'native', 'gate', 'store', 'stream'
     feedback: str = "",       # '', 'like', 'dislike', 'later', 'none'
+    sort: str | None = None,
+    descending: bool = False,
     limit: int = 50,
     offset: int = 0,
 ) -> DigestSearchResult:
@@ -869,6 +896,34 @@ def query_digest(
                 continue
 
         items.append(item)
+
+    if sort and sort in DIGEST_SORT_FIELDS:
+        def _digest_sort_key(it: DigestItem) -> tuple[bool, Any]:
+            if sort == "date":
+                v = it.reported_at or ""
+            elif sort == "artist":
+                v = (it.artist or "").lower()
+            elif sort == "title":
+                v = (it.title or "").lower()
+            elif sort == "download_kind":
+                v = (it.download_kind or "").lower()
+            elif sort == "status":
+                if it.in_collection:
+                    v = "sammlung"
+                elif it.in_inbox:
+                    v = "inbox"
+                else:
+                    v = "offen"
+            elif sort == "feedback":
+                v = (it.feedback or "").lower()
+            else:
+                v = ""
+            is_empty = (v == "")
+            if descending:
+                return (not is_empty, v)
+            return (is_empty, v)
+
+        items.sort(key=_digest_sort_key, reverse=descending)
 
     limit = max(0, min(int(limit), 200))
     offset = max(0, int(offset))
