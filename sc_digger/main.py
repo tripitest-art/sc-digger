@@ -824,7 +824,9 @@ def run_playlist(cfg: Config, url: str, likes: bool, dry_run: bool, no_telegram:
     sc = SoundCloudClient()
     title, tracks = sc.likes_of_user(url) if likes else sc.playlist_tracks(url)
     log.info("%s: %d Tracks", title, len(tracks))
-    fresh, dupes = process(dedupe(tracks), cfg, dry_run=dry_run)
+    tracks = dedupe(tracks)
+    snapshot_tracks(cfg, tracks, dry_run=dry_run)
+    fresh, dupes = process(tracks, cfg, dry_run=dry_run)
     deliver(f"Playlist „{title}“: {len(fresh)} fehlen, {len(dupes)} vorhanden",
             fresh, dupes, cfg, dry_run=dry_run, no_telegram=no_telegram, show_all=True,
             export_name=f"Playlist: {title}")
@@ -854,6 +856,7 @@ def run_link(cfg: Config, url: str, *, dry_run: bool = False, no_telegram: bool 
     for t in tracks:
         t.bpm = estimate_bpm(t)
     tracks = score_tracks(tracks, cfg, apply_filter=False)
+    snapshot_tracks(cfg, tracks, dry_run=dry_run)
     fresh, dupes = process(tracks, cfg, dry_run=dry_run)
     deliver(f"{source}\n{len(fresh)} Tracks ({len(dupes)} schon in deiner Sammlung)",
             fresh, dupes, cfg, dry_run=dry_run, no_telegram=no_telegram, show_all=True,
@@ -883,6 +886,7 @@ def run_similar(cfg: Config, url: str, use_station: bool, apply_filter: bool,
     else:
         tracks.sort(key=lambda t: t.like_ratio, reverse=True)
 
+    snapshot_tracks(cfg, tracks, dry_run=dry_run)
     fresh, dupes = process(tracks, cfg, dry_run=dry_run)
     kind = "Track-Radio" if use_station else "Related"
     deliver(f"{kind} zu „{seed.artist} – {seed.title}“: {len(fresh)} neu",
