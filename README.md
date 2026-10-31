@@ -429,7 +429,7 @@ im modernen Dark-Theme gestaltet und per HTTP-Basic-Auth geschützt:
 - **Mix & URL-Scanner (`/mix` & `POST /api/scan`):** Harmonic Mix Finder nach Camelot-Key und BPM sowie On-Demand-Analyse beliebiger SoundCloud-Links (Tracks, Playlists, Artist-Likes) direkt im Browser.
 - **Konfigeditor (`/config`):** Formular für Einstellungen aus `config.yaml` mit Diff-Vorschau (`/config/preview`) und sicherem Schreiben in die lokale Override-Datei (`SC_DIGGER_CONFIG_LOCAL`, z. B. `/data/config.local.yaml`).
 
-Für den Zugriff aus dem LAN ist in `docker-compose.yml` eine Port-Freigabe vorbereitet.
+Für den Zugriff aus dem LAN ist in `docker-compose.yml` eine Port-Freigabe vorbereitet. Auf schmalen Bildschirmen und Laptops passen sich Navigation und Filterformulare responsive an; breite Tabellen erhalten einen horizontalen Scrollbereich.
 
 **Login-Sperre:** Fünf Fehlversuche (falsche oder fehlende Zugangsdaten) innerhalb von fünf
 Minuten sperren die Client-IP für 15 Minuten; die Antwort ist `429` mit `Retry-After`. Die Sperre
