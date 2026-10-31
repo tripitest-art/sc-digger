@@ -1,4 +1,4 @@
-"""Tests zum Prüfbericht `_eval/REVIEW-2026-10-14.md`: Kapitel 6 (6.1 unmessbar, 6.4 Quarantäne)
+"""Tests zum Prüfbericht `REVIEW-2026-10-14.md` (liegt in der Git-Historie): Kapitel 6 (6.1 unmessbar, 6.4 Quarantäne)
 und die Schritte 3 bis 6 der Tabelle in Kapitel 10 (BPM-Konfidenz, TKEY = Camelot,
 ID3-Reserve, WAV nach FLAC).
 
