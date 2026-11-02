@@ -199,6 +199,37 @@ def _same_origin(request: Request) -> bool:
     return False
 
 
+def _require_json_content_type(
+    request: Request, *, allow_empty_body: bool = False
+) -> JSONResponse | None:
+    """Verlangt 'Content-Type: application/json' zur Abwehr von Cross-Origin Simple Requests (Issue #415).
+
+    Browser verweigern 'application/json' als Simple Request und erzwingen einen Preflight (OPTIONS),
+    sodass fremde Webseiten keine unautorisierten Zustandsänderungen auslösen können.
+    Anfragen mit abweichendem Content-Type (z. B. text/plain) oder fehlendem Content-Type werden mit
+    HTTP 415 (Unsupported Media Type) abgelehnt.
+    """
+    if ("origin" in request.headers or "referer" in request.headers) and not _same_origin(request):
+        return JSONResponse(
+            {"ok": False, "error": "Cross-Origin-Anfragen sind nicht erlaubt"},
+            status_code=403,
+        )
+
+    ct = request.headers.get("content-type", "").strip()
+    media_type = ct.split(";")[0].strip().lower() if ct else ""
+
+    if media_type == "application/json":
+        return None
+
+    if not ct and allow_empty_body and request.headers.get("content-length", "0") in ("0", ""):
+        return None
+
+    return JSONResponse(
+        {"ok": False, "error": "Content-Type muss application/json sein"},
+        status_code=415,
+    )
+
+
 def _load_yaml(path: Path) -> dict:
     """Liest eine YAML-Datei; fehlende oder leere Dateien ergeben {}."""
     if not path.is_file():
@@ -553,10 +584,13 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
 
     # Job-Queue für externe GPU-Worker (Issue #330): claimen, Lebenszeichen und Ergebnis
     # melden über HTTP, damit die Workstation die Track-DB nicht per SMB/NFS einbinden muss.
-    # Keine Origin-Prüfung: die Clients sind Skripte auf einer anderen Maschine, keine
-    # Browser-Formulare; geschützt ist die API über dieselbe Basic-Anmeldung wie der Rest.
+    # Gegen Cross-Origin Simple Requests aus fremden Browsern (CSRF) erzwingen die Endpunkte
+    # Content-Type: application/json (Issue #415); fremde Origins werden abgewiesen.
     @app.post("/api/jobs/claim")
     async def api_jobs_claim(request: Request):
+        ct_err = _require_json_content_type(request)
+        if ct_err is not None:
+            return ct_err
         raw = await request.body()
         payload: dict = {}
         if raw.strip():
@@ -574,6 +608,9 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
 
     @app.post("/api/jobs/{job_id}/heartbeat")
     def api_jobs_heartbeat(request: Request, job_id: int):
+        ct_err = _require_json_content_type(request, allow_empty_body=True)
+        if ct_err is not None:
+            return ct_err
         if heartbeat_job(app.state.cfg["state"]["track_db_path"], job_id):
             return JSONResponse({"ok": True})
         return JSONResponse(
@@ -583,6 +620,9 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
 
     @app.post("/api/jobs/{job_id}/complete")
     async def api_jobs_complete(request: Request, job_id: int):
+        ct_err = _require_json_content_type(request)
+        if ct_err is not None:
+            return ct_err
         try:
             payload = await request.json()
         except Exception:
