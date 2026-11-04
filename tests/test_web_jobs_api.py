@@ -69,7 +69,7 @@ def test_claim_ohne_body_nimmt_naechsten_job(tmp_path: Path):
     job_id, = seed_jobs(tmp_path, JobType.FINGERPRINT)
     client = client_for(tmp_path)
 
-    res = client.post("/api/jobs/claim", auth=AUTH)
+    res = client.post("/api/jobs/claim", json={}, auth=AUTH)
     assert res.status_code == 200
     assert res.json()["job"]["id"] == job_id
 
@@ -83,7 +83,7 @@ def test_heartbeat_auf_pending_job_ist_404(tmp_path: Path):
     assert res.json()["ok"] is False
 
     # Nach dem Claim ist der Job 'running' und der Heartbeat greift.
-    assert client.post("/api/jobs/claim", auth=AUTH).json()["job"]["id"] == job_id
+    assert client.post("/api/jobs/claim", json={}, auth=AUTH).json()["job"]["id"] == job_id
     ok = client.post(f"/api/jobs/{job_id}/heartbeat", auth=AUTH)
     assert ok.status_code == 200
     assert ok.json() == {"ok": True}
@@ -92,7 +92,7 @@ def test_heartbeat_auf_pending_job_ist_404(tmp_path: Path):
 def test_complete_failed_speichert_error(tmp_path: Path):
     job_id, = seed_jobs(tmp_path, JobType.CAPTION)
     client = client_for(tmp_path)
-    client.post("/api/jobs/claim", auth=AUTH)
+    client.post("/api/jobs/claim", json={}, auth=AUTH)
 
     res = client.post(
         f"/api/jobs/{job_id}/complete",
@@ -142,7 +142,7 @@ def test_fehlende_datenbank_wird_nicht_angelegt(tmp_path: Path):
     db_path = tmp_path / "fehlt.sqlite"
     client = client_for(tmp_path)
 
-    claim = client.post("/api/jobs/claim", auth=AUTH)
+    claim = client.post("/api/jobs/claim", json={}, auth=AUTH)
     assert claim.status_code == 200
     assert claim.json() == {"ok": True, "job": None}
     assert not db_path.exists()
@@ -161,3 +161,93 @@ def test_funktionen_werfen_nie_bei_fehlender_datei(tmp_path: Path):
     assert finish_job(fehlend, 1, "completed") is False
     assert finish_job(fehlend, 1, "kaputt") is False
     assert not fehlend.exists()
+
+
+def test_job_routes_content_type_pruefung(tmp_path: Path):
+    job_id, = seed_jobs(tmp_path, JobType.EMBEDDING)
+    client = client_for(tmp_path)
+
+    # 1. /api/jobs/claim verlangt Content-Type application/json
+    claim_plain = client.post(
+        "/api/jobs/claim",
+        headers={"content-type": "text/plain"},
+        content=b"{}",
+        auth=AUTH,
+    )
+    assert claim_plain.status_code == 415
+    assert claim_plain.json()["ok"] is False
+
+    claim_missing = client.post("/api/jobs/claim", auth=AUTH)
+    assert claim_missing.status_code == 415
+    assert claim_missing.json()["ok"] is False
+
+    claim_ok = client.post("/api/jobs/claim", json={}, auth=AUTH)
+    assert claim_ok.status_code == 200
+    assert claim_ok.json()["ok"] is True
+
+    # 2. /api/jobs/{id}/heartbeat verlangt application/json bei gesetztem Content-Type
+    hb_plain = client.post(
+        f"/api/jobs/{job_id}/heartbeat",
+        headers={"content-type": "text/plain"},
+        content=b"ping",
+        auth=AUTH,
+    )
+    assert hb_plain.status_code == 415
+    assert hb_plain.json()["ok"] is False
+
+    hb_ok = client.post(
+        f"/api/jobs/{job_id}/heartbeat",
+        headers={"content-type": "application/json"},
+        auth=AUTH,
+    )
+    assert hb_ok.status_code == 200
+    assert hb_ok.json() == {"ok": True}
+
+    # 3. /api/jobs/{id}/complete verlangt Content-Type application/json
+    complete_plain = client.post(
+        f"/api/jobs/{job_id}/complete",
+        headers={"content-type": "text/plain"},
+        content=b'{"status": "completed"}',
+        auth=AUTH,
+    )
+    assert complete_plain.status_code == 415
+    assert complete_plain.json()["ok"] is False
+
+    complete_missing = client.post(f"/api/jobs/{job_id}/complete", auth=AUTH)
+    assert complete_missing.status_code == 415
+    assert complete_missing.json()["ok"] is False
+
+    complete_ok = client.post(
+        f"/api/jobs/{job_id}/complete",
+        json={"status": "completed", "result": {"done": True}},
+        auth=AUTH,
+    )
+    assert complete_ok.status_code == 200
+    assert complete_ok.json() == {"ok": True}
+
+
+def test_job_routes_abweisung_fremder_origin(tmp_path: Path):
+    job_id, = seed_jobs(tmp_path, JobType.EMBEDDING)
+    client = client_for(tmp_path)
+
+    evil_origin = {"origin": "http://evil.com"}
+
+    # Claim mit fremder Origin wird abgewiesen (403)
+    res_claim = client.post("/api/jobs/claim", json={}, headers=evil_origin, auth=AUTH)
+    assert res_claim.status_code == 403
+    assert res_claim.json()["ok"] is False
+
+    # Heartbeat mit fremder Origin wird abgewiesen
+    res_hb = client.post(f"/api/jobs/{job_id}/heartbeat", headers=evil_origin, auth=AUTH)
+    assert res_hb.status_code == 403
+    assert res_hb.json()["ok"] is False
+
+    # Complete mit fremder Origin wird abgewiesen
+    res_comp = client.post(
+        f"/api/jobs/{job_id}/complete",
+        json={"status": "completed"},
+        headers=evil_origin,
+        auth=AUTH,
+    )
+    assert res_comp.status_code == 403
+    assert res_comp.json()["ok"] is False
