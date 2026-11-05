@@ -8,7 +8,7 @@ unter „Unreleased“ (Regeln: `AGENTS.md`, Abschnitt „Doku und Changelog“)
 ## Unreleased
 
 ### Hinzugefügt
-- API-Kanarienvogel: Täglicher Vorab-Check der inoffiziellen SoundCloud-API (`python -m sc_digger.canary`, Cron 07:15) prüft Rohformat auf Vollständigkeit der von `_to_track` gelesenen Felder und löst bei fehlenden Feldern einen Health-Alarm (Modus `api_schema`) aus (#472).
+- API-Kanarienvogel: Täglicher Vorab-Check der inoffiziellen SoundCloud-API (`python -m sc_digger.canary`, Cron 07:15) prüft Rohformat auf Vollständigkeit der von `_to_track` gelesenen Felder und löst bei fehlenden Feldern einen Health-Alarm (Modus `api_schema`) aus (#473).
 - BPM-/Key-Sicherheit in der Track-DB: Migration 16 legt `bpm_confidence`, `key_confidence` und `key_margin` in `tracks` an; `finish_file` speichert die Analyse-Konfidenzen beim Persistieren mit; der Set-Builder liest sie in `Entry`-Objekte ein und kann unsichere Tracks per `avoid_uncertain=True` meiden (#453).
 
 ### Sicherheit
