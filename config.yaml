@@ -239,6 +239,12 @@ health:
   # Unterschreitung pausiert Downloads und alarmiert (0 = aus; Empfehlung für den Server in BETRIEB.md).
   min_free_gb: 0
 
+canary:
+  # Tag für die tägliche Vorab-Prüfung der SoundCloud-API (leer = erster Eintrag aus search.tags)
+  tag: ""
+  # Optionale Track-URL zum zusätzlichen Prüfen der resolve-Antwort (leer = nur Suche prüfen)
+  track_url: ""
+
 telegram:
   # Werte kommen aus Umgebungsvariablen TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID
   max_items_per_digest: 25

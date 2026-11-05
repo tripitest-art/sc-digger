@@ -40,6 +40,7 @@ Modul anlegt, trägt es in die Tabelle ein.
 | `sc_digger/audit.py` | Read-only Library Audit (Phase 2.2), Fake-Erkennung, HTML-Dashboard, Rückmeldung „übernommen“ per Fingerprint (`mark_adopted_tracks`, `audit --check-adopted`, ROADMAP 3.12); der Treffer verknüpft die Sammlungsdatei dauerhaft über `tracks.sc_id` (Issue #324); `export_collection_xml` versteht die `rekordbox`-Optionen für Hot-Cue-Layout, Phrasen-Ausrichtung, Beatgrid-Anker und Kompakt-Kommentar (Issue #381) |
 | `sc_digger/diskguard.py` | Speicherplatz-Wächter (Issue #459): `check_disk` misst den freien Speicherplatz unter `download.inbox_dir`, `DiskStatus`; pausiert Downloads bei knappem Speicherplatz vor dem Lauf |
 | `sc_digger/health.py` | Laufprotokoll, Alarm bei wiederholt leeren/fehlerhaften Läufen |
+| `sc_digger/canary.py` | Täglicher API-Kanarienvogel (07:15 Uhr): prüft Roh-Antworten der inoffiziellen SoundCloud-API (Suche und Track) auf Vollständigkeit der erwarteten Felder (`TRACK_FIELDS`) vor dem `discover`-Lauf |
 | `sc_digger/healthcheck.py` | Container-Healthcheck: Cron, letzter Lauf, DB-Integrität |
 | `sc_digger/autodeploy.py` | Auto-Deploy per systemd-Timer auf dem Host: neuen `main`-Stand von `update.sh` ausrollen, Healthcheck prüfen, bei Fehlschlag automatisch zurückrollen; Einrichtung in `BETRIEB.md` |
 | `sc_digger/redact.py` | Zugangsdaten aus Texten und Logs entfernen |
@@ -97,6 +98,7 @@ Modul anlegt, trägt es in die Tabelle ein.
 - **Zwei Code-Stände** (Server-Kopie und Repo) liefen schon einmal auseinander. Siehe Regel 1.
 - **Labels per MCP:** `issue_write` ersetzt die ganze Label-Liste. So gingen bei #62 Labels
   verloren. Siehe `MCP.md`.
+- **Neues Feld in `_to_track` → auch in `canary.TRACK_FIELDS`:** Liest `SoundCloudClient._to_track` ein neues API-Feld, muss es in `canary.TRACK_FIELDS` aufgenommen werden, damit der tägliche Kanarienvogel es überwacht.
 - **Nacharbeit ohne Commit:** Verlangt ein Review nur den PR-Text, gibt es keinen neuen
   Commit (#103). Ob der Text nach dem Review geändert wurde, zeigt `lastEditedAt`:
   `gh api graphql -f query='{repository(owner:"tripitest-art",name:"sc-digger"){pullRequest(number:<PR>){lastEditedAt}}}'`
