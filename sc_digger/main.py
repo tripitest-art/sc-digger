@@ -180,6 +180,9 @@ def finish_file(t: Track, path: Path, inbox: Path, cfg: Config) -> Path | None:
 
     # Audio-Analyse: BPM + Key aus dem Audiomaterial erkennen
     audio_bpm: float | None = None
+    bpm_confidence: float | None = None
+    key_confidence: float | None = None
+    key_margin: float | None = None
     if org.get("detect_bpm", True) or org.get("detect_key", True):
         try:
             analysis = analyze_track(path)
@@ -203,11 +206,19 @@ def finish_file(t: Track, path: Path, inbox: Path, cfg: Config) -> Path | None:
                 # Uploader-Angabe um mehr als 2 BPM überstimmt: behalten und im Digest markieren
                 if text_bpm and t.bpm and abs(t.bpm - text_bpm) > 2.0:
                     t.text_bpm = float(text_bpm)
+                bpm_confidence = analysis.get("bpm_confidence")
             if org.get("detect_key", True):
                 t.key_camelot = analysis["key_camelot"]
                 t.key_name = analysis["key_name"]
+                key_confidence = analysis.get("key_confidence")
+                key_margin = analysis.get("key_margin")
         except Exception as e:
             t.notes.append(f"Audio-Analyse fehlgeschlagen: {e}")
+
+    # Analyse-Konfidenzen für die Track-DB (None, wenn Analyse nicht lief oder fehlschlug)
+    bpm_confidence: float | None = analysis.get("bpm_confidence") if org.get("detect_bpm", True) and 'analysis' in dir() and 'analysis' in locals() else None  # type: ignore
+    key_confidence: float | None = analysis.get("key_confidence") if org.get("detect_key", True) and 'analysis' in dir() and 'analysis' in locals() else None  # type: ignore
+    key_margin: float | None = analysis.get("key_margin") if org.get("detect_key", True) and 'analysis' in dir() and 'analysis' in locals() else None  # type: ignore
 
     # ID3-Tags schreiben
     if org.get("write_tags", True):
@@ -286,6 +297,9 @@ def finish_file(t: Track, path: Path, inbox: Path, cfg: Config) -> Path | None:
                 bpm=t.bpm,
                 key_camelot=t.key_camelot,
                 key_name=t.key_name,
+                bpm_confidence=bpm_confidence,
+                key_confidence=key_confidence,
+                key_margin=key_margin,
                 source_url=t.url,
                 status=TrackStatus.INBOX,
                 format=q_rep.get("ext") or (path.suffix[1:].lower() if path.suffix else None),
