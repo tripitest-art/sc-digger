@@ -237,6 +237,9 @@ rekordbox:
     /music/inbox: "C:/Users/user/Music/Highres/_sc-digger-inbox"
 ```
 
+Die Override-Datei gilt auch für die Cron-Läufe. Prüfen lässt sich das mit
+`docker compose exec sc-digger grep -c SC_DIGGER_CONFIG_LOCAL /app/cron.env` (Ergebnis 1).
+
 Prüfen: `docker compose exec sc-digger python -m sc_digger.schema --local /data/config.local.yaml`
 
 **Ablauf im Alltag**

@@ -71,5 +71,6 @@ unter „Unreleased“ (Regeln: `AGENTS.md`, Abschnitt „Doku und Changelog“)
 - Doku-Pflicht: `CHANGELOG.md`, der Abschnitt „Doku und Changelog“ in `AGENTS.md` und `tests/test_doku.py` halten Doku und Changelog im selben PR wie die Änderung (#314).
 
 ### Behoben
+- Cron-Läufe (`discover`, `audit --check-adopted`, `scout`, Kaufliste) sehen die lokale Override-Datei jetzt auch: `entrypoint.sh` setzt `SC_DIGGER_CONFIG_LOCAL` (Standard `/data/config.local.yaml`) vor `export -p > /app/cron.env`, damit Cron, Bot und Web dieselbe Datei lesen; ein von Hand gesetzter Wert bleibt erhalten (#462).
 - Camelot-Zuordnung der Dur-Tonarten F#, G, G#, A, A# und B in `analysis._CAMELOT` war falsch (z. B. A-Dur `1B` statt `11B`); Moll und die übrigen Dur-Tonarten waren richtig. Bereits getaggte Tracks behalten ihren alten Wert, bis sie neu analysiert werden.
 - `entrypoint.sh` verschluckt Fehler beim Installieren der Cron-Jobs nicht mehr: scheitert `crontab` (oder fehlt es), bricht der Start mit Fehlermeldung auf stderr und Exit-Code 1 ab, statt ohne Kaufliste- und Scout-Lauf weiterzulaufen (#385).
