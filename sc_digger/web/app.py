@@ -1021,12 +1021,11 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
         if raw_ids is None:
             track_ids = None
         elif isinstance(raw_ids, list):
-            try:
-                track_ids = [int(item) for item in raw_ids]
-            except (TypeError, ValueError):
+            if not all(isinstance(item, int) and not isinstance(item, bool) for item in raw_ids):
                 return JSONResponse(
-                    {"ok": False, "error": "track_ids müssen Zahlen sein"}, status_code=400
+                    {"ok": False, "error": "track_ids müssen ganze Zahlen sein"}, status_code=400
                 )
+            track_ids = [int(item) for item in raw_ids]
         else:
             return JSONResponse(
                 {"ok": False, "error": "track_ids muss eine Liste sein"}, status_code=400

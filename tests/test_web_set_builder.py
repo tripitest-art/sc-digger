@@ -364,6 +364,15 @@ def test_api_mix_export_xml_full_workflow(tmp_path: Path):
     assert bad_type.status_code == 400
     assert bad_type.json()["ok"] is False
 
+    # 400 track_ids mit bool oder float
+    bad_bool = client.post("/api/mix/export-xml", json={"track_ids": [True]}, auth=AUTH)
+    assert bad_bool.status_code == 400
+    assert bad_bool.json()["ok"] is False
+
+    bad_float = client.post("/api/mix/export-xml", json={"track_ids": [1.5]}, auth=AUTH)
+    assert bad_float.status_code == 400
+    assert bad_float.json()["ok"] is False
+
     # 200 XML Attachment
     resp = client.post(
         "/api/mix/export-xml",
