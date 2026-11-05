@@ -8,6 +8,7 @@ unter „Unreleased“ (Regeln: `AGENTS.md`, Abschnitt „Doku und Changelog“)
 ## Unreleased
 
 ### Hinzugefügt
+- Web-Dashboard: 1-Klick-Match-Button (`⚡ Match`) in der Spalte *Quelle* des Track-Explorers (`/tracks`) verlinkt direkt auf den Harmonic Mix Finder (`/mix?key=...&bpm=...`) für passende Anschluss-Tracks (#477).
 - Speicherplatz-Wächter: `guard_disk` prüft vor dem `discover`-Lauf den freien Speicherplatz unter `download.inbox_dir` gegen `health.min_free_gb`; bei knappem Speicherplatz werden Downloads pausiert (Tracks nur verlinkt) und ein Health-Alarm gesendet (#475).
 - API-Kanarienvogel: Täglicher Vorab-Check der inoffiziellen SoundCloud-API (`python -m sc_digger.canary`, Cron 07:15) prüft Rohformat auf Vollständigkeit der von `_to_track` gelesenen Felder und löst bei fehlenden Feldern einen Health-Alarm (Modus `api_schema`) aus (#473).
 - BPM-/Key-Sicherheit in der Track-DB: Migration 16 legt `bpm_confidence`, `key_confidence` und `key_margin` in `tracks` an; `finish_file` speichert die Analyse-Konfidenzen beim Persistieren mit; der Set-Builder liest sie in `Entry`-Objekte ein und kann unsichere Tracks per `avoid_uncertain=True` meiden (#453).

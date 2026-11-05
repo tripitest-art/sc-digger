@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 
 from sc_digger.db import QualityStatus, TrackDB, TrackRecord, TrackStatus
 from sc_digger.models import Config
-from sc_digger.web.app import create_app
+from sc_digger.web.app import create_app, match_url
 
 ROOT = Path(__file__).resolve().parents[1]
 PASSWORD = "geheim-222"
@@ -259,4 +259,50 @@ def test_mix_ui_renders_interactive_camelot_picker(tmp_path):
     assert r.status_code == 200
     assert 'class="camelot-picker"' in r.text
     assert "selectCamelotKey('8A')" in r.text
+
+
+# --------------------------------------------------------------- ⚡ Match-Button
+def test_match_url_edge_cases():
+    """Prüft Randfälle der Hilfsfunktion match_url (Whitespace, Typen, Wertebereich)."""
+    assert match_url("  8a  ", 155) == "/mix?key=8A&bpm=155"
+    assert match_url("12B", 140.25) == "/mix?key=12B&bpm=140.25"
+    assert match_url("4A", 150.0) == "/mix?key=4A&bpm=150"
+
+    # Ungültiger Key
+    assert match_url(None, 150.0) is None
+    assert match_url("", 150.0) is None
+    assert match_url("   ", 150.0) is None
+    assert match_url(123, 150.0) is None  # type: ignore[arg-type]
+
+    # Ungültige BPM
+    assert match_url("8A", None) is None
+    assert match_url("8A", 0) is None
+    assert match_url("8A", 0.0) is None
+    assert match_url("8A", -150.0) is None
+    assert match_url("8A", True) is None  # type: ignore[arg-type]
+    assert match_url("8A", False) is None  # type: ignore[arg-type]
+    assert match_url("8A", float("nan")) is None
+    assert match_url("8A", float("inf")) is None
+
+
+def test_tracks_ui_renders_match_buttons_and_coexists_with_source_url(tmp_path):
+    """Prüft, dass Tracks mit Key/BPM den ⚡ Match-Button erhalten und neben SoundCloud-Link koexistieren."""
+    seed(tmp_path)
+    r = get_tracks(tmp_path)
+    assert r.status_code == 200
+
+    # 4 von 5 Tracks haben Key und BPM (Acid Kick: 8A/150, Raw 100%: 8A/155, Hard Groove: 9A/160, Sturm: 4A/147)
+    assert r.text.count("match-btn") == 4
+    assert 'href="/mix?key=8A&amp;bpm=150"' in r.text or 'href="/mix?key=8A&bpm=150"' in r.text
+    assert 'href="/mix?key=8A&amp;bpm=155"' in r.text or 'href="/mix?key=8A&bpm=155"' in r.text
+    assert 'href="/mix?key=9A&amp;bpm=160"' in r.text or 'href="/mix?key=9A&bpm=160"' in r.text
+    assert 'href="/mix?key=4A&amp;bpm=147"' in r.text or 'href="/mix?key=4A&bpm=147"' in r.text
+
+    # Acid Kick hat sowohl SoundCloud-Link als auch ⚡ Match
+    assert "⚡ Match" in r.text
+    assert "SoundCloud ↗" in r.text
+
+    # Low Quality (Fake DJ) hat weder Key noch source_url -> Spalte zeigt '—'
+    assert "—" in r.text
+
 
