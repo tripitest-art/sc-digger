@@ -323,6 +323,8 @@ Ablage: MP3, AIFF und WAV als ID3-`TXXX`-Frames, FLAC als Vorbis-Kommentar, M4A 
 
 Der zweite Mechanismus ist der Container-Healthcheck (`sc_digger.healthcheck`): Cron-Prozess, letzter `discover`-Lauf (Alter gegen `health.max_hours_since_run`) und `PRAGMA quick_check` für beide SQLite-Dateien. Wechsel in den Alarm- oder Normalzustand werden per Telegram gemeldet, wenn Token und Chat-ID gesetzt sind.
 
+**SoundCloud-Login-Prüfung:** Zu Beginn jedes echten `discover`-Laufs prüft `guard_auth_token` den hinterlegten `SOUNDCLOUD_AUTH_TOKEN` gegen `GET https://api-v2.soundcloud.com/me`. Wird der Token von SoundCloud abgelehnt (401/403), löst das Health-System einmalig einen Alarm (`sc_login`) mit Handlungsanweisung (`./set-secret.sh`) aus. Der Lauf bricht nicht ab, sondern arbeitet mit ausgeblendetem Token weiter: Original-Downloads werden wie ohne Token nur verlinkt und die Retry-Queue verbraucht keine Fehlversuche. Sobald der Token erneuert wurde, folgt automatisch eine Entwarnung.
+
 **Lauf-Sperre:** Schreibende Modi von `python -m sc_digger.main` (alle außer `stats`) laufen nie gleichzeitig. Die Sperre ist ein `flock` auf `pipeline.lock` neben der State-DB (Verzeichnis von `state.db_path`); die Datei nennt den laufenden Modus und die Startzeit. Ist sie belegt, wartet ein Lauf höchstens `state.lock_wait_s` Sekunden (Standard 1800) und bricht dann mit Exit-Code 75 ab; ein so ausgefallener `discover` zählt im Health-Protokoll als gescheiterter Lauf. Lässt sich die Sperre nicht anlegen (kein beschreibbares Verzeichnis), läuft der Modus mit Warnung ohne Sperre. `seen.sqlite` läuft wie die Track-DB im WAL-Modus mit 30 s Wartezeit.
 
 ### Sicherung

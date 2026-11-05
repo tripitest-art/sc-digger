@@ -32,6 +32,12 @@ cd /root/sc-digger && ./set-secret.sh SOUNDCLOUD_AUTH_TOKEN   # oder TELEGRAM_BO
 
 Verdeckte Eingabe, Formatprüfung, ersetzt die alte Zeile, startet neu und testet die Verbindung.
 
+**SoundCloud-Login abgelaufen (`sc_login`-Alarm):**
+SoundCloud lässt OAuth-Tokens gelegentlich ablaufen. Meldet der tägliche Lauf einen Alarm `🚨 sc-digger: sc_login ... SoundCloud-Login abgelaufen → neuen Token mit ./set-secret.sh setzen`, verlinkt sc-digger Original-Downloads bis zur Erneuerung nur und schont die Retry-Queue. Zum Beheben:
+1. Im Browser auf soundcloud.com einloggen und den Wert des Cookies `oauth_token` aus den Entwickler-Tools (Application → Cookies) kopieren.
+2. Auf dem Server `./set-secret.sh SOUNDCLOUD_AUTH_TOKEN` ausführen und den neuen Token einfügen.
+3. Beim nächsten Lauf prüft der Guard den neuen Token und sendet automatisch die Entwarnung (`✅ sc-digger: sc_login läuft wieder`).
+
 ## Update nach einem Merge in `main`
 
 ```bash

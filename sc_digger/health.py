@@ -96,6 +96,9 @@ class Health:
                 if "RateLimitError" in last_error:
                     lines.append("SoundCloud drosselt die Anfragen (429) "
                                  "→ weniger Tags/Referenz-Accounts oder kleineres limit_per_tag.")
+                if "SOUNDCLOUD_AUTH_TOKEN" in last_error:
+                    lines.append("SoundCloud-Login abgelaufen "
+                                 "→ neuen Token mit <code>./set-secret.sh</code> setzen.")
             else:
                 lines.append("Keine Fehler, aber 0 Rohtreffer: Such-Endpunkt oder Filter "
                              "haben sich vermutlich geändert → <code>soundcloud.py</code> (search_tag) prüfen.")
