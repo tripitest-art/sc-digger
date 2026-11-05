@@ -240,3 +240,23 @@ def test_tracks_ui_verlinkt_keine_javascript_urls(tmp_path):
         ))
     r = get_tracks(tmp_path)
     assert "javascript:alert(1)" not in r.text
+
+
+def test_tracks_ui_renders_camelot_pills_quick_chips_and_dj_deck(tmp_path):
+    """Prüft die modernisierten UI-Elemente: Camelot-Pills, Schnellfilter und DJ-Deck-Leiste."""
+    seed(tmp_path)
+    r = get_tracks(tmp_path)
+    assert r.status_code == 200
+    assert 'class="camelot-pill" data-camelot="8A"' in r.text
+    assert 'class="quick-chips"' in r.text
+    assert 'id="dj-deck-bar"' in r.text
+
+
+def test_mix_ui_renders_interactive_camelot_picker(tmp_path):
+    """Prüft die interaktive Camelot-Schnellwahl auf /mix."""
+    client = client_for(tmp_path)
+    r = client.get("/mix?key=8A&bpm=155", auth=("sc", PASSWORD))
+    assert r.status_code == 200
+    assert 'class="camelot-picker"' in r.text
+    assert "selectCamelotKey('8A')" in r.text
+

@@ -5,40 +5,126 @@
 
 {% block meta %}
 <meta http-equiv="refresh" content="60">
+<style>
+  .status-hero {
+    background: linear-gradient(135deg, rgba(16, 20, 29, 0.95) 0%, rgba(22, 28, 40, 0.95) 100%);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 1.4rem 1.6rem;
+    margin-bottom: 1.4rem;
+    box-shadow: var(--shadow-card);
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1.25rem;
+  }
+  .hero-meta-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.65rem;
+    margin-top: 0.45rem;
+  }
+  .version-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.15rem 0.55rem;
+    border-radius: 6px;
+    background-color: var(--bg-card-subtle);
+    border: 1px solid var(--border);
+    font-family: var(--font-mono);
+    font-size: 0.76rem;
+    color: var(--text-muted);
+  }
+  .quick-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.9rem;
+  }
+  .dist-bar {
+    display: flex;
+    height: 8px;
+    width: 100%;
+    border-radius: 9999px;
+    background-color: var(--bg-input);
+    overflow: hidden;
+    margin: 0.85rem 0 0.35rem;
+    border: 1px solid var(--border);
+  }
+  .dist-seg-archive { background-color: var(--accent-primary); }
+  .dist-seg-adopted { background-color: var(--accent-ok); }
+  .dist-seg-inbox { background-color: var(--accent-purple); }
+  .stat-kv-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+  }
+  .stat-kv-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.45rem 0.7rem;
+    border-radius: 6px;
+    background-color: var(--bg-card-subtle);
+    border: 1px solid var(--border);
+    font-size: 0.86rem;
+  }
+  .format-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    margin-top: 0.75rem;
+  }
+</style>
 {% endblock %}
 
 {% block content %}
-<div class="card" style="margin-bottom: 1.5rem;">
-  <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 1rem;">
-    <div>
-      <h1 style="margin: 0;">sc-digger Status</h1>
-      <p class="meta" style="margin: 0.25rem 0 0;">Stand: {{ snap.generated_at }} UTC (aktualisiert sich alle 60&nbsp;Sekunden)</p>
+<div class="status-hero">
+  <div>
+    <h1 style="margin: 0; font-size: 1.55rem;">sc-digger Status</h1>
+    <div class="hero-meta-row">
+      <span class="meta">Stand: <span class="mono">{{ snap.generated_at }}</span> UTC &middot; Auto-Refresh 60s</span>
       {% if snap.version.commit %}
-      <p class="meta" style="margin: 0.1rem 0 0;">Version: {{ snap.version.commit }}{% if snap.version.deployed_at %} &middot; deployt {{ snap.version.deployed_at }}{% endif %}</p>
+      <span class="version-tag">
+        🔖 Version: {{ snap.version.commit }}{% if snap.version.deployed_at %} &middot; deployt {{ snap.version.deployed_at }}{% endif %}
+      </span>
       {% endif %}
     </div>
-    <div style="display: flex; align-items: center; gap: 1rem;">
-      {% if snap.healthy %}
-      <div class="status-pill ok" title="System läuft stabil: Letzte Läufe waren erfolgreich und die Datenbanken sind intakt.">
-        <span class="dot"></span>
-        <span class="ampel ok">&#9679; gesund</span>
-      </div>
-      {% else %}
-      <div class="status-pill warn" title="Achtung: Mindestens 2 Läufe in Folge fehlgeschlagen, 0 Rohtreffer oder letzter Lauf älter als 36h.">
-        <span class="dot"></span>
-        <span class="ampel warn">&#9679; Achtung</span>
-      </div>
-      {% endif %}
-
-      {% if editor_available %}
-      <a href="/config" style="font-size: 0.875rem; font-weight: 500;">Konfiguration bearbeiten &rarr;</a>
-      {% endif %}
+    <div class="quick-actions">
+      <a href="/tracks?status=inbox" class="btn-page">📥 Inbox öffnen ({{ snap.inbox_total }})</a>
+      <a href="/digest?status=open" class="btn-page">🔎 Offene Entdeckungen</a>
+      <a href="/mix" class="btn-page">🎛️ Harmonischer Set-Builder</a>
+      <a href="/intake" class="btn-page">⬆️ Dateien hochladen</a>
     </div>
   </div>
 
+  <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 0.65rem;">
+    {% if snap.healthy %}
+    <div class="status-pill ok" title="System läuft stabil: Letzte Läufe waren erfolgreich und die Datenbanken sind intakt.">
+      <span class="dot"></span>
+      <span class="ampel ok">&#9679; gesund</span>
+    </div>
+    {% else %}
+    <div class="status-pill warn" title="Achtung: Mindestens 2 Läufe in Folge fehlgeschlagen, 0 Rohtreffer oder letzter Lauf älter als 36h.">
+      <span class="dot"></span>
+      <span class="ampel warn">&#9679; Achtung</span>
+    </div>
+    {% endif %}
+
+    {% if editor_available %}
+    <a href="/config" class="btn-page" style="font-size: 0.8rem;">⚙️ Konfiguration bearbeiten &rarr;</a>
+    {% endif %}
+  </div>
+
   {% if snap.alert_active %}
-  <div class="alert-box warn" style="margin-top: 1rem; margin-bottom: 0;">
-    <p class="warn" style="margin: 0; font-weight: 600;">Ein Health-Alarm ist aktiv.</p>
+  <div class="alert-box warn" style="width: 100%; margin-top: 0.5rem; margin-bottom: 0;">
+    <p class="warn" style="margin: 0; font-weight: 600;">⚠️ Ein Health-Alarm ist aktiv.</p>
   </div>
   {% endif %}
 </div>
@@ -47,19 +133,19 @@
   <!-- Letzter Discover Lauf -->
   <div class="card">
     <div class="card-header">
-      <h2 class="card-title" style="margin: 0; font-size: 1.1rem;">Letzter discover-Lauf</h2>
+      <h2 class="card-title">🔍 Letzter discover-Lauf</h2>
       {% if snap.last_discover %}
         {% if snap.last_discover.ok %}
-        <span class="status-pill ok" style="padding: 0.15rem 0.6rem; font-size: 0.75rem;">ok</span>
+        <span class="status-pill ok" style="padding: 0.15rem 0.6rem; font-size: 0.74rem;">ok</span>
         {% else %}
-        <span class="status-pill warn" style="padding: 0.15rem 0.6rem; font-size: 0.75rem;">Fehler</span>
+        <span class="status-pill warn" style="padding: 0.15rem 0.6rem; font-size: 0.74rem;">Fehler</span>
         {% endif %}
       {% endif %}
     </div>
 
     {% if snap.last_discover %}
-    <p class="meta" style="margin-bottom: 0.75rem;">
-      {{ snap.last_discover.finished_at }} UTC &middot;
+    <p class="meta" style="margin-top: 0; margin-bottom: 0.85rem;">
+      <span class="mono">{{ snap.last_discover.finished_at }}</span> UTC &middot;
       {% if snap.last_discover.ok %}ok{% else %}<span class="warn">Fehler</span>{% endif %} &middot;
       Rohtreffer: {{ snap.last_discover.found }} &middot;
       Alter: {{ snap.last_discover_age_hours }} h
@@ -68,50 +154,58 @@
     <div class="stat-grid" style="grid-template-columns: 1fr 1fr;">
       <div class="stat-box" title="Rohfunde aus Tags, gefolgten Artists und Referenz-Accounts vor Filtern">
         <div class="val">{{ snap.last_discover.found }}</div>
-        <div class="lbl">Rohtreffer <span style="font-size: 0.7rem; color: var(--text-dim);">ℹ️ vor Filtern</span></div>
+        <div class="lbl">Rohtreffer <span style="font-size: 0.68rem; color: var(--text-dim);">vor Filtern</span></div>
       </div>
       <div class="stat-box" title="Vergangene Stunden seit Abschluss dieses Suchlaufs">
         <div class="val">{{ snap.last_discover_age_hours }}h</div>
-        <div class="lbl">Alter <span style="font-size: 0.7rem; color: var(--text-dim);">ℹ️ max 36h</span></div>
+        <div class="lbl">Alter <span style="font-size: 0.68rem; color: var(--text-dim);">max 36h</span></div>
       </div>
     </div>
 
     {% if snap.last_discover.error %}
-    <p class="warn" style="margin-top: 0.75rem; font-size: 0.9rem;">Fehler: {{ snap.last_discover.error }}</p>
+    <div class="alert-box warn" style="margin-top: 0.85rem; margin-bottom: 0; padding: 0.55rem 0.75rem;">
+      <span class="warn" style="font-size: 0.84rem;">Fehler: {{ snap.last_discover.error }}</span>
+    </div>
     {% endif %}
 
     {% else %}
-    <p>Noch kein Lauf.</p>
+    <p class="meta">Noch kein Lauf.</p>
     {% endif %}
   </div>
 
   <!-- Inbox -->
   <div class="card">
     <div class="card-header">
-      <h2 class="card-title" style="margin: 0; font-size: 1.1rem;">Inbox</h2>
-      <span class="status-pill ok" style="padding: 0.15rem 0.6rem; font-size: 0.75rem;">DJ Ready</span>
+      <h2 class="card-title">📥 Inbox</h2>
+      <span class="badge badge-ok">DJ Ready &middot; −8.5 LUFS</span>
     </div>
-    <p style="margin-bottom: 0.5rem;">{{ snap.inbox_total }} Track(s) mit Status inbox.</p>
-    <p class="meta" style="margin-bottom: 0.75rem;">Geprüfte, pegelnormalisierte und getaggte Dateien in <code>/music/inbox</code>, bereit für den Rekordbox-Import.</p>
-    <div class="stat-box" style="margin-top: 0.75rem;">
-      <div class="val">{{ snap.inbox_total }}</div>
-      <div class="lbl">Geprüfte Tracks in /music/inbox</div>
+    <p style="margin-top: 0; margin-bottom: 0.35rem; font-weight: 500;">{{ snap.inbox_total }} Track(s) mit Status inbox.</p>
+    <p class="meta" style="margin-top: 0; margin-bottom: 0.85rem;">
+      Geprüfte, pegelnormalisierte und mit BPM/Key/Cues getaggte Originale in <code>/music/inbox</code>, bereit für Rekordbox.
+    </p>
+    <div class="stat-box" style="margin-top: auto;">
+      <div style="display: flex; justify-content: space-between; align-items: baseline;">
+        <div>
+          <div class="val" style="color: #60a5fa;">{{ snap.inbox_total }}</div>
+          <div class="lbl">Geprüfte Tracks in /music/inbox</div>
+        </div>
+        <a href="/tracks?status=inbox" class="btn-page" style="font-size: 0.76rem; padding: 0.25rem 0.6rem;">Vorhören &rarr;</a>
+      </div>
     </div>
   </div>
 
   <!-- KI-Workstation & Job-Queue -->
   <div class="card">
     <div class="card-header">
-      <h2 class="card-title" style="margin: 0; font-size: 1.1rem;">KI-Workstation &amp; Job-Queue</h2>
+      <h2 class="card-title">⚡ KI-Workstation &amp; Job-Queue</h2>
       {% if snap.job_summary and snap.job_summary.workstation_active %}
-      <span class="status-pill ok" style="padding: 0.15rem 0.6rem; font-size: 0.75rem;">Workstation aktiv</span>
+      <span class="status-pill ok" style="padding: 0.15rem 0.6rem; font-size: 0.74rem;">Workstation aktiv</span>
       {% else %}
-      <span class="status-pill warn" style="padding: 0.15rem 0.6rem; font-size: 0.75rem;">Workstation im Standby</span>
+      <span class="badge badge-muted">Workstation im Standby</span>
       {% endif %}
     </div>
-    <p class="meta" style="margin-bottom: 0.75rem;">
-      Asynchrone Aufgaben der GPU-Workstation (Audio-Embeddings, Captions, Fingerprints) aus der
-      <code>jobs</code>-Tabelle der Track-DB. Rein lesend, ohne Steuerung der Worker.
+    <p class="meta" style="margin-top: 0; margin-bottom: 0.75rem;">
+      Asynchrone GPU-Aufgaben (allin1-Cues, Audio-Embeddings, Fingerprints) aus der <code>jobs</code>-Tabelle.
     </p>
     <div class="stat-grid" style="grid-template-columns: 1fr 1fr;">
       <div class="stat-box" title="Jobs, die auf einen Worker warten">
@@ -132,19 +226,21 @@
       </div>
     </div>
     {% if snap.job_summary and snap.job_summary.last_heartbeat_at %}
-    <p class="meta" style="margin-top: 0.75rem; margin-bottom: 0;">Letztes Lebenszeichen: <span class="mono">{{ snap.job_summary.last_heartbeat_at }}</span> UTC</p>
+    <p class="meta" style="margin-top: 0.75rem; margin-bottom: 0; font-size: 0.78rem;">
+      Letztes Lebenszeichen: <span class="mono">{{ snap.job_summary.last_heartbeat_at }}</span> UTC
+    </p>
     {% else %}
-    <p class="meta" style="margin-top: 0.75rem; margin-bottom: 0;">Noch kein Lebenszeichen eines Workers.</p>
+    <p class="meta" style="margin-top: 0.75rem; margin-bottom: 0; font-size: 0.78rem;">Noch kein Lebenszeichen eines Workers.</p>
     {% endif %}
   </div>
 
   <!-- Sammlung & Track-DB -->
   <div class="card">
     <div class="card-header">
-      <h2 class="card-title" style="margin: 0; font-size: 1.1rem;">Sammlung &amp; Track-DB</h2>
+      <h2 class="card-title">🏛️ Sammlung &amp; Track-DB</h2>
       <a href="/tracks" style="font-size: 0.8rem; font-weight: 500;">Track-Explorer &rarr;</a>
     </div>
-    <p class="meta" style="margin-bottom: 0.75rem;">
+    <p class="meta" style="margin-top: 0; margin-bottom: 0.75rem;">
       Master-Archiv in <code>/music/Schranz</code> (schreibgeschützt) &amp; Inbox durchsuchen.
     </p>
     <div class="stat-grid" style="grid-template-columns: 1fr 1fr;">
@@ -165,7 +261,22 @@
         <div class="lbl">in Inbox</div>
       </div>
     </div>
-    <p style="margin-top: 1rem; margin-bottom: 0;">
+    {% if overview.total_tracks > 0 %}
+    {% set pct_arch = ((overview.archive_count / overview.total_tracks) * 100) | round(1) %}
+    {% set pct_inb = ((overview.inbox_count / overview.total_tracks) * 100) | round(1) %}
+    <div class="dist-bar" title="Sammlung vs. Inbox">
+      <div class="dist-seg-archive" style="width: {{ pct_arch }}%;"></div>
+      <div class="dist-seg-inbox" style="width: {{ pct_inb }}%;"></div>
+    </div>
+    {% endif %}
+    {% if overview.format_counts %}
+    <div class="format-pills">
+      {% for fmt, cnt in overview.format_counts.items() %}
+      <span class="badge badge-muted">{{ fmt | upper }}: {{ cnt }}</span>
+      {% endfor %}
+    </div>
+    {% endif %}
+    <p style="margin-top: 0.9rem; margin-bottom: 0;">
       <a href="/tracks">Zum DJ Track-Explorer &rarr;</a>
     </p>
   </div>
@@ -173,27 +284,28 @@
   <!-- Wochenstatistik -->
   <div class="card">
     <div class="card-header">
-      <h2 class="card-title" style="margin: 0; font-size: 1.1rem;">Wochenstatistik ({{ snap.stats.days }} Tage)</h2>
+      <h2 class="card-title">📊 Wochenstatistik ({{ snap.stats.days }} Tage)</h2>
+      <span class="badge badge-info">Pipeline-Funnel</span>
     </div>
-    <ul class="stat-list" style="margin-bottom: 0.75rem;">
-      <li>
-        <span class="meta">Erfolgreiche Runs:</span>
+    <ul class="stat-kv-list">
+      <li class="stat-kv-row">
+        <span class="meta">Erfolgreiche Runs</span>
         <span class="mono"><strong>{{ snap.stats.runs_ok }}</strong> / {{ snap.stats.runs_total }}</span>
       </li>
-      <li>
-        <span class="meta">Gescannte Tracks:</span>
+      <li class="stat-kv-row">
+        <span class="meta">Gescannte Tracks</span>
         <span class="mono"><strong>{{ snap.stats.tracks_scanned }}</strong></span>
       </li>
-      <li>
-        <span class="meta">Neue Inbox-Downloads:</span>
+      <li class="stat-kv-row">
+        <span class="meta">Neue Inbox-Downloads</span>
         <span class="mono ok"><strong>{{ snap.stats.tracks_inbox }}</strong></span>
       </li>
-      <li>
-        <span class="meta">Abgelehnte Fakes:</span>
+      <li class="stat-kv-row">
+        <span class="meta">Abgelehnte Fakes / Clipped</span>
         <span class="mono warn"><strong>{{ snap.stats.tracks_rejected }}</strong></span>
       </li>
-      <li>
-        <span class="meta">Feedback:</span>
+      <li class="stat-kv-row">
+        <span class="meta">Kurations-Feedback</span>
         <span class="mono">👍 {{ snap.stats.likes }} &middot; 👎 {{ snap.stats.dislikes }} &middot; ⏳ {{ snap.stats.later }}</span>
       </li>
     </ul>
@@ -214,33 +326,40 @@
 <!-- Letzte Läufe -->
 <div class="card">
   <div class="card-header">
-    <h2 class="card-title" style="margin: 0;">Letzte Läufe</h2>
+    <h2 class="card-title">🕒 Letzte Läufe</h2>
+    <span class="meta">Jüngste 10 Ausführungen über alle Modi</span>
   </div>
-  <table>
-    <tr>
-      <th>Zeit (UTC)</th>
-      <th>Modus</th>
-      <th>Ergebnis</th>
-      <th>Rohtreffer</th>
-      <th>Fehler</th>
-    </tr>
-    {% for run in snap.runs %}
-    <tr>
-      <td class="mono">{{ run.finished_at }}</td>
-      <td><span class="mono" style="color: var(--accent-purple);">{{ run.mode }}</span></td>
-      <td>
-        {% if run.ok %}
-        <span class="ok" style="font-weight: 600;">ok</span>
+  <div class="table-scroll">
+    <table>
+      <thead>
+        <tr>
+          <th>Zeit (UTC)</th>
+          <th>Modus</th>
+          <th>Ergebnis</th>
+          <th>Rohtreffer</th>
+          <th>Fehler</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for run in snap.runs %}
+        <tr>
+          <td class="mono">{{ run.finished_at }}</td>
+          <td><span class="badge badge-purple mono">{{ run.mode }}</span></td>
+          <td>
+            {% if run.ok %}
+            <span class="ok" style="font-weight: 600;">ok</span>
+            {% else %}
+            <span class="warn" style="font-weight: 600;">Fehler</span>
+            {% endif %}
+          </td>
+          <td class="mono">{{ run.found }}</td>
+          <td class="warn">{{ run.error or '' }}</td>
+        </tr>
         {% else %}
-        <span class="warn" style="font-weight: 600;">Fehler</span>
-        {% endif %}
-      </td>
-      <td class="mono">{{ run.found }}</td>
-      <td class="warn">{{ run.error or '' }}</td>
-    </tr>
-    {% else %}
-    <tr><td colspan="5">Noch kein Lauf.</td></tr>
-    {% endfor %}
-  </table>
+        <tr><td colspan="5" class="meta">Noch kein Lauf.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
 </div>
 {% endblock %}

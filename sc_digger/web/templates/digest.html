@@ -9,142 +9,8 @@
     display: flex;
     flex-wrap: wrap;
     justify-content: space-between;
-    align-items: baseline;
-    gap: 0.75rem;
-  }
-  .filter-form .filter-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-    gap: 0.75rem;
-    align-items: end;
-  }
-  .filter-form .filter-field label {
-    font-size: 0.78rem;
-    color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    font-weight: 600;
-  }
-  .filter-form input[type=text],
-  .filter-form select {
-    max-width: none;
-  }
-  .filter-actions {
-    display: flex;
-    gap: 0.75rem;
     align-items: center;
-    margin-top: 1rem;
-  }
-  .badge {
-    display: inline-block;
-    padding: 0.15rem 0.55rem;
-    border-radius: 9999px;
-    font-size: 0.72rem;
-    font-weight: 600;
-    letter-spacing: 0.03em;
-    border: 1px solid transparent;
-    white-space: nowrap;
-  }
-  .badge-ok {
-    background-color: var(--accent-ok-bg);
-    color: var(--accent-ok);
-    border-color: rgba(16, 185, 129, 0.3);
-  }
-  .badge-warn {
-    background-color: var(--accent-warn-bg);
-    color: var(--accent-warn);
-    border-color: rgba(245, 158, 11, 0.3);
-  }
-  .badge-err {
-    background-color: var(--accent-err-bg);
-    color: var(--accent-err);
-    border-color: rgba(239, 68, 68, 0.3);
-  }
-  .badge-info {
-    background-color: rgba(59, 130, 246, 0.12);
-    color: #93c5fd;
-    border-color: rgba(59, 130, 246, 0.3);
-  }
-  .badge-purple {
-    background-color: rgba(139, 92, 246, 0.12);
-    color: #c4b5fd;
-    border-color: rgba(139, 92, 246, 0.3);
-  }
-  .badge-muted {
-    background-color: var(--bg-card-subtle);
-    color: var(--text-dim);
-    border-color: var(--border);
-  }
-  .feedback-group {
-    display: flex;
-    gap: 0.3rem;
-    align-items: center;
-  }
-  .feedback-btn {
-    padding: 0.15rem 0.5rem;
-    border-radius: 6px;
-    border: 1px solid var(--border);
-    background-color: var(--bg-card-subtle);
-    color: var(--text-muted);
-    font-size: 0.9rem;
-    line-height: 1.4;
-    cursor: pointer;
-  }
-  .feedback-btn:hover {
-    border-color: var(--accent-primary);
-  }
-  .feedback-btn:disabled {
-    opacity: 0.5;
-    cursor: progress;
-  }
-  .feedback-btn.active {
-    border-color: var(--accent-ok);
-    background-color: var(--accent-ok-bg);
-  }
-  .feedback-btn[data-value=dislike].active {
-    border-color: var(--accent-err);
-    background-color: var(--accent-err-bg);
-  }
-  .feedback-btn[data-value=later].active {
-    border-color: var(--accent-warn);
-    background-color: var(--accent-warn-bg);
-  }
-  .feedback-error {
-    color: var(--accent-err);
-    font-size: 0.72rem;
-  }
-  .pager {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: space-between;
-    align-items: center;
-    gap: 1rem;
-    margin-top: 1.25rem;
-    padding-top: 1rem;
-    border-top: 1px solid var(--border);
-    font-size: 0.85rem;
-  }
-  .pager-buttons {
-    display: flex;
-    gap: 0.5rem;
-  }
-  .btn-page {
-    display: inline-block;
-    padding: 0.35rem 0.85rem;
-    border-radius: 6px;
-    background-color: var(--bg-card-subtle);
-    color: var(--text-main);
-    border: 1px solid var(--border);
-    font-size: 0.82rem;
-    font-weight: 500;
-  }
-  .btn-page:hover {
-    border-color: var(--accent-primary);
-    text-decoration: none;
-  }
-  .btn-page.disabled {
-    opacity: 0.4;
-    pointer-events: none;
+    gap: 0.75rem;
   }
 </style>
 {% endblock %}
@@ -168,15 +34,18 @@
   <div class="digest-toolbar">
     <div>
       <h1 style="margin: 0;">Digest &amp; Entdeckungen</h1>
-      <p class="meta" style="margin-top: 0.25rem;">
-        Alle bisher vorgeschlagenen Tracks aus dem täglichen Digest und On-Demand-Checks.
-        Insgesamt {{ total }} Treffer.
+      <p class="meta" style="margin: 0.25rem 0 0;">
+        Alle bisher vorgeschlagenen Tracks aus dem täglichen Digest und On-Demand-Checks &middot;
+        <strong>{{ total }}</strong> Treffer
       </p>
     </div>
-    <a href="/digest?download_kind=store" class="btn-page">🛒 Kaufliste (nur Store)</a>
+    <div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
+      <a href="/digest?download_kind=gate&amp;status=open" class="btn-page">⏳ Offene Gates</a>
+      <a href="/digest?download_kind=store" class="btn-page">🛒 Kaufliste (nur Store)</a>
+    </div>
   </div>
 
-  <details class="info-toggle" style="margin-top: 1rem;">
+  <details class="info-toggle" style="margin-top: 1rem; margin-bottom: 0;">
     <summary>ℹ️ Erklärung: Download-Arten &amp; Feedback-Wirkung</summary>
     <div class="info-toggle-content">
       <div style="font-weight: 600; color: var(--text-main); margin-bottom: 0.5rem;">Download-Arten im Überblick:</div>
@@ -187,7 +56,7 @@
         </div>
         <div class="legend-item">
           <span class="badge badge-warn">GATE</span>
-          <div><strong>Download-Gate:</strong> Artist nutzt Hypeddit/Droploud. Klick öffnet Gate im Browser; geladene Datei danach im Drag &amp; Drop Upload ablegen.</div>
+          <div><strong>Download-Gate:</strong> Artist nutzt Hypeddit/Droploud. Klick öffnet Gate im Browser; geladene Datei danach im Upload-Menü ablegen.</div>
         </div>
         <div class="legend-item">
           <span class="badge badge-info">CLOUD</span>
@@ -203,13 +72,28 @@
         </div>
       </div>
       <div style="margin-top: 0.75rem; font-size: 0.8rem; line-height: 1.45;">
-        <strong>Feedback:</strong> 
-        👍 <em>Gefällt mir</em> belohnt den Artist im Reputations-Scoring und schlägt Tracks in <code>/mix</code> vor. 
-        👎 <em>Aussortiert</em> führt bei mehreren Dislikes zu Punkteabzug. 
+        <strong>Feedback:</strong>
+        👍 <em>Gefällt mir</em> belohnt den Artist im Reputations-Scoring und schlägt Tracks in <code>/mix</code> vor.
+        👎 <em>Aussortiert</em> führt bei mehreren Dislikes zu Punkteabzug.
         ⏳ <em>Später</em> merkt den Track vor.
       </div>
     </div>
   </details>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h2 class="card-title" style="margin: 0;">Filter &amp; Schnellwahl</h2>
+    <div class="quick-chips" style="margin-bottom: 0;">
+      <a href="/digest" class="quick-chip {% if not filters.status and not filters.download_kind and not filters.feedback %}active{% endif %}">Alle</a>
+      <a href="/digest?status=open" class="quick-chip {% if filters.status == 'open' and not filters.download_kind %}active{% endif %}">🆕 Offen</a>
+      <a href="/digest?download_kind=gate&amp;status=open" class="quick-chip {% if filters.download_kind == 'gate' %}active{% endif %}">⏳ Gates</a>
+      <a href="/digest?download_kind=native" class="quick-chip {% if filters.download_kind == 'native' %}active{% endif %}">💾 Originale</a>
+      <a href="/digest?download_kind=store" class="quick-chip {% if filters.download_kind == 'store' %}active{% endif %}">🛒 Store</a>
+      <a href="/digest?feedback=like" class="quick-chip {% if filters.feedback == 'like' %}active{% endif %}">👍 Likes</a>
+      <a href="/digest?feedback=later" class="quick-chip {% if filters.feedback == 'later' %}active{% endif %}">⏳ Später</a>
+    </div>
+  </div>
 
   <form class="filter-form" method="get" action="/digest">
     {% if current_sort %}<input type="hidden" name="sort" value="{{ current_sort }}">{% endif %}
@@ -266,11 +150,10 @@
   </form>
 </div>
 
-
-
 <div class="card">
   <div class="card-header">
     <h2 class="card-title" style="margin: 0;">Vorschläge</h2>
+    <span class="meta">Seite {{ page }} von {{ total_pages }}</span>
   </div>
   <div class="table-scroll">
   <table>
@@ -303,12 +186,12 @@
         <td class="mono meta" style="white-space: nowrap; font-size: 0.78rem;">
           {{ item.reported_at[:16] if item.reported_at else "—" }}
         </td>
-        <td>{{ item.artist or "—" }}</td>
+        <td style="font-weight: 600;">{{ item.artist or "—" }}</td>
         <td>
           <strong>{{ item.title }}</strong>
           {% set engagement = engagement_line(item.plays, item.likes, item.reposts) %}
           {% if engagement %}
-          <div class="meta" style="font-size: 0.72rem;">{{ engagement }}</div>
+          <div class="meta" style="font-size: 0.72rem; margin-top: 0.15rem;">{{ engagement }}</div>
           {% endif %}
         </td>
         <td>
@@ -349,16 +232,16 @@
           {% set purchase_href = item.purchase_url if item.purchase_url and (item.purchase_url.startswith("http://") or item.purchase_url.startswith("https://")) else "" %}
           {% set gate_href = item.gate_url if item.gate_url and (item.gate_url.startswith("http://") or item.gate_url.startswith("https://")) else "" %}
           {% if url_href %}
-          <a href="{{ url_href }}" target="_blank" rel="noopener" class="btn-page" style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">
+          <a href="{{ url_href }}" target="_blank" rel="noopener" class="btn-page" style="padding: 0.2rem 0.5rem; font-size: 0.74rem;">
             SoundCloud ↗
           </a>
           {% endif %}
           {% if purchase_href %}
-          <a href="{{ purchase_href }}" target="_blank" rel="noopener" class="btn-page" style="padding: 0.2rem 0.5rem; font-size: 0.75rem; border-color: rgba(139, 92, 246, 0.4);">
+          <a href="{{ purchase_href }}" target="_blank" rel="noopener" class="btn-page" style="padding: 0.2rem 0.5rem; font-size: 0.74rem; border-color: rgba(139, 92, 246, 0.4);">
             🛒 Bandcamp / Kaufen ↗
           </a>
           {% elif gate_href %}
-          <a href="{{ gate_href }}" target="_blank" rel="noopener" class="btn-page" style="padding: 0.2rem 0.5rem; font-size: 0.75rem; border-color: rgba(245, 158, 11, 0.4);">
+          <a href="{{ gate_href }}" target="_blank" rel="noopener" class="btn-page" style="padding: 0.2rem 0.5rem; font-size: 0.74rem; border-color: rgba(245, 158, 11, 0.4);">
             🌐 Gate öffnen ↗
           </a>
           {% endif %}
@@ -418,7 +301,5 @@
       buttons.forEach((b) => { b.disabled = false; });
     }
   }
-
-
 </script>
 {% endblock %}
