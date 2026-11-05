@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 
 {% block title %}sc-digger Quarantäne{% endblock %}
+{% block nav_rejected %}active{% endblock %}
 
 {% block meta %}
 <style>
@@ -8,33 +9,11 @@
     display: flex;
     flex-wrap: wrap;
     justify-content: space-between;
-    align-items: baseline;
-    gap: 0.75rem;
-  }
-  .filter-form .filter-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-    gap: 0.75rem;
-    align-items: end;
-  }
-  .filter-form .filter-field label {
-    font-size: 0.78rem;
-    color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    font-weight: 600;
-  }
-  .filter-form input[type=text] {
-    max-width: none;
-  }
-  .filter-actions {
-    display: flex;
-    gap: 0.75rem;
     align-items: center;
-    margin-top: 1rem;
+    gap: 0.75rem;
   }
   .retry-btn {
-    padding: 0.25rem 0.6rem;
+    padding: 0.28rem 0.65rem;
     font-size: 0.78rem;
     white-space: nowrap;
   }
@@ -52,18 +31,6 @@
     color: var(--accent-ok);
     font-weight: 600;
   }
-  .pager {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 1rem;
-    margin-top: 1.25rem;
-  }
-  .pager-buttons {
-    display: flex;
-    gap: 0.5rem;
-    margin-left: auto;
-  }
 </style>
 {% endblock %}
 
@@ -78,9 +45,9 @@
         {% if total_pages > 1 %}&middot; Seite {{ page }} von {{ total_pages }}{% endif %}
       </p>
     </div>
-    <a href="/tracks" style="font-size: 0.875rem; font-weight: 500;">&larr; Zum Track-Explorer</a>
+    <a href="/tracks" class="btn-page" style="font-size: 0.82rem;">&larr; Zum Track-Explorer</a>
   </div>
-  <p class="meta" style="margin-bottom: 0;">
+  <p class="meta" style="margin-top: 0.6rem; margin-bottom: 0;">
     Diese Tracks wurden nicht in <code>seen</code> abgelegt, damit eine falsche
     Qualitätsprüfung sie nicht dauerhaft verliert. 🔄 <strong>Wiederholen / Freigeben</strong>
     hebt die Blockade auf (wie Bot-Befehl <code>/retry &lt;id&gt;</code>): der Track wird beim
@@ -90,7 +57,12 @@
 
 <div class="card">
   <div class="card-header">
-    <h2 class="card-title" style="margin: 0;">Filter</h2>
+    <h2 class="card-title" style="margin: 0;">Filter &amp; Schnellwahl</h2>
+    <div class="quick-chips" style="margin-bottom: 0;">
+      <a href="/rejected" class="quick-chip {% if not filters.q %}active{% endif %}">Alle</a>
+      <a href="/rejected?q=Spektrum" class="quick-chip {% if filters.q == 'Spektrum' %}active{% endif %}">📉 Spektrum / Fake</a>
+      <a href="/rejected?q=Clipping" class="quick-chip {% if filters.q == 'Clipping' %}active{% endif %}">🔊 Clipping / Brickwall</a>
+    </div>
   </div>
   <form class="filter-form" method="get" action="/rejected">
     <input type="hidden" name="limit" value="{{ page_size }}">
@@ -112,6 +84,7 @@
   <div class="card-header">
     <h2 class="card-title" style="margin: 0;">Abgewiesene Tracks</h2>
   </div>
+  <div class="table-scroll">
   <table>
     <thead>
       <tr>
@@ -130,18 +103,18 @@
           {# Nur http/https verlinken: die URL stammt aus fremden Feeds. #}
           {% set sc_href = item.url if item.url and (item.url.startswith("http://") or item.url.startswith("https://")) else "" %}
           {% if sc_href %}
-          <div><a href="{{ sc_href }}" target="_blank" rel="noopener noreferrer">SoundCloud ↗</a></div>
+          <div style="margin-top: 0.2rem;"><a href="{{ sc_href }}" target="_blank" rel="noopener noreferrer" class="btn-page" style="padding: 0.15rem 0.45rem; font-size: 0.72rem;">SoundCloud ↗</a></div>
           {% endif %}
         </td>
         <td>
           <strong>{{ item.title or "—" }}</strong>
-          <div class="meta" style="font-size: 0.78rem;">{{ item.artist or "Uploader unbekannt" }}</div>
+          <div class="meta" style="font-size: 0.78rem; margin-top: 0.1rem;">{{ item.artist or "Uploader unbekannt" }}</div>
         </td>
         <td>
-          {{ item.reason or "—" }}
+          <span class="badge badge-err">{{ item.reason or "—" }}</span>
           {% if item.cutoff_hz is not none %}
-          <div class="mono meta" style="font-size: 0.78rem;">
-            {{ (item.cutoff_hz / 1000) | round(1) }} kHz ({{ item.cutoff_hz | round(0) | int }} Hz)
+          <div class="mono meta" style="font-size: 0.76rem; margin-top: 0.25rem;">
+            Cutoff: {{ (item.cutoff_hz / 1000) | round(1) }} kHz ({{ item.cutoff_hz | round(0) | int }} Hz)
           </div>
           {% endif %}
         </td>
@@ -164,6 +137,7 @@
       {% endfor %}
     </tbody>
   </table>
+  </div>
 
   {% if total > 0 %}
   <div class="pager">
