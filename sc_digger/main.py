@@ -19,6 +19,7 @@ import logging
 import os
 import random
 import re
+import shutil
 import sys
 import time
 from contextlib import ExitStack
@@ -35,6 +36,7 @@ from .cloud import download_cloud
 from .collection import Collection, open_collection
 from .cues import write_breakdown_tag, write_drop_tag, write_first_kick_tag
 from .db import TrackDB
+from .diskguard import check_disk
 from .embeddings import backfill_embedding_jobs, enqueue_embedding_job
 from .health import Health
 from .intake import AUDIO_EXTS, find_ready_files, track_from_file
@@ -122,6 +124,10 @@ def process(tracks: list[Track], cfg: Config, *, dry_run: bool,
         classify_download(t)
 
     if dry_run:
+        return fresh, dupes
+
+    if cfg.downloads_paused:
+        log.warning("Downloads pausiert (Speicher knapp): %d Tracks nur verlinkt", len(fresh))
         return fresh, dupes
 
     inbox = Path(cfg["download"]["inbox_dir"])
@@ -506,6 +512,60 @@ def guard_auth_token(cfg: Config, sc: SoundCloudClient, *, no_telegram: bool = F
         return cfg.without_auth_token()
 
 
+def guard_disk(
+    cfg: Config,
+    *,
+    no_telegram: bool = False,
+    usage: Callable = shutil.disk_usage,
+) -> Config:
+    """Speicherplatz-Wächter vor dem discover-Lauf.
+
+    min = cfg.raw["health"]["min_free_gb"]; fehlt oder <= 0 -> cfg unverändert,
+    usage wird nicht aufgerufen, kein Health-Eintrag.
+    Sonst st = check_disk(cfg["download"]["inbox_dir"], min, usage=usage)
+      st.ok    -> Health(cfg["state"]["db_path"]).record("disk", ok=True, found=1); Rückgabe cfg
+      nicht ok -> record("disk", ok=False, found=0,
+                         error=f"Speicher knapp: {st.free_gb:.1f} GB frei, Minimum {st.min_free_gb:.1f} GB")
+      OSError  -> record("disk", ok=False, found=0, error=f"Inbox nicht prüfbar ({type(e).__name__})")
+      Bei nicht ok/OSError: log.error(...) und Rückgabe cfg.without_downloads()
+      Danach immer _notify_health(cfg, health.evaluate("disk", 1), no_telegram).
+    """
+    health_cfg = cfg.raw.get("health")
+    if not isinstance(health_cfg, dict):
+        return cfg
+    min_val = health_cfg.get("min_free_gb")
+    if min_val is None:
+        return cfg
+    try:
+        min_free_gb = float(min_val)
+    except (TypeError, ValueError):
+        return cfg
+    if min_free_gb <= 0:
+        return cfg
+
+    inbox_dir = cfg["download"]["inbox_dir"]
+    try:
+        st = check_disk(inbox_dir, min_free_gb, usage=usage)
+        is_ok = st.ok
+        error = None if is_ok else f"Speicher knapp: {st.free_gb:.1f} GB frei, Minimum {st.min_free_gb:.1f} GB"
+    except OSError as e:
+        is_ok = False
+        error = f"Inbox nicht prüfbar ({type(e).__name__})"
+
+    with Health(cfg["state"]["db_path"]) as health:
+        if is_ok:
+            health.record("disk", ok=True, found=1)
+            msg = health.evaluate("disk", 1)
+            _notify_health(cfg, msg, no_telegram)
+            return cfg
+        else:
+            health.record("disk", ok=False, found=0, error=error)
+            log.error("%s: Downloads werden in diesem Lauf pausiert", error)
+            msg = health.evaluate("disk", 1)
+            _notify_health(cfg, msg, no_telegram)
+            return cfg.without_downloads()
+
+
 def run_discover(cfg: Config, dry_run: bool, no_telegram: bool) -> None:
     """Discovery mit Health-Protokoll. Dry-Runs werden nicht protokolliert."""
     if dry_run:
@@ -513,6 +573,7 @@ def run_discover(cfg: Config, dry_run: bool, no_telegram: bool) -> None:
         return
 
     cfg = guard_auth_token(cfg, SoundCloudClient(), no_telegram=no_telegram, check=check_auth_token)
+    cfg = guard_disk(cfg, no_telegram=no_telegram, usage=shutil.disk_usage)
 
     threshold = cfg.raw.get("health", {}).get("alert_after_bad_runs", 2)
     with Health(cfg["state"]["db_path"]) as health:

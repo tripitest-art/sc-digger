@@ -9,6 +9,7 @@ unter „Unreleased“ (Regeln: `AGENTS.md`, Abschnitt „Doku und Changelog“)
 
 ### Hinzugefügt
 - Verfügbarkeits-Wächter: `sc_digger.watch` prüft mit 👍 bewertete Tracks ohne lokalen Download wöchentlich auf SoundCloud api-v2 nach neu verfügbaren Originalen oder Free-Download-Gates, erfasst den Verlauf in Migration 17 (`availability_watch`), alarmiert bei Fehlern (Health-Modus `watch`) und meldet Statuswechsel einmalig via Telegram; Cron-Lauf sonntags um 19:00 Uhr und CLI (`python -m sc_digger.watch`) (#476).
+- Speicherplatz-Wächter: `guard_disk` prüft vor dem `discover`-Lauf den freien Speicherplatz unter `download.inbox_dir` gegen `health.min_free_gb`; bei knappem Speicherplatz werden Downloads pausiert (Tracks nur verlinkt) und ein Health-Alarm gesendet (#475).
 - BPM-/Key-Sicherheit in der Track-DB: Migration 16 legt `bpm_confidence`, `key_confidence` und `key_margin` in `tracks` an; `finish_file` speichert die Analyse-Konfidenzen beim Persistieren mit; der Set-Builder liest sie in `Entry`-Objekte ein und kann unsichere Tracks per `avoid_uncertain=True` meiden (#453).
 
 ### Sicherheit
@@ -33,6 +34,7 @@ unter „Unreleased“ (Regeln: `AGENTS.md`, Abschnitt „Doku und Changelog“)
 - `_eval/` (140 KB Auswertungsskripte aus der Analysephase, von keinem Produktionscode benutzt) samt Windows-Befehlen in der README; `tests/test_dj_workflow.py` läuft jetzt gegen `sc_digger.analysis` und `sc_digger.dj_export`, die Messwerte stehen weiter in der README, der Prüfbericht in der Git-Historie (#425).
 
 ### Hinzugefügt
+- Web-Dashboard: Rekordbox-XML-Export im harmonischen Set-Builder (`/mix`, Button `🎛️ Rekordbox XML`) über neuen Endpunkt `POST /api/mix/export-xml` zum direkten Import berechneter Set-Ketten samt BPM und Camelot-Tonart in Rekordbox (#474).
 - SoundCloud-Login-Prüfung: `guard_auth_token` prüft `SOUNDCLOUD_AUTH_TOKEN` zu Beginn jedes `discover`-Laufs gegen `/me`, meldet abgelaufene Tokens per Health-Alarm (`sc_login`) und blendet sie für den Lauf aus, sodass Originale verlinkt bleiben und keine Retry-Versuche verbraucht werden (#471).
 - Tägliche SQLite-Sicherung: `sc_digger.backup` sichert `seen.sqlite`, `tracks.sqlite` und `config.local.yaml` konsistent über die SQLite Backup-API, prüft Kopien per `PRAGMA integrity_check` und rotiert 7 tägliche und 4 wöchentliche Stände; Cron-Lauf um 06:30 Uhr und CLI für Restore (`--force`) (#470).
 - Lauf-Sperre: Schreibende Modi von `sc_digger.main` (alle außer `stats`) laufen nie gleichzeitig (`sc_digger/runlock.py`, `flock` auf `/data/pipeline.lock`). Ein belegter Lauf wartet bis `state.lock_wait_s` (Standard 1800 s) und endet dann mit Exit-Code 75; ein ausgefallener `discover` erscheint im Health-Alarm. `seen.sqlite` nutzt WAL und 30 s Wartezeit (#460).

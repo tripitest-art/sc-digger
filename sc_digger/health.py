@@ -99,6 +99,11 @@ class Health:
                 if "SOUNDCLOUD_AUTH_TOKEN" in last_error:
                     lines.append("SoundCloud-Login abgelaufen "
                                  "→ neuen Token mit <code>./set-secret.sh</code> setzen.")
+                if "Speicher knapp" in last_error or "Inbox nicht prüfbar" in last_error:
+                    lines.append(
+                        "Downloads sind pausiert, bis wieder genug Platz frei ist "
+                        "→ Inbox und <code>_rejected</code> aufräumen."
+                    )
             else:
                 lines.append("Keine Fehler, aber 0 Rohtreffer: Such-Endpunkt oder Filter "
                              "haben sich vermutlich geändert → <code>soundcloud.py</code> (search_tag) prüfen.")
