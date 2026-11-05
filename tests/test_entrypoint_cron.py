@@ -65,3 +65,29 @@ def test_crontab_success_keeps_bot_as_last_step(tmp_path):
     proc = _run(script_path, env)
     assert proc.returncode == 0, proc.stderr
     assert marker.read_text(encoding="utf-8").strip() == "-m sc_digger.bot"
+
+
+def _config_local_via_cron_env(tmp_path: Path) -> str:
+    """Liest SC_DIGGER_CONFIG_LOCAL so, wie ein Cron-Job es sieht: leere Umgebung, `. cron.env`."""
+    proc = subprocess.run(
+        [SH, "-c", f'. "{tmp_path / "cron.env"}"; printf "%s" "${{SC_DIGGER_CONFIG_LOCAL-<unset>}}"'],
+        env={}, capture_output=True, text=True, timeout=30)
+    assert proc.returncode == 0, proc.stderr
+    return proc.stdout
+
+
+def test_cron_env_setzt_override_pfad(tmp_path):
+    """Ohne eigenen Wert sehen die Cron-Jobs die Standard-Override-Datei (wie Bot und Web)."""
+    script_path, env, _marker = _prepare(tmp_path, crontab_text="#!/bin/sh\nexit 0\n")
+    proc = _run(script_path, env)
+    assert proc.returncode == 0, proc.stderr
+    assert _config_local_via_cron_env(tmp_path) == "/data/config.local.yaml"
+
+
+def test_cron_env_behaelt_eigenen_pfad(tmp_path):
+    """Ein von Hand gesetzter SC_DIGGER_CONFIG_LOCAL wird nicht überschrieben."""
+    script_path, env, _marker = _prepare(tmp_path, crontab_text="#!/bin/sh\nexit 0\n")
+    env["SC_DIGGER_CONFIG_LOCAL"] = "/custom/local.yaml"
+    proc = _run(script_path, env)
+    assert proc.returncode == 0, proc.stderr
+    assert _config_local_via_cron_env(tmp_path) == "/custom/local.yaml"
