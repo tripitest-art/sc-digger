@@ -81,6 +81,11 @@ class Track:
 @dataclass
 class Config:
     raw: dict[str, Any]
+    _hide_auth_token: bool = False
+
+    def without_auth_token(self) -> "Config":
+        """Erzeugt eine neue Config mit demselben raw-Dict, deren soundcloud_auth_token None ist."""
+        return Config(self.raw, _hide_auth_token=True)
 
     @classmethod
     def load(cls, path: str | Path, local: str | Path | None = None) -> "Config":
@@ -129,4 +134,6 @@ class Config:
     @property
     def soundcloud_auth_token(self) -> str | None:
         """OAuth-Token des eigenen SoundCloud-Accounts; nötig für Original-Downloads."""
+        if self._hide_auth_token:
+            return None
         return os.environ.get("SOUNDCLOUD_AUTH_TOKEN") or None

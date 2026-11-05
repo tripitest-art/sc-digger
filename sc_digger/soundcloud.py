@@ -12,7 +12,8 @@ import logging
 import re
 import time
 from datetime import datetime, timedelta, timezone
-from typing import Iterator
+from enum import Enum
+from typing import Callable, Iterator
 
 from urllib.parse import urljoin, urlparse
 
@@ -57,6 +58,50 @@ class RateLimitError(SoundCloudError):
     """SoundCloud antwortet auch nach allen Wiederholungen mit 429."""
 
 
+class TokenStatus(str, Enum):
+    MISSING = "missing"
+    VALID = "valid"
+    INVALID = "invalid"
+    UNKNOWN = "unknown"
+
+
+def check_auth_token(
+    token: str | None,
+    *,
+    client_id: str | None = None,
+    get: Callable | None = None,
+    timeout: float = 15.0,
+) -> TokenStatus:
+    """Prüft den SOUNDCLOUD_AUTH_TOKEN gegen /me.
+
+    token None oder "" -> MISSING, ohne Netzwerkanfrage.
+    Sonst genau ein GET auf https://api-v2.soundcloud.com/me mit OAuth-Header und optionaler client_id.
+    200 -> VALID, 401/403 -> INVALID, andere Statuscodes oder Netzfehler -> UNKNOWN.
+    Das Token wird nie geloggt.
+    """
+    if not token:
+        return TokenStatus.MISSING
+
+    getter = get if get is not None else requests.get
+    headers = {
+        "Authorization": f"OAuth {token}",
+        "User-Agent": UA,
+    }
+    params = {"client_id": client_id} if client_id else {}
+
+    try:
+        resp = getter(f"{API}/me", headers=headers, params=params, timeout=timeout)
+        if resp.status_code == 200:
+            return TokenStatus.VALID
+        if resp.status_code in (401, 403):
+            return TokenStatus.INVALID
+        log.warning("SoundCloud /me antwortete mit Status %s", resp.status_code)
+        return TokenStatus.UNKNOWN
+    except Exception as exc:
+        log.warning("SoundCloud /me Anfrage fehlgeschlagen: %s", type(exc).__name__)
+        return TokenStatus.UNKNOWN
+
+
 class SoundCloudClient:
     def __init__(self, request_delay: float = 0.6):
         self.s = requests.Session()
@@ -65,6 +110,12 @@ class SoundCloudClient:
         self.delay = request_delay
         self.net_down = False
         self._lib = None  # soundcloud-v2-Lib, nur für Reposts/Likes der Referenz-Accounts
+
+    def get_client_id(self) -> str:
+        """Gibt die client_id zurück; ermittelt sie bei Bedarf aus dem Frontend."""
+        self._ensure_client_id()
+        assert self.client_id is not None
+        return self.client_id
 
     @property
     def lib(self):
