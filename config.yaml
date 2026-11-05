@@ -236,6 +236,12 @@ health:
   # Standard: 36 Stunden (1,5 Tage), damit ein fehlender Cron-Lauf erkannt wird.
   max_hours_since_run: 36
 
+canary:
+  # Tag für die tägliche Vorab-Prüfung der SoundCloud-API (leer = erster Eintrag aus search.tags)
+  tag: ""
+  # Optionale Track-URL zum zusätzlichen Prüfen der resolve-Antwort (leer = nur Suche prüfen)
+  track_url: ""
+
 telegram:
   # Werte kommen aus Umgebungsvariablen TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID
   max_items_per_digest: 25

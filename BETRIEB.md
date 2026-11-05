@@ -21,6 +21,10 @@ statt in `AGENTS.md`, weil Antigravity Regeldateien bei 12.000 Zeichen abschneid
 - **Worker-Sandbox** (eigener Container für Coding-Agenten, nicht der sc-digger-Server):
   Einrichtung und Betrieb stehen in einem separaten, privaten Repository.
 - **Testlauf ohne Nebenwirkungen:** `docker compose exec sc-digger python -m sc_digger.main --dry-run --no-telegram -v`
+- **API-Kanarienvogel manuell testen:** `docker compose exec sc-digger python -m sc_digger.canary --no-telegram`
+  - Exit 0: Alles gut, SoundCloud-API-Schema vollständig.
+  - Exit 1: Format-Abweichung! Fehlende Felder werden ausgegeben und lösen Health-Alarm `api_schema` aus → `_to_track` in `sc_digger/soundcloud.py` prüfen.
+  - Exit 3: Netzwerk- oder SoundCloud-Verbindungsfehler (kein Health-Eintrag).
 
 ## Zugangsdaten setzen
 

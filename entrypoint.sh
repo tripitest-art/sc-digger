@@ -43,6 +43,12 @@ if [ -f /etc/cron.d/sc-digger ] && ! grep -q "sc_digger.backup run" /etc/cron.d/
     install_crontab
 fi
 
+# Täglicher API-Kanarienvogel (07:15, vor dem discover-Lauf)
+if [ -f /etc/cron.d/sc-digger ] && ! grep -q "sc_digger.canary" /etc/cron.d/sc-digger; then
+    echo "15 7 * * * . /app/cron.env; cd /app && python -m sc_digger.canary >> /proc/1/fd/1 2>&1" >> /etc/cron.d/sc-digger
+    install_crontab
+fi
+
 cron
 
 # Web-Oberfläche nur, wenn ein Passwort gesetzt ist (Standard: aus)
