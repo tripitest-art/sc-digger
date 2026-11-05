@@ -20,10 +20,10 @@ def _rec(path: str, bpm: float, camelot: str, **kw) -> TrackRecord:
 
 
 def test_has_migration_16():
-    """Migration 16 ist als letzter Eintrag registriert und valide."""
-    assert MIGRATIONS[-1][0] == 16
-    assert MIGRATIONS[-1][1] == "0016_tracks_analysis_confidence"
-    assert all(col in MIGRATIONS[-1][2]
+    """Migration 16 ist registriert und valide."""
+    m16 = next(m for m in MIGRATIONS if m[0] == 16)
+    assert m16[1] == "0016_tracks_analysis_confidence"
+    assert all(col in m16[2]
                for col in ("bpm_confidence", "key_confidence", "key_margin"))
 
 

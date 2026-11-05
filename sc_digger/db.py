@@ -418,6 +418,19 @@ MIGRATIONS: list[tuple[int, str, str]] = [
         "ALTER TABLE tracks ADD COLUMN key_confidence REAL; "
         "ALTER TABLE tracks ADD COLUMN key_margin REAL;",
     ),
+    (
+        17,
+        "0017_availability_watch",
+        """
+        CREATE TABLE IF NOT EXISTS availability_watch (
+            sc_id INTEGER PRIMARY KEY,
+            first_checked TEXT NOT NULL,
+            last_checked TEXT NOT NULL,
+            last_kind TEXT NOT NULL,
+            available_at TEXT
+        );
+        """,
+    ),
 ]
 
 # Erlaubte Werte in ``match_overrides.override_type``: die Handkorrektur ersetzt den

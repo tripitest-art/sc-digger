@@ -91,3 +91,20 @@ def test_cron_env_behaelt_eigenen_pfad(tmp_path):
     proc = _run(script_path, env)
     assert proc.returncode == 0, proc.stderr
     assert _config_local_via_cron_env(tmp_path) == "/custom/local.yaml"
+
+
+def test_entrypoint_cron_installs_watch_job_once(tmp_path):
+    """entrypoint.sh trägt den Verfügbarkeits-Wächter (Sonntag 19:00) genau einmal ein."""
+    script_path, env, _marker = _prepare(tmp_path, crontab_text="#!/bin/sh\nexit 0\n")
+    proc1 = _run(script_path, env)
+    assert proc1.returncode == 0, proc1.stderr
+
+    # Zweiter Lauf simuliert Neustart des Containers
+    proc2 = _run(script_path, env)
+    assert proc2.returncode == 0, proc2.stderr
+
+    cron_file = tmp_path / "sc-digger"
+    content = cron_file.read_text(encoding="utf-8")
+    assert "0 19 * * 0" in content
+    assert "python -m sc_digger.watch" in content
+    assert content.count("python -m sc_digger.watch") == 1

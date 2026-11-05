@@ -230,6 +230,8 @@ Alle Optionen stehen in `config.yaml`; die folgende Liste nennt die Werte aus di
 | `digest.stats_chart` | Balkendiagramm zum Wochen-Digest | `false` |
 | `digest.trend_radar` | Trend-Abschnitt (Trending Artists / Top-Tracks) im Wochen-Digest | `true` |
 | `digest.trend_radar_days` | Zeitfenster der Trend-Berechnung in Tagen | `7` |
+| `watch.enabled` | Wöchentlichen Verfügbarkeits-Wächter aktivieren | `true` |
+| `watch.max_age_days` | Maximales Alter von 👍-Kandidaten in Tagen (0 = unbegrenzt) | `180` |
 | `scout.bandcamp.feeds` | URLs für Bandcamp-RSS-Feeds von Labels und Artists | `[]` |
 | `scout.beatport.charts` | URLs für Beatport-Charts | `[]` |
 
@@ -336,6 +338,20 @@ Der zweite Mechanismus ist der Container-Healthcheck (`sc_digger.healthcheck`): 
 - **Atomarer Tagesordner & Rotation:** Sicherungen liegen unter `backup.target_dir/<JJJJ-MM-TT>/` (zuerst in `.<JJJJ-MM-TT>.tmp` geschrieben, dann atomar umbenannt). Alte Stände werden rotiert (`keep_daily`: Standard 7 tägliche, `keep_weekly`: Standard 4 wöchentliche Stände).
 - **Alarmierung (Regel 7):** Bei Fehlern schlägt der Lauf fehl (Exit 1) und schickt einen Alarm per Telegram (`🚨 sc-digger: Sicherung fehlgeschlagen ...`). Ist `backup.target_dir` leer, ist die Sicherung deaktiviert (Exit 2, kein Alarm).
 - **Wiederherstellung:** `python -m sc_digger.backup restore <sicherung.sqlite> <ziel.sqlite> [--force]` prüft die Sicherung vor dem Schreiben und stellt sie wieder her. Mit `--force` wird die bisherige Datei vorher als `.vor-restore` gesichert und alte `-wal`/`-shm`-Dateien werden entfernt.
+
+### Verfügbarkeits-Wächter
+
+`sc_digger.watch` läuft sonntags um 19:00 Uhr per Cron (`entrypoint.sh`) oder manuell:
+
+```bash
+python -m sc_digger.watch [--dry-run] [--no-telegram] [--max-age-days N]
+```
+
+Der Wächter prüft alle mit 👍 bewerteten Tracks (`sc_feedback.value = 'like'`), die nicht lokal in der Track-DB vorliegen (`sc_id NOT IN tracks`), auf neu freigeschaltete Original-Downloads oder Free-Download-Gates.
+
+- **Status-Erfassung (Migration 17):** In `availability_watch` wird der Verlauf (`first_checked`, `last_checked`, `last_kind`, `available_at`) festgehalten.
+- **Benachrichtigung (Regel 7):** Sobald ein bisher nicht ladbarer Track verfügbar wird (`NONE` → `DIRECT` / `HYPEDDIT` / etc.), sendet der Wächter eine Telegram-Nachricht („🎉 Jetzt verfügbar“) mit Track-Link und ggf. Gate-Link.
+- **Altersgrenze:** `watch.max_age_days` (Standard `180` Tage) begrenzt die Kandidatenmenge; Tracks, die beim ersten Prüflauf bereits ladbar waren, werden erfasst, aber nicht als Neuerung gemeldet.
 
 ### Rekordbox
 

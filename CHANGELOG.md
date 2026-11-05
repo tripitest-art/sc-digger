@@ -8,6 +8,7 @@ unter „Unreleased“ (Regeln: `AGENTS.md`, Abschnitt „Doku und Changelog“)
 ## Unreleased
 
 ### Hinzugefügt
+- Verfügbarkeits-Wächter: `sc_digger.watch` prüft mit 👍 bewertete Tracks ohne lokalen Download wöchentlich auf SoundCloud api-v2 nach neu verfügbaren Originalen oder Free-Download-Gates, erfasst den Verlauf in Migration 17 (`availability_watch`), alarmiert bei Fehlern (Health-Modus `watch`) und meldet Statuswechsel einmalig via Telegram; Cron-Lauf sonntags um 19:00 Uhr und CLI (`python -m sc_digger.watch`) (#476).
 - BPM-/Key-Sicherheit in der Track-DB: Migration 16 legt `bpm_confidence`, `key_confidence` und `key_margin` in `tracks` an; `finish_file` speichert die Analyse-Konfidenzen beim Persistieren mit; der Set-Builder liest sie in `Entry`-Objekte ein und kann unsichere Tracks per `avoid_uncertain=True` meiden (#453).
 
 ### Sicherheit
