@@ -19,10 +19,12 @@ import logging
 import random
 import re
 import sys
+import time
+from contextlib import ExitStack
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 from zoneinfo import ZoneInfo
 
 from .analysis import analyze_track, resolve_bpm
@@ -47,6 +49,7 @@ from .pipeline import (classify_download, dedupe, estimate_bpm, filter_bpm, filt
                        genre_relevant, mark_sets, score_tracks)
 from .rekordbox import import_configured_xml, write_rekordbox_xml
 from .retry import RetryQueue
+from .runlock import RunLockBusy, run_lock
 from .scout.bandcamp import fetch_bandcamp_feeds
 from .scout.beatport import fetch_beatport_charts
 from .soundcloud import ClientIdError, RateLimitError, SoundCloudClient, SoundCloudError
@@ -814,6 +817,52 @@ def _discover(cfg: Config, dry_run: bool, no_telegram: bool) -> int:
     return raw_found
 
 
+# ------------------------------------------------------------------ Lauf-Sperre
+# Nur lesende Modi brauchen keine Sperre; sie dürfen neben einem laufenden discover starten.
+LOCK_FREE_MODES = frozenset({"stats"})
+
+
+def run_locked(cfg: Config, mode: str, fn: Callable[[], None], *, no_telegram: bool = False,
+               sleep: Callable[[float], None] = time.sleep,
+               clock: Callable[[], float] = time.monotonic) -> bool:
+    """Führt fn unter der Lauf-Sperre aus (Issue #455). True: fn lief. False: Sperre blieb belegt.
+
+    Die Sperre liegt neben der State-DB (Verzeichnis von state.db_path); gewartet wird höchstens
+    state.lock_wait_s Sekunden (Standard 1800) in 5-s-Schritten. Ein discover, der nicht laufen
+    durfte, zählt im Health-Protokoll als gescheiterter Lauf, damit der Ausfall sichtbar wird
+    (Regel 7). Lässt sich die Sperre gar nicht anlegen (kein state.db_path, /data nicht
+    beschreibbar, z. B. bei Tests mit der echten config.yaml), läuft fn mit Warnung ohne Sperre.
+    """
+    if mode in LOCK_FREE_MODES:
+        fn()
+        return True
+    state_cfg = cfg.raw.get("state") or {}
+    if not state_cfg.get("db_path"):
+        log.warning("Lauf-Sperre nicht verfügbar (state.db_path fehlt), Lauf ohne Sperre")
+        fn()
+        return True
+    lock_dir = Path(state_cfg["db_path"]).parent
+    wait_s = float(state_cfg.get("lock_wait_s", 1800))
+    try:
+        with ExitStack() as stack:
+            try:
+                stack.enter_context(run_lock(lock_dir, mode, wait_s=wait_s, poll_s=5.0,
+                                             sleep=sleep, clock=clock))
+            except OSError as e:
+                # Nur Fehler beim Anlegen der Sperre landen hier, nicht Fehler aus fn.
+                log.warning("Lauf-Sperre nicht verfügbar (%s), Lauf ohne Sperre", type(e).__name__)
+            fn()
+    except RunLockBusy as e:
+        log.error("Lauf übersprungen (%s): %s", mode, e)
+        if mode == "discover":
+            threshold = cfg.raw.get("health", {}).get("alert_after_bad_runs", 2)
+            with Health(cfg["state"]["db_path"]) as health:
+                health.record("discover", ok=False, found=0, error=str(e))
+                _notify_health(cfg, health.evaluate("discover", threshold), no_telegram)
+        return False
+    return True
+
+
 # ------------------------------------------------------------------ Modus: playlist
 def run_playlist(cfg: Config, url: str, likes: bool, dry_run: bool, no_telegram: bool) -> None:
     """Playlist prüfen: KEIN Genre-/Score-Filter, nur Sammlungsabgleich + Download-Weg.
@@ -1124,7 +1173,7 @@ def cli() -> None:
     a = ap.parse_args()
     install_redacting_logging(logging.DEBUG if a.verbose else logging.INFO)
     cfg = Config.load(a.config)
-    try:
+    def dispatch() -> None:
         if a.mode == "playlist":
             run_playlist(cfg, a.url, a.likes, a.dry_run, a.no_telegram)
         elif a.mode == "similar":
@@ -1168,6 +1217,11 @@ def cli() -> None:
             run_embed_backfill(cfg, labeled_only=not a.all, limit=a.limit, dry_run=a.dry_run)
         else:
             run_discover(cfg, a.dry_run, a.no_telegram)
+
+    try:
+        # Schreibende Modi laufen nie parallel (Issue #455); 75 = EX_TEMPFAIL, „später nochmal“.
+        if not run_locked(cfg, a.mode or "discover", dispatch, no_telegram=a.no_telegram):
+            sys.exit(75)
     except Exception:
         # Über logging statt Python-Standard-Traceback: nur so greift die Token-Bereinigung
         log.exception("Lauf fehlgeschlagen")

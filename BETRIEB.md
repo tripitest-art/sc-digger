@@ -9,6 +9,8 @@ statt in `AGENTS.md`, weil Antigravity Regeldateien bei 12.000 Zeichen abschneid
   „sc-digger“. Fehlt beides: Stephan fragen, nicht raten. SSH-Schlüssel je Sitzung, nie im Repo.
 - **Mounts:** `/music/Schranz` (Sammlung, **ro**), `/music/inbox` (Downloads), beide NFS vom NAS.
 - **Zeitplan:** täglich 06:45 Übernommen-Abgleich (`audit --check-adopted`) und 07:30 `discover` per Cron im Container; Bot läuft dauerhaft.
+  Schreibende Läufe warten aufeinander (Lauf-Sperre `/data/pipeline.lock`, höchstens `state.lock_wait_s` = 1800 s).
+  Exit-Code 75 heißt: Sperre blieb belegt, Lauf übersprungen. Wer sie hält: `docker compose exec sc-digger cat /data/pipeline.lock`.
 - **Zugangsdaten** in `/root/sc-digger/.env`, nur über `./set-secret.sh NAME` setzen:
   `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `SOUNDCLOUD_AUTH_TOKEN`.
 - **Logs:** `docker compose logs --tail 50` · **Health:** Tabelle `runs` in `/data/seen.sqlite`.

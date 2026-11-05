@@ -42,6 +42,7 @@ Modul anlegt, trägt es in die Tabelle ein.
 | `sc_digger/healthcheck.py` | Container-Healthcheck: Cron, letzter Lauf, DB-Integrität |
 | `sc_digger/autodeploy.py` | Auto-Deploy per systemd-Timer auf dem Host: neuen `main`-Stand von `update.sh` ausrollen, Healthcheck prüfen, bei Fehlschlag automatisch zurückrollen; Einrichtung in `BETRIEB.md` |
 | `sc_digger/redact.py` | Zugangsdaten aus Texten und Logs entfernen |
+| `sc_digger/runlock.py` | Lauf-Sperre (Issue #455): `run_lock` (`fcntl.flock` auf `<Verzeichnis von state.db_path>/pipeline.lock`, Halter als JSON in der Datei, Wartezeit in Schritten), `read_holder`, `busy_text`, `RunLockBusy`; `main.run_locked` führt alle schreibenden CLI-Modi darüber aus (`LOCK_FREE_MODES` = `stats`), belegt → Exit-Code 75 |
 | `sc_digger/scout/bandcamp.py` | Bandcamp-RSS-Scout: liest Label- und Artist-Feeds und erzeugt Kaufempfehlungen (`DownloadKind.STORE`) in `store_items` |
 | `sc_digger/scout/beatport.py` | Beatport-Chart-Scout: scraped Top-100-Genre-Charts und erzeugt Kaufempfehlungen (`DownloadKind.STORE`) in `store_items` |
 | `sc_digger/web/status.py` | Statusseite (Phase 5): `collect_status` liest Läufe, Health-Alarm, Inbox-Größe und Wochenstatistik nur lesend zusammen; dazu die Job-Queue der KI-Workstation (`jobs`-Tabelle: Zähler je Status, jüngstes `updated_at` als Lebenszeichen, „Workstation aktiv“ bei laufendem Job mit Heartbeat binnen 300 s) |
