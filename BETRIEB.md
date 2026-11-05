@@ -38,6 +38,19 @@ SoundCloud lässt OAuth-Tokens gelegentlich ablaufen. Meldet der tägliche Lauf 
 2. Auf dem Server `./set-secret.sh SOUNDCLOUD_AUTH_TOKEN` ausführen und den neuen Token einfügen.
 3. Beim nächsten Lauf prüft der Guard den neuen Token und sendet automatisch die Entwarnung (`✅ sc-digger: sc_login läuft wieder`).
 
+**Speicherplatz-Wächter (`disk`-Alarm):**
+Inbox, `_rejected/` und Previews belegen mit der Zeit viel Speicherplatz. Ist das Volume voll, scheitern Downloads und Tagging mitten in der Datei. Der Wächter ist standardmäßig aus (`health.min_free_gb: 0`). Auf dem Server empfiehlt sich ein Schwellenwert von mindestens 20 GB.
+
+Einschalten in der lokalen Override-Datei (z. B. `config.local.yaml`) oder über den Konfigeditor:
+```yaml
+health:
+  min_free_gb: 20
+```
+Meldet der tägliche Lauf einen Alarm `🚨 sc-digger: disk ... Speicher knapp: X GB frei, Minimum 20.0 GB ... Downloads sind pausiert, bis wieder genug Platz frei ist → Inbox und <code>_rejected</code> aufräumen`:
+1. Inbox auf dem Zielvolume prüfen und alte/übernommene Tracks oder unbrauchbare Dateien in `_rejected/` aufräumen bzw. löschen.
+2. Alternativ `health.min_free_gb` in der Konfiguration/im Konfigeditor reduzieren, falls der verbleibende Platz bewusst ausreicht.
+3. Beim nächsten Lauf misst der Wächter den freien Speicherplatz erneut; sobald wieder genug Platz frei ist, laufen Downloads normal weiter und es erfolgt automatisch eine Entwarnung (`✅ sc-digger: disk läuft wieder`).
+
 ## Update nach einem Merge in `main`
 
 ```bash
