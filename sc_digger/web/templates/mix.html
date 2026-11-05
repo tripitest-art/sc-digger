@@ -5,68 +5,6 @@
 
 {% block meta %}
 <style>
-  .filter-form .filter-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-    gap: 0.75rem;
-    align-items: end;
-  }
-  .filter-form .filter-field label {
-    font-size: 0.78rem;
-    color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    font-weight: 600;
-  }
-  .filter-form input[type=text] {
-    max-width: none;
-  }
-  .filter-actions {
-    display: flex;
-    gap: 0.75rem;
-    align-items: center;
-    margin-top: 1rem;
-  }
-  .badge {
-    display: inline-block;
-    padding: 0.15rem 0.55rem;
-    border-radius: 9999px;
-    font-size: 0.72rem;
-    font-weight: 600;
-    letter-spacing: 0.03em;
-    border: 1px solid transparent;
-    white-space: nowrap;
-  }
-  .badge-ok {
-    background-color: var(--accent-ok-bg);
-    color: var(--accent-ok);
-    border-color: rgba(16, 185, 129, 0.3);
-  }
-  .badge-warn {
-    background-color: var(--accent-warn-bg);
-    color: var(--accent-warn);
-    border-color: rgba(245, 158, 11, 0.3);
-  }
-  .badge-err {
-    background-color: var(--accent-err-bg);
-    color: var(--accent-err);
-    border-color: rgba(239, 68, 68, 0.3);
-  }
-  .badge-info {
-    background-color: rgba(59, 130, 246, 0.12);
-    color: #93c5fd;
-    border-color: rgba(59, 130, 246, 0.3);
-  }
-  .badge-purple {
-    background-color: rgba(139, 92, 246, 0.12);
-    color: #c4b5fd;
-    border-color: rgba(139, 92, 246, 0.3);
-  }
-  .badge-muted {
-    background-color: var(--bg-card-subtle);
-    color: var(--text-dim);
-    border-color: var(--border);
-  }
   .scan-row {
     display: flex;
     flex-wrap: wrap;
@@ -89,7 +27,7 @@
     color: var(--accent-err);
   }
   .set-chain td {
-    vertical-align: top;
+    vertical-align: middle;
   }
   .set-transition {
     display: flex;
@@ -102,13 +40,64 @@
     color: var(--text-dim);
     word-break: break-all;
   }
+  /* Interaktive Camelot-Matrix */
+  .camelot-picker {
+    margin: 0.85rem 0 1.1rem;
+    padding: 0.75rem 0.9rem;
+    background-color: var(--bg-card-subtle);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+  .camelot-picker-label {
+    font-size: 0.74rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    margin-bottom: 0.5rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  .camelot-row {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(36px, 1fr));
+    gap: 0.35rem;
+    margin-bottom: 0.35rem;
+  }
+  .camelot-row:last-child {
+    margin-bottom: 0;
+  }
+  .camelot-btn {
+    padding: 0.28rem 0.2rem;
+    font-family: var(--font-mono);
+    font-size: 0.76rem;
+    font-weight: 700;
+    border-radius: 5px;
+    cursor: pointer;
+    text-align: center;
+    transition: transform 0.12s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+  }
+  .camelot-btn:hover {
+    transform: translateY(-1px);
+  }
+  .camelot-btn.selected {
+    box-shadow: 0 0 0 2px #fff, 0 0 12px rgba(59, 130, 246, 0.6);
+    transform: scale(1.06);
+  }
+  .camelot-btn.compatible {
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.55);
+  }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="card" id="set-builder">
   <div class="card-header">
-    <h2 class="card-title" style="margin: 0;">Harmonischer Set-Builder</h2>
+    <h2 class="card-title" style="margin: 0;">🎛️ Harmonischer Set-Builder</h2>
+    <span class="badge badge-purple">Auto-Routing &middot; M3U8</span>
   </div>
   <p class="meta" style="margin-top: 0;">
     Tracks aus Sammlung oder Inbox zu einer harmonisch laufenden Kette sortieren: gleicher
@@ -145,18 +134,19 @@
     </div>
   </form>
   <p id="sb-message" class="scan-status" role="status" aria-live="polite"></p>
-  <div id="sb-result"></div>
+  <div id="sb-result" class="table-scroll"></div>
 </div>
 
 <div class="card">
   <div class="card-header">
-    <h2 class="card-title" style="margin: 0;">Harmonic Mix Finder</h2>
+    <h2 class="card-title" style="margin: 0;">🧭 Harmonic Mix Finder</h2>
+    <span class="badge badge-info">Camelot-Wheel</span>
   </div>
   <p class="meta" style="margin-top: 0;">
     Harmoniös passende Tracks aus der Sammlung: gleiche Tonart oder Nachbar im Camelot-Rad
     innerhalb der BPM-Toleranz. Rein lesend, die Sammlung bleibt unberührt.
   </p>
-  <details class="info-toggle" style="margin-top: 0.75rem; margin-bottom: 1rem;">
+  <details class="info-toggle" style="margin-top: 0.75rem; margin-bottom: 0.85rem;">
     <summary>ℹ️ DJ-Guide: Camelot-Rad &amp; Harmonische Übergänge</summary>
     <div class="info-toggle-content">
       <div style="font-weight: 600; color: var(--text-main); margin-bottom: 0.35rem;">Harmonisches Mixing im Überblick:</div>
@@ -168,6 +158,31 @@
       </ul>
     </div>
   </details>
+
+  <!-- Interaktive Camelot-Schnellauswahl -->
+  <div class="camelot-picker">
+    <div class="camelot-picker-label">
+      <span>Camelot-Rad Schnellwahl (Klick übernimmt Tonart)</span>
+      <span id="camelot-compat-hint" class="mono" style="text-transform: none; color: #93c5fd;"></span>
+    </div>
+    <div class="table-scroll">
+      <div class="camelot-row">
+        {% for n in range(1, 13) %}
+        {% set k = n ~ 'A' %}
+        <button type="button" class="camelot-pill camelot-btn {% if key | upper == k %}selected{% endif %}"
+                data-camelot="{{ k }}" onclick="selectCamelotKey('{{ k }}')">{{ k }}</button>
+        {% endfor %}
+      </div>
+      <div class="camelot-row">
+        {% for n in range(1, 13) %}
+        {% set k = n ~ 'B' %}
+        <button type="button" class="camelot-pill camelot-btn {% if key | upper == k %}selected{% endif %}"
+                data-camelot="{{ k }}" onclick="selectCamelotKey('{{ k }}')">{{ k }}</button>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
   <form class="filter-form" method="get" action="/mix">
     <div class="filter-grid">
       <div class="filter-field">
@@ -199,9 +214,10 @@
   {% if searched and not error %}
     {% if candidates %}
     <p class="meta" style="margin-top: 1.25rem;">
-      {{ candidates|length }} Treffer für <span class="mono">{{ key }}</span>
+      {{ candidates|length }} Treffer für <span class="camelot-pill" data-camelot="{{ key | upper }}">{{ key }}</span>
       bei {{ bpm }} BPM (±{{ tol or '3' }}).
     </p>
+    <div class="table-scroll">
     <table>
       <thead>
         <tr>
@@ -215,15 +231,20 @@
       <tbody>
         {% for c in candidates %}
         <tr>
-          <td>{{ c.artist or "—" }}</td>
+          <td style="font-weight: 600;">{{ c.artist or "—" }}</td>
           <td><strong>{{ c.title or "—" }}</strong></td>
           <td class="mono">{{ "%.1f"|format(c.bpm) if c.bpm is not none else "—" }}</td>
-          <td class="mono">{{ c.key_camelot or "—" }}</td>
-          <td class="mono" style="font-size: 0.78rem;">{{ c.path }}</td>
+          <td class="mono">
+            {% if c.key_camelot %}
+            <span class="camelot-pill" data-camelot="{{ c.key_camelot }}">{{ c.key_camelot }}</span>
+            {% else %}—{% endif %}
+          </td>
+          <td class="mono" style="font-size: 0.78rem; color: var(--text-dim);">{{ c.path }}</td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
+    </div>
     {% else %}
     <p class="meta" style="margin-top: 1.25rem;">
       Keine passenden Tracks in der Sammlung gefunden.
@@ -239,7 +260,8 @@
 
 <div class="card">
   <div class="card-header">
-    <h2 class="card-title" style="margin: 0;">SoundCloud-Link prüfen</h2>
+    <h2 class="card-title" style="margin: 0;">🔗 SoundCloud-Link prüfen</h2>
+    <span class="badge badge-muted">Read-Only Scanner</span>
   </div>
   <p class="meta" style="margin-top: 0;">
     Track-Link → Track-Station, Playlist-Link → enthaltene Tracks. Rein lesend: nichts wird
@@ -251,6 +273,7 @@
     <button type="button" id="scan-button" onclick="checkUrl()">Prüfen</button>
   </div>
   <p id="scan-status" class="scan-status" role="status" aria-live="polite"></p>
+  <div class="table-scroll">
   <table>
     <thead>
       <tr>
@@ -264,8 +287,54 @@
     </thead>
     <tbody id="scan-rows"></tbody>
   </table>
+  </div>
 </div>
 <script>
+  // Camelot-Schnellwahl: markiert ausgewählte Tonart und harmonische Nachbarn.
+  function selectCamelotKey(k) {
+    const input = document.getElementById('f-key');
+    if (input) {
+      input.value = k;
+    }
+    const bpmInput = document.getElementById('f-bpm');
+    if (bpmInput && !bpmInput.value.trim()) {
+      bpmInput.value = '155';
+    }
+    highlightCamelotNeighbors(k);
+  }
+
+  function highlightCamelotNeighbors(rawKey) {
+    const m = /^(\d{1,2})([ABab])$/.exec((rawKey || '').trim());
+    const buttons = document.querySelectorAll('.camelot-btn');
+    const hint = document.getElementById('camelot-compat-hint');
+    buttons.forEach((b) => {
+      b.classList.remove('selected', 'compatible');
+    });
+    if (!m) {
+      if (hint) { hint.textContent = ''; }
+      return;
+    }
+    const num = parseInt(m[1], 10);
+    const letter = m[2].toUpperCase();
+    if (num < 1 || num > 12) { return; }
+    const exact = num + letter;
+    const prev = ((num + 10) % 12 + 1) + letter;
+    const next = (num % 12 + 1) + letter;
+    const rel = num + (letter === 'A' ? 'B' : 'A');
+    const compat = new Set([prev, next, rel]);
+    buttons.forEach((b) => {
+      const bk = b.getAttribute('data-camelot');
+      if (bk === exact) {
+        b.classList.add('selected');
+      } else if (compat.has(bk)) {
+        b.classList.add('compatible');
+      }
+    });
+    if (hint) {
+      hint.textContent = 'Kompatibel zu ' + exact + ': ' + [exact, prev, next, rel].join(' · ');
+    }
+  }
+
   // On-Demand-Link-Check (Issue #231). Titel und Artist kommen von SoundCloud und sind damit
   // fremder Text – die Zeilen werden deshalb per DOM/textContent gebaut, nie per innerHTML.
   const KIND_BADGES = {
@@ -504,7 +573,15 @@
       row.appendChild(titleCell);
 
       row.appendChild(makeCell(track.bpm !== null ? String(track.bpm) : '—'));
-      row.appendChild(makeCell(track.camelot || '—'));
+      if (track.camelot) {
+        const keyPill = document.createElement('span');
+        keyPill.className = 'camelot-pill';
+        keyPill.setAttribute('data-camelot', track.camelot);
+        keyPill.textContent = track.camelot;
+        row.appendChild(makeCell(keyPill));
+      } else {
+        row.appendChild(makeCell('—'));
+      }
       row.appendChild(makeCell(makeSetTransition(index > 0 ? transitions[index - 1] : null)));
       body.appendChild(row);
     });
@@ -555,6 +632,11 @@
   }
 
   document.addEventListener('DOMContentLoaded', () => {
+    const keyInput = document.getElementById('f-key');
+    if (keyInput) {
+      highlightCamelotNeighbors(keyInput.value);
+      keyInput.addEventListener('input', () => highlightCamelotNeighbors(keyInput.value));
+    }
     const input = document.getElementById('url-input');
     if (!input) { return; }
     input.addEventListener('keydown', (event) => {

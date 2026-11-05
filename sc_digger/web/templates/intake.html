@@ -6,33 +6,46 @@
 {% block meta %}
 <style>
   .upload-zone {
-    padding: 2.5rem 1.5rem;
-    border: 2px dashed var(--border);
-    border-radius: 8px;
-    background-color: var(--bg-card-subtle);
+    padding: 2.75rem 1.75rem;
+    border: 2px dashed rgba(99, 102, 241, 0.35);
+    border-radius: var(--radius-md);
+    background: linear-gradient(180deg, rgba(22, 28, 40, 0.7), rgba(16, 20, 29, 0.9));
     text-align: center;
     color: var(--text-muted);
     cursor: pointer;
-    transition: border-color 0.15s ease, background-color 0.15s ease;
+    transition: border-color 0.18s ease, background-color 0.18s ease, transform 0.15s ease;
   }
   .upload-zone:hover,
   .upload-zone:focus-visible {
     border-color: var(--accent-primary);
     color: var(--text-main);
     outline: none;
+    transform: translateY(-1px);
   }
   .upload-zone.dragover {
     border-color: var(--accent-primary);
-    background-color: rgba(59, 130, 246, 0.12);
+    background: rgba(59, 130, 246, 0.14);
     color: var(--text-main);
   }
   .upload-zone.busy {
     opacity: 0.6;
     cursor: progress;
   }
+  .upload-icon {
+    font-size: 2.1rem;
+    margin-bottom: 0.5rem;
+    display: block;
+  }
+  .pipeline-steps {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin: 0.85rem 0 1.25rem;
+  }
   .upload-actions {
     margin-top: 1rem;
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 1rem;
   }
@@ -40,19 +53,22 @@
     padding: 0.75rem 1rem;
     border-radius: 6px;
     margin-bottom: 1rem;
-    font-weight: 500;
+    font-weight: 600;
   }
   .results-summary.ok {
     background-color: rgba(16, 185, 129, 0.15);
     color: var(--accent-ok);
+    border: 1px solid rgba(16, 185, 129, 0.3);
   }
   .results-summary.warn {
     background-color: rgba(245, 158, 11, 0.15);
     color: var(--accent-warn);
+    border: 1px solid rgba(245, 158, 11, 0.3);
   }
   .results-summary.err {
     background-color: rgba(239, 68, 68, 0.15);
     color: var(--accent-err);
+    border: 1px solid rgba(239, 68, 68, 0.3);
   }
   .result-list {
     list-style: none;
@@ -88,30 +104,37 @@
 {% block content %}
 <div class="card">
   <div class="card-header">
-    <h2 class="card-title" style="margin: 0;">Dateien in die Inbox hochladen</h2>
+    <h2 class="card-title" style="margin: 0;">⬆️ Dateien in die Inbox hochladen</h2>
+    <a href="/tracks?status=inbox" class="btn-page" style="font-size: 0.8rem;">📥 Zur Inbox &rarr;</a>
   </div>
-  <p class="meta" style="margin-top: 0.5rem;">
+  <p class="meta" style="margin-top: 0;">
     Audiodateien nach einem Download-Gate (Hypeddit, Droploud, …) oder Kauf hier ablegen.
     Mehrere Dateien können gleichzeitig ausgewählt oder per Drag &amp; Drop abgelegt werden.
-    Jede Datei läuft durch dieselbe Pipeline wie der tägliche Lauf: Format- und Fake-Check,
-    BPM/Key-Analyse, Tagging und Sortierung in die Inbox.
+    Jede Datei durchläuft automatisch die vollständige Qualitäts- und Mastering-Pipeline:
   </p>
+  <div class="pipeline-steps">
+    <span class="badge badge-info">1. FFT-Spektrum &amp; Clipping-Check</span>
+    <span class="badge badge-purple">2. Chromaprint Duplikat-Abgleich</span>
+    <span class="badge badge-ok">3. −8.5 LUFS Normalisierung</span>
+    <span class="badge badge-muted">4. BPM, Camelot-Key &amp; Auto-Cues</span>
+  </div>
 
   <form id="upload-form" action="/api/upload-intake" method="post" enctype="multipart/form-data">
     <div id="upload-zone" class="upload-zone" role="button" tabindex="0"
          aria-label="Audiodateien in die Inbox hochladen">
-      <strong>Audiodateien hierher ziehen</strong>
-      <div class="meta" style="font-size: 0.85rem; margin-top: 0.4rem;">
-        oder klicken zum Auswählen · wav, aiff, aif, flac, mp3, m4a (Mehrfachauswahl möglich)
+      <span class="upload-icon" aria-hidden="true">📂</span>
+      <strong style="font-size: 1.05rem; color: var(--text-main);">Audiodateien hierher ziehen</strong>
+      <div class="meta" style="font-size: 0.84rem; margin-top: 0.35rem;">
+        oder klicken zum Auswählen &middot; <span class="mono">wav, aiff, aif, flac, mp3, m4a</span> (Mehrfachauswahl möglich)
       </div>
       <input type="file" id="upload-input" name="files" multiple
              accept=".wav,.aiff,.aif,.flac,.mp3,.m4a,audio/*" style="display: none;">
     </div>
 
     <div class="upload-actions">
-      <button type="submit" id="upload-btn">Hochladen</button>
-      <span id="file-info" class="meta"></span>
-      <p id="upload-status" class="upload-status" role="status" aria-live="polite"></p>
+      <button type="submit" id="upload-btn">Hochladen &amp; Prüfen</button>
+      <span id="file-info" class="meta mono"></span>
+      <p id="upload-status" class="upload-status" role="status" aria-live="polite" style="margin: 0;"></p>
     </div>
   </form>
 
@@ -130,7 +153,7 @@
           <span class="meta" style="margin-left: 0.5rem;">{{ r.message or r.status }}</span>
         </div>
         {% if r.bpm %}
-        <span class="meta">[{{ r.key_camelot }} · {{ r.bpm }} BPM]</span>
+        <span class="meta mono">[{{ r.key_camelot }} &middot; {{ r.bpm }} BPM]</span>
         {% endif %}
       </li>
       {% endfor %}
@@ -252,7 +275,7 @@
 
           if (r.bpm) {
             const bpmSpan = document.createElement('span');
-            bpmSpan.className = 'meta';
+            bpmSpan.className = 'meta mono';
             bpmSpan.textContent = '[' + (r.key_camelot || '') + ' · ' + r.bpm + ' BPM]';
             li.appendChild(bpmSpan);
           }

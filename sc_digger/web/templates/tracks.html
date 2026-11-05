@@ -9,115 +9,123 @@
     display: flex;
     flex-wrap: wrap;
     justify-content: space-between;
-    align-items: baseline;
-    gap: 0.75rem;
-  }
-  .filter-form .filter-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-    gap: 0.75rem;
-    align-items: end;
-  }
-  .filter-form .filter-field label {
-    font-size: 0.78rem;
-    color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    font-weight: 600;
-  }
-  .filter-form input[type=text],
-  .filter-form select {
-    max-width: none;
-  }
-  .filter-actions {
-    display: flex;
-    gap: 0.75rem;
     align-items: center;
-    margin-top: 1rem;
-  }
-  .badge {
-    display: inline-block;
-    padding: 0.15rem 0.55rem;
-    border-radius: 9999px;
-    font-size: 0.72rem;
-    font-weight: 600;
-    letter-spacing: 0.03em;
-    border: 1px solid transparent;
-    white-space: nowrap;
-  }
-  .badge-ok {
-    background-color: var(--accent-ok-bg);
-    color: var(--accent-ok);
-    border-color: rgba(16, 185, 129, 0.3);
-  }
-  .badge-warn {
-    background-color: var(--accent-warn-bg);
-    color: var(--accent-warn);
-    border-color: rgba(245, 158, 11, 0.3);
-  }
-  .badge-err {
-    background-color: var(--accent-err-bg);
-    color: var(--accent-err);
-    border-color: rgba(239, 68, 68, 0.3);
-  }
-  .badge-info {
-    background-color: rgba(59, 130, 246, 0.12);
-    color: #93c5fd;
-    border-color: rgba(59, 130, 246, 0.3);
-  }
-  .badge-muted {
-    background-color: var(--bg-card-subtle);
-    color: var(--text-dim);
-    border-color: var(--border);
-  }
-  .feedback-group {
-    display: flex;
-    gap: 0.3rem;
-    align-items: center;
-  }
-  .feedback-btn {
-    padding: 0.15rem 0.5rem;
-    border-radius: 6px;
-    border: 1px solid var(--border);
-    background-color: var(--bg-card-subtle);
-    color: var(--text-muted);
-    font-size: 0.9rem;
-    line-height: 1.4;
-    cursor: pointer;
-  }
-  .feedback-btn:hover {
-    border-color: var(--accent-primary);
-  }
-  .feedback-btn:disabled {
-    opacity: 0.5;
-    cursor: progress;
-  }
-  .feedback-btn.active {
-    border-color: var(--accent-ok);
-    background-color: var(--accent-ok-bg);
-  }
-  .feedback-btn[data-value=dislike].active {
-    border-color: var(--accent-err);
-    background-color: var(--accent-err-bg);
-  }
-  .feedback-btn[data-value=later].active {
-    border-color: var(--accent-warn);
-    background-color: var(--accent-warn-bg);
-  }
-  .feedback-error {
-    color: var(--accent-err);
-    font-size: 0.72rem;
+    gap: 0.75rem;
   }
   .audio-preview {
-    width: 150px;
-    height: 30px;
+    width: 165px;
+    height: 32px;
+    border-radius: 6px;
+    accent-color: var(--accent-primary);
   }
-  .pager {
+  .energy-mini-bar {
+    display: inline-block;
+    width: 36px;
+    height: 5px;
+    background-color: var(--bg-input);
+    border-radius: 9999px;
+    overflow: hidden;
+    vertical-align: middle;
+    margin-left: 0.25rem;
+    border: 1px solid var(--border);
+  }
+  .energy-mini-fill {
+    display: block;
+    height: 100%;
+    background: linear-gradient(90deg, #10b981, #3b82f6);
+  }
+
+  /* Sticky Bottom DJ Deck Bar */
+  .dj-deck-bar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 60;
+    background: rgba(11, 14, 21, 0.94);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-top: 1px solid rgba(59, 130, 246, 0.4);
+    box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.65);
+    padding: 0.65rem 1.5rem;
+    transform: translateY(110%);
+    transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .dj-deck-bar.visible {
+    transform: translateY(0);
+  }
+  .dj-deck-inner {
+    max-width: 1280px;
+    margin: 0 auto;
     display: flex;
     flex-wrap: wrap;
     align-items: center;
+    justify-content: space-between;
     gap: 1rem;
-    margin-top: 1.25rem;
+  }
+  .dj-deck-info {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    min-width: 200px;
+    flex: 1 1 220px;
+  }
+  .dj-deck-title {
+    font-weight: 700;
+    font-size: 0.9rem;
+    color: var(--text-main);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 320px;
+  }
+  .dj-deck-sub {
+    font-size: 0.76rem;
+    color: var(--text-muted);
+  }
+  .dj-deck-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    flex: 2 1 340px;
+    justify-content: center;
+  }
+  .dj-deck-btn {
+    padding: 0.3rem 0.65rem;
+    font-size: 0.78rem;
+    font-family: var(--font-mono);
+    border-radius: 6px;
+    background-color: var(--bg-card-subtle);
+    border: 1px solid var(--border);
+    color: var(--text-main);
+    cursor: pointer;
+  }
+  .dj-deck-btn:hover {
+    border-color: var(--accent-primary);
+    background-color: var(--bg-card-hover);
+  }
+  .dj-deck-scrubber {
+    flex: 1;
+    max-width: 280px;
+    accent-color: var(--accent-primary);
+    cursor: pointer;
+  }
+  .dj-deck-shortcuts {
+    font-size: 0.72rem;
+    color: var(--text-dim);
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+  }
+  .kbd {
+    display: inline-block;
+    padding: 0.1rem 0.38rem;
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    background-color: var(--bg-card-subtle);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text-muted);
   }
 </style>
 {% endblock %}
@@ -132,16 +140,16 @@
         {% if total_pages > 1 %}&middot; Seite {{ page }} von {{ total_pages }}{% endif %}
       </p>
     </div>
-    <div style="display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: baseline;">
+    <div style="display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center;">
       {# Direktlink zur Quarantäne-Liste (Issue #341): abgewiesene Downloads einsehen
          und für den nächsten Lauf freigeben. #}
-      <a href="/rejected" style="font-size: 0.875rem; font-weight: 500;">⚠️ Quarantäne-Liste anzeigen (/rejected)</a>
-      <a href="/" style="font-size: 0.875rem; font-weight: 500;">&larr; Zurück zum Status</a>
+      <a href="/rejected" class="btn-page" style="font-size: 0.82rem;">⚠️ Quarantäne-Liste anzeigen (/rejected)</a>
+      <a href="/" class="btn-page" style="font-size: 0.82rem;">&larr; Zurück zum Status</a>
     </div>
   </div>
 
-  <details class="info-toggle" style="margin-top: 1rem;">
-    <summary>ℹ️ Erklärung: Track-Status &amp; Sammlung</summary>
+  <details class="info-toggle" style="margin-top: 1rem; margin-bottom: 0;">
+    <summary>ℹ️ Erklärung: Track-Status, Camelot-Farben &amp; DJ-Shortcuts</summary>
     <div class="info-toggle-content">
       <div style="font-weight: 600; color: var(--text-main); margin-bottom: 0.35rem;">Track-Status in der Datenbank:</div>
       <div class="legend-grid">
@@ -168,7 +176,15 @@
 
 <div class="card">
   <div class="card-header">
-    <h2 class="card-title" style="margin: 0;">Filter</h2>
+    <h2 class="card-title" style="margin: 0;">Filter &amp; Schnellwahl</h2>
+    <div class="quick-chips" style="margin-bottom: 0;">
+      <a href="/tracks" class="quick-chip {% if not filters.status and not filters.adopted and not filters.breakdown_max and not filters.quality %}active{% endif %}">Alle</a>
+      <a href="/tracks?status=inbox" class="quick-chip {% if filters.status == 'inbox' %}active{% endif %}">📥 Inbox (DJ-Ready)</a>
+      <a href="/tracks?status=archive" class="quick-chip {% if filters.status == 'archive' %}active{% endif %}">🏛️ Sammlung</a>
+      <a href="/tracks?adopted=1" class="quick-chip {% if filters.adopted == '1' %}active{% endif %}">⭐ Übernommen</a>
+      <a href="/tracks?breakdown_max=0.15" class="quick-chip {% if filters.breakdown_max == '0.15' %}active{% endif %}">⚡ Peaktime (&le;15% Break)</a>
+      <a href="/tracks?quality=fake_transcode" class="quick-chip {% if filters.quality == 'fake_transcode' %}active{% endif %}">🚫 Fake-Transcodes</a>
+    </div>
   </div>
   <form class="filter-form" method="get" action="/tracks">
     {% if current_sort %}<input type="hidden" name="sort" value="{{ current_sort }}">{% endif %}
@@ -243,6 +259,7 @@
 <div class="card">
   <div class="card-header">
     <h2 class="card-title" style="margin: 0;">Treffer</h2>
+    <span class="meta" style="font-size: 0.78rem;">Tipp: Beim Vorhören öffnet sich unten das DJ-Deck (<span class="kbd">Space</span> Pause, <span class="kbd">&rarr;</span> +30s Drop-Check)</span>
   </div>
   <div class="table-scroll">
   <table>
@@ -275,11 +292,15 @@
     </thead>
     <tbody>
       {% for track in tracks %}
-      <tr>
-        <td>{{ track.artist or "—" }}</td>
+      <tr data-track-row
+          data-artist="{{ track.artist or '—' }}"
+          data-title="{{ track.title or '—' }}"
+          data-bpm="{{ track.bpm if track.bpm is not none else '' }}"
+          data-key="{{ track.key_camelot or '' }}">
+        <td style="font-weight: 600;">{{ track.artist or "—" }}</td>
         <td>
-          {{ track.title or "—" }}
-          <div class="mono" style="color: var(--text-dim); font-size: 0.75rem;">{{ track.path }}</div>
+          <strong>{{ track.title or "—" }}</strong>
+          <div class="mono" style="color: var(--text-dim); font-size: 0.73rem; margin-top: 0.1rem;">{{ track.path }}</div>
           {# Kompakte Kennzahlen-Zeile (Issue #258): SoundCloud-Engagement aus track_snapshots. #}
           {% if track.sc_plays is not none or track.sc_likes is not none %}
           <div class="meta" style="font-size: 0.72rem; margin-top: 0.2rem;">
@@ -287,26 +308,33 @@
           </div>
           {% endif %}
           {% if track.rb_play_count and track.rb_play_count > 0 %}
-          <span class="badge badge-info" style="margin-top: 0.2rem;">🎧 {{ track.rb_play_count }}x im Set</span>
+          <span class="badge badge-info" style="margin-top: 0.25rem;">🎧 {{ track.rb_play_count }}x im Set</span>
           {% endif %}
           {# Breakdown-Anteil aus der Strukturanalyse (Issue #334). Unter 15 % gilt der Track
              als Peaktime-Werkzeug; der Wert 0.0 ist gültig und muss deshalb "is not none". #}
           {% if track.breakdown_ratio is not none %}
+          {% set br_pct = (track.breakdown_ratio * 100) | round(0) | int %}
+          {% set drive_pct = 100 - (br_pct if br_pct <= 100 else 100) %}
           <span class="badge {% if track.breakdown_ratio < 0.15 %}badge-ok{% else %}badge-info{% endif %}"
-                style="margin-top: 0.2rem;"
+                style="margin-top: 0.25rem;"
                 title="Breakdown-Anteil{% if track.breakdown_ratio < 0.15 %} – Peaktime-Tool{% endif %}">
-            ⚡ {{ (track.breakdown_ratio * 100) | round(0) | int }}% Break{% if track.breakdown_ratio < 0.15 %} · Peaktime{% endif %}
+            ⚡ {{ br_pct }}% Break{% if track.breakdown_ratio < 0.15 %} · Peaktime{% endif %}
+            <span class="energy-mini-bar" aria-hidden="true"><span class="energy-mini-fill" style="width: {{ drive_pct }}%;"></span></span>
           </span>
           {% endif %}
         </td>
         <td class="mono">
           {{ track.format or "?" }}
-          {% if track.bitrate_kbps %}<span class="meta">{{ track.bitrate_kbps | round(0) | int }} kbps</span>{% endif %}
+          {% if track.bitrate_kbps %}<div class="meta" style="font-size: 0.72rem;">{{ track.bitrate_kbps | round(0) | int }} kbps</div>{% endif %}
         </td>
         <td class="mono">
           {% if track.bpm is not none %}{{ track.bpm }}{% else %}—{% endif %}
         </td>
-        <td class="mono">{{ track.key_camelot or "—" }}</td>
+        <td class="mono">
+          {% if track.key_camelot %}
+          <span class="camelot-pill" data-camelot="{{ track.key_camelot }}">{{ track.key_camelot }}</span>
+          {% else %}—{% endif %}
+        </td>
         <td>
           {% if track.quality_status == "ok" %}
           <span class="badge badge-ok">OK</span>
@@ -341,7 +369,7 @@
         <td>
           {% if track.adopted_at %}
           <span class="badge badge-ok">übernommen</span>
-          <div class="mono" style="color: var(--text-dim); font-size: 0.75rem;">{{ track.adopted_at }}</div>
+          <div class="mono" style="color: var(--text-dim); font-size: 0.72rem; margin-top: 0.15rem;">{{ track.adopted_at }}</div>
           {% else %}
           <span class="badge badge-muted">offen</span>
           {% endif %}
@@ -365,13 +393,13 @@
           {# Nur http/https verlinken: source_url stammt aus fremden Feeds. #}
           {% set source_href = track.source_url if track.source_url and (track.source_url.startswith("http://") or track.source_url.startswith("https://")) else "" %}
           {% if source_href %}
-          <a href="{{ source_href }}" target="_blank" rel="noopener noreferrer">SoundCloud</a>
+          <a href="{{ source_href }}" target="_blank" rel="noopener noreferrer" class="btn-page" style="padding: 0.2rem 0.5rem; font-size: 0.74rem;">SoundCloud ↗</a>
           {% else %}—{% endif %}
         </td>
       </tr>
       {% else %}
       <tr>
-        <td colspan="11" class="meta">Keine Treffer für diese Filter.</td>
+        <td colspan="11" class="meta" style="text-align: center; padding: 2rem;">Keine Treffer für diese Filter.</td>
       </tr>
       {% endfor %}
     </tbody>
@@ -379,18 +407,48 @@
   </div>
 
   <div class="pager">
-    {% if prev_url %}
-    <a class="nav-tab" href="{{ prev_url }}">&larr; Zurück</a>
-    {% endif %}
     <span class="meta">
       Seite {{ page }} von {{ total_pages }} &middot; {{ total }} Treffer &middot;
       {{ page_size }} pro Seite
     </span>
-    {% if next_url %}
-    <a class="nav-tab" href="{{ next_url }}">Weiter &rarr;</a>
-    {% endif %}
+    <div class="pager-buttons">
+      {% if prev_url %}
+      <a class="nav-tab" href="{{ prev_url }}">&larr; Zurück</a>
+      {% endif %}
+      {% if next_url %}
+      <a class="nav-tab" href="{{ next_url }}">Weiter &rarr;</a>
+      {% endif %}
+    </div>
   </div>
 </div>
+
+<!-- Sticky Bottom DJ Deck Bar -->
+<div id="dj-deck-bar" class="dj-deck-bar" aria-label="DJ Deck Player">
+  <div class="dj-deck-inner">
+    <div class="dj-deck-info">
+      <span class="brand-logo" style="width: 2rem; height: 2rem; font-size: 1rem;">🎛️</span>
+      <div>
+        <div id="deck-track-title" class="dj-deck-title">Kein Track aktiv</div>
+        <div id="deck-track-meta" class="dj-deck-sub mono">—</div>
+      </div>
+    </div>
+    <div class="dj-deck-controls">
+      <button type="button" class="dj-deck-btn" onclick="deckStepTrack(-1)" title="Vorheriger Track (K)">⏮</button>
+      <button type="button" class="dj-deck-btn" onclick="deckSeek(-15)" title="15s zurück (←)">-15s</button>
+      <button type="button" id="deck-play-btn" class="dj-deck-btn" onclick="deckTogglePlay()" title="Play/Pause (Space)">⏯</button>
+      <button type="button" class="dj-deck-btn" onclick="deckSeek(30)" title="30s vor / Drop-Check (→)">+30s</button>
+      <button type="button" class="dj-deck-btn" onclick="deckStepTrack(1)" title="Nächster Track (J)">⏭</button>
+      <input type="range" id="deck-scrubber" class="dj-deck-scrubber" min="0" max="100" value="0" step="0.5">
+      <span id="deck-time" class="mono meta" style="font-size: 0.76rem; min-width: 5.5rem;">0:00 / 0:00</span>
+    </div>
+    <div class="dj-deck-shortcuts">
+      <span><span class="kbd">Space</span> Play/Pause</span>
+      <span><span class="kbd">&larr;</span>/<span class="kbd">&rarr;</span> Skip</span>
+      <span><span class="kbd">J</span>/<span class="kbd">K</span> Track</span>
+    </div>
+  </div>
+</div>
+
 <script>
   // Bewertung ohne Seiten-Reload an POST /api/feedback (Issue #229). Bis die Antwort da ist,
   // sind die Knöpfe gesperrt, damit kein zweiter Klick eine widersprüchliche Bewertung schickt.
@@ -418,5 +476,107 @@
       buttons.forEach((b) => { b.disabled = false; });
     }
   }
+
+  // Sticky DJ Deck Controller: synchronisiert die Zeilen-Player und verhindert Doppel-Wiedergabe.
+  let activeAudio = null;
+  const deckBar = document.getElementById('dj-deck-bar');
+  const deckTitle = document.getElementById('deck-track-title');
+  const deckMeta = document.getElementById('deck-track-meta');
+  const deckScrubber = document.getElementById('deck-scrubber');
+  const deckTime = document.getElementById('deck-time');
+
+  function fmtSec(sec) {
+    if (!isFinite(sec) || sec < 0) { return '0:00'; }
+    const m = Math.floor(sec / 60);
+    const s = Math.floor(sec % 60);
+    return m + ':' + (s < 10 ? '0' : '') + s;
+  }
+
+  function bindDeckPlayers() {
+    const players = Array.from(document.querySelectorAll('audio.audio-preview'));
+    players.forEach((audio) => {
+      audio.addEventListener('play', () => {
+        players.forEach((other) => {
+          if (other !== audio && !other.paused) {
+            other.pause();
+          }
+        });
+        document.querySelectorAll('tr[data-track-row]').forEach((r) => r.classList.remove('is-playing'));
+        activeAudio = audio;
+        const row = audio.closest('tr[data-track-row]');
+        if (row) {
+          row.classList.add('is-playing');
+          deckTitle.textContent = (row.dataset.artist || '—') + ' – ' + (row.dataset.title || '—');
+          const parts = [];
+          if (row.dataset.bpm) { parts.push(row.dataset.bpm + ' BPM'); }
+          if (row.dataset.key) { parts.push('Key ' + row.dataset.key); }
+          deckMeta.textContent = parts.join(' · ') || 'Lokales Audio';
+        }
+        if (deckBar) { deckBar.classList.add('visible'); }
+      });
+
+      audio.addEventListener('timeupdate', () => {
+        if (audio !== activeAudio) { return; }
+        const cur = audio.currentTime || 0;
+        const dur = audio.duration || 0;
+        if (dur > 0) {
+          deckScrubber.value = String((cur / dur) * 100);
+        }
+        deckTime.textContent = fmtSec(cur) + ' / ' + fmtSec(dur);
+      });
+    });
+
+    if (deckScrubber) {
+      deckScrubber.addEventListener('input', () => {
+        if (activeAudio && isFinite(activeAudio.duration) && activeAudio.duration > 0) {
+          activeAudio.currentTime = (parseFloat(deckScrubber.value) / 100) * activeAudio.duration;
+        }
+      });
+    }
+  }
+
+  function deckTogglePlay() {
+    const players = Array.from(document.querySelectorAll('audio.audio-preview'));
+    const target = activeAudio || players[0];
+    if (!target) { return; }
+    if (target.paused) { target.play(); } else { target.pause(); }
+  }
+
+  function deckSeek(deltaSeconds) {
+    if (!activeAudio) { return; }
+    const next = Math.max(0, (activeAudio.currentTime || 0) + deltaSeconds);
+    activeAudio.currentTime = isFinite(activeAudio.duration) ? Math.min(activeAudio.duration, next) : next;
+  }
+
+  function deckStepTrack(direction) {
+    const players = Array.from(document.querySelectorAll('audio.audio-preview'));
+    if (!players.length) { return; }
+    const idx = activeAudio ? players.indexOf(activeAudio) : -1;
+    const nextIdx = idx === -1 ? 0 : (idx + direction + players.length) % players.length;
+    players[nextIdx].play();
+    players[nextIdx].scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    bindDeckPlayers();
+    document.addEventListener('keydown', (e) => {
+      const tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : '';
+      if (tag === 'input' || tag === 'textarea' || tag === 'select') { return; }
+      if (e.code === 'Space' && document.querySelectorAll('audio.audio-preview').length > 0) {
+        e.preventDefault();
+        deckTogglePlay();
+      } else if (e.key === 'ArrowRight' && activeAudio) {
+        e.preventDefault();
+        deckSeek(30);
+      } else if (e.key === 'ArrowLeft' && activeAudio) {
+        e.preventDefault();
+        deckSeek(-15);
+      } else if (e.key === 'j' || e.key === 'J') {
+        deckStepTrack(1);
+      } else if (e.key === 'k' || e.key === 'K') {
+        deckStepTrack(-1);
+      }
+    });
+  });
 </script>
 {% endblock %}

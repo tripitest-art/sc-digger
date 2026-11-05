@@ -9,81 +9,8 @@
     display: flex;
     flex-wrap: wrap;
     justify-content: space-between;
-    align-items: baseline;
-    gap: 0.75rem;
-  }
-  .filter-form .filter-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-    gap: 0.75rem;
-    align-items: end;
-  }
-  .filter-form .filter-field label {
-    font-size: 0.78rem;
-    color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    font-weight: 600;
-  }
-  .filter-form input[type=text],
-  .filter-form select {
-    max-width: none;
-  }
-  .filter-actions {
-    display: flex;
-    gap: 0.75rem;
     align-items: center;
-    margin-top: 1rem;
-  }
-  .feedback-group {
-    display: flex;
-    gap: 0.3rem;
-    align-items: center;
-  }
-  .feedback-btn {
-    padding: 0.15rem 0.5rem;
-    border-radius: 6px;
-    border: 1px solid var(--border);
-    background-color: var(--bg-card-subtle);
-    color: var(--text-muted);
-    font-size: 0.9rem;
-    line-height: 1.4;
-    cursor: pointer;
-  }
-  .feedback-btn:hover {
-    border-color: var(--accent-primary);
-  }
-  .feedback-btn:disabled {
-    opacity: 0.5;
-    cursor: progress;
-  }
-  .feedback-btn.active {
-    border-color: var(--accent-ok);
-    background-color: var(--accent-ok-bg);
-  }
-  .feedback-btn[data-value=dislike].active {
-    border-color: var(--accent-err);
-    background-color: var(--accent-err-bg);
-  }
-  .feedback-btn[data-value=later].active {
-    border-color: var(--accent-warn);
-    background-color: var(--accent-warn-bg);
-  }
-  .feedback-error {
-    color: var(--accent-err);
-    font-size: 0.72rem;
-  }
-  .pager {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 1rem;
-    margin-top: 1.25rem;
-  }
-  .pager-buttons {
-    display: flex;
-    gap: 0.5rem;
-    margin-left: auto;
+    gap: 0.75rem;
   }
 </style>
 {% endblock %}
@@ -99,9 +26,9 @@
         {% if total_pages > 1 %}&middot; Seite {{ page }} von {{ total_pages }}{% endif %}
       </p>
     </div>
-    <a href="/digest" style="font-size: 0.875rem; font-weight: 500;">&larr; Zum Digest</a>
+    <a href="/digest" class="btn-page" style="font-size: 0.82rem;">&larr; Zum Digest</a>
   </div>
-  <p class="meta" style="margin-bottom: 0;">
+  <p class="meta" style="margin-top: 0.6rem; margin-bottom: 0;">
     Direkt zum Kauf springen oder bewerten: 👍 landet im Reputations-Scoring,
     ⏳ merkt den Track vor, 👎 sortiert ihn aus. Die Bewertung wirkt sofort, ohne Neuladen.
   </p>
@@ -109,7 +36,14 @@
 
 <div class="card">
   <div class="card-header">
-    <h2 class="card-title" style="margin: 0;">Filter</h2>
+    <h2 class="card-title" style="margin: 0;">Filter &amp; Schnellwahl</h2>
+    <div class="quick-chips" style="margin-bottom: 0;">
+      <a href="/kaufliste" class="quick-chip {% if not filters.feedback %}active{% endif %}">Alle</a>
+      <a href="/kaufliste?feedback=none" class="quick-chip {% if filters.feedback == 'none' %}active{% endif %}">🆕 Unbewertet</a>
+      <a href="/kaufliste?feedback=like" class="quick-chip {% if filters.feedback == 'like' %}active{% endif %}">👍 Likes</a>
+      <a href="/kaufliste?feedback=later" class="quick-chip {% if filters.feedback == 'later' %}active{% endif %}">⏳ Später</a>
+      <a href="/kaufliste?feedback=dislike" class="quick-chip {% if filters.feedback == 'dislike' %}active{% endif %}">👎 Aussortiert</a>
+    </div>
   </div>
   <form class="filter-form" method="get" action="/kaufliste">
     <input type="hidden" name="limit" value="{{ page_size }}">
@@ -141,6 +75,7 @@
   <div class="card-header">
     <h2 class="card-title" style="margin: 0;">Offene Store-Tracks</h2>
   </div>
+  <div class="table-scroll">
   <table>
     <thead>
       <tr>
@@ -154,14 +89,14 @@
     <tbody>
       {% for item in items %}
       <tr>
-        <td>{{ item.artist or "—" }}</td>
+        <td style="font-weight: 600;">{{ item.artist or "—" }}</td>
         <td><strong>{{ item.title }}</strong></td>
         <td style="white-space: nowrap;">
           {# Nur http/https verlinken: purchase_url stammt aus fremden Feeds. #}
           {% set purchase_href = item.purchase_url if item.purchase_url and (item.purchase_url.startswith("http://") or item.purchase_url.startswith("https://")) else "" %}
           {% if purchase_href %}
           <a href="{{ purchase_href }}" target="_blank" rel="noopener"
-             class="btn-page" style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">
+             class="btn-page" style="padding: 0.22rem 0.6rem; font-size: 0.76rem; border-color: rgba(139, 92, 246, 0.4);">
             🛒 {{ item.purchase_title or "Kaufen" }} ↗
           </a>
           {% else %}
@@ -192,6 +127,7 @@
       {% endfor %}
     </tbody>
   </table>
+  </div>
 
   {% if total > 0 %}
   <div class="pager">
