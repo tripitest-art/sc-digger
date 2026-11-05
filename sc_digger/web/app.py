@@ -68,6 +68,7 @@ from .database import (
     heartbeat_job,
     load_tracks_for_set_builder,
     query_digest,
+    query_duplicate_groups,
     query_rejected_tracks,
     query_store_items,
     query_tracks,
@@ -898,6 +899,25 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
             prev_url=page_url(max(0, offset - page_size)) if offset > 0 else None,
             next_url=page_url(offset + page_size) if offset + page_size < result.total else None,
             match_url=match_url,
+        ))
+
+    # Duplikat-Kandidaten-Ansicht (Issue #468): Gruppen gleicher Aufnahmen per Chromaprint-Fingerprint.
+    @app.get("/api/duplicates")
+    def api_duplicates() -> JSONResponse:
+        """Gibt `{"ok": True, "total_groups": len(groups), "groups": groups}` zurück (HTTP Basic Auth, rein lesend)."""
+        track_db_path = app.state.cfg["state"]["track_db_path"]
+        groups = query_duplicate_groups(track_db_path)
+        return JSONResponse({"ok": True, "total_groups": len(groups), "groups": groups})
+
+    @app.get("/duplicates", response_class=HTMLResponse)
+    def duplicates_page() -> HTMLResponse:
+        """Rendert `duplicates.html` mit `groups` und `total_groups = len(groups)` (HTTP Basic Auth, rein lesend)."""
+        track_db_path = app.state.cfg["state"]["track_db_path"]
+        groups = query_duplicate_groups(track_db_path)
+        template = _env.get_template("duplicates.html")
+        return HTMLResponse(template.render(
+            groups=groups,
+            total_groups=len(groups),
         ))
 
     @app.get("/mix", response_class=HTMLResponse)
