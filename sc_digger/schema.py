@@ -232,6 +232,9 @@ FIELDS: tuple[Field, ...] = (
        min=1),
     _f("health.max_hours_since_run", "int", "Max. Stunden seit Lauf",
        "Alarm per Telegram auslösen, wenn der letzte discover-Lauf älter als diese Stundenzahl ist (Standard 36h).", min=1),
+    _f("health.min_free_gb", "float", "Mindest-Freispeicher Inbox (GB)",
+       "Downloads pausieren und Health-Alarm senden, wenn unter download.inbox_dir weniger als dieser Wert frei ist (0 = deaktiviert).",
+       min=0.0),
     # --- telegram ---
     _f("telegram.max_items_per_digest", "int", "Max. Digest-Einträge",
        "Höchstzahl der Tracks pro täglichem Telegram-Digest (Standard 25).", min=1),

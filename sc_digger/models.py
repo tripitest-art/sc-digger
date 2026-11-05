@@ -82,10 +82,23 @@ class Track:
 class Config:
     raw: dict[str, Any]
     _hide_auth_token: bool = False
+    _downloads_paused: bool = False
+
+    @property
+    def downloads_paused(self) -> bool:
+        return self._downloads_paused
 
     def without_auth_token(self) -> "Config":
         """Erzeugt eine neue Config mit demselben raw-Dict, deren soundcloud_auth_token None ist."""
-        return Config(self.raw, _hide_auth_token=True)
+        return Config(self.raw, _hide_auth_token=True, _downloads_paused=self._downloads_paused)
+
+    def without_downloads(self) -> "Config":
+        """Neue Config mit demselben raw-Dict (keine Kopie) und downloads_paused True.
+
+        Übernimmt alle übrigen Zustände der Ausgangs-Config (auch without_auth_token).
+        Das Original bleibt unverändert.
+        """
+        return Config(self.raw, _hide_auth_token=self._hide_auth_token, _downloads_paused=True)
 
     @classmethod
     def load(cls, path: str | Path, local: str | Path | None = None) -> "Config":
