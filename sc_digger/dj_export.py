@@ -181,6 +181,9 @@ class Entry:
         }
 
 
+TrackEntry = Entry  # Alias für Akzeptanztests / Set-Builder-Export
+
+
 def guess_artist_title(stem: str) -> tuple[str, str]:
     for sep in (" - ", " – ", " — ", "-"):
         if sep in stem:
