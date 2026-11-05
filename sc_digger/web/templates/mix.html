@@ -131,6 +131,7 @@
     <div class="filter-actions">
       <button type="submit" id="sb-run">Set berechnen &amp; optimieren</button>
       <a id="sb-download" class="btn-page" href="/api/set-builder/m3u8?name=set">💾 M3U8 herunterladen</a>
+      <button type="button" id="sb-export-xml" class="btn-page" onclick="exportSetXml()">🎛️ Rekordbox XML</button>
     </div>
   </form>
   <p id="sb-message" class="scan-status" role="status" aria-live="polite"></p>
@@ -626,6 +627,58 @@
       );
     } catch (error) {
       showSetStatus('Berechnung fehlgeschlagen: ' + error, 'err');
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  async function exportSetXml() {
+    const form = document.getElementById('set-builder-form');
+    const button = document.getElementById('sb-export-xml');
+    if (!form || !button) { return; }
+    const formData = new FormData(form);
+    const params = new URLSearchParams(formData);
+    showSetStatus('Erzeuge Rekordbox-XML …', '');
+    button.disabled = true;
+    try {
+      const payload = {
+        bpm_min: params.get('bpm_min'),
+        bpm_max: params.get('bpm_max'),
+        status: params.get('status'),
+        name: 'set',
+      };
+      const response = await fetch('/api/mix/export-xml', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!response.ok) {
+        let errText = 'HTTP ' + response.status;
+        try {
+          const errData = await response.json();
+          if (errData && errData.error) { errText = errData.error; }
+        } catch (_) {}
+        showSetStatus('XML-Export fehlgeschlagen: ' + errText, 'err');
+        return;
+      }
+      const blob = await response.blob();
+      const disposition = response.headers.get('content-disposition') || '';
+      let filename = 'set.xml';
+      const match = disposition.match(/filename="?([^";]+)"?/);
+      if (match && match[1]) {
+        filename = match[1];
+      }
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(blobUrl);
+      showSetStatus('Rekordbox-XML heruntergeladen (' + filename + ').', 'ok');
+    } catch (error) {
+      showSetStatus('XML-Export fehlgeschlagen: ' + error, 'err');
     } finally {
       button.disabled = false;
     }

@@ -8,12 +8,14 @@ Status- und Vollständigkeitsfilter der lesenden Abfrage sowie die M3U8-Ausgabe
 from __future__ import annotations
 
 from pathlib import Path
+import xml.etree.ElementTree as ET
 
 from fastapi.testclient import TestClient
 
 from sc_digger.db import TrackDB, TrackRecord
+from sc_digger.dj_export import Entry, order_harmonic
 from sc_digger.models import Config
-from sc_digger.web.app import create_app
+from sc_digger.web.app import _xml_filename, create_app, render_set_xml
 from sc_digger.web.database import load_tracks_for_set_builder
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -288,3 +290,109 @@ def test_mix_seite_trennt_auswahl_und_statusmeldung(tmp_path: Path):
     assert html.count('id="sb-message"') == 1
     assert "document.getElementById('sb-message')" in html
     assert 'for="sb-status"' in html
+
+
+def test_xml_filename_sanitization():
+    assert _xml_filename("mein set") == "mein_set.xml"
+    assert _xml_filename('Set/\\#*?"') == "Set.xml"
+    assert _xml_filename("") == "set.xml"
+    assert _xml_filename("   ") == "set.xml"
+
+
+def test_render_set_xml_empty_playlist():
+    pl = order_harmonic([])
+    xml_text = render_set_xml(pl, name="")
+    assert xml_text.startswith('<?xml version="1.0" encoding="UTF-8"?>')
+    root = ET.fromstring(xml_text)
+    assert root.tag == "DJ_PLAYLISTS"
+    coll = root.find("COLLECTION")
+    assert coll is not None and coll.attrib["Entries"] == "0"
+    assert len(coll.findall("TRACK")) == 0
+    node = root.find(".//PLAYLISTS//NODE[@Type='1']")
+    assert node is not None
+    assert node.attrib["Name"] == "set"
+    assert node.attrib["Entries"] == "0"
+
+
+def test_render_set_xml_with_path_map():
+    entries = [
+        Entry(
+            path=Path("/music/inbox/155/track.wav"),
+            artist="Artist",
+            title="Title",
+            bpm=155.0,
+            camelot="8A",
+            duration_s=180.2,
+        )
+    ]
+    pl = order_harmonic(entries)
+    path_map = {"/music/inbox": "D:/Rekordbox/Inbox"}
+    xml_text = render_set_xml(pl, name="Mapped Set", path_map=path_map)
+    root = ET.fromstring(xml_text)
+    track = root.find("./COLLECTION/TRACK")
+    assert track is not None
+    assert "D:/Rekordbox/Inbox/155/track.wav" in track.attrib["Location"]
+    assert track.attrib["AverageBpm"] == "155.00"
+    assert track.attrib["TotalTime"] == "180"
+
+
+def test_api_mix_export_xml_full_workflow(tmp_path: Path):
+    seed_tracks(tmp_path)
+    client = client_for(tmp_path)
+
+    # 401 unauth
+    unauth = client.post("/api/mix/export-xml", json={"bpm_min": 150, "bpm_max": 156})
+    assert unauth.status_code == 401
+
+    # 400 invalid json
+    bad_json = client.post(
+        "/api/mix/export-xml",
+        data="kein-json",
+        headers={"content-type": "application/json"},
+        auth=AUTH,
+    )
+    assert bad_json.status_code == 400
+    assert bad_json.json()["ok"] is False
+
+    # 400 non-dict payload
+    bad_payload = client.post("/api/mix/export-xml", json=["liste"], auth=AUTH)
+    assert bad_payload.status_code == 400
+    assert bad_payload.json()["ok"] is False
+
+    # 400 non-list track_ids
+    bad_type = client.post("/api/mix/export-xml", json={"track_ids": "1,2"}, auth=AUTH)
+    assert bad_type.status_code == 400
+    assert bad_type.json()["ok"] is False
+
+    # 400 track_ids mit bool oder float
+    bad_bool = client.post("/api/mix/export-xml", json={"track_ids": [True]}, auth=AUTH)
+    assert bad_bool.status_code == 400
+    assert bad_bool.json()["ok"] is False
+
+    bad_float = client.post("/api/mix/export-xml", json={"track_ids": [1.5]}, auth=AUTH)
+    assert bad_float.status_code == 400
+    assert bad_float.json()["ok"] is False
+
+    # 200 XML Attachment
+    resp = client.post(
+        "/api/mix/export-xml",
+        json={"bpm_min": 150.0, "bpm_max": 156.0, "status": "archive", "name": "Archive Set"},
+        auth=AUTH,
+    )
+    assert resp.status_code == 200
+    assert "application/xml" in resp.headers["content-type"]
+    assert 'filename="Archive_Set.xml"' in resp.headers["content-disposition"]
+
+    root = ET.fromstring(resp.text)
+    tracks = root.findall("./COLLECTION/TRACK")
+    assert len(tracks) >= 2
+
+    # XML Export mit leerer Filter-Auswahl
+    empty_resp = client.post(
+        "/api/mix/export-xml",
+        json={"bpm_min": 200.0, "bpm_max": 210.0},
+        auth=AUTH,
+    )
+    assert empty_resp.status_code == 200
+    empty_root = ET.fromstring(empty_resp.text)
+    assert empty_root.find("./COLLECTION").attrib["Entries"] == "0"

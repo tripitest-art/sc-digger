@@ -23,6 +23,7 @@ import secrets
 import math
 import sqlite3
 import time
+import xml.etree.ElementTree as ET
 from collections import deque
 from collections.abc import Callable
 from contextlib import closing
@@ -49,6 +50,7 @@ from ..embeddings import apply_embedding_result
 from ..harmonic import find_mix_candidates
 from ..models import Config
 from ..pipeline import classify_download, dedupe, estimate_bpm
+from .. import rekordbox
 from ..redact import redact
 from ..schema import FIELDS, SECTION_DESCRIPTIONS, SECTION_TITLES, Problem, deep_merge, get_field
 from ..soundcloud import SoundCloudClient, SoundCloudError
@@ -298,6 +300,89 @@ def _m3u8_filename(name: str) -> str:
     """Unbedenklicher Dateiname für ``Content-Disposition`` (keine Quotes/Umbrüche)."""
     stem = re.sub(r"[^A-Za-z0-9._-]+", "_", _m3u8_safe(name)).strip("._-")
     return f"{stem or 'set'}.m3u8"
+
+
+def _xml_filename(name: str) -> str:
+    """Unbedenklicher Dateiname für ``Content-Disposition`` (keine Quotes/Umbrüche)."""
+    stem = re.sub(r"[^A-Za-z0-9._-]+", "_", _m3u8_safe(name)).strip("._-")
+    return f"{stem or 'set'}.xml"
+
+
+def render_set_xml(
+    playlist: Playlist,
+    name: str = "set",
+    path_map: dict[str, str] | None = None,
+) -> str:
+    """Erzeugt eine Rekordbox-XML (UTF-8) für eine berechnete Set-Builder-Playlist.
+
+    - Wurzel: `<DJ_PLAYLISTS Version="1.0.0">` mit `<PRODUCT Name="rekordbox" Version="6.0.0" Company="Pioneer DJ" />`.
+    - `<COLLECTION Entries="{N}">`: für jeden Eintrag `pos, entry` in `enumerate(playlist.entries, 1)` ein `<TRACK>`-Element mit:
+      - `TrackID`: `str(pos)`
+      - `Name`: `entry.title or Path(entry.path).stem`
+      - `Artist`: `entry.artist or ""`
+      - `TotalTime`: `str(int(round(entry.duration_s or 0)))`
+      - `Tonality`: `entry.camelot or ""`
+      - `AverageBpm`: `f"{entry.bpm:.2f}"` (nur wenn `entry.bpm is not None`)
+      - `Location`: falls `path_map` angegeben ist und `rekordbox.laptop_location(Path(entry.path), path_map)` einen Wert liefert, diesen verwenden; sonst Fallback über `rekordbox.laptop_location(Path(entry.path), {"/": ""})` bzw. `"file://localhost/" + Path(entry.path).as_posix().lstrip("/")`, sodass kein Track aus der Kette verloren geht.
+    - `<PLAYLISTS>`: Wurzelknoten `<NODE Type="0" Name="ROOT" Count="1">`, darunter Ordner `<NODE Type="0" Name="sc-digger" Count="1">`, darunter Playlist-Knoten `<NODE Type="1" Name="{bereinigter_name}" KeyType="0" Entries="{N}">` mit `<TRACK Key="{pos}" />` in exakt der Reihenfolge von `playlist.entries`. Ist `name` leer oder nur Whitespace, wird `"set"` verwendet.
+    - Verändert keine Dateien auf der Festplatte und keine Datenbank.
+    """
+    clean_name = (name or "").strip() or "set"
+    root = ET.Element("DJ_PLAYLISTS", {"Version": "1.0.0"})
+    ET.SubElement(
+        root,
+        "PRODUCT",
+        {"Name": "rekordbox", "Version": "6.0.0", "Company": "Pioneer DJ"},
+    )
+
+    n_entries = str(len(playlist.entries))
+    collection = ET.SubElement(root, "COLLECTION", {"Entries": n_entries})
+
+    for pos, entry in enumerate(playlist.entries, 1):
+        pos_str = str(pos)
+        entry_path = Path(entry.path)
+        track_name = entry.title or entry_path.stem
+        artist = entry.artist or ""
+        total_time = str(int(round(entry.duration_s or 0)))
+        tonality = entry.camelot or ""
+
+        loc: str | None = None
+        if path_map:
+            loc = rekordbox.laptop_location(entry_path, path_map)
+        if not loc:
+            loc = rekordbox.laptop_location(entry_path, {"/": ""})
+        if not loc:
+            loc = "file://localhost/" + entry_path.as_posix().lstrip("/")
+
+        attr = {
+            "TrackID": pos_str,
+            "Name": track_name,
+            "Artist": artist,
+            "TotalTime": total_time,
+            "Tonality": tonality,
+            "Location": loc,
+        }
+        if entry.bpm is not None:
+            attr["AverageBpm"] = f"{entry.bpm:.2f}"
+
+        ET.SubElement(collection, "TRACK", attr)
+
+    playlists_elem = ET.SubElement(root, "PLAYLISTS")
+    root_node = ET.SubElement(
+        playlists_elem, "NODE", {"Type": "0", "Name": "ROOT", "Count": "1"}
+    )
+    folder_node = ET.SubElement(
+        root_node, "NODE", {"Type": "0", "Name": "sc-digger", "Count": "1"}
+    )
+    playlist_node = ET.SubElement(
+        folder_node,
+        "NODE",
+        {"Type": "1", "Name": clean_name, "KeyType": "0", "Entries": n_entries},
+    )
+    for pos in range(1, len(playlist.entries) + 1):
+        ET.SubElement(playlist_node, "TRACK", {"Key": str(pos)})
+
+    return '<?xml version="1.0" encoding="UTF-8"?>\n' + ET.tostring(root, encoding="unicode")
 
 
 def _render_m3u8(playlist: Playlist, name: str) -> str:
@@ -910,6 +995,68 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
             media_type="application/x-mpegurl",
             headers={
                 "Content-Disposition": f'attachment; filename="{_m3u8_filename(name)}"'
+            },
+        )
+
+    @app.post("/api/mix/export-xml")
+    async def api_mix_export_xml(request: Request) -> Response:
+        """Nimmt denselben JSON-Payload wie POST /api/set-builder entgegen:
+        {"bpm_min": ..., "bpm_max": ..., "status": ..., "track_ids": [...], "name": "set"}.
+
+        - Erfordert HTTP-Basic-Auth wie alle anderen Dashboard-Routen.
+        - Ungültiges JSON oder Payload ist kein dict -> HTTP 400 mit JSON {"ok": False, "error": ...}.
+        - `track_ids` angegeben, aber keine Liste aus ganzen Zahlen -> HTTP 400 mit JSON {"ok": False, "error": ...}.
+        - Berechnet die Playlist über `_build_set_playlist(...)` (rein lesend).
+        - Liest `path_map` optional aus `app.state.cfg.raw.get("rekordbox", {}).get("path_map")` (falls dict, sonst `{}`).
+        - Antwortet mit HTTP 200, `media_type="application/xml"`, Header `Content-Disposition: attachment; filename="<bereinigt>.xml"` und dem von `render_set_xml` erzeugten XML-String.
+        """
+        try:
+            payload = await request.json()
+        except Exception:
+            return JSONResponse({"ok": False, "error": "Ungültiges JSON"}, status_code=400)
+        if not isinstance(payload, dict):
+            return JSONResponse({"ok": False, "error": "Ungültiger Payload"}, status_code=400)
+
+        raw_ids = payload.get("track_ids")
+        if raw_ids is None:
+            track_ids = None
+        elif isinstance(raw_ids, list):
+            if not all(isinstance(item, int) and not isinstance(item, bool) for item in raw_ids):
+                return JSONResponse(
+                    {"ok": False, "error": "track_ids müssen ganze Zahlen sein"}, status_code=400
+                )
+            track_ids = [int(item) for item in raw_ids]
+        else:
+            return JSONResponse(
+                {"ok": False, "error": "track_ids muss eine Liste sein"}, status_code=400
+            )
+
+        name = str(payload.get("name") or "set").strip() or "set"
+        filename = _xml_filename(name)
+
+        playlist = _build_set_playlist(
+            app.state.cfg["state"]["track_db_path"],
+            bpm_min=_payload_float(payload.get("bpm_min")),
+            bpm_max=_payload_float(payload.get("bpm_max")),
+            status=str(payload.get("status") or "").strip() or None,
+            track_ids=track_ids,
+        )
+
+        path_map: dict[str, str] = {}
+        cfg_raw = getattr(app.state.cfg, "raw", None)
+        if isinstance(cfg_raw, dict):
+            rb_cfg = cfg_raw.get("rekordbox")
+            if isinstance(rb_cfg, dict):
+                pm = rb_cfg.get("path_map")
+                if isinstance(pm, dict):
+                    path_map = pm
+
+        xml_content = render_set_xml(playlist, name=name, path_map=path_map)
+        return Response(
+            content=xml_content,
+            media_type="application/xml",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"'
             },
         )
 
