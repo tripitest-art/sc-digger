@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import html
 import logging
+import os
 import random
 import re
 import sys
@@ -836,12 +837,15 @@ def run_locked(cfg: Config, mode: str, fn: Callable[[], None], *, no_telegram: b
     if mode in LOCK_FREE_MODES:
         fn()
         return True
-    state_cfg = cfg.raw.get("state") or {}
-    if not state_cfg.get("db_path"):
+    state_cfg = cfg.raw.get("state")
+    db_path = state_cfg.get("db_path") if isinstance(state_cfg, dict) else None
+    # Nur echte Pfade: Ein gemocktes Config-Objekt (tests/test_audit.py) lieferte sonst einen
+    # Mock als Pfad, und die Sperre landete relativ im Arbeitsverzeichnis.
+    if not isinstance(db_path, (str, os.PathLike)) or not str(db_path):
         log.warning("Lauf-Sperre nicht verfügbar (state.db_path fehlt), Lauf ohne Sperre")
         fn()
         return True
-    lock_dir = Path(state_cfg["db_path"]).parent
+    lock_dir = Path(db_path).parent
     wait_s = float(state_cfg.get("lock_wait_s", 1800))
     try:
         with ExitStack() as stack:

@@ -119,6 +119,16 @@ def test_busy_discover_sends_alarm_after_threshold(tmp_path, monkeypatch):
     assert "Lauf-Sperre belegt: audit" in "\n".join(sent[0])
 
 
+def test_mocked_config_creates_no_lock_file_in_cwd(tmp_path, monkeypatch):
+    """Ein gemocktes Config-Objekt (wie in tests/test_audit.py) darf keine Sperre relativ anlegen."""
+    from unittest.mock import MagicMock
+    monkeypatch.chdir(tmp_path)
+    calls = []
+    assert m.run_locked(MagicMock(), "audit", lambda: calls.append(1), no_telegram=True) is True
+    assert calls == [1]
+    assert list(tmp_path.iterdir()) == []
+
+
 def test_cli_stats_runs_while_lock_is_held(tmp_path, monkeypatch):
     cfg_file = tmp_path / "config.yaml"
     cfg_file.write_text(f"state:\n  db_path: {tmp_path / 'seen.sqlite'}\n  lock_wait_s: 0\n",
