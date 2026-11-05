@@ -235,6 +235,9 @@ health:
   # Alarm per Telegram, wenn der letzte Lauf älter als max_hours_since_run ist.
   # Standard: 36 Stunden (1,5 Tage), damit ein fehlender Cron-Lauf erkannt wird.
   max_hours_since_run: 36
+  # Speicherplatz-Wächter: Mindest-Freispeicher (GB) für download.inbox_dir.
+  # Unterschreitung pausiert Downloads und alarmiert (0 = aus; Empfehlung für den Server in BETRIEB.md).
+  min_free_gb: 0
 
 canary:
   # Tag für die tägliche Vorab-Prüfung der SoundCloud-API (leer = erster Eintrag aus search.tags)
