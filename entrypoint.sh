@@ -37,6 +37,12 @@ if [ -f /etc/cron.d/sc-digger ] && ! grep -q "audit --check-adopted" /etc/cron.d
     install_crontab
 fi
 
+# Tägliche Sicherung der SQLite-Datenbanken (06:30, vor dem Übernommen-Abgleich und discover)
+if [ -f /etc/cron.d/sc-digger ] && ! grep -q "sc_digger.backup run" /etc/cron.d/sc-digger; then
+    echo "30 6 * * * . /app/cron.env; cd /app && python -m sc_digger.backup run >> /proc/1/fd/1 2>&1" >> /etc/cron.d/sc-digger
+    install_crontab
+fi
+
 cron
 
 # Web-Oberfläche nur, wenn ein Passwort gesetzt ist (Standard: aus)

@@ -258,3 +258,49 @@ Prüfen: `docker compose exec sc-digger python -m sc_digger.schema --local /data
   Abhilfe ist Issue #199 (NFC beim Sortieren und in der XML).
 - Ist das Web-GUI nicht erreichbar (`ERR_CONNECTION_REFUSED`), läuft Syncthing nicht;
   „Failed to acquire lock“ heißt, dass noch eine alte Instanz läuft.
+
+## Sicherung und Wiederherstellung
+
+Die SQLite-Datenbanken (`seen.sqlite`, `tracks.sqlite`) und die lokale Override-Datei (`config.local.yaml`) werden täglich um 06:30 Uhr über die SQLite Backup-API gesichert, geprüft und rotiert (`sc_digger.backup`).
+
+### Ziel einbinden
+
+Das Sicherungsziel (z. B. ein externes Backup-Verzeichnis, NFS- oder SMB-Share) wird als Volume in den Container eingebunden (z. B. `/backup`). In der lokalen Override-Datei (`/data/config.local.yaml`) wird der Pfad konfiguriert:
+
+```yaml
+backup:
+  target_dir: "/backup"
+  keep_daily: 7
+  keep_weekly: 4
+```
+
+Ohne gesetztes `backup.target_dir` (Standard `""`) bleibt die automatische Sicherung inaktiv.
+
+### Prüfen
+
+Manuelle Sicherung im Container ausführen:
+
+```bash
+docker compose exec sc-digger python -m sc_digger.backup run
+```
+
+Erfolg und Struktur prüfen:
+- Tagesordner unter dem Sicherungsverzeichnis: `ls -la /backup/$(date +%F)`
+- Enthält `seen.sqlite`, `tracks.sqlite` und `config.local.yaml`.
+- Logausgabe prüfen (keine Fehler, Exit-Code 0).
+
+### Zurückspielen bei gestopptem Container
+
+**Wichtig:** Vor dem Zurückspielen muss der Container gestoppt werden, damit keine Schreibvorgänge oder offenen WAL-Verbindungen die Wiederherstellung stören:
+
+```bash
+# 1. Container stoppen
+docker compose stop sc-digger
+
+# 2. Datenbank aus dem gewünschten Tagesordner wiederherstellen (geprüft und mit Sicherung des alten Stands nach .vor-restore)
+docker compose run --rm sc-digger python -m sc_digger.backup restore /backup/2026-11-05/tracks.sqlite /data/tracks.sqlite --force
+docker compose run --rm sc-digger python -m sc_digger.backup restore /backup/2026-11-05/seen.sqlite /data/seen.sqlite --force
+
+# 3. Container wieder starten
+docker compose start sc-digger
+```

@@ -325,6 +325,16 @@ Der zweite Mechanismus ist der Container-Healthcheck (`sc_digger.healthcheck`): 
 
 **Lauf-Sperre:** Schreibende Modi von `python -m sc_digger.main` (alle außer `stats`) laufen nie gleichzeitig. Die Sperre ist ein `flock` auf `pipeline.lock` neben der State-DB (Verzeichnis von `state.db_path`); die Datei nennt den laufenden Modus und die Startzeit. Ist sie belegt, wartet ein Lauf höchstens `state.lock_wait_s` Sekunden (Standard 1800) und bricht dann mit Exit-Code 75 ab; ein so ausgefallener `discover` zählt im Health-Protokoll als gescheiterter Lauf. Lässt sich die Sperre nicht anlegen (kein beschreibbares Verzeichnis), läuft der Modus mit Warnung ohne Sperre. `seen.sqlite` läuft wie die Track-DB im WAL-Modus mit 30 s Wartezeit.
 
+### Sicherung
+
+`sc_digger.backup` sichert täglich um 06:30 Uhr (vor dem Übernommen-Abgleich und dem täglichen `discover`-Lauf) die SQLite-Datenbanken (`seen.sqlite`, `tracks.sqlite`) sowie die lokale Override-Datei (`config.local.yaml`, falls über `SC_DIGGER_CONFIG_LOCAL` gesetzt).
+
+- **Konsistente WAL-Sicherung:** Da `tracks.sqlite` und `seen.sqlite` im WAL-Modus laufen, werden Datenbanken über die SQLite Backup-API gesichert und im Ziel auf `PRAGMA journal_mode=DELETE` umgestellt. So gehen ungeschriebene Transaktionen aus dem `-wal` nicht verloren, und die Kopie ist eine in sich geschlossene Einzeldatei ohne begleitende `-wal`- oder `-shm`-Dateien.
+- **Integritätsprüfung:** Jede Kopie wird mit `PRAGMA integrity_check` geprüft. Schlägt die Prüfung fehl, wird die Datei entfernt und der Lauf bricht laut mit `BackupError` ab.
+- **Atomarer Tagesordner & Rotation:** Sicherungen liegen unter `backup.target_dir/<JJJJ-MM-TT>/` (zuerst in `.<JJJJ-MM-TT>.tmp` geschrieben, dann atomar umbenannt). Alte Stände werden rotiert (`keep_daily`: Standard 7 tägliche, `keep_weekly`: Standard 4 wöchentliche Stände).
+- **Alarmierung (Regel 7):** Bei Fehlern schlägt der Lauf fehl (Exit 1) und schickt einen Alarm per Telegram (`🚨 sc-digger: Sicherung fehlgeschlagen ...`). Ist `backup.target_dir` leer, ist die Sicherung deaktiviert (Exit 2, kein Alarm).
+- **Wiederherstellung:** `python -m sc_digger.backup restore <sicherung.sqlite> <ziel.sqlite> [--force]` prüft die Sicherung vor dem Schreiben und stellt sie wieder her. Mit `--force` wird die bisherige Datei vorher als `.vor-restore` gesichert und alte `-wal`/`-shm`-Dateien werden entfernt.
+
 ### Rekordbox
 
 `rekordbox.write_rekordbox_xml` läuft nach jedem `discover`-Lauf. `scan_inbox` liest die Inbox und überspringt alles, dessen Pfadteil mit `_rejected`, `.`, `_dl_` oder `.cloud-tmp` beginnt, sowie `_eingang`. `build_xml` erzeugt `PRODUCT`, `COLLECTION` und eine Playlist pro ISO-Kalenderwoche im Ordner `sc-digger` (neueste Woche zuerst, z. B. `KW 40/2026`). Pfade werden über `rekordbox.path_map` vom Server- auf den Laptop-Pfad umgeschrieben; Tracks ohne Mapping werden weggelassen. Die XML wird atomar geschrieben; liegt `xml_path` innerhalb `download.collection_dir`, wird der Lauf abgebrochen.
