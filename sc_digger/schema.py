@@ -205,6 +205,14 @@ FIELDS: tuple[Field, ...] = (
     _f("state.lock_wait_s", "int", "Wartezeit Lauf-Sperre",
        "So viele Sekunden wartet ein Lauf höchstens, wenn ein anderer schreibender Lauf die Sperre hält; "
        "danach Abbruch mit Exit-Code 75 (Standard 1800).", min=0, editable=False),
+    # --- backup ---
+    _f("backup.target_dir", "str", "Backup-Zielverzeichnis",
+       "Zielverzeichnis für tägliche SQLite-Sicherungen (seen.sqlite, tracks.sqlite, config.local.yaml); leer = Sicherung deaktiviert.",
+       editable=False),
+    _f("backup.keep_daily", "int", "Tägliche Sicherungen",
+       "Anzahl der aufzubewahrenden täglichen Stände (Standard 7).", min=0),
+    _f("backup.keep_weekly", "int", "Wöchentliche Sicherungen",
+       "Anzahl der aufzubewahrenden wöchentlichen Stände (Standard 4).", min=0),
     # --- preview ---
     _f("preview.stream_enabled", "bool", "Stream-Preview",
        "/preview sc:<SoundCloud-ID>: Erlaubt Snippets direkt aus dem SoundCloud-Stream für nicht heruntergeladene Tracks.",
@@ -314,6 +322,7 @@ SECTION_TITLES: dict[str, str] = {
     "fingerprint": "Fingerabdruck",
     "curator_mining": "Curator-Mining",
     "state": "Zustand",
+    "backup": "Sicherung",
     "preview": "Live-Preview",
     "retry": "Wiederholung",
     "health": "Health-Alarm",
@@ -338,6 +347,7 @@ SECTION_DESCRIPTIONS: dict[str, str] = {
     "fingerprint": "Akustischer Chromaprint-Abgleich zur Erkennung identischer Aufnahmen vor dem Einsortieren.",
     "curator_mining": "Ermittelt SoundCloud-Profile, die auffällig oft deine gelikten Tracks favorisieren, als neue Kuratoren-Tipps.",
     "state": "Pfade zu den lokalen SQLite-Datenbanken (gesehene Tracks, History und Track-Metadaten).",
+    "backup": "Tägliche Sicherung der SQLite-Datenbanken (konsistent über Backup-API, integrity_check und Rotation).",
     "preview": "Konfiguriert die Dauer und den Drop-Vorlauf für kurze Audio-Vorschauschnipsel (Sprachnachrichten).",
     "retry": "Automatische Wiederholung fehlgeschlagener Downloads in nachfolgenden Läufen.",
     "health": "Schwellenwerte für Telegram-Benachrichtigungen bei Ausfällen oder leerer Trefferausbeute.",

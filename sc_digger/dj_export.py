@@ -61,6 +61,10 @@ BPM_HARD = 8.0             # darueber ist kein Uebergang mehr sinnvoll
 BPM_PENALTY_PER_BPM = 1.0  # Zuschlag pro BPM ausserhalb der Toleranz
 MAX_TRANSITION_COST = 3.0  # Gesamtkosten, ab denen geschnitten wird (Segmentgrenze)
 
+# Schwellen für verlässliche BPM-/Key-Erkennung
+RELIABLE_BPM_MIN_CONFIDENCE: float = 0.5
+RELIABLE_KEY_MIN_MARGIN: float = 0.05
+
 CSV_COLUMNS = ["pos", "artist", "title", "bpm", "bpm_confidence", "bpm_octave",
                "camelot", "key_name", "key_confidence", "key_margin",
                "duration_s", "score", "path"]
@@ -158,11 +162,11 @@ class Entry:
 
     @property
     def reliable_bpm(self) -> bool:
-        return self.bpm is not None and self.bpm_confidence >= 0.5
+        return self.bpm is not None and self.bpm_confidence >= RELIABLE_BPM_MIN_CONFIDENCE
 
     @property
     def reliable_key(self) -> bool:
-        return self.camelot is not None and self.key_margin >= 0.05
+        return self.camelot is not None and self.key_margin >= RELIABLE_KEY_MIN_MARGIN
 
     @property
     def is_anchor(self) -> bool:

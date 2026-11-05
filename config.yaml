@@ -205,6 +205,15 @@ state:
   # belegt, wartet ein Lauf höchstens so viele Sekunden und bricht dann mit Exit-Code 75 ab.
   lock_wait_s: 1800
 
+backup:
+  # Zielverzeichnis für tägliche SQLite-Sicherungen (gesehene Tracks, History und Override-Datei).
+  # Leer ("") = automatische Sicherung deaktiviert.
+  target_dir: ""
+  # Anzahl der aufzubewahrenden täglichen Stände
+  keep_daily: 7
+  # Anzahl der aufzubewahrenden wöchentlichen Stände
+  keep_weekly: 4
+
 preview:
   # /preview sc:<SoundCloud-ID> sendet ein 20s-Snippet direkt aus dem SoundCloud-Stream,
   # auch für Tracks, die nicht in der Track-DB liegen. Standard aus wegen offener

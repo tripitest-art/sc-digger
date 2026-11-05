@@ -7,6 +7,9 @@ unter „Unreleased“ (Regeln: `AGENTS.md`, Abschnitt „Doku und Changelog“)
 
 ## Unreleased
 
+### Hinzugefügt
+- BPM-/Key-Sicherheit in der Track-DB: Migration 16 legt `bpm_confidence`, `key_confidence` und `key_margin` in `tracks` an; `finish_file` speichert die Analyse-Konfidenzen beim Persistieren mit; der Set-Builder liest sie in `Entry`-Objekte ein und kann unsichere Tracks per `avoid_uncertain=True` meiden (#453).
+
 ### Sicherheit
 - Web-Dashboard: Die Job-Routen POST /api/jobs/claim, POST /api/jobs/{id}/heartbeat und POST /api/jobs/{id}/complete erzwingen Content-Type: application/json (abweichende oder fehlende Typen wie text/plain werden mit HTTP 415 abgewiesen) und weisen Anfragen fremder Origins mit HTTP 403 ab (#415).
 - Web-Dashboard, Sicherheits-Audit 2026-10-29 (Befunde 5 bis 8): `SoundCloudClient._unshorten` prüft den Host exakt per `urlparse` statt per Substring (ein Link wie `http://192.168.1.5:8123/?on.soundcloud.com` ließ den Server das Ziel abrufen), erlaubt nur `https` und folgt Weiterleitungen von Hand, nur auf https-Ziele bei `soundcloud.com`. Der Browser bekommt bei Upload-Fehlern und im URL-Scanner keine rohen Ausnahmetexte (Pfade, ffmpeg-Ausgabe) mehr, sondern eine feste Meldung („Details im Log“); Log und Notizen laufen durch `redact`. Upload und URL-Scanner laufen im Threadpool und blockieren die Event-Loop nicht mehr (auch `/healthz` antwortet während einer Verarbeitung). Uploads sind auf 1 GiB begrenzt (HTTP 413, Prüfung der `Content-Length` und Mitzählen beim Kopieren), und alle ffmpeg-/ffprobe-Aufrufe auf lokalen Dateien setzen `-protocol_whitelist file,pipe`; die Stream-Preview einer URL bleibt ausgenommen (#416).
@@ -30,6 +33,7 @@ unter „Unreleased“ (Regeln: `AGENTS.md`, Abschnitt „Doku und Changelog“)
 
 ### Hinzugefügt
 - Web-Dashboard: Rekordbox-XML-Export im harmonischen Set-Builder (`/mix`, Button `🎛️ Rekordbox XML`) über neuen Endpunkt `POST /api/mix/export-xml` zum direkten Import berechneter Set-Ketten samt BPM und Camelot-Tonart in Rekordbox (#469).
+- Tägliche SQLite-Sicherung: `sc_digger.backup` sichert `seen.sqlite`, `tracks.sqlite` und `config.local.yaml` konsistent über die SQLite Backup-API, prüft Kopien per `PRAGMA integrity_check` und rotiert 7 tägliche und 4 wöchentliche Stände; Cron-Lauf um 06:30 Uhr und CLI für Restore (`--force`) (#470).
 - Lauf-Sperre: Schreibende Modi von `sc_digger.main` (alle außer `stats`) laufen nie gleichzeitig (`sc_digger/runlock.py`, `flock` auf `/data/pipeline.lock`). Ein belegter Lauf wartet bis `state.lock_wait_s` (Standard 1800 s) und endet dann mit Exit-Code 75; ein ausgefallener `discover` erscheint im Health-Alarm. `seen.sqlite` nutzt WAL und 30 s Wartezeit (#460).
 - Rekordbox My-Tags: Wartungsskript `scripts/sync_rekordbox_mytags.py` synchronisiert My-Tags für BPM (140–170 mit Oktav-Korrektur) und Versionstypen (Originale, Edits, Remixe etc.) direkt in Rekordbox' `master.db`; inkl. Prozessüberprüfung gegen aktive Sperren, automatischem Backup und Probelauf (`--dry-run`) (#452).
 - GPU-Worker rechnet Cue-Jobs mit all-in-one: `cue_infer.make_allin1_infer` nutzt `allin1_infer.analyze` (`harmonix-all`, `beat_this`-Beats) statt nur `librosa`; neuer Schalter `python -m sc_digger.worker --cue-engine {allin1,local}` (Standard `allin1`). Fehlt das Paket, warnt der Worker und nutzt die lokale Analyse; Ergebnisse tragen `engine` und `bpm` (#426).
