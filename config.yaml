@@ -201,6 +201,9 @@ curator_mining:
 state:
   db_path: /data/seen.sqlite
   track_db_path: /data/tracks.sqlite  # Lokale SQLite-DB (nie auf NFS, da WAL-Modus)
+  # Schreibende Läufe (discover, audit, scout, …) laufen nie gleichzeitig. Ist die Lauf-Sperre
+  # belegt, wartet ein Lauf höchstens so viele Sekunden und bricht dann mit Exit-Code 75 ab.
+  lock_wait_s: 1800
 
 preview:
   # /preview sc:<SoundCloud-ID> sendet ein 20s-Snippet direkt aus dem SoundCloud-Stream,

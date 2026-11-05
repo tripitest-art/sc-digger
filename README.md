@@ -323,6 +323,8 @@ Ablage: MP3, AIFF und WAV als ID3-`TXXX`-Frames, FLAC als Vorbis-Kommentar, M4A 
 
 Der zweite Mechanismus ist der Container-Healthcheck (`sc_digger.healthcheck`): Cron-Prozess, letzter `discover`-Lauf (Alter gegen `health.max_hours_since_run`) und `PRAGMA quick_check` für beide SQLite-Dateien. Wechsel in den Alarm- oder Normalzustand werden per Telegram gemeldet, wenn Token und Chat-ID gesetzt sind.
 
+**Lauf-Sperre:** Schreibende Modi von `python -m sc_digger.main` (alle außer `stats`) laufen nie gleichzeitig. Die Sperre ist ein `flock` auf `pipeline.lock` neben der State-DB (Verzeichnis von `state.db_path`); die Datei nennt den laufenden Modus und die Startzeit. Ist sie belegt, wartet ein Lauf höchstens `state.lock_wait_s` Sekunden (Standard 1800) und bricht dann mit Exit-Code 75 ab; ein so ausgefallener `discover` zählt im Health-Protokoll als gescheiterter Lauf. Lässt sich die Sperre nicht anlegen (kein beschreibbares Verzeichnis), läuft der Modus mit Warnung ohne Sperre. `seen.sqlite` läuft wie die Track-DB im WAL-Modus mit 30 s Wartezeit.
+
 ### Rekordbox
 
 `rekordbox.write_rekordbox_xml` läuft nach jedem `discover`-Lauf. `scan_inbox` liest die Inbox und überspringt alles, dessen Pfadteil mit `_rejected`, `.`, `_dl_` oder `.cloud-tmp` beginnt, sowie `_eingang`. `build_xml` erzeugt `PRODUCT`, `COLLECTION` und eine Playlist pro ISO-Kalenderwoche im Ordner `sc-digger` (neueste Woche zuerst, z. B. `KW 40/2026`). Pfade werden über `rekordbox.path_map` vom Server- auf den Laptop-Pfad umgeschrieben; Tracks ohne Mapping werden weggelassen. Die XML wird atomar geschrieben; liegt `xml_path` innerhalb `download.collection_dir`, wird der Lauf abgebrochen.

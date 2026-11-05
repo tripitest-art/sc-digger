@@ -202,6 +202,9 @@ FIELDS: tuple[Field, ...] = (
     _f("state.db_path", "str", "State-DB", "Pfad zur Seen-SQLite-Datenbank (gesehene Tracks, Läufe und Retry-Queue).", editable=False),
     _f("state.track_db_path", "str", "Track-DB",
        "Pfad zur zentralen SQLite-Track-DB (WAL-Modus, nie auf NFS/Netzlaufwerken betreiben).", editable=False),
+    _f("state.lock_wait_s", "int", "Wartezeit Lauf-Sperre",
+       "So viele Sekunden wartet ein Lauf höchstens, wenn ein anderer schreibender Lauf die Sperre hält; "
+       "danach Abbruch mit Exit-Code 75 (Standard 1800).", min=0, editable=False),
     # --- preview ---
     _f("preview.stream_enabled", "bool", "Stream-Preview",
        "/preview sc:<SoundCloud-ID>: Erlaubt Snippets direkt aus dem SoundCloud-Stream für nicht heruntergeladene Tracks.",
