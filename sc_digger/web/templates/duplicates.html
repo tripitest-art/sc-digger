@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+
+{% block title %}sc-digger Duplikat-Kandidaten{% endblock %}
+{% block nav_tracks %}active{% endblock %}
+
+{% block meta %}
+<style>
+  .duplicates-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.75rem;
+  }
+  .group-card {
+    margin-top: 1.25rem;
+  }
+  .group-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.75rem;
+  }
+  .group-title {
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: var(--text-main);
+    margin: 0;
+  }
+  .track-path-code {
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    word-break: break-all;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="duplicates-toolbar">
+    <div>
+      <h1 style="margin: 0;">👥 Duplikat-Kandidaten</h1>
+      <p class="meta" style="margin: 0.25rem 0 0;">
+        Erkannte Audio-Duplikate per Chromaprint-Fingerprint &middot;
+        <strong>{{ total_groups }}</strong> {% if total_groups == 1 %}Gruppe{% else %}Gruppen{% endif %}
+      </p>
+    </div>
+    <div style="display: flex; gap: 0.6rem;">
+      <a href="/tracks" class="btn-page" style="font-size: 0.82rem;">&larr; Zum Track-Explorer</a>
+      <a href="/" class="btn-page" style="font-size: 0.82rem;">Status</a>
+    </div>
+  </div>
+  <p class="meta" style="margin-top: 0.6rem; margin-bottom: 0;">
+    Gleiche Aufnahmen laut akustischem Fingerprint (<code>duplicate_groups</code>) aus Inbox und Sammlung.
+    Diese Ansicht ist rein lesend: Dateien werden hier weder verschoben noch gelöscht (Goldene Regel 4).
+  </p>
+</div>
+
+{% if total_groups == 0 %}
+<div class="card" style="margin-top: 1rem; text-align: center; padding: 2.5rem 1rem;">
+  <p class="meta" style="margin: 0; font-size: 0.95rem;">
+    Keine Duplikat-Gruppen in der Datenbank gefunden. Alle analysierten Tracks besitzen eigenständige Audio-Fingerprints.
+  </p>
+</div>
+{% else %}
+  {% for group in groups %}
+  <div class="card group-card">
+    <div class="group-header">
+      <h2 class="group-title">Gruppe {{ loop.index }} &middot; {{ group.count }} Tracks</h2>
+      <span class="meta" style="font-size: 0.8rem;">Fingerprint-Match</span>
+    </div>
+    <div class="table-scroll">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Status</th>
+            <th>Künstler</th>
+            <th>Titel</th>
+            <th>Format</th>
+            <th>Bitrate</th>
+            <th>BPM</th>
+            <th>Key</th>
+            <th>Pfad</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for track in group.tracks %}
+          <tr>
+            <td>
+              {% if track.status == 'inbox' %}
+                <span class="badge badge-ok">inbox</span>
+              {% elif track.status == 'archive' %}
+                <span class="badge badge-purple">archive</span>
+              {% elif track.status == 'rejected' %}
+                <span class="badge badge-err">rejected</span>
+              {% elif track.status %}
+                <span class="badge">{{ track.status }}</span>
+              {% else %}
+                <span class="meta">-</span>
+              {% endif %}
+            </td>
+            <td><strong>{{ track.artist or '-' }}</strong></td>
+            <td>{{ track.title or '-' }}</td>
+            <td><code>{{ track.format or '-' }}</code></td>
+            <td>{% if track.bitrate_kbps %}{{ track.bitrate_kbps | round(0) | int }} kbps{% else %}-{% endif %}</td>
+            <td>{% if track.bpm %}{{ track.bpm | round(1) }}{% else %}-{% endif %}</td>
+            <td>
+              {% if track.key_camelot %}
+                <span class="camelot-pill" data-key="{{ track.key_camelot }}">{{ track.key_camelot }}</span>
+              {% else %}
+                <span class="meta">-</span>
+              {% endif %}
+            </td>
+            <td><code class="track-path-code">{{ track.path }}</code></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endfor %}
+{% endif %}
+{% endblock %}
