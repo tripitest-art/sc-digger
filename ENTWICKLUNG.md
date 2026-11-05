@@ -42,6 +42,7 @@ Modul anlegt, trägt es in die Tabelle ein.
 | `sc_digger/healthcheck.py` | Container-Healthcheck: Cron, letzter Lauf, DB-Integrität |
 | `sc_digger/autodeploy.py` | Auto-Deploy per systemd-Timer auf dem Host: neuen `main`-Stand von `update.sh` ausrollen, Healthcheck prüfen, bei Fehlschlag automatisch zurückrollen; Einrichtung in `BETRIEB.md` |
 | `sc_digger/redact.py` | Zugangsdaten aus Texten und Logs entfernen |
+| `sc_digger/runlock.py` | Lauf-Sperre (Issue #455): `run_lock` (`fcntl.flock` auf `<Verzeichnis von state.db_path>/pipeline.lock`, Halter als JSON in der Datei, Wartezeit in Schritten), `read_holder`, `busy_text`, `RunLockBusy`; `main.run_locked` führt alle schreibenden CLI-Modi darüber aus (`LOCK_FREE_MODES` = `stats`), belegt → Exit-Code 75 |
 | `sc_digger/scout/bandcamp.py` | Bandcamp-RSS-Scout: liest Label- und Artist-Feeds und erzeugt Kaufempfehlungen (`DownloadKind.STORE`) in `store_items` |
 | `sc_digger/scout/beatport.py` | Beatport-Chart-Scout: scraped Top-100-Genre-Charts und erzeugt Kaufempfehlungen (`DownloadKind.STORE`) in `store_items` |
 | `sc_digger/web/status.py` | Statusseite (Phase 5): `collect_status` liest Läufe, Health-Alarm, Inbox-Größe und Wochenstatistik nur lesend zusammen; dazu die Job-Queue der KI-Workstation (`jobs`-Tabelle: Zähler je Status, jüngstes `updated_at` als Lebenszeichen, „Workstation aktiv“ bei laufendem Job mit Heartbeat binnen 300 s) |
@@ -55,6 +56,7 @@ Modul anlegt, trägt es in die Tabelle ein.
 | `sc_digger/gpu_wake.py` | Wecken der GPU-Workstation (Issue #409): `count_pending_jobs` (offene Cue-Jobs, DB nur lesend), `wake_workstation` (POST an den Wake-Proxy, URL nie im Log), `run_wake`; CLI `python -m sc_digger.gpu_wake` per Timer (`deploy/sc-digger-gpu-wake.*`), Adresse nur aus `SC_DIGGER_WAKE_URL`; Gegenstück ist `worker.py --idle-exit` (`deploy/workstation/sc-digger-gpu-worker.service`) |
 | `sc_digger/backfill_artist.py` | Wartungswerkzeug (CLI `python -m sc_digger.backfill_artist`): füllt fehlende Künstlernamen in `seen.artist` und `rejected.artist` aus `tracks.artist` nach (Zuordnung per `sc_id` vor URL-Gleichheit, Pflicht-Backup bei `--apply`, Probelauf) |
 | `scripts/backfill_gates.py` | Wartungsskript: liest historische Digest-Tracks aus `seen.sqlite`, fragt SoundCloud api-v2 in Batches ab und trägt erkannte Gate-/Store-Links in `tracks.sqlite` ein |
+| `scripts/sync_rekordbox_mytags.py` | Wartungsskript: liest Tracks der Sammlung, weist My-Tags für BPM (140–170 mit Oktav-Snap) und Version (Originale, Edits, etc.) direkt in Rekordbox `master.db` zu; Prozess-Check, Pflicht-Backup, Dry-Run |
 | `scripts/link_sources.py` | Wartungsskript: verknüpft die Sammlung (Status archive) mit SoundCloud (Teil 2); Likes, Playlists und freie Suche, CSV-Report und `--apply` |
 | `sc_digger/stats.py` | Statistikberechnung für Telegram-Digest und /stats-Bot-Befehl, Vorperioden-Vergleich der Kernkennzahlen, `render_stats_chart`, `send_weekly_digest`, `_trend_section` (Trend-Abschnitt) |
 | `sc_digger/trends.py` | Trend-Radar (Phase 4): Wachstumsanalyse historischer Engagement-Snapshots (`track_snapshots`) je Track und Artist |

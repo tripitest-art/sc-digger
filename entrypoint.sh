@@ -3,6 +3,9 @@ set -e
 # Cron startet Jobs mit leerer Umgebung: kein /usr/local/bin im PATH (-> "python: not found")
 # und keine Variablen aus der .env (Telegram, SoundCloud-Token). Deshalb die Umgebung des
 # Containers einmal in eine Datei schreiben, die der Cron-Job vor dem Start lädt.
+# Die Override-Datei müssen auch die Cron-Läufe sehen; `export -p` hält nur fest, was bisher
+# gesetzt ist, deshalb steht der Standardwert hier (unabhängig vom Web-Passwort).
+export SC_DIGGER_CONFIG_LOCAL="${SC_DIGGER_CONFIG_LOCAL:-/data/config.local.yaml}"
 export -p > /app/cron.env
 chmod 600 /app/cron.env
 
@@ -38,8 +41,8 @@ cron
 
 # Web-Oberfläche nur, wenn ein Passwort gesetzt ist (Standard: aus)
 if [ -n "$SC_DIGGER_WEB_PASSWORD" ]; then
-    # Konfigeditor standardmäßig aktivieren (Override-Datei im persistenten Volume /data);
-    # wer abweichen will, setzt SC_DIGGER_CONFIG_LOCAL selbst (leer = Editor aus).
+    # Konfigeditor standardmäßig aktivieren: die Variable ist oben schon gesetzt, diese
+    # Zeile ist nur noch Absicherung (wer abweichen will, setzt sie selbst; leer = Editor aus).
     export SC_DIGGER_CONFIG_LOCAL="${SC_DIGGER_CONFIG_LOCAL:-/data/config.local.yaml}"
     python -m sc_digger.web --host 0.0.0.0 --port "${SC_DIGGER_WEB_PORT:-8080}" >> /proc/1/fd/1 2>&1 &
 fi

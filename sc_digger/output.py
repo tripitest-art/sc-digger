@@ -79,7 +79,10 @@ class State:
 
     def __init__(self, db_path: str | Path):
         Path(db_path).parent.mkdir(parents=True, exist_ok=True)
-        self.db = sqlite3.connect(str(db_path))
+        # Wartezeit und WAL wie die Track-DB: Bot, Web und Cron greifen gleichzeitig zu, und der
+        # Python-Standard (5 s, Rollback-Journal) führte zu „database is locked“ (Issue #455).
+        self.db = sqlite3.connect(str(db_path), timeout=30.0)
+        self.db.execute("PRAGMA journal_mode=WAL;")
         self.db.execute(
             "CREATE TABLE IF NOT EXISTS seen ("
             "id INTEGER PRIMARY KEY, url TEXT, title TEXT, "
