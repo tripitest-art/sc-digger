@@ -27,6 +27,7 @@ unter „Unreleased“ (Regeln: `AGENTS.md`, Abschnitt „Doku und Changelog“)
 - `_eval/` (140 KB Auswertungsskripte aus der Analysephase, von keinem Produktionscode benutzt) samt Windows-Befehlen in der README; `tests/test_dj_workflow.py` läuft jetzt gegen `sc_digger.analysis` und `sc_digger.dj_export`, die Messwerte stehen weiter in der README, der Prüfbericht in der Git-Historie (#425).
 
 ### Hinzugefügt
+- Rekordbox My-Tags: Wartungsskript `scripts/sync_rekordbox_mytags.py` synchronisiert My-Tags für BPM (140–170 mit Oktav-Korrektur) und Versionstypen (Originale, Edits, Remixe etc.) direkt in Rekordbox' `master.db`; inkl. Prozessüberprüfung gegen aktive Sperren, automatischem Backup und Probelauf (`--dry-run`) (#452).
 - GPU-Worker rechnet Cue-Jobs mit all-in-one: `cue_infer.make_allin1_infer` nutzt `allin1_infer.analyze` (`harmonix-all`, `beat_this`-Beats) statt nur `librosa`; neuer Schalter `python -m sc_digger.worker --cue-engine {allin1,local}` (Standard `allin1`). Fehlt das Paket, warnt der Worker und nutzt die lokale Analyse; Ergebnisse tragen `engine` und `bpm` (#426).
 - Web-Dashboard: Eigene Seite für Uploads (`/intake`) mit Mehrfach-Upload per Drag & Drop oder Dateiauswahl; `POST /api/upload-intake` verarbeitet mehrere Dateien nacheinander bei stabiler Reihenfolge (#447).
 - Rückfüll-Werkzeug: `sc_digger.backfill_artist` ergänzt fehlende Künstlernamen in `seen.artist` und `rejected.artist` aus `tracks.artist` per SoundCloud-ID oder normalisierter URL (Probelauf, Pflicht-Backup bei `--apply`) (#446).

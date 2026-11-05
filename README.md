@@ -349,6 +349,18 @@ In Rekordbox einrichten:
 2. Die Ansicht **„rekordbox xml“** einblenden.
 3. Unter „rekordbox xml → Importierte Bibliothek“ erscheinen die Wochen-Playlists.
 
+#### My-Tags direkt in Rekordbox synchronisieren
+
+Pioneers offizieller XML-Standard unterstützt technisch keine My-Tags. Das Wartungsskript `scripts/sync_rekordbox_mytags.py` liest die analysierten Metadaten (BPM mit Oktav-Snap, Versionstyp) der Sammlung und weist My-Tags direkt in Rekordbox' SQLite/SQLCipher-Datenbank (`master.db`) zu:
+
+```bash
+# Probelauf (zeigt geplante Änderungen, sicher und schreibgeschützt):
+python scripts/sync_rekordbox_mytags.py --dry-run -v
+
+# Zuweisung in master.db (erfordert beendetes Rekordbox, erstellt automatisches Backup):
+python scripts/sync_rekordbox_mytags.py -v
+```
+
 ### Schranz-Matrix
 
 `sc_digger/style.py` ordnet Schranz- und Hard-Techno-Tracks deterministisch in ein mehrdimensionales DJ-System ein:
