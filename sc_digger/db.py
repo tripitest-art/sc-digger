@@ -83,6 +83,9 @@ class TrackRecord:
     bpm_source: str | None = None  # 'audio', 'tag', 'text', 'manual'
     key_camelot: str | None = None
     key_name: str | None = None
+    bpm_confidence: float | None = None  # 0..1 aus analysis.analyze_track, None = unbekannt
+    key_confidence: float | None = None  # Mode-Konfidenz 0..1, None = unbekannt
+    key_margin: float | None = None      # Marge zum zweitbesten Key, None = unbekannt
     lufs: float | None = None
     true_peak_dbfs: float | None = None
     loudness_range_lu: float | None = None
@@ -407,6 +410,13 @@ MIGRATIONS: list[tuple[int, str, str]] = [
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP
         );
         """,
+    ),
+    (
+        16,
+        "0016_tracks_analysis_confidence",
+        "ALTER TABLE tracks ADD COLUMN bpm_confidence REAL; "
+        "ALTER TABLE tracks ADD COLUMN key_confidence REAL; "
+        "ALTER TABLE tracks ADD COLUMN key_margin REAL;",
     ),
 ]
 

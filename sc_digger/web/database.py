@@ -367,6 +367,7 @@ def _set_builder_entries(
     status: str | None = None,
     track_ids: list[int] | None = None,
     limit: int = DEFAULT_LIMIT,
+    avoid_uncertain: bool = False,
 ) -> list[tuple[int, Entry]]:
     """Track-Zeilen samt ``id`` als :class:`~sc_digger.dj_export.Entry`-Paare.
 
@@ -374,6 +375,8 @@ def _set_builder_entries(
     werden übersprungen: der Set-Builder kann sie nicht einordnen, und ``order_harmonic``
     würde sie nur als Lücken mitschleppen. ``track_ids`` filtert bereits in SQL, damit die
     Auswahl nicht am ``limit`` hängt; eine leere Liste bedeutet bewusst „keine Auswahl".
+    ``avoid_uncertain=True`` lässt Tracks weg, deren bpm_confidence oder key_margin bekannt
+    und unter den Schwellen liegen; NULL (Altbestand) bleibt drin.
     Fehlt die Datei/Tabelle, kommt eine leere Liste zurück (wirft nie).
     """
     limit = max(0, min(int(limit), MAX_LIMIT))
@@ -400,6 +403,7 @@ def _set_builder_entries(
         params.extend(ids)
     params.append(limit)
 
+    has_confidence = False
     try:
         with closing(_connect_readonly(track_db_path)) as db:
             if not _table_exists(db, "tracks"):
@@ -409,9 +413,23 @@ def _set_builder_entries(
             }
             if not {"bpm", "key_camelot"} <= available:
                 return []
+            has_confidence = {"bpm_confidence", "key_confidence", "key_margin"} <= available
+            select_cols = (
+                "id, path, artist, title, bpm, key_camelot, key_name, "
+                "bpm_confidence, key_confidence, key_margin"
+                if has_confidence else
+                "id, path, artist, title, bpm, key_camelot, key_name"
+            )
+            if avoid_uncertain and has_confidence:
+                from ..dj_export import RELIABLE_BPM_MIN_CONFIDENCE, RELIABLE_KEY_MIN_MARGIN
+                where.append(
+                    "(bpm_confidence IS NULL OR bpm_confidence >= ?) "
+                    "AND (key_margin IS NULL OR key_margin >= ?)"
+                )
+                params.insert(-1, RELIABLE_BPM_MIN_CONFIDENCE)
+                params.insert(-1, RELIABLE_KEY_MIN_MARGIN)
             rows = db.execute(
-                "SELECT id, path, artist, title, bpm, key_camelot, key_name "
-                f"FROM tracks WHERE {' AND '.join(where)} ORDER BY id ASC LIMIT ?",
+                f"SELECT {select_cols} FROM tracks WHERE {' AND '.join(where)} ORDER BY id ASC LIMIT ?",
                 params,
             ).fetchall()
     except sqlite3.Error:
@@ -422,6 +440,11 @@ def _set_builder_entries(
         path = str(row["path"] or "")
         if not path:
             continue
+        kw = {}
+        if has_confidence:
+            kw["bpm_confidence"] = float(row["bpm_confidence"]) if row["bpm_confidence"] is not None else 0.0
+            kw["key_confidence"] = float(row["key_confidence"]) if row["key_confidence"] is not None else 0.0
+            kw["key_margin"] = float(row["key_margin"]) if row["key_margin"] is not None else 0.0
         entries.append((
             int(row["id"]),
             Entry(
@@ -431,6 +454,7 @@ def _set_builder_entries(
                 bpm=float(row["bpm"]) if row["bpm"] is not None else None,
                 camelot=str(row["key_camelot"] or "").strip() or None,
                 key_name=row["key_name"],
+                **kw,
             ),
         ))
     return entries
@@ -443,11 +467,14 @@ def load_tracks_for_set_builder(
     bpm_max: float | None = None,
     status: str | None = None,
     limit: int = 100,
+    avoid_uncertain: bool = False,
 ) -> list[Entry]:
     """Liest Tracks rein lesend aus TrackDB als Entry-Objekte für sc_digger.dj_export.
 
     Filtert nach bpm_min/max und status (archive/inbox), ignoriert Tracks ohne BPM/Key.
     ``limit`` wird auf :data:`MAX_LIMIT` begrenzt; fehlt die Datenbank, ist das Ergebnis leer.
+    ``avoid_uncertain=True`` lässt Tracks weg, deren bpm_confidence oder key_margin bekannt
+    und unter den Schwellen liegen (NULL = Altbestand bleibt drin).
     """
     return [
         entry
@@ -457,6 +484,7 @@ def load_tracks_for_set_builder(
             bpm_max=bpm_max,
             status=status,
             limit=limit,
+            avoid_uncertain=avoid_uncertain,
         )
     ]
 
