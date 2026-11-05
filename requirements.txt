@@ -7,6 +7,7 @@ soundcloud-v2>=1.7
 librosa>=0.10
 mutagen>=1.47
 psutil>=7.2.2          # Prozess-Check im Rekordbox-Sync (scripts/sync_rekordbox_mytags.py)
+pyrekordbox>=0.5.0      # Rekordbox-Datenbank lesen und schreiben (scripts/sync_rekordbox_mytags.py)
 matplotlib>=3.11.2
 tzdata>=2024.1          # Zeitzonen unter Windows (Linux nutzt /usr/share/zoneinfo, schadet dort nicht)
 fastapi>=0.143.0          # Statusseite (sc_digger.web)
