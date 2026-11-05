@@ -53,7 +53,14 @@ from .retry import RetryQueue
 from .runlock import RunLockBusy, run_lock
 from .scout.bandcamp import fetch_bandcamp_feeds
 from .scout.beatport import fetch_beatport_charts
-from .soundcloud import ClientIdError, RateLimitError, SoundCloudClient, SoundCloudError
+from .soundcloud import (
+    ClientIdError,
+    RateLimitError,
+    SoundCloudClient,
+    SoundCloudError,
+    TokenStatus,
+    check_auth_token,
+)
 from .stats import calculate_stats, format_stats, render_stats_chart, send_weekly_digest
 from .structure import (
     analyze_structure,
@@ -454,11 +461,58 @@ def deliver(header: str, fresh: list[Track], dupes: list[Track], cfg: Config,
 
 
 # ------------------------------------------------------------------ Modus: discover
+def guard_auth_token(cfg: Config, sc: SoundCloudClient, *, no_telegram: bool = False,
+                     check: Callable[..., TokenStatus] = check_auth_token) -> Config:
+    """Prüft vor dem Lauf den SoundCloud-Login.
+
+    Kein Token -> cfg; weder sc noch check werden aufgerufen, kein Health-Eintrag.
+    Sonst status = check(token, client_id=sc.get_client_id()).
+      Exception (auch aus get_client_id) oder UNKNOWN/MISSING -> cfg, log.warning, kein Health-Eintrag.
+      VALID   -> Health(cfg["state"]["db_path"]).record("sc_login", ok=True, found=1); Rückgabe cfg
+      INVALID -> Health(...).record("sc_login", ok=False, found=0,
+                                    error="SOUNDCLOUD_AUTH_TOKEN abgelehnt (401/403)");
+                 log.error("SoundCloud-Login abgelehnt: Originale werden in diesem Lauf nur verlinkt");
+                 Rückgabe cfg.without_auth_token()
+      Nach VALID/INVALID: _notify_health(cfg, health.evaluate("sc_login", 1), no_telegram)
+    """
+    token = cfg.soundcloud_auth_token
+    if not token:
+        return cfg
+
+    try:
+        cid = sc.get_client_id()
+        status = check(token, client_id=cid)
+    except Exception as exc:
+        log.warning("SoundCloud-Login-Prüfung fehlgeschlagen: %s", type(exc).__name__)
+        return cfg
+
+    if status in (TokenStatus.UNKNOWN, TokenStatus.MISSING):
+        log.warning("SoundCloud-Token-Status unklar (%s), fahre unverändert fort.", status.value)
+        return cfg
+
+    with Health(cfg["state"]["db_path"]) as health:
+        if status == TokenStatus.VALID:
+            health.record("sc_login", ok=True, found=1)
+            msg = health.evaluate("sc_login", 1)
+            _notify_health(cfg, msg, no_telegram)
+            return cfg
+
+        # status == TokenStatus.INVALID
+        health.record("sc_login", ok=False, found=0,
+                      error="SOUNDCLOUD_AUTH_TOKEN abgelehnt (401/403)")
+        log.error("SoundCloud-Login abgelehnt: Originale werden in diesem Lauf nur verlinkt")
+        msg = health.evaluate("sc_login", 1)
+        _notify_health(cfg, msg, no_telegram)
+        return cfg.without_auth_token()
+
+
 def run_discover(cfg: Config, dry_run: bool, no_telegram: bool) -> None:
     """Discovery mit Health-Protokoll. Dry-Runs werden nicht protokolliert."""
     if dry_run:
         _discover(cfg, dry_run, no_telegram)
         return
+
+    cfg = guard_auth_token(cfg, SoundCloudClient(), no_telegram=no_telegram, check=check_auth_token)
 
     threshold = cfg.raw.get("health", {}).get("alert_after_bad_runs", 2)
     with Health(cfg["state"]["db_path"]) as health:
