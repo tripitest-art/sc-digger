@@ -7,6 +7,9 @@ unter „Unreleased“ (Regeln: `AGENTS.md`, Abschnitt „Doku und Changelog“)
 
 ## Unreleased
 
+### Geändert
+- Merge-Gate schließt die Issues selbst: Nach einem Squash-Merge über den Workflow `merge-nach-freigabe` schließt `.github/scripts/merge_nach_freigabe.py` die Issues aus `Closes`/`Fixes`/`Resolves #N` im PR-Text; GitHub vollzog das bei PRs der Worker-App nicht (Issues #488 und #486 blieben nach dem Merge offen). Ein Fehler beim Schließen macht den vollzogenen Merge nicht rückgängig und läuft nur ins Log.
+
 ### Hinzugefügt
 - Web-Dashboard: Der Button „Rekordbox-XML neu schreiben“ auf der Statusseite schreibt die Inbox-XML über `POST /api/rekordbox/sync` neu (Anmeldung und Content-Type-Prüfung wie die übrigen Dashboard-Routen) und nennt die Zahl der Tracks; Fehlerfälle liefern eine Meldung ohne Dateipfad (#495).
 - Artist-Reputation: Rekordbox-Sterne (`rb_rating` 1..5) zählen als Bonus (`scoring.artist_reputation.boost_per_star`, Standard +2.0); Tracks mit Sternen werden nicht zusätzlich als Download gewertet und verhindern den Reputations-Malus (#499).

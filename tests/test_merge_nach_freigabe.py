@@ -222,6 +222,16 @@ class _FakeGitHub:
     def delete_branch(self, ref):
         self.calls.append(("delete", ref))
 
+    def pull_body(self, number):
+        return "Closes #99\n"
+
+    def issue_offen(self, number):
+        return number not in getattr(self, "geschlossen", [])
+
+    def close_issue(self, number):
+        self.calls.append(("close", number))
+        self.geschlossen = getattr(self, "geschlossen", []) + [number]
+
 
 def _main(monkeypatch, tmp_path, label="review-freigabe", gh_cls=_FakeGitHub, summary=None, pr=None):
     event = {"label": {"name": label}, "pull_request": pr or PR}
@@ -241,7 +251,7 @@ def _main(monkeypatch, tmp_path, label="review-freigabe", gh_cls=_FakeGitHub, su
 
 def test_main_mergt_und_loescht_den_feature_branch(monkeypatch, tmp_path):
     assert _main(monkeypatch, tmp_path) == 0
-    assert _FakeGitHub.instances[-1].calls == [("merge", 12, HEAD), ("delete", "feature/issue-7-test")]
+    assert _FakeGitHub.instances[-1].calls == [("merge", 12, HEAD), ("delete", "feature/issue-7-test"), ("close", 99)]
 
 
 def test_main_ohne_das_label_tut_nichts(monkeypatch, tmp_path):
@@ -347,7 +357,7 @@ def test_wartet_bis_die_fremden_checks_fertig_sind(monkeypatch, tmp_path):
     monkeypatch.setattr(m.time, "sleep", lambda s: geschlafen.append(s))
 
     assert _main(monkeypatch, tmp_path, gh_cls=klasse) == 0
-    assert klasse.instances[-1].calls == [("merge", 12, HEAD), ("delete", "feature/issue-7-test")]
+    assert klasse.instances[-1].calls == [("merge", 12, HEAD), ("delete", "feature/issue-7-test"), ("close", 99)]
     assert geschlafen, "das Gate muss zwischen den Abfragen warten"
     assert klasse.instances[-1].check_abrufe >= 2
 
@@ -443,3 +453,102 @@ def test_akteur_key_normalisiert():
     assert m.akteur_key("Sandbox-Agent-Reviewer-App[bot]") == "sandbox-agent-reviewer-app"
     assert m.akteur_key(" tripitest-art ") == "tripitest-art"
     assert m.akteur_key(None) == ""
+
+
+# --- Issues nach dem Merge schließen -------------------------------------------------------
+# Ohne diesen Schritt bleibt ein fertiges Issue offen (#488, #486): `Closes #N` im PR-Text
+# erzeugt bei einem über die API gemergten Squash-PR nur ein `cross-referenced`-Event.
+
+def test_issue_referenz_erkennt_die_ueblichen_schreibweisen():
+    assert m.issues_aus_pr_text("Closes #12") == [12]
+    assert m.issues_aus_pr_text("closes #12") == [12]
+    assert m.issues_aus_pr_text("Fixes #12") == [12]
+    assert m.issues_aus_pr_text("Fixed: #12") == [12]
+    assert m.issues_aus_pr_text("Resolves #12") == [12]
+    assert m.issues_aus_pr_text("## Was und warum\n\nCloses #486\n\n- Text") == [486]
+
+
+def test_issue_referenz_mehrere_nummern_und_doppelte():
+    assert m.issues_aus_pr_text("Closes #12, #13") == [12, 13]
+    assert m.issues_aus_pr_text("Closes #12\nFixes #12") == [12]
+
+
+def test_issue_referenz_ignoriert_blosse_erwaehnung():
+    """Ein Link im Fließtext ist noch kein Versprechen, das Issue zu schließen."""
+    assert m.issues_aus_pr_text("Siehe #12 und #13") == []
+    assert m.issues_aus_pr_text("") == []
+    assert m.issues_aus_pr_text(None) == []
+
+
+def test_issue_referenz_ignoriert_andere_aussagen():
+    """`Closed by #5` und Prosa über das Schließen schließen nichts."""
+    assert m.issues_aus_pr_text("Closed by #5") == []
+
+
+def test_issue_referenz_ignoriert_fremdes_repo_und_die_eigene_pr_nummer():
+    assert m.issues_aus_pr_text("Closes owner/repo#12") == []
+    assert m.issues_aus_pr_text("Closes #508", eigene_nummer=508) == []
+
+
+class _FakeGh:
+    """Minimaler Ersatz für GitHub: nur die Wege, die schliesse_verknuepfte_issues nutzt."""
+
+    def __init__(self, body, offen, fehler_bei=None):
+        self.body = body
+        self.offen = set(offen)
+        self.fehler_bei = fehler_bei
+        self.geschlossen = []
+
+    def pull_body(self, number):
+        return self.body
+
+    def issue_offen(self, number):
+        return number in self.offen
+
+    def close_issue(self, number):
+        if number == self.fehler_bei:
+            raise m.MergeAbgelehnt("API-Fehler")
+        self.geschlossen.append(number)
+        self.offen.discard(number)
+
+
+def test_schliessen_ueberspringt_bereits_geschlossene_issues():
+    """Ein von Hand geschlossenes Issue behält seinen Grund."""
+    gh = _FakeGh("Closes #12, #13", offen={12})
+    assert m.schliesse_verknuepfte_issues(gh, 30) == [12]
+    assert gh.geschlossen == [12]
+
+
+def test_schliessen_ohne_verweis_tut_nichts():
+    gh = _FakeGh("Nur ein Bericht über #12", offen={12})
+    assert m.schliesse_verknuepfte_issues(gh, 30) == []
+    assert gh.geschlossen == []
+
+
+def test_schliessen_meldet_fehlenden_zugriff_nicht_als_erfolg():
+    gh = _FakeGh("Closes #12", offen={12}, fehler_bei=12)
+    with pytest.raises(m.MergeAbgelehnt):
+        m.schliesse_verknuepfte_issues(gh, 30)
+
+
+# --- Zusammenspiel mit main() ---------------------------------------------------------------
+
+def test_main_schliesst_das_issue_nach_dem_merge(monkeypatch, tmp_path):
+    """Ohne diesen Schritt bliebe #99 offen, obwohl der Code in main liegt."""
+    assert _main(monkeypatch, tmp_path) == 0
+    assert ("close", 99) in _FakeGitHub.instances[-1].calls
+
+
+def test_main_meldet_exit_0_wenn_das_schliessen_scheitert(monkeypatch, tmp_path):
+    """Der Merge ist vollzogen; ein fehlender Rechte-Zugriff darf den Job nicht rot machen."""
+    class _Zickig(_FakeGitHub):
+        def close_issue(self, number):
+            raise m.MergeAbgelehnt("PATCH /issues/99 -> HTTP 403")
+
+    monkeypatch.setattr(sys, "stdout", open(tmp_path / "out.txt", "w", encoding="utf-8"))
+    try:
+        assert _main(monkeypatch, tmp_path, gh_cls=_Zickig) == 0
+    finally:
+        sys.stdout.close()
+        sys.stdout = sys.__stdout__
+    assert "nicht geschlossen" in (tmp_path / "out.txt").read_text(encoding="utf-8")

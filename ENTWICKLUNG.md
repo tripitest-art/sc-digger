@@ -71,6 +71,7 @@ Modul anlegt, trägt es in die Tabelle ein.
 | `entrypoint.sh` | Schreibt `cron.env` (Cron hat sonst weder PATH noch Secrets), hängt die Kaufliste-/Scout-Jobs an und installiert sie per `install_crontab` (ein Fehler dort bricht den Start mit Exit 1 ab, damit fehlende Jobs nicht unbemerkt bleiben), startet cron und Bot |
 | `skills/*/SKILL.md` | Abläufe für lokale Modelle in LibreChat (Review, Worker, Planer), per GitHub Skill Sync gespiegelt; Regeln bleiben in `AGENTS.md` |
 | `.github/scripts/acceptance_guard.py` | CI-Check `acceptance-guard`: Akzeptanztests = Issue, keine neuen skips, CI/Test-Konfiguration geschützt, PR-Text ausgefüllt (`Closes #N`, `Worker:`) |
+| `.github/scripts/merge_nach_freigabe.py` | Workflow `merge-nach-freigabe`: mergt nach der Freigabe der Reviewer-App (Squash) und löscht den Branch; schließt danach die Issues aus `Closes`/`Fixes`/`Resolves #N` im PR-Text, weil GitHub das bei Squash-Merges über die API nicht selbst tut |
 | `.github/workflows/codeql.yml` | Statische Sicherheitsanalyse mit CodeQL (Python, Actions); ignoriert `tests/**`, um False-Positives bei Test-Assertions zu verhindern |
 | `sc_digger/issuecheck.py` | Planer-Preflight: prüft einen Issue-Text und seine Akzeptanztests vor dem Einstellen (`python -m sc_digger.issuecheck <issue.md>`), lässt den Block mit pytest gegen ein Repo laufen; kopiert die Block-Regex aus `acceptance_guard.py`, importiert sie nicht; warnt vor CodeQL-Fehlalarmen durch Substring-Domain-Checks |
 | `set-secret.sh` / `update.sh` | Zugangsdaten setzen / Update ausrollen (auf dem Server) |
