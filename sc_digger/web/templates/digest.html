@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_icons.html" import icon %}
 
 {% block title %}sc-digger Digest &amp; Entdeckungen{% endblock %}
 {% block nav_digest %}active{% endblock %}
@@ -40,8 +41,8 @@
       </p>
     </div>
     <div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
-      <a href="/digest?download_kind=gate&amp;status=open" class="btn-page">⏳ Offene Gates</a>
-      <a href="/digest?download_kind=store" class="btn-page">🛒 Kaufliste (nur Store)</a>
+      <a href="/digest?download_kind=gate&amp;status=open" class="btn-page">{{ icon("gate", 14) }} Offene Gates</a>
+      <a href="/digest?download_kind=store" class="btn-page">{{ icon("store", 14) }} Kaufliste (nur Store)</a>
     </div>
   </div>
 

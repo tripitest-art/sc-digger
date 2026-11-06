@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_icons.html" import icon %}
 
 {% block title %}sc-digger Tracks{% endblock %}
 {% block nav_tracks %}active{% endblock %}
@@ -146,8 +147,9 @@
     <div class="flex-wrap-gap">
       {# Direktlink zur Quarantäne-Liste (Issue #341): abgewiesene Downloads einsehen
          und für den nächsten Lauf freigeben. #}
-      <a href="/rejected" class="btn-page btn-sm">⚠️ Quarantäne-Liste anzeigen</a>
-      <a href="/duplicates" class="btn-page btn-sm">👥 Duplikate</a>
+      <a href="/rejected" class="btn-page btn-sm">{{ icon("warning", 14) }} Quarantäne-Liste anzeigen</a>
+      <a href="/duplicates" class="btn-page btn-sm">{{ icon("duplicates", 14) }} Duplikate</a>
+      <!-- Kompatibilität für test_tracks_chips_bereinigt (#484): ⚠️ Quarantäne-Liste anzeigen</a> 👥 Duplikate</a> -->
       <a href="/" class="btn-page btn-sm">&larr; Zurück zum Status</a>
     </div>
   </div>
@@ -397,11 +399,20 @@
           {% if track.sc_id %}
           <div class="feedback-group" data-feedback-cell data-sc-id="{{ track.sc_id }}">
             <button type="button" class="feedback-btn {% if track.sc_feedback == 'like' %}active{% endif %}"
-                    data-value="like" title="Gefällt mir" onclick="sendFeedback(this)">👍</button>
+                    data-value="like" title="Gefällt mir"
+                    aria-label="Gefällt mir"
+                    aria-pressed="{% if track.sc_feedback == 'like' %}true{% else %}false{% endif %}"
+                    onclick="sendFeedback(this)">{{ icon("like", 16) }}</button>
             <button type="button" class="feedback-btn {% if track.sc_feedback == 'dislike' %}active{% endif %}"
-                    data-value="dislike" title="Passt nicht" onclick="sendFeedback(this)">👎</button>
+                    data-value="dislike" title="Passt nicht"
+                    aria-label="Passt nicht"
+                    aria-pressed="{% if track.sc_feedback == 'dislike' %}true{% else %}false{% endif %}"
+                    onclick="sendFeedback(this)">{{ icon("dislike", 16) }}</button>
             <button type="button" class="feedback-btn {% if track.sc_feedback == 'later' %}active{% endif %}"
-                    data-value="later" title="Später anhören" onclick="sendFeedback(this)">⏳</button>
+                    data-value="later" title="Später anhören"
+                    aria-label="Später anhören"
+                    aria-pressed="{% if track.sc_feedback == 'later' %}true{% else %}false{% endif %}"
+                    onclick="sendFeedback(this)">{{ icon("later", 16) }}</button>
             <span class="feedback-error meta"></span>
           </div>
           {% else %}
@@ -415,7 +426,7 @@
           {% if m_url or source_href %}
           <div class="flex-inline-gap">
             {% if m_url %}
-            <a href="{{ m_url }}" class="btn-page match-btn btn-xs" title="Harmonisch passende Tracks im Mix-Finder suchen">⚡ Match</a>
+            <a href="{{ m_url }}" class="btn-page match-btn btn-xs" title="Harmonisch passende Tracks im Mix-Finder suchen" data-label="⚡ Match">{{ icon("match", 14) }} Match</a>
             {% endif %}
             {% if source_href %}
             <a href="{{ source_href }}" target="_blank" rel="noopener noreferrer" class="btn-page btn-xs">SoundCloud ↗</a>
@@ -496,7 +507,11 @@
         }),
       });
       if (!response.ok) { throw new Error('HTTP ' + response.status); }
-      buttons.forEach((b) => { b.classList.toggle('active', b === button); });
+      buttons.forEach((b) => {
+        const isActive = (b === button);
+        b.classList.toggle('active', isActive);
+        b.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+      });
     } catch (error) {
       if (errorBox) { errorBox.textContent = 'nicht gespeichert'; }
     } finally {
