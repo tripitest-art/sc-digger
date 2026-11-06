@@ -185,6 +185,7 @@
       <a href="/tracks?adopted=1" class="quick-chip {% if filters.adopted == '1' %}active{% endif %}">⭐ Übernommen</a>
       <a href="/tracks?breakdown_max=0.15" class="quick-chip {% if filters.breakdown_max == '0.15' %}active{% endif %}">⚡ Peaktime (&le;15% Break)</a>
       <a href="/tracks?quality=fake_transcode" class="quick-chip {% if filters.quality == 'fake_transcode' %}active{% endif %}">🚫 Fake-Transcodes</a>
+      <a href="/tracks?status=inbox&amp;taste_min=0.7" class="quick-chip {% if filters.status == 'inbox' and filters.taste_min == '0.7' %}active{% endif %}">💚 Mein Geschmack (&ge;70%)</a>
     </div>
   </div>
   <form class="filter-form" method="get" action="/tracks">
@@ -240,6 +241,12 @@
         <input type="text" id="f-breakdown-max" name="breakdown_max" value="{{ filters.breakdown_max }}"
                placeholder="z. B. 0.2">
       </div>
+      {# Mindest-Taste-Score als Dezimalwert 0–1 (Issue #480), z. B. 0.7 = 70 %. #}
+      <div class="filter-field">
+        <label for="f-taste-min">Min. Taste</label>
+        <input type="text" id="f-taste-min" name="taste_min" value="{{ filters.taste_min }}"
+               placeholder="z. B. 0.7">
+      </div>
       <div class="filter-field">
         <label for="f-limit">Zeilen</label>
         <select id="f-limit" name="limit">
@@ -260,6 +267,9 @@
 <div class="card">
   <div class="card-header">
     <h2 class="card-title" style="margin: 0;">Treffer</h2>
+    <span class="meta" style="font-size: 0.78rem;" data-taste-info>
+      {% if taste_info %}Taste-Modell vom {{ taste_info.trained_at }} · {{ taste_info.n_pos }} gefällt / {{ taste_info.n_neg }} gefällt nicht{% else %}Taste-Modell: noch nicht trainiert{% endif %}
+    </span>
     <span class="meta" style="font-size: 0.78rem;">Tipp: Beim Vorhören öffnet sich unten das DJ-Deck (<span class="kbd">Space</span> Pause, <span class="kbd">&rarr;</span> +30s Drop-Check)</span>
   </div>
   <div class="table-scroll">
@@ -284,6 +294,9 @@
         </th>
         <th aria-sort="{% if current_sort == 'status' %}{{ 'ascending' if current_dir == 'asc' else 'descending' }}{% else %}none{% endif %}">
           <a href="{{ sort_url('status') }}">Status{% if current_sort == 'status' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
+        </th>
+        <th aria-sort="{% if current_sort == 'taste' %}{{ 'ascending' if current_dir == 'asc' else 'descending' }}{% else %}none{% endif %}">
+          <a href="{{ sort_url('taste') }}">Taste{% if current_sort == 'taste' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
         </th>
         <th>Anhören</th>
         <th>Übernahme</th>
@@ -358,6 +371,9 @@
           <span class="badge badge-muted">{{ track.status or "?" }}</span>
           {% endif %}
         </td>
+        <td class="mono" data-taste>
+          {% if track.taste_score is not none %}{{ (track.taste_score * 100) | round(0) | int }} %{% else %}—{% endif %}
+        </td>
         <td>
           {# Vorhören nur, wenn die Datei lokal in Inbox oder Sammlung liegt (Issue #350). #}
           {% if track.playable %}
@@ -408,7 +424,7 @@
       </tr>
       {% else %}
       <tr>
-        <td colspan="11" class="meta" style="text-align: center; padding: 2rem;">Keine Treffer für diese Filter.</td>
+        <td colspan="12" class="meta" style="text-align: center; padding: 2rem;">Keine Treffer für diese Filter.</td>
       </tr>
       {% endfor %}
     </tbody>

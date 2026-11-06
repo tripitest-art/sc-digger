@@ -74,6 +74,7 @@ from .database import (
     query_tracks,
     retry_quarantined_track,
     save_track_feedback,
+    taste_model_info,
 )
 from .intake import MAX_UPLOAD_BYTES, process_uploaded_audio
 from .status import collect_status
@@ -798,6 +799,7 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
             quality_status=params.get("quality") or None,
             adopted=_query_bool(params.get("adopted")),
             breakdown_ratio_max=_query_float(params.get("breakdown_max")),
+            taste_min=_query_float(params.get("taste_min")),
             sort=sort,
             descending=(direction == "desc"),
             limit=_query_int(params.get("limit"), DEFAULT_LIMIT),
@@ -830,6 +832,7 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
             "bpm_max": params.get("bpm_max") or "",
             "adopted": params.get("adopted") or "",
             "breakdown_max": params.get("breakdown_max") or "",
+            "taste_min": params.get("taste_min") or "",
         }
         raw_limit = params.get("limit")
         limit_val = DEFAULT_LIMIT if raw_limit == "" else _query_int(raw_limit, DEFAULT_LIMIT)
@@ -849,6 +852,7 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
             quality_status=filters["quality"] or None,
             adopted=_query_bool(filters["adopted"]),
             breakdown_ratio_max=_query_float(filters["breakdown_max"]),
+            taste_min=_query_float(filters["taste_min"]),
             sort=sort,
             descending=descending,
             limit=page_size,
@@ -893,6 +897,7 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
             page=offset // page_size + 1,
             total_pages=total_pages,
             filters=filters,
+            taste_info=taste_model_info(app.state.cfg["state"]["track_db_path"]),
             current_sort=sort,
             current_dir=direction,
             sort_url=sort_url,

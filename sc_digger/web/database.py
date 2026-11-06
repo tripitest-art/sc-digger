@@ -36,7 +36,7 @@ _TRACK_COLUMNS = (
     "id", "path", "artist", "title", "format", "bitrate_kbps", "cutoff_hz",
     "quality_status", "bpm", "key_camelot", "key_name", "status", "adopted_at",
     "feedback", "source_url", "created_at", "updated_at", "rb_play_count",
-    "breakdown_ratio",
+    "breakdown_ratio", "taste_score",
 )
 
 # Schutz vor versehentlich riesigen Antworten; das Frontend blättert über offset.
@@ -44,7 +44,7 @@ DEFAULT_LIMIT = 100
 MAX_LIMIT = 200
 
 # Erlaubte Sortierfelder für Tracks und Digest (Issue #427).
-TRACK_SORT_FIELDS = ("artist", "title", "bpm", "key_camelot", "quality", "status")
+TRACK_SORT_FIELDS = ("artist", "title", "bpm", "key_camelot", "quality", "status", "taste")
 DIGEST_SORT_FIELDS = ("date", "artist", "title", "download_kind", "status", "feedback")
 
 _TRACK_SORT_MAP = {
@@ -54,6 +54,7 @@ _TRACK_SORT_MAP = {
     "key_camelot": "key_camelot",
     "quality": "quality_status",
     "status": "status",
+    "taste": "taste_score",
 }
 
 
@@ -244,6 +245,7 @@ def query_tracks(
     quality_status: str | None = None,
     adopted: bool | None = None,
     breakdown_ratio_max: float | None = None,
+    taste_min: float | None = None,
     sort: str | None = None,
     descending: bool = False,
     limit: int = DEFAULT_LIMIT,
@@ -288,6 +290,9 @@ def query_tracks(
     if breakdown_ratio_max is not None:
         where.append("breakdown_ratio IS NOT NULL AND breakdown_ratio <= ?")
         params.append(float(breakdown_ratio_max))
+    if taste_min is not None:
+        where.append("taste_score IS NOT NULL AND taste_score >= ?")
+        params.append(float(taste_min))
     if adopted is True:
         where.append("adopted_at IS NOT NULL")
     elif adopted is False:
@@ -313,11 +318,13 @@ def query_tracks(
             }
             if breakdown_ratio_max is not None and "breakdown_ratio" not in available:
                 return TrackSearchResult()
+            if taste_min is not None and "taste_score" not in available:
+                return TrackSearchResult()
             total = int(db.execute(
                 f"SELECT COUNT(*) FROM tracks{clause_sql}", params
             ).fetchone()[0])
             columns = ", ".join(col for col in _TRACK_COLUMNS if col in available)
-            if sort and sort in _TRACK_SORT_MAP:
+            if sort and sort in _TRACK_SORT_MAP and _TRACK_SORT_MAP[sort] in available:
                 col = _TRACK_SORT_MAP[sort]
                 direction = "DESC" if descending else "ASC"
                 if sort in ("artist", "title", "key_camelot", "quality", "status"):
@@ -345,6 +352,7 @@ def query_tracks(
     for row in rows:
         item = dict(row)
         item.setdefault("breakdown_ratio", None)
+        item.setdefault("taste_score", None)
         sc_id = _sc_id_from_path(item.get("path"))
         item["sc_id"] = sc_id
         item["sc_feedback"] = feedback_map.get(sc_id) if sc_id is not None else None
@@ -355,6 +363,34 @@ def query_tracks(
         item["sc_comments"] = snapshot["comments"] if snapshot else None
         items.append(item)
     return TrackSearchResult(total=total, items=items)
+
+
+def taste_model_info(track_db_path: str | Path) -> dict[str, Any] | None:
+    """Stand des täglich trainierten Taste-Modells (Issue #480).
+
+    Nur lesend. Liefert die Zeile ``id = 1`` aus ``taste_model`` als
+    ``{"embedding_model", "trained_at", "n_pos", "n_neg"}``. Fehlt die Tabelle, die Zeile
+    oder scheitert die Abfrage, kommt ``None`` zurück – das Dashboard zeigt dann
+    „noch nicht trainiert“ statt zu scheitern.
+    """
+    try:
+        with closing(_connect_readonly(track_db_path)) as db:
+            if not _table_exists(db, "taste_model"):
+                return None
+            row = db.execute(
+                "SELECT embedding_model, trained_at, n_pos, n_neg "
+                "FROM taste_model WHERE id = 1"
+            ).fetchone()
+    except sqlite3.Error:
+        return None
+    if row is None:
+        return None
+    return {
+        "embedding_model": row["embedding_model"],
+        "trained_at": row["trained_at"],
+        "n_pos": int(row["n_pos"]),
+        "n_neg": int(row["n_neg"]),
+    }
 
 
 # --------------------------------------------------------------- Set-Builder (Issue #340)
