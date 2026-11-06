@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon %}
+{% from "_components.html" import empty_state %}
 
 {% block title %}sc-digger Kaufliste{% endblock %}
 {% block nav_kaufliste %}active{% endblock %}
@@ -130,8 +131,8 @@
       </tr>
       {% else %}
       <tr>
-        <td colspan="5" style="text-align: center; padding: 2rem;" class="meta">
-          Keine Store-Tracks für diese Filtereinstellungen gefunden.
+        <td colspan="5">
+          {{ empty_state("Keine Store-Tracks für diese Filtereinstellungen gefunden.", "/kaufliste") }}
         </td>
       </tr>
       {% endfor %}

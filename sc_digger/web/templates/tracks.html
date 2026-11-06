@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon %}
+{% from "_components.html" import empty_state %}
 
 {% block title %}sc-digger Tracks{% endblock %}
 {% block nav_tracks %}active{% endblock %}
@@ -453,7 +454,9 @@
       </tr>
       {% else %}
       <tr>
-        <td colspan="12" class="meta table-empty">Keine Treffer für diese Filter.</td>
+        <td colspan="12">
+          {{ empty_state("Keine Treffer für diese Filter.", "/tracks") }}
+        </td>
       </tr>
       {% endfor %}
     </tbody>

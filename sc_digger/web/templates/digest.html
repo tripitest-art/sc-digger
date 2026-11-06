@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon %}
+{% from "_components.html" import empty_state %}
 
 {% block title %}sc-digger Digest &amp; Entdeckungen{% endblock %}
 {% block nav_digest %}active{% endblock %}
@@ -250,8 +251,8 @@
       </tr>
       {% else %}
       <tr>
-        <td colspan="7" style="text-align: center; padding: 2rem;" class="meta">
-          Keine Vorschläge für diese Filtereinstellungen gefunden.
+        <td colspan="7">
+          {{ empty_state("Keine Vorschläge für diese Filtereinstellungen gefunden.", "/digest") }}
         </td>
       </tr>
       {% endfor %}

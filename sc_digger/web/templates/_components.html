@@ -1,0 +1,7 @@
+{# Wiederverwendbare UI-Komponenten (sc-digger Design System) #}
+{% macro empty_state(text, reset_url) %}
+<div class="empty-state">
+  <p>{{ text }}</p>
+  <a class="btn-page" href="{{ reset_url }}">Filter zurücksetzen</a>
+</div>
+{% endmacro %}
