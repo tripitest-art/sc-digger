@@ -181,9 +181,11 @@
         className: 'retry-ok',
         textContent: '✓ freigegeben',
       }));
+      showToast("Track zur erneuten Prüfung freigegeben", "ok");
     } catch (error) {
       button.disabled = false;
       if (errorBox) { errorBox.textContent = error.message || 'nicht freigegeben'; }
+      showToast("Freigabe fehlgeschlagen", "err");
     }
   }
 </script>

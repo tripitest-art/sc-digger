@@ -895,6 +895,45 @@
   .deck-time { font-size: 0.76rem; min-width: 5.5rem; }
   .logo-deck { width: 2rem; height: 2rem; font-size: 1rem; }
 
+  /* Toast-Meldungen (Issue #490) */
+  #toast-region {
+    position: fixed;
+    bottom: 1.5rem;
+    right: 1.5rem;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    pointer-events: none;
+    max-width: 24rem;
+  }
+  .toast {
+    pointer-events: auto;
+    padding: 0.65rem 1rem;
+    border-radius: var(--radius-sm);
+    font-size: 0.85rem;
+    font-weight: 500;
+    box-shadow: var(--shadow-card);
+    transition: opacity 0.2s ease, transform 0.2s ease;
+    animation: toast-in 0.2s ease-out;
+  }
+  @keyframes toast-in {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .toast-ok {
+    background-color: var(--bg-card);
+    color: var(--accent-ok);
+    border: 1px solid rgba(16, 185, 129, 0.4);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5), 0 0 10px rgba(16, 185, 129, 0.15);
+  }
+  .toast-err {
+    background-color: var(--bg-card);
+    color: var(--accent-err);
+    border: 1px solid rgba(239, 68, 68, 0.4);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5), 0 0 10px rgba(239, 68, 68, 0.15);
+  }
+
 @media (max-width: 800px) {
   .site-header { padding: 0.6rem 1rem; }
   .site-main { padding: 1.25rem 1rem 5rem; }
@@ -943,5 +982,21 @@
 <footer class="site-footer">
   sc-digger &middot; Schranz &amp; Hard Techno Crate Digging Pipeline
 </footer>
+<div id="toast-region" role="status" aria-live="polite"></div>
+<script>
+  function showToast(message, kind) {
+    kind = kind || "ok";
+    var region = document.getElementById("toast-region");
+    if (!region) return;
+    var el = document.createElement("div");
+    el.className = "toast toast-" + (kind === "err" ? "err" : "ok");
+    el.textContent = message;
+    region.appendChild(el);
+    var duration = kind === "err" ? 8000 : 4000;
+    setTimeout(function() {
+      if (el.parentNode) el.parentNode.removeChild(el);
+    }, duration);
+  }
+</script>
 </body>
 </html>
