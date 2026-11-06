@@ -134,25 +134,25 @@
 <div class="card">
   <div class="tracks-toolbar">
     <div>
-      <h1 style="margin: 0;">Track-Explorer</h1>
-      <p class="meta" style="margin: 0.25rem 0 0;">
+      <h1 class="m-0">Track-Explorer</h1>
+      <p class="meta mt-1 mb-0">
         Gesamte Track-Datenbank &middot; <strong>{{ total }}</strong> Treffer
         {% if total_pages > 1 %}&middot; Seite {{ page }} von {{ total_pages }}{% endif %}
       </p>
     </div>
-    <div style="display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center;">
+    <div class="flex-wrap-gap">
       {# Direktlink zur Quarantäne-Liste (Issue #341): abgewiesene Downloads einsehen
          und für den nächsten Lauf freigeben. #}
-      <a href="/rejected" class="btn-page" style="font-size: 0.82rem;">⚠️ Quarantäne-Liste anzeigen (/rejected)</a>
-      <a href="/duplicates" class="btn-page" style="font-size: 0.82rem;">👥 Duplikate (/duplicates)</a>
-      <a href="/" class="btn-page" style="font-size: 0.82rem;">&larr; Zurück zum Status</a>
+      <a href="/rejected" class="btn-page btn-sm">⚠️ Quarantäne-Liste anzeigen (/rejected)</a>
+      <a href="/duplicates" class="btn-page btn-sm">👥 Duplikate (/duplicates)</a>
+      <a href="/" class="btn-page btn-sm">&larr; Zurück zum Status</a>
     </div>
   </div>
 
-  <details class="info-toggle" style="margin-top: 1rem; margin-bottom: 0;">
+  <details class="info-toggle mt-4 mb-0">
     <summary>ℹ️ Erklärung: Track-Status, Camelot-Farben &amp; DJ-Shortcuts</summary>
     <div class="info-toggle-content">
-      <div style="font-weight: 600; color: var(--text-main); margin-bottom: 0.35rem;">Track-Status in der Datenbank:</div>
+      <div class="fw-600 mb-2">Track-Status in der Datenbank:</div>
       <div class="legend-grid">
         <div class="legend-item">
           <span class="badge badge-info">inbox</span>
@@ -177,8 +177,8 @@
 
 <div class="card">
   <div class="card-header">
-    <h2 class="card-title" style="margin: 0;">Filter &amp; Schnellwahl</h2>
-    <div class="quick-chips" style="margin-bottom: 0;">
+    <h2 class="card-title m-0">Filter &amp; Schnellwahl</h2>
+    <div class="quick-chips">
       <a href="/tracks" class="quick-chip {% if not filters.status and not filters.adopted and not filters.breakdown_max and not filters.quality %}active{% endif %}">Alle</a>
       <a href="/tracks?status=inbox" class="quick-chip {% if filters.status == 'inbox' %}active{% endif %}">📥 Inbox (DJ-Ready)</a>
       <a href="/tracks?status=archive" class="quick-chip {% if filters.status == 'archive' %}active{% endif %}">🏛️ Sammlung</a>
@@ -266,11 +266,11 @@
 
 <div class="card">
   <div class="card-header">
-    <h2 class="card-title" style="margin: 0;">Treffer</h2>
-    <span class="meta" style="font-size: 0.78rem;" data-taste-info>
+    <h2 class="card-title m-0">Treffer</h2>
+    <span class="meta-sm" data-taste-info>
       {% if taste_info %}Taste-Modell vom {{ taste_info.trained_at }} · {{ taste_info.n_pos }} gefällt / {{ taste_info.n_neg }} gefällt nicht{% else %}Taste-Modell: noch nicht trainiert{% endif %}
     </span>
-    <span class="meta" style="font-size: 0.78rem;">Tipp: Beim Vorhören öffnet sich unten das DJ-Deck (<span class="kbd">Space</span> Pause, <span class="kbd">&rarr;</span> +30s Drop-Check)</span>
+    <span class="meta-sm">Tipp: Beim Vorhören öffnet sich unten das DJ-Deck (<span class="kbd">Space</span> Pause, <span class="kbd">&rarr;</span> +30s Drop-Check)</span>
   </div>
   <div class="table-scroll">
   <table>
@@ -311,26 +311,25 @@
           data-title="{{ track.title or '—' }}"
           data-bpm="{{ track.bpm if track.bpm is not none else '' }}"
           data-key="{{ track.key_camelot or '' }}">
-        <td style="font-weight: 600;">{{ track.artist or "—" }}</td>
+        <td class="fw-600">{{ track.artist or "—" }}</td>
         <td>
           <strong>{{ track.title or "—" }}</strong>
-          <div class="mono" style="color: var(--text-dim); font-size: 0.73rem; margin-top: 0.1rem;">{{ track.path }}</div>
+          <div class="mono meta-path">{{ track.path }}</div>
           {# Kompakte Kennzahlen-Zeile (Issue #258): SoundCloud-Engagement aus track_snapshots. #}
           {% if track.sc_plays is not none or track.sc_likes is not none %}
-          <div class="meta" style="font-size: 0.72rem; margin-top: 0.2rem;">
+          <div class="meta meta-xs mt-1">
             ▶ {{ track.sc_plays or 0 }} · ♥ {{ track.sc_likes or 0 }} · 🔁 {{ track.sc_reposts or 0 }}
           </div>
           {% endif %}
           {% if track.rb_play_count and track.rb_play_count > 0 %}
-          <span class="badge badge-info" style="margin-top: 0.25rem;">🎧 {{ track.rb_play_count }}x im Set</span>
+          <span class="badge badge-info mt-1">🎧 {{ track.rb_play_count }}x im Set</span>
           {% endif %}
           {# Breakdown-Anteil aus der Strukturanalyse (Issue #334). Unter 15 % gilt der Track
              als Peaktime-Werkzeug; der Wert 0.0 ist gültig und muss deshalb "is not none". #}
           {% if track.breakdown_ratio is not none %}
           {% set br_pct = (track.breakdown_ratio * 100) | round(0) | int %}
           {% set drive_pct = 100 - (br_pct if br_pct <= 100 else 100) %}
-          <span class="badge {% if track.breakdown_ratio < 0.15 %}badge-ok{% else %}badge-info{% endif %}"
-                style="margin-top: 0.25rem;"
+          <span class="badge {% if track.breakdown_ratio < 0.15 %}badge-ok{% else %}badge-info{% endif %} mt-1"
                 title="Breakdown-Anteil{% if track.breakdown_ratio < 0.15 %} – Peaktime-Tool{% endif %}">
             ⚡ {{ br_pct }}% Break{% if track.breakdown_ratio < 0.15 %} · Peaktime{% endif %}
             <span class="energy-mini-bar" aria-hidden="true"><span class="energy-mini-fill" style="width: {{ drive_pct }}%;"></span></span>
@@ -339,7 +338,7 @@
         </td>
         <td class="mono">
           {{ track.format or "?" }}
-          {% if track.bitrate_kbps %}<div class="meta" style="font-size: 0.72rem;">{{ track.bitrate_kbps | round(0) | int }} kbps</div>{% endif %}
+          {% if track.bitrate_kbps %}<div class="meta meta-xs">{{ track.bitrate_kbps | round(0) | int }} kbps</div>{% endif %}
         </td>
         <td class="mono">
           {% if track.bpm is not none %}{{ track.bpm }}{% else %}—{% endif %}
@@ -386,7 +385,7 @@
         <td>
           {% if track.adopted_at %}
           <span class="badge badge-ok">übernommen</span>
-          <div class="mono" style="color: var(--text-dim); font-size: 0.72rem; margin-top: 0.15rem;">{{ track.adopted_at }}</div>
+          <div class="mono meta-dim-xs">{{ track.adopted_at }}</div>
           {% else %}
           <span class="badge badge-muted">offen</span>
           {% endif %}
@@ -411,12 +410,12 @@
           {% set source_href = track.source_url if track.source_url and (track.source_url.startswith("http://") or track.source_url.startswith("https://")) else "" %}
           {% set m_url = match_url(track.key_camelot, track.bpm) %}
           {% if m_url or source_href %}
-          <div style="display: inline-flex; gap: 0.35rem; align-items: center; flex-wrap: wrap;">
+          <div class="flex-inline-gap">
             {% if m_url %}
-            <a href="{{ m_url }}" class="btn-page match-btn" title="Harmonisch passende Tracks im Mix-Finder suchen" style="padding: 0.2rem 0.5rem; font-size: 0.74rem;">⚡ Match</a>
+            <a href="{{ m_url }}" class="btn-page match-btn btn-xs" title="Harmonisch passende Tracks im Mix-Finder suchen">⚡ Match</a>
             {% endif %}
             {% if source_href %}
-            <a href="{{ source_href }}" target="_blank" rel="noopener noreferrer" class="btn-page" style="padding: 0.2rem 0.5rem; font-size: 0.74rem;">SoundCloud ↗</a>
+            <a href="{{ source_href }}" target="_blank" rel="noopener noreferrer" class="btn-page btn-xs">SoundCloud ↗</a>
             {% endif %}
           </div>
           {% else %}—{% endif %}
@@ -424,7 +423,7 @@
       </tr>
       {% else %}
       <tr>
-        <td colspan="12" class="meta" style="text-align: center; padding: 2rem;">Keine Treffer für diese Filter.</td>
+        <td colspan="12" class="meta table-empty">Keine Treffer für diese Filter.</td>
       </tr>
       {% endfor %}
     </tbody>
@@ -451,7 +450,7 @@
 <div id="dj-deck-bar" class="dj-deck-bar" aria-label="DJ Deck Player">
   <div class="dj-deck-inner">
     <div class="dj-deck-info">
-      <span class="brand-logo" style="width: 2rem; height: 2rem; font-size: 1rem;">🎛️</span>
+      <span class="brand-logo logo-deck">🎛️</span>
       <div>
         <div id="deck-track-title" class="dj-deck-title">Kein Track aktiv</div>
         <div id="deck-track-meta" class="dj-deck-sub mono">—</div>
@@ -464,7 +463,7 @@
       <button type="button" class="dj-deck-btn" onclick="deckSeek(30)" title="30s vor / Drop-Check (→)">+30s</button>
       <button type="button" class="dj-deck-btn" onclick="deckStepTrack(1)" title="Nächster Track (J)">⏭</button>
       <input type="range" id="deck-scrubber" class="dj-deck-scrubber" min="0" max="100" value="0" step="0.5">
-      <span id="deck-time" class="mono meta" style="font-size: 0.76rem; min-width: 5.5rem;">0:00 / 0:00</span>
+      <span id="deck-time" class="mono meta deck-time">0:00 / 0:00</span>
     </div>
     <div class="dj-deck-shortcuts">
       <span><span class="kbd">Space</span> Play/Pause</span>
