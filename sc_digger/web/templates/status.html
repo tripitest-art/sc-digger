@@ -101,6 +101,8 @@
       <a href="/digest?status=open" class="btn-page">🔎 Offene Entdeckungen</a>
       <a href="/mix" class="btn-page">🎛️ Harmonischer Set-Builder</a>
       <a href="/intake" class="btn-page">⬆️ Dateien hochladen</a>
+      <button type="button" id="rekordbox-sync" class="btn-page">Rekordbox-XML neu schreiben</button>
+      <span id="rekordbox-sync-status" role="status" aria-live="polite"></span>
     </div>
   </div>
 
@@ -378,4 +380,33 @@
     </table>
   </div>
 </div>
+
+<script>
+(function () {
+  const button = document.getElementById('rekordbox-sync');
+  const statusEl = document.getElementById('rekordbox-sync-status');
+  if (!button || !statusEl) return;
+  button.addEventListener('click', async function () {
+    button.disabled = true;
+    statusEl.textContent = 'Schreibe XML …';
+    try {
+      const resp = await fetch('/api/rekordbox/sync', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'}
+      });
+      let data = {};
+      try { data = await resp.json(); } catch (e) { data = {}; }
+      if (resp.ok && data.ok) {
+        statusEl.textContent = 'XML neu geschrieben: ' + data.entries + ' Tracks';
+      } else {
+        statusEl.textContent = data.error || ('HTTP ' + resp.status);
+      }
+    } catch (e) {
+      statusEl.textContent = 'Netzwerkfehler';
+    } finally {
+      button.disabled = false;
+    }
+  });
+})();
+</script>
 {% endblock %}

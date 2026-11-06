@@ -631,6 +631,46 @@ def _audio_response(request: Request, path_value: str | None, cfg: Config) -> Re
     )
 
 
+def sync_rekordbox_xml(cfg: Config) -> tuple[int, dict]:
+    """Schreibt die Rekordbox-XML der Inbox neu und liefert (HTTP-Status, JSON-Body).
+
+    - cfg.raw["rekordbox"] fehlt, ist kein dict oder xml_enabled ist falsch:
+      (409, {"ok": False, "error": "Rekordbox-XML ist abgeschaltet (rekordbox.xml_enabled)."}),
+      es wird nichts geschrieben.
+    - rekordbox.write_rekordbox_xml(cfg) liefert None:
+      (500, {"ok": False, "error": "Rekordbox-XML konnte nicht geschrieben werden, siehe Container-Log."}).
+    - Sonst: Zahl der Tracks aus dem Attribut Entries des Knotens COLLECTION der geschriebenen
+      Datei lesen und (200, {"ok": True, "entries": <int>}) zurückgeben.
+    - Jede Ausnahme (auch beim Lesen der Datei): log.exception, dieselbe 500er-Antwort.
+      Wirft nie. Der Dateipfad steht in keiner Antwort.
+    """
+    try:
+        rb_cfg = cfg.raw.get("rekordbox") if isinstance(cfg.raw, dict) else None
+        if not rb_cfg or not isinstance(rb_cfg, dict) or not rb_cfg.get("xml_enabled"):
+            return 409, {
+                "ok": False,
+                "error": "Rekordbox-XML ist abgeschaltet (rekordbox.xml_enabled).",
+            }
+
+        xml_path = rekordbox.write_rekordbox_xml(cfg)
+        if xml_path is None:
+            return 500, {
+                "ok": False,
+                "error": "Rekordbox-XML konnte nicht geschrieben werden, siehe Container-Log.",
+            }
+
+        root = ET.parse(xml_path).getroot()
+        collection = root.find("COLLECTION")
+        n = collection.get("Entries") if collection is not None else None
+        return 200, {"ok": True, "entries": int(n)}
+    except Exception:
+        log.exception("Fehler beim Neuschreiben der Rekordbox-XML")
+        return 500, {
+            "ok": False,
+            "error": "Rekordbox-XML konnte nicht geschrieben werden, siehe Container-Log.",
+        }
+
+
 def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = False,
                base_path: Path | None = None, local_path: Path | None = None,
                login_limit: FailureTracker | None = None,
@@ -694,6 +734,17 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
     @app.get("/api/status")
     def api_status(request: Request):
         return JSONResponse(collect_status(app.state.cfg).to_dict())
+
+    # Schreibt die Inbox-XML neu wie der Bot-Befehl /sync_xml (Issue #495). Normale def-Route,
+    # damit FastAPI sie im Threadpool ausführt und die Event-Loop nicht blockiert. Content-Type-
+    # und Origin-Prüfung wie /api/jobs/claim; ein Aufruf ohne Body ist erlaubt.
+    @app.post("/api/rekordbox/sync")
+    def api_rekordbox_sync(request: Request):
+        ct_err = _require_json_content_type(request, allow_empty_body=True)
+        if ct_err is not None:
+            return ct_err
+        status, body = sync_rekordbox_xml(app.state.cfg)
+        return JSONResponse(body, status_code=status)
 
     # Job-Queue für externe GPU-Worker (Issue #330): claimen, Lebenszeichen und Ergebnis
     # melden über HTTP, damit die Workstation die Track-DB nicht per SMB/NFS einbinden muss.
