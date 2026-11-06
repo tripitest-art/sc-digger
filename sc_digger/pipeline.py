@@ -296,12 +296,12 @@ def artist_reputation_score(
     """Berechnet Score-Bonus oder -Malus anhand der Artist-Reputation.
 
     cfg-Schlüssel (mit Standardwerten):
-    - boost_per_like: float (5.0), boost_per_download: float (2.0), max_boost: float (20.0)
+    - boost_per_like: float (5.0), boost_per_download: float (2.0), boost_per_star: float (2.0), max_boost: float (20.0)
     - min_dislikes_for_penalty: int (3), penalty: float (15.0)
 
     Rückgabe: (delta, note_text oder None).
-    - Keine Downloads, keine Likes und genug Dislikes -> (-penalty, 'Artist-Malus: <n> 👎')
-    - Positiver Boost aus Likes/Downloads (gedeckelt auf max_boost) -> (boost, 'Artist-Bonus: +<boost>')
+    - Keine Downloads, keine Likes, keine Sterne und genug Dislikes -> (-penalty, 'Artist-Malus: <n> 👎')
+    - Positiver Boost aus Likes/Downloads/Sternen (gedeckelt auf max_boost) -> (boost, 'Artist-Bonus: +<boost>')
     - Sonst: (0.0, None)
     """
     if rep is None:
@@ -309,6 +309,7 @@ def artist_reputation_score(
     c = cfg or {}
     boost_per_like = c.get("boost_per_like", 5.0)
     boost_per_download = c.get("boost_per_download", 2.0)
+    boost_per_star = c.get("boost_per_star", 2.0)
     max_boost = c.get("max_boost", 20.0)
     min_dislikes = c.get("min_dislikes_for_penalty", 3)
     penalty = c.get("penalty", 15.0)
@@ -316,11 +317,12 @@ def artist_reputation_score(
     likes = rep.likes or 0
     downloads = rep.downloads or 0
     dislikes = rep.dislikes or 0
+    stars = getattr(rep, "stars", 0) or 0
 
-    if likes == 0 and downloads == 0 and dislikes >= min_dislikes:
+    if likes == 0 and downloads == 0 and stars == 0 and dislikes >= min_dislikes:
         return -float(penalty), f"Artist-Malus: {dislikes} 👎"
 
-    raw_boost = boost_per_like * likes + boost_per_download * downloads
+    raw_boost = boost_per_like * likes + boost_per_download * downloads + boost_per_star * stars
     if raw_boost > 0:
         boost = float(min(max_boost, raw_boost))
         return boost, f"Artist-Bonus: +{boost:g}"

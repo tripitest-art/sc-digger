@@ -184,6 +184,7 @@ class ArtistReputation:
     downloads: int = 0  # Tracks in inbox/archive ohne explizites Feedback
     likes: int = 0      # Tracks oder Store-Items mit feedback = 'like'
     dislikes: int = 0   # Tracks oder Store-Items mit feedback = 'dislike'
+    stars: int = 0      # Summe der Rekordbox-Sterne (rb_rating 1..5) aller bewerteten Tracks
 
 
 FEEDBACK_VALUES: tuple[str, ...] = ("like", "dislike", "later")
@@ -1164,16 +1165,19 @@ class TrackDB:
 
         Key ist der normalisierte Künstlername (LOWER(TRIM(artist))). Künstler ohne
         Namen werden ignoriert. Als Download zählt ein Track in inbox/archive ohne
-        explizites Feedback (like/dislike/later werden separat gezählt).
+        explizites Feedback (like/dislike/later werden separat gezählt). Ein Track mit
+        rb_rating >= 1 zählt ausschließlich in stars (Summe der Sterne) und wird nicht
+        zusätzlich als like, dislike oder download gewertet.
         """
         acc: dict[str, dict[str, int]] = {}
 
         track_rows = self.db.execute(
             """
             SELECT LOWER(TRIM(artist)) AS artist,
-                   SUM(CASE WHEN feedback = 'like' THEN 1 ELSE 0 END) AS likes,
-                   SUM(CASE WHEN feedback = 'dislike' THEN 1 ELSE 0 END) AS dislikes,
-                   SUM(CASE WHEN feedback IS NULL AND status IN ('archive', 'inbox')
+                   SUM(CASE WHEN rb_rating >= 1 THEN rb_rating ELSE 0 END) AS stars,
+                   SUM(CASE WHEN (rb_rating IS NULL OR rb_rating < 1) AND feedback = 'like' THEN 1 ELSE 0 END) AS likes,
+                   SUM(CASE WHEN (rb_rating IS NULL OR rb_rating < 1) AND feedback = 'dislike' THEN 1 ELSE 0 END) AS dislikes,
+                   SUM(CASE WHEN (rb_rating IS NULL OR rb_rating < 1) AND feedback IS NULL AND status IN ('archive', 'inbox')
                             THEN 1 ELSE 0 END) AS downloads
             FROM tracks
             WHERE artist IS NOT NULL AND TRIM(artist) != ''
@@ -1185,6 +1189,7 @@ class TrackDB:
                 "downloads": row["downloads"] or 0,
                 "likes": row["likes"] or 0,
                 "dislikes": row["dislikes"] or 0,
+                "stars": row["stars"] or 0,
             }
 
         store_rows = self.db.execute(
@@ -1196,7 +1201,7 @@ class TrackDB:
             """
         ).fetchall()
         for row in store_rows:
-            entry = acc.setdefault(row["artist"], {"downloads": 0, "likes": 0, "dislikes": 0})
+            entry = acc.setdefault(row["artist"], {"downloads": 0, "likes": 0, "dislikes": 0, "stars": 0})
             if row["value"] == "like":
                 entry["likes"] += 1
             elif row["value"] == "dislike":
@@ -1208,6 +1213,7 @@ class TrackDB:
                 downloads=vals["downloads"],
                 likes=vals["likes"],
                 dislikes=vals["dislikes"],
+                stars=vals["stars"],
             )
             for key, vals in acc.items()
         }
