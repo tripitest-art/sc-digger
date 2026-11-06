@@ -5,6 +5,7 @@ um die Wahrscheinlichkeit (0.0 .. 1.0) vorherzusagen, dass ein neuer Track gefä
 """
 from __future__ import annotations
 
+import json
 import math
 from collections import Counter
 from dataclasses import dataclass
@@ -169,20 +170,40 @@ def train_taste_model(
     )
 
 
-def build_training_set(db: TrackDB) -> list[tuple[list[float], int]]:
-    """Positiv (1): Tracks mit gespeichertem Embedding und feedback = 'like', adopted_at gesetzt
-    oder rb_rating >= 4. Negativ (0): feedback = 'dislike' (nur, wenn weder adopted_at gesetzt
-    noch rb_rating >= 4). 'later', fehlendes Feedback und Tracks ohne Embedding bleiben draußen.
-    Nur Embeddings des Modells, das am häufigsten vorkommt (bei Gleichstand das
-    alphabetisch kleinere). Reihenfolge aufsteigend nach Track-ID.
+@dataclass(frozen=True)
+class TasteRun:
+    trained: bool
+    embedding_model: str | None
+    n_pos: int
+    n_neg: int
+    scored: int
+    reason: str            # "" wenn trained
+
+
+def training_data(db: TrackDB) -> tuple[str | None, list[tuple[list[float], int]]]:
+    """Sammelt alle Bewertungsquellen als Trainingsbeispiele.
+
+    Positiv (1), wenn mindestens eins gilt: adopted_at gesetzt, rb_rating >= 4,
+    feedback = 'like', sc_feedback.value = 'like' für t.sc_id oder eine andere Zeile
+    mit derselben sc_id ist übernommen (Archivzeile). Positiv gewinnt immer.
+    Negativ (0) nur, wenn nicht positiv und feedback oder sc_feedback 'dislike' ist.
+    'later', Unbewertete und Tracks ohne Embedding bleiben draußen. Liefert das
+    dominante Embedding-Modell (bei Gleichstand alphabetisch kleiner) und die
+    Beispiele aufsteigend nach Track-ID; ohne Beispiele (None, []).
     """
     from .embeddings import unpack_vector
 
     rows = db.db.execute(
         """
-        SELECT t.id, t.feedback, t.adopted_at, t.rb_rating, e.model, e.vector
+        SELECT t.id, t.feedback, t.adopted_at, t.rb_rating, t.sc_id,
+               e.model, e.vector, sf.value AS sc_value,
+               EXISTS(
+                   SELECT 1 FROM tracks a
+                   WHERE a.sc_id = t.sc_id AND a.adopted_at IS NOT NULL
+               ) AS sc_adopted
         FROM tracks t
         JOIN track_embeddings e ON t.id = e.track_id
+        LEFT JOIN sc_feedback sf ON sf.sc_id = t.sc_id
         WHERE e.vector IS NOT NULL
         ORDER BY t.id ASC
         """
@@ -196,20 +217,22 @@ def build_training_set(db: TrackDB) -> list[tuple[list[float], int]]:
         feedback = row["feedback"]
         adopted_at = row["adopted_at"]
         rb_rating = row["rb_rating"]
+        sc_value = row["sc_value"]
+        sc_adopted = bool(row["sc_adopted"])
         model = str(row["model"])
         raw_vector = row["vector"]
 
-        # Positiv (1): feedback == 'like', adopted_at gesetzt oder rb_rating >= 4
         is_pos = (
             (adopted_at is not None)
             or (rb_rating is not None and rb_rating >= 4)
             or (feedback == "like")
+            or (sc_value == "like")
+            or sc_adopted
         )
 
         if is_pos:
             label = 1
-        elif feedback == "dislike":
-            # Negativ (0): feedback == 'dislike' (nur wenn weder adopted_at noch rb_rating >= 4)
+        elif feedback == "dislike" or sc_value == "dislike":
             label = 0
         else:
             continue
@@ -219,13 +242,122 @@ def build_training_set(db: TrackDB) -> list[tuple[list[float], int]]:
         model_counter[model] += 1
 
     if not qualified_tracks:
-        return []
+        return None, []
 
     # Modell mit meisten Vorkommen, bei Gleichstand alphabetisch kleineres
     dominant_model = min(model_counter.keys(), key=lambda m: (-model_counter[m], m))
 
-    return [
+    samples = [
         (vec, label)
         for _, model, vec, label in qualified_tracks
         if model == dominant_model
     ]
+    return dominant_model, samples
+
+
+def build_training_set(db: TrackDB) -> list[tuple[list[float], int]]:
+    """Trainingsbeispiele aus :func:`training_data` (alle Bewertungsquellen)."""
+    return training_data(db)[1]
+
+
+def save_taste_model(db: TrackDB, model: TasteModel, embedding_model: str, *,
+                     n_pos: int, n_neg: int, trained_at: str) -> None:
+    """Ersetzt die einzige Modellzeile (id = 1) samt Metadaten und JSON."""
+    db.db.execute(
+        """
+        INSERT OR REPLACE INTO taste_model
+            (id, embedding_model, trained_at, n_pos, n_neg, model_json)
+        VALUES (1, ?, ?, ?, ?, ?)
+        """,
+        (embedding_model, trained_at, n_pos, n_neg,
+         json.dumps(model.to_dict())),
+    )
+    db.db.commit()
+
+
+def load_taste_model(db: TrackDB) -> tuple[str, TasteModel] | None:
+    """Liest das gespeicherte Modell; None ohne Zeile oder bei unlesbarem JSON."""
+    row = db.db.execute(
+        "SELECT embedding_model, model_json FROM taste_model WHERE id = 1"
+    ).fetchone()
+    if row is None:
+        return None
+    try:
+        model = TasteModel.from_dict(json.loads(row["model_json"]))
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return None
+    return str(row["embedding_model"]), model
+
+
+def score_tracks(db: TrackDB, model: TasteModel, embedding_model: str) -> int:
+    """Schreibt taste_score für alle Tracks in einer Transaktion.
+
+    Nur Embeddings desselben Modells mit passender Dimension bekommen einen Score;
+    alle anderen Zeilen (kein Embedding, anderes Modell, falsche Dimension) werden NULL.
+    Gibt die Zahl der bewerteten Tracks zurück.
+    """
+    from .embeddings import unpack_vector
+
+    rows = db.db.execute(
+        """
+        SELECT t.id AS track_id, e.model AS model, e.vector AS vector
+        FROM tracks t
+        LEFT JOIN track_embeddings e ON e.track_id = t.id
+        ORDER BY t.id ASC
+        """
+    ).fetchall()
+
+    updates: list[tuple[float | None, int]] = []
+    scored = 0
+    for row in rows:
+        score: float | None = None
+        if row["vector"] is not None and row["model"] == embedding_model:
+            vector = unpack_vector(row["vector"])
+            if len(vector) == len(model.weights):
+                try:
+                    score = model.score(vector)
+                    scored += 1
+                except ValueError:
+                    score = None
+        updates.append((score, int(row["track_id"])))
+
+    with db.db:
+        db.db.executemany(
+            "UPDATE tracks SET taste_score = ? WHERE id = ?",
+            updates,
+        )
+    return scored
+
+
+def run_taste(db: TrackDB, *, now: str, dry_run: bool = False) -> TasteRun:
+    """Trainiert den Taste-Score und schreibt Modell und Scores.
+
+    Unter MIN_SAMPLES_PER_CLASS je Klasse wird nichts geändert (altes Modell und
+    alte Scores bleiben). dry_run schreibt weder Modell noch Scores.
+    """
+    embedding_model, samples = training_data(db)
+    n_pos = sum(1 for _, label in samples if label == 1)
+    n_neg = sum(1 for _, label in samples if label == 0)
+
+    if n_pos < MIN_SAMPLES_PER_CLASS or n_neg < MIN_SAMPLES_PER_CLASS:
+        return TasteRun(
+            False, embedding_model, n_pos, n_neg, 0,
+            f"zu wenige Beispiele: {n_pos} gefällt, {n_neg} gefällt nicht "
+            f"(mindestens {MIN_SAMPLES_PER_CLASS} je Klasse)",
+        )
+
+    model = train_taste_model(samples)
+    assert embedding_model is not None  # samples nicht leer => Modell bekannt
+
+    if dry_run:
+        row = db.db.execute(
+            "SELECT COUNT(*) FROM track_embeddings WHERE model = ?",
+            (embedding_model,),
+        ).fetchone()
+        scored = int(row[0])
+    else:
+        save_taste_model(db, model, embedding_model, n_pos=n_pos, n_neg=n_neg,
+                         trained_at=now)
+        scored = score_tracks(db, model, embedding_model)
+
+    return TasteRun(True, embedding_model, n_pos, n_neg, scored, "")

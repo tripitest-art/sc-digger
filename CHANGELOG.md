@@ -8,6 +8,7 @@ unter „Unreleased“ (Regeln: `AGENTS.md`, Abschnitt „Doku und Changelog“)
 ## Unreleased
 
 ### Hinzugefügt
+- Taste-Score: `python -m sc_digger.main taste` trainiert täglich um 07:05 Uhr auf allen Bewertungsquellen (`feedback`, Digest-Buttons in `sc_feedback`, übernommene Tracks, Rekordbox-Rating ab 4 Sternen) und schreibt das Modell sowie `tracks.taste_score` (0..1) für alle Tracks mit Embedding in die Track-DB; unter fünf Beispielen je Klasse bleibt der Lauf ohne Änderung. Der Score beeinflusst die tägliche Auswahl noch nicht, die Anzeige folgt (#479).
 - Verfügbarkeits-Wächter: `sc_digger.watch` prüft mit 👍 bewertete Tracks ohne lokalen Download wöchentlich auf SoundCloud api-v2 nach neu verfügbaren Originalen oder Free-Download-Gates, erfasst den Verlauf in Migration 17 (`availability_watch`), alarmiert bei Fehlern (Health-Modus `watch`) und meldet Statuswechsel einmalig via Telegram; Cron-Lauf sonntags um 19:00 Uhr und CLI (`python -m sc_digger.watch`) (#476).
 - Web-Dashboard: Duplikat-Kandidaten-Ansicht unter /duplicates und GET /api/duplicates stellt erkannte Audio-Duplikate per Chromaprint-Fingerprint (duplicate_groups) rein lesend gegenüber (#478).
 - Web-Dashboard: 1-Klick-Match-Button (`⚡ Match`) in der Spalte *Quelle* des Track-Explorers (`/tracks`) verlinkt direkt auf den Harmonic Mix Finder (`/mix?key=...&bpm=...`) für passende Anschluss-Tracks (#477).

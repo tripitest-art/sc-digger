@@ -277,8 +277,12 @@ Ein Track, der aus der Inbox in die Sammlung gewandert ist, ist das stärkste Po
   Trainingsdaten reichen nicht: Brickwall-Master haben fast alle eine hohe Flachheit, und Gesang lässt sich daran
   nicht erkennen. Abstimmen mit Issue #52 (Energie-Klassifizierung).
 
-### 4.2 Persönlicher Taste-Score (Anti-TikTok-Filter) (🟡 Bibliothek vorhanden, nicht angeschlossen, #353 / #366)
+### 4.2 Persönlicher Taste-Score (Anti-TikTok-Filter) (🟡 täglicher Lauf vorhanden, Anzeige fehlt, #353 / #366 / #398)
 * Logistische Regression (`sc_digger/taste.py`) auf Audio-Embeddings und Feedback (👍/👎 aus `sc_feedback`) zur Vorhersage des Gefallens von Tracks.
+* Täglich um 07:05 trainiert `python -m sc_digger.main taste` auf allen Bewertungsquellen
+  (`feedback`, Digest-Buttons in `sc_feedback`, übernommene Tracks, Rekordbox-Rating), legt das
+  Modell in der Track-DB ab und schreibt `tracks.taste_score` (0..1) für Tracks mit Embedding.
+  Der Score ändert die Auswahl noch nicht; die Anzeige im Dashboard ist ein eigenes Issue.
 * Ergänzt das Engagement-Scoring im Digest; filtert Pop-EDM/TikTok-Bounce aus `#hardtechno`
   anhand des Klangs statt anhand von Titeln.
 * Nur für Tracks mit verfügbarem Audio (native/Cloud-Downloads) oder über die 30-s-Stream-Preview
