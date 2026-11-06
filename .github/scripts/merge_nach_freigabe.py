@@ -17,12 +17,19 @@ blockiert, es gibt keinen Weg, an dieser Liste vorbei zu mergen):
 Der Merge geht mit `sha` an die Merge-API: Hat sich der Head zwischen Prüfung und Merge
 verschoben, lehnt GitHub ab, statt einen ungeprüften Stand zu mergen. Der PR-Code wird nie
 ausgecheckt und nie ausgeführt; nur Standardbibliothek, damit der Job ohne pip auskommt.
+
+Nach dem Merge werden die Issues aus `Closes #N`/`Fixes #N`/`Resolves #N` selbst geschlossen.
+GitHub tut das bei einem Squash-Merge über die API nicht zuverlässig: PRs, die das Gate mergt,
+stammen von der Worker-App, und deren Verweis erzeugt nur ein `cross-referenced`-Event
+(#488, #486). Ohne diesen Schritt bleibt ein fertiges Issue offen, und der nächste Worker
+greift es erneut auf.
 """
 
 from __future__ import annotations
 
 import json
 import os
+import re
 import time
 import urllib.error
 import urllib.request
@@ -47,6 +54,32 @@ CHECK_POLL = 15.0       # Sekunden zwischen zwei Abfragen
 class Decision:
     merge: bool
     reasons: list[str] = field(default_factory=list)
+
+
+# `Closes #12`, `closes #12, #13`, `Fixes: #12` — GitHub erkennt die Schlüsselwörter in jeder
+# Schreibweise; hier dieselbe Regel, damit nach dem Merge genau das geschlossen wird, was der
+# PR beansprucht. Wichtig sind die zwei Anker: `Closes` muss am Zeilenanfang oder nach einem
+# Satzzeichen stehen (`entfernt; Closes #12` zählt nicht — das ist Prosa über das Schließen),
+# und nach `#12` darf kein Wort folgen (`Closed by #5` ist eine andere Aussage).
+_ISSUE_REFERENZ = re.compile(
+    r"(?:^|(?<=[.;:!?\s]))(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\b:?[ \t]+(?P<liste>#\d+(?:[ \t]*,[ \t]*#\d+)*)",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+
+def issues_aus_pr_text(body: str | None, eigene_nummer: int | None = None) -> list[int]:
+    """Issue-Nummern, die ein PR-Text schließt — in der Reihenfolge des ersten Vorkommens.
+
+    Die eigene PR-Nummer wird entfernt: `Closes #508` in PR #508 wäre ein Selbstbezug und
+    GitHub würde ihn ohnehin ignorieren.
+    """
+    gesehen: list[int] = []
+    for treffer in _ISSUE_REFERENZ.finditer(body or ""):
+        for nummer in re.findall(r"#(\d+)", treffer.group("liste")):
+            wert = int(nummer)
+            if wert != eigene_nummer and wert not in gesehen:
+                gesehen.append(wert)
+    return gesehen
 
 
 def _instant(ts: str) -> datetime:
@@ -233,6 +266,17 @@ class GitHub:
     def delete_branch(self, ref: str) -> None:
         self._call("DELETE", f"/git/refs/heads/{ref}")
 
+    def pull_body(self, number: int) -> str:
+        """PR-Text; leer, wenn GitHub keinen liefert (dann wird nichts geschlossen)."""
+        return (self._call("GET", f"/pulls/{number}") or {}).get("body") or ""
+
+    def issue_offen(self, number: int) -> bool:
+        return (self._call("GET", f"/issues/{number}") or {}).get("state") == "open"
+
+    def close_issue(self, number: int) -> None:
+        self._call("PATCH", f"/issues/{number}", {"state": "closed",
+                                                  "state_reason": "completed"})
+
     def label_actor(self, number: int, label: str) -> str | None:
         """Login, der `label` am PR zuletzt gesetzt hat — None, wenn nie gesetzt."""
         owner, name = self.repo.split("/", 1)
@@ -306,6 +350,22 @@ def warte_auf_checks(gh, head, max_sekunden=None, poll=None, schlaf=None, uhr=No
         schlaf(poll)
 
 
+def schliesse_verknuepfte_issues(gh, number: int) -> list[int]:
+    """Schließt die Issues aus dem PR-Text und gibt zurück, was geschlossen wurde.
+
+    Best effort nach dem Merge: Ein Fehler hier macht den Merge nicht ungeschehen, deshalb
+    fängt der Aufrufer Ausnahmen ab und meldet sie nur. Bereits geschlossene Issues bleiben
+    unangetastet — sonst ginge ein Grund (`state_reason`) verloren, den ein Mensch gesetzt hat.
+    """
+    geschlossen: list[int] = []
+    for nummer in issues_aus_pr_text(gh.pull_body(number), eigene_nummer=number):
+        if not gh.issue_offen(nummer):
+            continue
+        gh.close_issue(nummer)
+        geschlossen.append(nummer)
+    return geschlossen
+
+
 def main() -> int:
     event = json.loads(open(os.environ["GITHUB_EVENT_PATH"], encoding="utf-8").read())
     label = (event.get("label") or {}).get("name")
@@ -349,6 +409,16 @@ def main() -> int:
                     gh.delete_branch(ref)
                 except MergeAbgelehnt as exc:
                     print(f"Branch `{ref}` nicht gelöscht: {exc}")
+            # Nach dem Merge: `Closes #N` zieht bei einem Squash-Merge über die API nicht
+            # zuverlässig (Issues #488 und #486 blieben offen). Ein Fehler hier darf den
+            # vollzogenen Merge nicht als gescheitert melden, deshalb nur protokollieren.
+            try:
+                geschlossen = schliesse_verknuepfte_issues(gh, number)
+            except MergeAbgelehnt as exc:
+                print(f"Issues nicht geschlossen: {exc}")
+            else:
+                if geschlossen:
+                    print(f"Geschlossen: {', '.join(f'#{n}' for n in geschlossen)}")
     except MergeAbgelehnt as exc:
         # Jeder API-Fehler endet hier: nicht mergen, Grund berichten, Job rot.
         decision = Decision(False, [str(exc)])
