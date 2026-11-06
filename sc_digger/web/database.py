@@ -22,8 +22,9 @@ from typing import Any
 
 from ..collection import NameIndex, NameKey, name_key, normalize, remixer_tokens
 from ..cues import apply_cue_result
-from ..db import FEEDBACK_VALUES, JobRecord, TrackDB
+from ..db import FEEDBACK_VALUES, JobRecord, TrackDB, TrackRecord
 from ..dj_export import Entry
+from ..fingerprint import duplicate_groups
 from ..linksource import normalize_url
 from ..output import State
 
@@ -487,6 +488,59 @@ def load_tracks_for_set_builder(
             avoid_uncertain=avoid_uncertain,
         )
     ]
+
+
+def query_duplicate_groups(track_db_path: str | Path) -> list[dict]:
+    """Ermittelt Gruppen gleicher Aufnahmen per Chromaprint-Fingerprint (rein lesend).
+
+    - Öffnet `track_db_path` ausschließlich lesend (`_connect_readonly`). Fehlt die Datei,
+      die Tabelle `tracks` oder tritt ein `sqlite3.Error` auf, wird `[]` zurückgegeben
+      (legt niemals eine DB-Datei an).
+    - Liest alle Zeilen aus `tracks`, die einen nicht-leeren `fingerprint` und eine
+      `fingerprint_duration IS NOT NULL` besitzen, wandelt sie in `TrackRecord`-Objekte um
+      und gruppiert sie über `sc_digger.fingerprint.duplicate_groups(records)`.
+    - Gibt eine Liste von Dictionaries zurück (eine pro Duplikat-Gruppe):
+      `{"count": len(group), "tracks": [{"id": ..., "path": ..., "artist": ..., "title": ..., "bpm": ..., "key_camelot": ..., "format": ..., "bitrate_kbps": ..., "status": ...}, ...]}`.
+    """
+    path_obj = Path(track_db_path)
+    if not path_obj.is_file():
+        return []
+
+    try:
+        with closing(_connect_readonly(track_db_path)) as db:
+            if not _table_exists(db, "tracks"):
+                return []
+            rows = db.execute(
+                "SELECT * FROM tracks "
+                "WHERE fingerprint IS NOT NULL AND fingerprint != '' "
+                "AND fingerprint_duration IS NOT NULL"
+            ).fetchall()
+            records = [TrackRecord.from_row(r) for r in rows]
+    except (sqlite3.Error, OSError):
+        return []
+
+    groups = duplicate_groups(records)
+    result = []
+    for group in groups:
+        tracks_data = []
+        for r in group:
+            st = r.status.value if hasattr(r.status, "value") else r.status
+            tracks_data.append({
+                "id": r.id,
+                "path": r.path,
+                "artist": r.artist,
+                "title": r.title,
+                "bpm": r.bpm,
+                "key_camelot": r.key_camelot,
+                "format": r.format,
+                "bitrate_kbps": r.bitrate_kbps,
+                "status": st,
+            })
+        result.append({
+            "count": len(group),
+            "tracks": tracks_data,
+        })
+    return result
 
 
 @dataclass

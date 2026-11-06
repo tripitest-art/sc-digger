@@ -235,6 +235,11 @@ FIELDS: tuple[Field, ...] = (
     _f("health.min_free_gb", "float", "Mindest-Freispeicher Inbox (GB)",
        "Downloads pausieren und Health-Alarm senden, wenn unter download.inbox_dir weniger als dieser Wert frei ist (0 = deaktiviert).",
        min=0.0),
+    # --- canary ---
+    _f("canary.tag", "str", "Such-Tag",
+       "Genre-Tag für die tägliche Vorab-Prüfung der SoundCloud-API (leer = erster Eintrag aus search.tags)."),
+    _f("canary.track_url", "str", "Referenz-Track-URL",
+       "Optionale SoundCloud-Track-URL zum Prüfen der resolve-Antwort (leer = nur Suche prüfen)."),
     # --- telegram ---
     _f("telegram.max_items_per_digest", "int", "Max. Digest-Einträge",
        "Höchstzahl der Tracks pro täglichem Telegram-Digest (Standard 25).", min=1),
@@ -334,6 +339,7 @@ SECTION_TITLES: dict[str, str] = {
     "preview": "Live-Preview",
     "retry": "Wiederholung",
     "health": "Health-Alarm",
+    "canary": "API-Kanarienvogel",
     "telegram": "Telegram",
     "cues": "Cues & Struktur",
     "rekordbox": "Rekordbox",
@@ -360,6 +366,7 @@ SECTION_DESCRIPTIONS: dict[str, str] = {
     "preview": "Konfiguriert die Dauer und den Drop-Vorlauf für kurze Audio-Vorschauschnipsel (Sprachnachrichten).",
     "retry": "Automatische Wiederholung fehlgeschlagener Downloads in nachfolgenden Läufen.",
     "health": "Schwellenwerte für Telegram-Benachrichtigungen bei Ausfällen oder leerer Trefferausbeute.",
+    "canary": "Täglicher Vorab-Check der inoffiziellen SoundCloud-API auf fehlende oder geänderte Antwort-Felder vor dem discover-Lauf.",
     "telegram": "Einstellungen für den täglichen Digest und interaktive Feedback-Schaltflächen.",
     "cues": "Reiht Cue- und Strukturanalyse-Jobs für neue Inbox-Tracks in die Job-Queue ein, die ein GPU-Worker über die Job-API abarbeitet.",
     "rekordbox": "Export von Wochen-, BPM-, Key- und Stil-Playlists sowie Rekordbox-Cues (Hot Cues A–H, First Kick, Drops).",

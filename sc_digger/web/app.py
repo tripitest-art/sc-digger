@@ -68,6 +68,7 @@ from .database import (
     heartbeat_job,
     load_tracks_for_set_builder,
     query_digest,
+    query_duplicate_groups,
     query_rejected_tracks,
     query_store_items,
     query_tracks,
@@ -275,6 +276,30 @@ def _query_bool(value: str | None) -> bool | None:
     if lowered in _FALSES:
         return False
     return None
+
+
+def match_url(key_camelot: str | None, bpm: float | int | None) -> str | None:
+    """Erzeugt den Link zum Harmonic Mix Finder (`/mix?key=...&bpm=...`) für einen Track.
+
+    - Ist `key_camelot` leer/`None` oder kein gültiger String nach `.strip()`, oder ist `bpm`
+      `None` bzw. `<= 0`, wird `None` zurückgegeben.
+    - Sonst wird `"/mix?" + urlencode({"key": key_camelot.strip().upper(), "bpm": f"{float(bpm):g}"})`
+      zurückgegeben (z. B. `"/mix?key=8A&bpm=155"` oder `"/mix?key=8A&bpm=155.5"`).
+    """
+    if not key_camelot or not isinstance(key_camelot, str):
+        return None
+    cleaned_key = key_camelot.strip().upper()
+    if not cleaned_key:
+        return None
+    if bpm is None or isinstance(bpm, bool):
+        return None
+    try:
+        val_bpm = float(bpm)
+    except (ValueError, TypeError):
+        return None
+    if math.isnan(val_bpm) or math.isinf(val_bpm) or val_bpm <= 0:
+        return None
+    return "/mix?" + urlencode({"key": cleaned_key, "bpm": f"{val_bpm:g}"})
 
 
 def _payload_float(value: object) -> float | None:
@@ -873,6 +898,26 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
             sort_url=sort_url,
             prev_url=page_url(max(0, offset - page_size)) if offset > 0 else None,
             next_url=page_url(offset + page_size) if offset + page_size < result.total else None,
+            match_url=match_url,
+        ))
+
+    # Duplikat-Kandidaten-Ansicht (Issue #468): Gruppen gleicher Aufnahmen per Chromaprint-Fingerprint.
+    @app.get("/api/duplicates")
+    def api_duplicates() -> JSONResponse:
+        """Gibt `{"ok": True, "total_groups": len(groups), "groups": groups}` zurück (HTTP Basic Auth, rein lesend)."""
+        track_db_path = app.state.cfg["state"]["track_db_path"]
+        groups = query_duplicate_groups(track_db_path)
+        return JSONResponse({"ok": True, "total_groups": len(groups), "groups": groups})
+
+    @app.get("/duplicates", response_class=HTMLResponse)
+    def duplicates_page() -> HTMLResponse:
+        """Rendert `duplicates.html` mit `groups` und `total_groups = len(groups)` (HTTP Basic Auth, rein lesend)."""
+        track_db_path = app.state.cfg["state"]["track_db_path"]
+        groups = query_duplicate_groups(track_db_path)
+        template = _env.get_template("duplicates.html")
+        return HTMLResponse(template.render(
+            groups=groups,
+            total_groups=len(groups),
         ))
 
     @app.get("/mix", response_class=HTMLResponse)

@@ -144,6 +144,7 @@
       {# Direktlink zur Quarantäne-Liste (Issue #341): abgewiesene Downloads einsehen
          und für den nächsten Lauf freigeben. #}
       <a href="/rejected" class="btn-page" style="font-size: 0.82rem;">⚠️ Quarantäne-Liste anzeigen (/rejected)</a>
+      <a href="/duplicates" class="btn-page" style="font-size: 0.82rem;">👥 Duplikate (/duplicates)</a>
       <a href="/" class="btn-page" style="font-size: 0.82rem;">&larr; Zurück zum Status</a>
     </div>
   </div>
@@ -392,8 +393,16 @@
         <td>
           {# Nur http/https verlinken: source_url stammt aus fremden Feeds. #}
           {% set source_href = track.source_url if track.source_url and (track.source_url.startswith("http://") or track.source_url.startswith("https://")) else "" %}
-          {% if source_href %}
-          <a href="{{ source_href }}" target="_blank" rel="noopener noreferrer" class="btn-page" style="padding: 0.2rem 0.5rem; font-size: 0.74rem;">SoundCloud ↗</a>
+          {% set m_url = match_url(track.key_camelot, track.bpm) %}
+          {% if m_url or source_href %}
+          <div style="display: inline-flex; gap: 0.35rem; align-items: center; flex-wrap: wrap;">
+            {% if m_url %}
+            <a href="{{ m_url }}" class="btn-page match-btn" title="Harmonisch passende Tracks im Mix-Finder suchen" style="padding: 0.2rem 0.5rem; font-size: 0.74rem;">⚡ Match</a>
+            {% endif %}
+            {% if source_href %}
+            <a href="{{ source_href }}" target="_blank" rel="noopener noreferrer" class="btn-page" style="padding: 0.2rem 0.5rem; font-size: 0.74rem;">SoundCloud ↗</a>
+            {% endif %}
+          </div>
           {% else %}—{% endif %}
         </td>
       </tr>
