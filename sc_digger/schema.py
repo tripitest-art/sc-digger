@@ -311,6 +311,11 @@ FIELDS: tuple[Field, ...] = (
        "Trend-Abschnitt ('Trending Artists' & 'Top-Tracks') im Sonntags-Digest anzeigen."),
     _f("digest.trend_radar_days", "int", "Trend-Zeitfenster (Tage)",
        "Betrachtungszeitraum in Tagen für die Trend- und Wachstumsberechnung (Standard 7 Tage).", min=1),
+    # --- watch ---
+    _f("watch.enabled", "bool", "Wächter aktiv",
+       "Wöchentliche Prüfung von mit 👍 bewerteten Tracks ohne Download auf nachträglich verfügbare Download-Wege."),
+    _f("watch.max_age_days", "int", "Max. Prüfdauer (Tage)",
+       "Maximale Prüfdauer in Tagen ab der ersten Erfassung eines Tracks (Standard 180 Tage).", min=1, max=730),
     # --- scout ---
     _f("scout.bandcamp.feeds", "list", "Bandcamp-Feeds",
        "RSS-Feed-URLs von Bandcamp-Labels/Artists (z. B. https://label.bandcamp.com/feed) als automatische Fundquelle."),
@@ -339,6 +344,7 @@ SECTION_TITLES: dict[str, str] = {
     "cues": "Cues & Struktur",
     "rekordbox": "Rekordbox",
     "digest": "Digest",
+    "watch": "Verfügbarkeits-Wächter",
     "scout": "Multi-Platform-Scout",
     "scout.bandcamp": "Multi-Platform-Scout: Bandcamp",
     "scout.beatport": "Multi-Platform-Scout: Beatport",
@@ -365,6 +371,7 @@ SECTION_DESCRIPTIONS: dict[str, str] = {
     "cues": "Reiht Cue- und Strukturanalyse-Jobs für neue Inbox-Tracks in die Job-Queue ein, die ein GPU-Worker über die Job-API abarbeitet.",
     "rekordbox": "Export von Wochen-, BPM-, Key- und Stil-Playlists sowie Rekordbox-Cues (Hot Cues A–H, First Kick, Drops).",
     "digest": "Konfiguration der wöchentlichen Kaufliste, Sonntags-Reports und des Wachstums-/Trend-Radars.",
+    "watch": "Wöchentlicher Wächter (Sonntag 19:00), der gelikte Stream-Tracks auf nachträglich freigegebene Downloads, Gates oder Store-Links prüft.",
     "scout": "Zusätzliche Multi-Platform-Erkennung von Neuerscheinungen über Bandcamp-Feeds und Beatport-Charts.",
     "scout.bandcamp": "Bandcamp-RSS-Feeds für Neuerscheinungen relevanter Labels und Künstler.",
     "scout.beatport": "Beatport-Chart-Quellen für Track-Empfehlungen in der Kaufliste.",

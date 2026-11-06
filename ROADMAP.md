@@ -86,7 +86,7 @@ flowchart TD
 | **Phase 1** | Basis & DJ-Ready Pipeline | ✅ **Abgeschlossen** | Native Downloads, FFT-Fake-Check, BPM/Key, Tagging, Inbox-Organize, Modi discover/playlist/similar |
 | **Phase 1.5** | Robustheit | ✅ **Abgeschlossen** | BPM-Oktav-Korrektur, Health-Alarm |
 | **Phase 2** | Track-DB & Library Audit | 🟡 **Fast fertig** | Zentrale DB ✅, `audit` ✅, Fingerprint-Duplikate ✅, LUFS-Tags ✅, Container-Healthcheck ✅, Inbox-Normalisierung ✅, robuste Discovery ✅, Retry-Queue ✅, Engagement-Tempo ✅, `/stats` ✅, Sonntags-Digest mit Grafik ✅ (#116, Standard aus); offen: nichts |
-| **Phase 3** | Feedback & Smart Ingestion | 🟡 **Laufend** | 👍/👎 ✅, Cloud-Downloads ✅, DJ-Sets inkl. kurzer Mixe ✅, Rekordbox-Wochen-XML ✅, Curator-Mining 🟡 (Vorschläge ✅), Cloud-Quellen erweitern ✅, Kaufliste ✅, Eingangsordner ✅, Promo-Abzug und Sperrliste ✅, Tag-Rotation/Exploration ✅ (#135, #141), Artist-Reputation ✅ (#140), Live-Preview ✅ (Snippet #132, `/preview` #147, Stream-Preview #168, beide Schalter standardmäßig aus), Rekordbox-Komfort 🔵 (3.11), Status „übernommen“ ✅ (3.12) |
+| **Phase 3** | Feedback & Smart Ingestion | 🟡 **Laufend** | 👍/👎 ✅, Cloud-Downloads ✅, DJ-Sets inkl. kurzer Mixe ✅, Rekordbox-Wochen-XML ✅, Curator-Mining 🟡 (Vorschläge ✅), Cloud-Quellen erweitern ✅, Kaufliste ✅, Eingangsordner ✅, Promo-Abzug und Sperrliste ✅, Tag-Rotation/Exploration ✅ (#135, #141), Artist-Reputation ✅ (#140), Live-Preview ✅ (Snippet #132, `/preview` #147, Stream-Preview #168, beide Schalter standardmäßig aus), Rekordbox-Komfort 🔵 (3.11), Status „übernommen“ ✅ (3.12), Verfügbarkeits-Wächter ✅ (3.13) |
 | **Phase 4** | Geschmacksmodell & KI-Copilot | 🔵 Geplant | Audio-Embeddings, persönlicher Taste-Score, Qwen-Copilot via Tool-Calling; begonnen: Trend-Radar (#122) |
 | **Phase 5** | DJ-Performance & Set-Tools | 🔵 5.1–5.4 geplant, Rest 🟣 Vision | Harmonic Mixing per `/mix` ✅; Strukturanalyse, Auto-Cues, Drop-Preview, Breakdown-Anteil; später Embedding-Recommender, Web-Dashboard, Stem-Extraktion |
 
@@ -252,6 +252,10 @@ Ein Track, der aus der Inbox in die Sammlung gewandert ist, ist das stärkste Po
 * Ein explizites 👎 wird nicht überschrieben. Rein lesend auf der Sammlung, geschrieben wird nur in die DB.
 * Verwendung: Ausgangsmenge für Curator-Mining (3.5) und Positivbeispiel für den Taste-Score (4.2). Kein fester
   Punktebonus pro Artist; die Gewichtung übernimmt das jeweilige Modell.
+
+### 3.13 Verfügbarkeits-Wächter (✅ Implementiert, #454)
+* Wöchentlicher Lauf (Sonntag 19:00 Uhr per Cron `entrypoint.sh` bzw. `python -m sc_digger.watch`): prüft mit 👍 bewertete Tracks ohne lokalen Download auf neu verfügbare Originale oder Free-Download-Gates.
+* Migration 17 (`availability_watch`): erfasst den Prüfstatus, verhindert wiederholte Benachrichtigungen und meldet Statuswechsel einmalig via Telegram mit Direktlink und Gate-Hinweis.
 
 ---
 

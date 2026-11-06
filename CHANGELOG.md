@@ -8,6 +8,7 @@ unter „Unreleased“ (Regeln: `AGENTS.md`, Abschnitt „Doku und Changelog“)
 ## Unreleased
 
 ### Hinzugefügt
+- Verfügbarkeits-Wächter: `sc_digger.watch` prüft mit 👍 bewertete Tracks ohne lokalen Download wöchentlich auf SoundCloud api-v2 nach neu verfügbaren Originalen oder Free-Download-Gates, erfasst den Verlauf in Migration 17 (`availability_watch`), alarmiert bei Fehlern (Health-Modus `watch`) und meldet Statuswechsel einmalig via Telegram; Cron-Lauf sonntags um 19:00 Uhr und CLI (`python -m sc_digger.watch`) (#476).
 - Web-Dashboard: Duplikat-Kandidaten-Ansicht unter /duplicates und GET /api/duplicates stellt erkannte Audio-Duplikate per Chromaprint-Fingerprint (duplicate_groups) rein lesend gegenüber (#478).
 - Web-Dashboard: 1-Klick-Match-Button (`⚡ Match`) in der Spalte *Quelle* des Track-Explorers (`/tracks`) verlinkt direkt auf den Harmonic Mix Finder (`/mix?key=...&bpm=...`) für passende Anschluss-Tracks (#477).
 - Speicherplatz-Wächter: `guard_disk` prüft vor dem `discover`-Lauf den freien Speicherplatz unter `download.inbox_dir` gegen `health.min_free_gb`; bei knappem Speicherplatz werden Downloads pausiert (Tracks nur verlinkt) und ein Health-Alarm gesendet (#475).

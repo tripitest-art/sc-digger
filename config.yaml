@@ -334,6 +334,12 @@ digest:
   # Zeitfenster für die Trend-Berechnung (Tage)
   trend_radar_days: 7
 
+watch:
+  # Wöchentlicher Wächter für 👍-Tracks ohne Download (Sonntag 19:00 vor der Kaufliste)
+  enabled: true
+  # Maximale Prüfdauer in Tagen ab der ersten Erfassung (1..730, Standard 180)
+  max_age_days: 180
+
 
 scout:
   # Multi-Platform-Scout (Roadmap Phase 3): Bandcamp-RSS-Feeds und Beatport-Charts

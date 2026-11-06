@@ -18,6 +18,12 @@ install_crontab() {
     }
 }
 
+# Wöchentlicher Verfügbarkeits-Wächter (Sonntag 19:00, vor der Kaufliste um 20:00)
+if [ -f /etc/cron.d/sc-digger ] && ! grep -q "sc_digger.watch" /etc/cron.d/sc-digger; then
+    echo "0 19 * * 0 . /app/cron.env; cd /app && python -m sc_digger.watch >> /proc/1/fd/1 2>&1" >> /etc/cron.d/sc-digger
+    install_crontab
+fi
+
 # Wöchentlicher Kaufliste-Lauf (Sonntag 20:00)
 if [ -f /etc/cron.d/sc-digger ] && ! grep -q "send_kaufliste" /etc/cron.d/sc-digger; then
     echo "0 20 * * 0 . /app/cron.env; cd /app && python -c \"from sc_digger.models import Config; from sc_digger.output import send_kaufliste; send_kaufliste(Config.load('config.yaml'))\" >> /proc/1/fd/1 2>&1" >> /etc/cron.d/sc-digger

@@ -13,7 +13,7 @@ import re
 import time
 from datetime import datetime, timedelta, timezone
 from enum import Enum
-from typing import Callable, Iterator
+from typing import Callable, Iterator, Sequence
 
 from urllib.parse import urljoin, urlparse
 
@@ -495,6 +495,23 @@ class SoundCloudClient:
         tracks = [seed, *station_tracks]
         label = f"{seed.artist} – {seed.title}".strip(" –")
         return label, tracks
+
+    def tracks_by_ids(self, track_ids: Sequence[int], batch_size: int = 30) -> list[Track]:
+        """Metadaten zu mehreren IDs über /tracks?ids=… in Chunks. Gelöschte/private Tracks
+        fehlen im Ergebnis. Ein fehlgeschlagener Chunk wird geloggt (WARNING) und übersprungen."""
+        tracks: list[Track] = []
+        for i in range(0, len(track_ids), batch_size):
+            chunk = track_ids[i : i + batch_size]
+            try:
+                data = self._get("/tracks", {"ids": ",".join(map(str, chunk))})
+                items = data if isinstance(data, list) else data.get("collection", [])
+                for item in items:
+                    t = self._to_track(item)
+                    if t:
+                        tracks.append(t)
+            except Exception as e:
+                log.warning("Fehler beim Batch-Abruf der IDs %s: %s", chunk, e)
+        return tracks
 
     # ---------- Referenz-Accounts ----------
     def reference_activity(self, profile_url: str, max_age_days: int, limit: int = 50) -> list[Track]:
