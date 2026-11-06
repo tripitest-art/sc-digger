@@ -539,8 +539,10 @@
         b.classList.toggle('active', isActive);
         b.setAttribute('aria-pressed', isActive ? 'true' : 'false');
       });
+      showToast("Bewertung gespeichert", "ok");
     } catch (error) {
       if (errorBox) { errorBox.textContent = 'nicht gespeichert'; }
+      showToast("Speichern fehlgeschlagen", "err");
     } finally {
       buttons.forEach((b) => { b.disabled = false; });
     }
