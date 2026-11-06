@@ -6,6 +6,22 @@
 
 {% block meta %}
 <style>
+  .card-tracks {
+    display: flex;
+    flex-direction: column;
+  }
+  .card-tracks > .card-header {
+    order: 1;
+  }
+  .card-tracks > .filter-chips {
+    order: 2;
+  }
+  .card-tracks > .table-scroll {
+    order: 3;
+  }
+  .card-tracks > .pager {
+    order: 4;
+  }
   .tracks-toolbar {
     display: flex;
     flex-wrap: wrap;
@@ -269,7 +285,7 @@
   </form>
 </div>
 
-<div class="card">
+<div class="card card-tracks">
   <div class="card-header">
     <h2 class="card-title m-0">Treffer</h2>
     <span class="meta meta-sm" data-taste-info>
@@ -281,10 +297,10 @@
   <table>
     <thead>
       <tr>
-        <th aria-sort="{% if current_sort == 'artist' %}{{ 'ascending' if current_dir == 'asc' else 'descending' }}{% else %}none{% endif %}">
+        <th class="sticky-col" aria-sort="{% if current_sort == 'artist' %}{{ 'ascending' if current_dir == 'asc' else 'descending' }}{% else %}none{% endif %}">
           <a href="{{ sort_url('artist') }}">Artist{% if current_sort == 'artist' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
         </th>
-        <th aria-sort="{% if current_sort == 'title' %}{{ 'ascending' if current_dir == 'asc' else 'descending' }}{% else %}none{% endif %}">
+        <th class="sticky-col" aria-sort="{% if current_sort == 'title' %}{{ 'ascending' if current_dir == 'asc' else 'descending' }}{% else %}none{% endif %}">
           <a href="{{ sort_url('title') }}">Titel{% if current_sort == 'title' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
         </th>
         <th>Format</th>
@@ -316,8 +332,8 @@
           data-title="{{ track.title or '—' }}"
           data-bpm="{{ track.bpm if track.bpm is not none else '' }}"
           data-key="{{ track.key_camelot or '' }}">
-        <td class="fw-600">{{ track.artist or "—" }}</td>
-        <td>
+        <td class="sticky-col fw-600">{{ track.artist or "—" }}</td>
+        <td class="sticky-col">
           <strong>{{ track.title or "—" }}</strong>
           <div class="mono meta-path">{{ track.path }}</div>
           {# Kompakte Kennzahlen-Zeile (Issue #258): SoundCloud-Engagement aus track_snapshots. #}
@@ -443,6 +459,14 @@
     </tbody>
   </table>
   </div>
+
+  {% if filter_chips %}
+  <div class="filter-chips">
+    {% for chip in filter_chips %}
+    <a class="filter-chip" href="{{ chip.remove_url }}">{{ chip.label }}: {{ chip.value }} ×</a>
+    {% endfor %}
+  </div>
+  {% endif %}
 
   <div class="pager">
     <span class="meta">

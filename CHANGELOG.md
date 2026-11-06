@@ -8,6 +8,7 @@ unter „Unreleased“ (Regeln: `AGENTS.md`, Abschnitt „Doku und Changelog“)
 ## Unreleased
 
 ### Hinzugefügt
+- Web-Dashboard: Der Track-Explorer (`/tracks`) zeigt aktive Filter als entfernbare Filter-Chips über der Tabelle und fixiert beim horizontalen Scrollen die Spalten Artist und Titel (#511).
 - Web-Dashboard: Der Button „Rekordbox-XML neu schreiben“ auf der Statusseite schreibt die Inbox-XML über `POST /api/rekordbox/sync` neu (Anmeldung und Content-Type-Prüfung wie die übrigen Dashboard-Routen) und nennt die Zahl der Tracks; Fehlerfälle liefern eine Meldung ohne Dateipfad (#495).
 - Artist-Reputation: Rekordbox-Sterne (`rb_rating` 1..5) zählen als Bonus (`scoring.artist_reputation.boost_per_star`, Standard +2.0); Tracks mit Sternen werden nicht zusätzlich als Download gewertet und verhindern den Reputations-Malus (#499).
 - Web-Dashboard: Der Track-Explorer (`/tracks`) zeigt den täglich berechneten Taste-Score als sortierbare Spalte in Prozent, filtert über `Min. Taste`, bietet die Schnellwahl `💚 Mein Geschmack (≥70%)` für die Inbox und nennt Stand und Beispielzahlen des Taste-Modells; `/api/tracks` liefert `taste_score` sowie die Parameter `taste_min` und `sort=taste` (#480).

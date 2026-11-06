@@ -404,6 +404,12 @@
     border-color: rgba(59, 130, 246, 0.5);
   }
 
+  /* Aktive Filter-Chips und fixierte Spalten (Issue #487) */
+  .filter-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.85rem; }
+  .filter-chip { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.2rem 0.55rem; border-radius: 9999px; background: var(--bg-card-subtle); border: 1px solid var(--border); font-size: 0.78rem; color: var(--text-muted); text-decoration: none; }
+  .filter-chip:hover { border-color: var(--accent-err); color: var(--accent-err); }
+  .sticky-col { position: sticky; background: inherit; }
+
   /* Tables */
   table {
     border-collapse: collapse;
