@@ -17,6 +17,7 @@ from sc_digger.web.database import (
     TRACK_SORT_FIELDS,
     query_digest,
     query_tracks,
+    taste_model_info,
 )
 
 PASSWORD = "test-sort-pw"
@@ -211,3 +212,64 @@ def test_query_digest_nulls_last_in_beiden_richtungen(tmp_path: Path):
     res_desc = query_digest(seen_path, track_path, sort="artist", descending=True)
     artists_desc = [it.artist for it in res_desc.items]
     assert artists_desc == ["Zebra", "Alpha", None]
+
+
+# --- Taste-Score im Explorer (Issue #480) ---------------------------------------
+
+
+def _set_taste_scores(db_path: Path, scores: dict[str, float | None]) -> None:
+    with TrackDB(db_path) as db:
+        rows = db.db.execute("SELECT id, artist FROM tracks").fetchall()
+        by_artist = {row["artist"]: row["id"] for row in rows}
+        for artist, score in scores.items():
+            db.db.execute(
+                "UPDATE tracks SET taste_score = ? WHERE id = ?", (score, by_artist[artist])
+            )
+        db.db.commit()
+
+
+def test_query_tracks_taste_sort_und_filter(tmp_path: Path):
+    db_path = tmp_path / "tracks.sqlite"
+    _populate_tracks(db_path)
+    _set_taste_scores(db_path, {"Alpha": 0.2, "Beta": 0.9, "Gamma": None, "Delta": 0.6})
+
+    assert "taste" in TRACK_SORT_FIELDS
+    desc = query_tracks(db_path, sort="taste", descending=True)
+    assert [t["artist"] for t in desc.items] == ["Beta", "Delta", "Alpha", "Gamma"]
+    assert query_tracks(db_path, sort="taste", descending=False).items[0]["artist"] == "Alpha"
+
+    gefiltert = query_tracks(db_path, taste_min=0.5, sort="taste", descending=True)
+    assert gefiltert.total == 2
+    assert [t["artist"] for t in gefiltert.items] == ["Beta", "Delta"]
+    assert gefiltert.items[0]["taste_score"] == pytest.approx(0.9)
+
+
+def test_taste_model_info_nur_bei_vorhandener_zeile(tmp_path: Path):
+    db_path = tmp_path / "tracks.sqlite"
+    _populate_tracks(db_path)
+    assert taste_model_info(db_path) is None
+
+    with TrackDB(db_path) as db:
+        db.db.execute(
+            "INSERT INTO taste_model VALUES (1, 'maest', '2026-11-06 07:05:00', 12, 9, '{}')"
+        )
+        db.db.commit()
+    assert taste_model_info(db_path) == {
+        "embedding_model": "maest",
+        "trained_at": "2026-11-06 07:05:00",
+        "n_pos": 12,
+        "n_neg": 9,
+    }
+    assert taste_model_info(tmp_path / "fehlt.sqlite") is None
+
+
+def test_tracks_html_taste_spalte_und_modellzeile(client: TestClient, tmp_path: Path):
+    db_path = tmp_path / "tracks.sqlite"
+    _populate_tracks(db_path)
+    _set_taste_scores(db_path, {"Alpha": 0.2, "Beta": 0.9, "Gamma": None, "Delta": 0.6})
+
+    html = client.get("/tracks?sort=taste&dir=desc", auth=AUTH).text
+    assert "Taste-Modell: noch nicht trainiert" in html
+    assert html.count("data-taste>") == 4
+    assert html.index("90 %") < html.index("60 %")
+    assert 'name="taste_min"' in html
