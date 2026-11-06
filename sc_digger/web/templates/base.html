@@ -315,6 +315,21 @@
     border-color: var(--border);
   }
 
+  /* Vorperioden-Vergleich (Issue #488): Pfeil + Zahl + Text, Farbe allein trägt keine Bedeutung */
+  .change-badge {
+    display: inline-block;
+    margin-left: 0.35rem;
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    font-weight: 600;
+    white-space: nowrap;
+    color: var(--text-muted);
+  }
+  .change-up { color: var(--accent-ok); }
+  .change-down { color: var(--accent-err); }
+  .change-flat { color: var(--text-muted); }
+  .change-none { color: var(--text-muted); }
+
   /* Camelot Key Pills (Farbcodierung nach dem harmonischen Rad) */
   .camelot-pill {
     display: inline-block;
