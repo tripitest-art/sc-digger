@@ -21,7 +21,7 @@
     --border-focus: #3b82f6;
     --text-main: #f1f5f9;
     --text-muted: #94a3b8;
-    --text-dim: #64748b;
+    --text-dim: #8794a8;
     --accent-ok: #10b981;
     --accent-ok-bg: rgba(16, 185, 129, 0.12);
     --accent-warn: #f59e0b;
@@ -59,6 +59,11 @@
   }
   a { color: var(--accent-primary); text-decoration: none; transition: color 0.15s ease; }
   a:hover { color: #60a5fa; text-decoration: underline; }
+
+  a:focus-visible, button:focus-visible, summary:focus-visible, .nav-tab:focus-visible {
+    outline: 2px solid var(--accent-primary);
+    outline-offset: 2px;
+  }
 
   code {
     font-family: var(--font-mono);
