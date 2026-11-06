@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_components.html" import empty_state %}
 
 {% block title %}sc-digger Quarantäne{% endblock %}
 {% block nav_rejected %}active{% endblock %}
@@ -130,8 +131,8 @@
       </tr>
       {% else %}
       <tr>
-        <td colspan="5" style="text-align: center; padding: 2rem;" class="meta">
-          Keine abgewiesenen Tracks für diese Filtereinstellungen.
+        <td colspan="5">
+          {{ empty_state("Keine abgewiesenen Tracks für diese Filtereinstellungen.", "/rejected") }}
         </td>
       </tr>
       {% endfor %}
