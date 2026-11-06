@@ -162,6 +162,11 @@
     color: var(--text-muted);
     text-decoration: none;
   }
+  .nav-more { position: relative; display: inline-block; }
+  .nav-more summary { cursor: pointer; list-style: none; user-select: none; }
+  .nav-more summary::-webkit-details-marker { display: none; }
+  .nav-more-list { position: absolute; top: calc(100% + 0.35rem); right: 0; min-width: 140px; background: rgba(18, 24, 38, 0.98); border: 1px solid var(--border); border-radius: 8px; padding: 0.35rem; display: flex; flex-direction: column; gap: 0.25rem; z-index: 100; box-shadow: 0 4px 12px rgba(0,0,0,0.4); }
+  .nav-more-list .nav-tab { display: block; width: 100%; text-align: left; }
 
   .site-main {
     width: 100%;
@@ -866,13 +871,19 @@
     <a href="/" class="nav-tab {% block nav_status %}{% endblock %}">Status</a>
     <a href="/tracks" class="nav-tab {% block nav_tracks %}{% endblock %}">Tracks</a>
     <a href="/digest" class="nav-tab {% block nav_digest %}{% endblock %}">Digest</a>
-    <a href="/intake" class="nav-tab {% block nav_intake %}{% endblock %}">Upload</a>
     <a href="/mix" class="nav-tab {% block nav_mix %}{% endblock %}">Mix</a>
-    <a href="/kaufliste" class="nav-tab {% block nav_kaufliste %}{% endblock %}">🛒 Kaufliste</a>
-    <a href="/rejected" class="nav-tab {% block nav_rejected %}{% endblock %}">⚠️ Quarantäne</a>
-    {% if editor_available or save_action or config_action %}
-    <a href="/config" class="nav-tab {% block nav_config %}{% endblock %}">Konfiguration</a>
-    {% endif %}
+    <a href="/kaufliste" class="nav-tab {% block nav_kaufliste %}{% endblock %}">Kaufliste</a>
+    <details class="nav-more">
+      <summary class="nav-tab">Mehr</summary>
+      <div class="nav-more-list">
+        <a href="/intake" class="nav-tab {% block nav_intake %}{% endblock %}">Upload</a>
+        <a href="/duplicates" class="nav-tab {% block nav_duplicates %}{% endblock %}">Duplikate</a>
+        <a href="/rejected" class="nav-tab {% block nav_rejected %}{% endblock %}">Quarantäne</a>
+        {% if editor_available or save_action or config_action %}
+        <a href="/config" class="nav-tab {% block nav_config %}{% endblock %}">Konfiguration</a>
+        {% endif %}
+      </div>
+    </details>
   </nav>
 </header>
 
