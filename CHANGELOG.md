@@ -26,7 +26,7 @@ unter „Unreleased“ (Regeln: `AGENTS.md`, Abschnitt „Doku und Changelog“)
 - Web-Dashboard: Login-Sperre gegen Durchprobieren des Passworts. Nach fünf Fehlversuchen in fünf Minuten antwortet die App der Client-IP 15 Minuten lang mit `429` und `Retry-After`, auch bei richtigem Passwort; `SC_DIGGER_WEB_RATE_LIMIT=0` schaltet sie ab, `SC_DIGGER_WEB_TRUST_PROXY=1` wertet `X-Forwarded-For` aus (#410).
 
 ### Geändert
-- Web-Dashboard: Kontrast von `--text-dim` auf `#8794a8` angehoben (WCAG AA ≥ 4,5:1 auf `--bg-app` und `--bg-card`) und sichtbaren Tastaturfokus-Ring (`:focus-visible`) auf Links, Buttons, Summary und Nav-Tabs ergänzt (#TBD).
+- Web-Dashboard: Kontrast von `--text-dim` auf `#8794a8` angehoben (WCAG AA ≥ 4,5:1 auf `--bg-app` und `--bg-card`) und sichtbaren Tastaturfokus-Ring (`:focus-visible`) auf Links, Buttons, Summary und Nav-Tabs ergänzt (#508).
 - Web-Dashboard: Emoji in Header, Chips und Feedback-Buttons durch barrierefreie Inline-SVG-Icons (Jinja-Makro icon() in _icons.html) ersetzt; Feedback-Buttons tragen aria-label und aria-pressed (#507).
 - Web-Dashboard: Die Statusseite zeigt an gescannten Tracks, Inbox-Downloads, abgelehnten Fakes und Likes den Vergleich zur Vorperiode als ▲/▼ mit Prozent oder „–“ ohne Vergleichswert; Pfeil, Zahl und Text tragen die Aussage, die Farbe allein nicht (#488).
 - Web-Dashboard: Navigation auf fünf Haupteinträge gekürzt (Status, Tracks, Digest, Mix, Kaufliste), Upload, Duplikate, Quarantäne und Konfiguration unter neues aufklappbares „Mehr“-Menü gelegt und URL-Klammern aus Chip-Texten auf /tracks entfernt (#500).
