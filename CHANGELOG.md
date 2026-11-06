@@ -8,6 +8,7 @@ unter „Unreleased“ (Regeln: `AGENTS.md`, Abschnitt „Doku und Changelog“)
 ## Unreleased
 
 ### Geändert
+- Web-Dashboard: Einheitliche Seitentitel im Format „<Seite> – sc-digger“ mit Gedankenstrich für bessere Lesbarkeit in Browser-Tabs (#514).
 - Merge-Gate schließt die Issues selbst: Nach einem Squash-Merge über den Workflow `merge-nach-freigabe` schließt `.github/scripts/merge_nach_freigabe.py` die Issues aus `Closes`/`Fixes`/`Resolves #N` im PR-Text; GitHub vollzog das bei PRs der Worker-App nicht (Issues #488 und #486 blieben nach dem Merge offen). Ein Fehler beim Schließen macht den vollzogenen Merge nicht rückgängig und läuft nur ins Log.
 
 ### Hinzugefügt
