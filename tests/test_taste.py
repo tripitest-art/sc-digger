@@ -8,7 +8,12 @@ from sc_digger.taste import (
     MIN_SAMPLES_PER_CLASS,
     TasteModel,
     build_training_set,
+    load_taste_model,
+    run_taste,
+    save_taste_model,
+    score_tracks,
     train_taste_model,
+    training_data,
 )
 
 POS = [[1.0, 1.1], [0.9, 1.0], [1.2, 0.8], [1.1, 1.2], [0.8, 0.9], [1.0, 0.7]]
@@ -136,3 +141,68 @@ def test_train_taste_model_validation_errors():
     samples_bad_dim = _samples() + [([1.0, 1.0, 1.0], 0)]
     with pytest.raises(ValueError):
         train_taste_model(samples_bad_dim)
+
+
+def _neuer_track(db: TrackDB, name: str, **felder) -> int:
+    rec = db.upsert_track(TrackRecord(path=f"/test/{name}.mp3", mtime=1.0, size=1, **felder))
+    return rec.id
+
+
+def test_training_data_nutzt_sc_feedback_und_archivzeile(tmp_path: Path):
+    """sc_feedback und eine übernommene Archivzeile zählen als Positivsignal."""
+    with TrackDB(tmp_path / "quellen.sqlite") as db:
+        like_id = _neuer_track(db, "sc_like", sc_id=11)
+        db.set_embedding(like_id, "maest", [1.0, 0.0])
+        db.set_sc_feedback(11, "like")
+
+        archiv_id = _neuer_track(db, "archiv", sc_id=12)
+        db.set_embedding(archiv_id, "maest", [0.0, 1.0])
+        _neuer_track(db, "archivzeile", sc_id=12, adopted_at="2026-11-02 10:00:00")
+
+        konflikt_id = _neuer_track(db, "konflikt", sc_id=13, feedback="dislike")
+        db.set_embedding(konflikt_id, "maest", [-1.0, 0.0])
+        db.set_sc_feedback(13, "like")
+
+        spaeter_id = _neuer_track(db, "spaeter", feedback="later")
+        db.set_embedding(spaeter_id, "maest", [0.0, -1.0])
+
+        modell, samples = training_data(db)
+        assert modell == "maest"
+        assert sorted(label for _, label in samples) == [1, 1, 1]
+
+
+def test_score_tracks_setzt_nur_passende_embeddings(tmp_path: Path):
+    """Fremdes Modell, falsche Dimension und fehlendes Embedding löschen den alten Score."""
+    with TrackDB(tmp_path / "score.sqlite") as db:
+        passend = _neuer_track(db, "passend")
+        db.set_embedding(passend, "maest", [1.0, 1.0])
+        anderes = _neuer_track(db, "anderes")
+        db.set_embedding(anderes, "mfcc", [1.0, 1.0])
+        falsche_dim = _neuer_track(db, "falsche_dim")
+        db.set_embedding(falsche_dim, "maest", [1.0, 1.0, 1.0])
+        ohne = _neuer_track(db, "ohne")
+        db.db.execute("UPDATE tracks SET taste_score = 0.9")
+        db.db.commit()
+
+        modell = TasteModel(weights=[1.0, 1.0], bias=0.0, mean=[0.0, 0.0], std=[1.0, 1.0])
+        assert score_tracks(db, modell, "maest") == 1
+
+        scores = dict(db.db.execute("SELECT id, taste_score FROM tracks").fetchall())
+        assert scores[passend] == pytest.approx(modell.score([1.0, 1.0]))
+        assert scores[anderes] is None
+        assert scores[falsche_dim] is None
+        assert scores[ohne] is None
+
+
+def test_run_taste_behaelt_altes_modell_bei_zu_wenigen_beispielen(tmp_path: Path):
+    """Ein Lauf ohne genug Beispiele überschreibt ein vorhandenes Modell nicht."""
+    with TrackDB(tmp_path / "alt.sqlite") as db:
+        _neuer_track(db, "nur_ein_like", feedback="like")
+        altes = TasteModel(weights=[0.5], bias=0.0, mean=[0.0], std=[1.0])
+        save_taste_model(db, altes, "maest", n_pos=5, n_neg=5, trained_at="2026-01-01 00:00:00")
+
+        ergebnis = run_taste(db, now="2026-11-06 07:05:00")
+        assert ergebnis.trained is False
+        assert ergebnis.n_pos == 0 and ergebnis.n_neg == 0
+        geladen = load_taste_model(db)
+        assert geladen == ("maest", altes)

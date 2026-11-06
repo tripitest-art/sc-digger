@@ -55,6 +55,12 @@ if [ -f /etc/cron.d/sc-digger ] && ! grep -q "sc_digger.canary" /etc/cron.d/sc-d
     install_crontab
 fi
 
+# Täglicher Taste-Score (07:05, vor dem canary- und discover-Lauf)
+if [ -f /etc/cron.d/sc-digger ] && ! grep -q "sc_digger.main taste" /etc/cron.d/sc-digger; then
+    echo "5 7 * * * . /app/cron.env; cd /app && python -m sc_digger.main taste >> /proc/1/fd/1 2>&1" >> /etc/cron.d/sc-digger
+    install_crontab
+fi
+
 cron
 
 # Web-Oberfläche nur, wenn ein Passwort gesetzt ist (Standard: aus)

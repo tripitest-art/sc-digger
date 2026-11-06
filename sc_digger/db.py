@@ -431,6 +431,21 @@ MIGRATIONS: list[tuple[int, str, str]] = [
         );
         """,
     ),
+    (
+        18,
+        "0018_taste_score",
+        """
+        ALTER TABLE tracks ADD COLUMN taste_score REAL;
+        CREATE TABLE IF NOT EXISTS taste_model (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            embedding_model TEXT NOT NULL,
+            trained_at TEXT NOT NULL,
+            n_pos INTEGER NOT NULL,
+            n_neg INTEGER NOT NULL,
+            model_json TEXT NOT NULL
+        );
+        """,
+    ),
 ]
 
 # Erlaubte Werte in ``match_overrides.override_type``: die Handkorrektur ersetzt den

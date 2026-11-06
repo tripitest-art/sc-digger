@@ -8,6 +8,7 @@
   python -m sc_digger.main audit [--path ...] [--report ...] # Library-Audit (read-only)
   python -m sc_digger.main scout [--dry-run]                 # Bandcamp-Feeds + Beatport-Charts in store_items
   python -m sc_digger.main embed-backfill [--all] [--limit N] # Embedding-Jobs für vorhandene Tracks einreihen
+  python -m sc_digger.main taste [--dry-run]                 # Taste-Score trainieren und speichern
 
 Alle Modi: --dry-run (nichts laden/senden), -v, --config, --no-telegram
 """
@@ -24,7 +25,7 @@ import sys
 import time
 from contextlib import ExitStack
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 from zoneinfo import ZoneInfo
@@ -64,6 +65,7 @@ from .soundcloud import (
     check_auth_token,
 )
 from .stats import calculate_stats, format_stats, render_stats_chart, send_weekly_digest
+from .taste import run_taste
 from .structure import (
     analyze_structure,
     calculate_breakdown_ratio,
@@ -1141,6 +1143,22 @@ def run_embed_backfill(
     return text
 
 
+def run_taste_cmd(cfg: Config, *, dry_run: bool = False, now: str | None = None) -> str:
+    """Trainiert den Taste-Score und schreibt ihn in die Track-DB; druckt und liefert die Zeile."""
+    if now is None:
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    with TrackDB(cfg["state"]["track_db_path"]) as db:
+        result = run_taste(db, now=now, dry_run=dry_run)
+    if result.trained:
+        verb = "würden bewertet" if dry_run else "bewertet"
+        text = (f"Taste-Score: Modell {result.embedding_model} aus {result.n_pos} gefällt / "
+                f"{result.n_neg} gefällt nicht trainiert, {result.scored} Tracks {verb}")
+    else:
+        text = f"Taste-Score: nicht trainiert, {result.reason}"
+    print(text)
+    return text
+
+
 def run_scout(cfg: Config, *, dry_run: bool = False) -> int:
     """Führt Bandcamp- und Beatport-Scout aus.
 
@@ -1303,6 +1321,9 @@ def cli() -> None:
     eb.add_argument("--all", action="store_true", help="Auch unbewertete Tracks einreihen (bewertete zuerst)")
     eb.add_argument("--limit", type=int, help="Höchstens N neue Jobs einreihen")
 
+    sub.add_parser("taste", parents=[common],
+                   help="Taste-Score trainieren und für Tracks mit Embedding speichern")
+
     a = ap.parse_args()
     install_redacting_logging(logging.DEBUG if a.verbose else logging.INFO)
     cfg = Config.load(a.config)
@@ -1348,6 +1369,8 @@ def cli() -> None:
                               dry_run=a.dry_run, no_telegram=a.no_telegram)
         elif a.mode == "embed-backfill":
             run_embed_backfill(cfg, labeled_only=not a.all, limit=a.limit, dry_run=a.dry_run)
+        elif a.mode == "taste":
+            run_taste_cmd(cfg, dry_run=a.dry_run)
         else:
             run_discover(cfg, a.dry_run, a.no_telegram)
 

@@ -59,6 +59,7 @@ docker compose exec sc-digger python -m sc_digger.main <modus> [...]
 | `stats` | Zeigt die Wochenstatistik auf der Konsole. `--days` (Standard 7) setzt das Fenster, `--chart <datei.png>` speichert ein Balkendiagramm, `--send` schickt die Statistik zusätzlich per Telegram. |
 | `scout` | Bandcamp-Feeds (`bandcamp.py`) und Beatport-Charts (`beatport.py`) abfragen und in `store_items` ablegen. |
 | `embed-backfill` | Reiht Embedding-Jobs für vorhandene Tracks ohne Embedding ein (Trainingsdaten für den Taste-Score). Standard: nur bewertete Tracks (👍/👎, übernommen, Rekordbox-Rating); `--all` nimmt alle, bewertete zuerst, `--limit N` begrenzt die neuen Jobs, `--dry-run` zählt nur. Fehlende Dateien und schon aktive Jobs werden übersprungen und gezählt. |
+| `taste` | Trainiert den Taste-Score auf allen bewerteten Tracks mit Embedding, legt das Modell in der Track-DB ab und schreibt `tracks.taste_score` (0..1). `--dry-run` zeigt nur, wie viele Tracks bewertet würden. |
 | `cleanup-inbox` | Dubletten derselben SoundCloud-ID in der Inbox identifizieren; `--move` verschiebt überzählige Dateien nach `<inbox>/_rejected/duplicate/`, `--inbox` überschreibt den Standardpfad. |
 
 Zur Strukturanalyse (erster Kick und Segmente) einer einzelnen Audiodatei dient `python -m sc_digger.structure <datei>`.
@@ -77,8 +78,23 @@ python -m sc_digger.main stats --days 7 --chart woche.png
 python -m sc_digger.main stats --send
 python -m sc_digger.main scout
 python -m sc_digger.main embed-backfill --limit 200
+python -m sc_digger.main taste --dry-run
 python -m sc_digger.main cleanup-inbox --move
 ```
+
+### Taste-Score
+
+`python -m sc_digger.main taste` trainiert täglich um 07:05 Uhr (Cron, vor dem `discover`-Lauf)
+eine logistische Regression auf den Audio-Embeddings und schreibt den Score als
+`tracks.taste_score` (0..1) für jeden Track mit Embedding. Trainingsquellen sind alle
+Bewertungssignale: `feedback` (👍/👎), die Digest-Buttons in `sc_feedback` über die
+SoundCloud-ID, übernommene Tracks (`adopted_at`, auch die Archivzeile über dieselbe
+SoundCloud-ID) und Rekordbox-Ratings ab 4 Sternen. Ein positives Signal gewinnt immer;
+`later` und Unbewertete fließen nicht ein. Unter fünf Beispielen je Klasse bleibt der Lauf
+ohne Fehler und ohne Änderung: Das alte Modell und die alten Scores bleiben stehen. Der Score
+dient zunächst nur der Anzeige und beeinflusst die tägliche Auswahl nicht; SoundCloud-
+Kandidaten haben ohne Download kein Embedding. `--dry-run` zeigt die Zahl der bewertbaren
+Tracks, ohne Modell oder Scores zu schreiben.
 
 ## Telegram-Bot
 
@@ -445,7 +461,7 @@ Gefundene Tracks werden gegen die lokale Sammlung abgeglichen, Duplikate übersp
 | `rekordbox.py` | Rekordbox-XML mit einer Playlist pro Woche aus der Inbox |
 | `embeddings.py` | Audio-Embeddings: Vektorspeicher in Track-DB, Queue-Job und Ergebnisverarbeitung; Embedder für den Worker: MAEST (`discogs-maest-30s-pw-129e`, braucht `torch` und `transformers`, nur Workstation) und deterministischer MFCC-Fallback (`make_mfcc_embedder`, `select_embedder`). Einreihen im täglichen Lauf über `embeddings.auto_queue` |
 | `similarity.py` | Ähnlichkeitssuche: Chromaprint-Fingerprints („Mehr davon“) und Kosinus-Ähnlichkeit auf Embeddings mit Fallback |
-| `taste.py` | Taste-Score: Logistische Regression auf Embeddings und Feedback zur Vorhersage des Gefallens — Bibliothek; kein Lauf, Bot-Befehl oder Dashboard ruft sie auf |
+| `taste.py` | Taste-Score: Logistische Regression auf Embeddings und Feedback zur Vorhersage des Gefallens; täglicher Lauf über `python -m sc_digger.main taste` um 07:05, Modell und Scores (`tracks.taste_score`) in der Track-DB, Anzeige im Dashboard folgt |
 | `db.py` | Zentrale Track-DB: Metadaten, Fingerprints, Jobs-Queue, versionierte Migrationen |
 | `audit.py` | Read-only Library-Audit, Fake-Erkennung, HTML-Dashboard |
 | `intake.py` | Eingangsordner: bereite Dateien finden und als `Track` vorbereiten |
