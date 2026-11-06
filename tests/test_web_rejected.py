@@ -380,5 +380,5 @@ def test_api_retry_valideriert_track_id(tmp_path: Path):
 def test_tracks_seite_verlinkt_quarantaene(tmp_path: Path):
     response = client_for(tmp_path).get("/tracks", auth=AUTH)
     assert response.status_code == 200
-    assert "Quarantäne-Liste anzeigen (/rejected)" in response.text
+    assert "Quarantäne-Liste anzeigen" in response.text
     assert 'href="/rejected"' in response.text
