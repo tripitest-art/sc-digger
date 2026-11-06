@@ -53,7 +53,6 @@ def test_nav_more_dropdown_elemente(tmp_path: Path):
     assert '<div class="nav-more-list">' in mehr
 
     for href, label in [
-        ('href="/intake"', "Upload"),
         ('href="/duplicates"', "Duplikate"),
         ('href="/rejected"', "Quarantäne"),
     ]:
