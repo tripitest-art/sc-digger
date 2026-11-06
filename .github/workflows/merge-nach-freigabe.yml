@@ -17,6 +17,7 @@ on:
 permissions:
   contents: write      # Merge-Commit und Löschen des Feature-Branches
   pull-requests: write # Merge-API
+  issues: write        # Schließen der verknüpften Issues (Closes #N)
   checks: read
   statuses: read
 
