@@ -12,6 +12,7 @@ unter „Unreleased“ (Regeln: `AGENTS.md`, Abschnitt „Doku und Changelog“)
 - Merge-Gate schließt die Issues selbst: Nach einem Squash-Merge über den Workflow `merge-nach-freigabe` schließt `.github/scripts/merge_nach_freigabe.py` die Issues aus `Closes`/`Fixes`/`Resolves #N` im PR-Text; GitHub vollzog das bei PRs der Worker-App nicht (Issues #488 und #486 blieben nach dem Merge offen). Ein Fehler beim Schließen macht den vollzogenen Merge nicht rückgängig und läuft nur ins Log.
 
 ### Hinzugefügt
+- Web-Dashboard: Klangliche Ähnlichkeitssuche im Track-Explorer (`/tracks`) per „Ähnlich“-Button und Endpunkt `GET /api/tracks/{track_id}/similar` auf Basis von Audio-Embeddings mit Chromaprint-Fallback (#516).
 - Web-Dashboard: Globale barrierefreie Toast-Meldungsleiste (#toast-region) für sofortige optische Rückmeldung bei Track-Bewertungen (/tracks, /kaufliste) und Freigaben (/rejected) mit Status-Varianten (ok/err) und automatischem Ausblenden (#513).
 - Web-Dashboard: Einheitlicher Leerzustand über Jinja-Makro empty_state() in _components.html für /tracks, /digest, /rejected und /kaufliste mit erklärendem Text und „Filter zurücksetzen“-Link (#512).
 - Web-Dashboard: Der Track-Explorer (`/tracks`) zeigt aktive Filter als entfernbare Filter-Chips über der Tabelle und fixiert beim horizontalen Scrollen die Spalten Artist und Titel (#511).
