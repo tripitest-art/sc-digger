@@ -16,6 +16,26 @@ DEFAULT_MAX_HOURS_SINCE_RUN = 36
 HEARTBEAT_ACTIVE_SECONDS = 300
 
 
+def change_badge(previous: int | float | None, current: int | float) -> dict[str, str]:
+    """Vergleich mit der Vorperiode.
+
+    previous None oder <= 0  -> {"direction": "none", "text": "–"}
+    current > previous       -> {"direction": "up",   "text": "▲ +<p> %"}
+    current < previous       -> {"direction": "down", "text": "▼ −<p> %"}   (Minuszeichen U+2212)
+    gleich                   -> {"direction": "flat", "text": "● 0 %"}
+    <p> = round(abs(current - previous) / previous * 100), ganze Zahl. Wirft nicht.
+    """
+    if previous is None or previous <= 0:
+        return {"direction": "none", "text": "–"}
+    if current > previous:
+        pct = round(abs(current - previous) / previous * 100)
+        return {"direction": "up", "text": f"▲ +{pct} %"}
+    if current < previous:
+        pct = round(abs(current - previous) / previous * 100)
+        return {"direction": "down", "text": f"▼ −{pct} %"}
+    return {"direction": "flat", "text": "● 0 %"}
+
+
 @dataclass
 class RunInfo:
     finished_at: str        # wie in der runs-Tabelle ("YYYY-MM-DD HH:MM:SS", UTC)

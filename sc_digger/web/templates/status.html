@@ -294,19 +294,35 @@
       </li>
       <li class="stat-kv-row">
         <span class="meta">Gescannte Tracks</span>
-        <span class="mono"><strong>{{ snap.stats.tracks_scanned }}</strong></span>
+        <span class="mono"><strong>{{ snap.stats.tracks_scanned }}</strong>
+          {% set change = change_badge(snap.stats.prev_tracks_scanned, snap.stats.tracks_scanned) %}
+          {% set badge_class = {"up": "change-up", "down": "change-down", "flat": "change-flat", "none": "change-none"}[change.direction] %}
+          <span class="change-badge {{ badge_class }}" title="Vorperiode: {{ snap.stats.prev_tracks_scanned }}">{{ change.text }}</span>
+        </span>
       </li>
       <li class="stat-kv-row">
         <span class="meta">Neue Inbox-Downloads</span>
-        <span class="mono ok"><strong>{{ snap.stats.tracks_inbox }}</strong></span>
+        <span class="mono ok"><strong>{{ snap.stats.tracks_inbox }}</strong>
+          {% set change = change_badge(snap.stats.prev_tracks_inbox, snap.stats.tracks_inbox) %}
+          {% set badge_class = {"up": "change-up", "down": "change-down", "flat": "change-flat", "none": "change-none"}[change.direction] %}
+          <span class="change-badge {{ badge_class }}" title="Vorperiode: {{ snap.stats.prev_tracks_inbox }}">{{ change.text }}</span>
+        </span>
       </li>
       <li class="stat-kv-row">
         <span class="meta">Abgelehnte Fakes / Clipped</span>
-        <span class="mono warn"><strong>{{ snap.stats.tracks_rejected }}</strong></span>
+        <span class="mono warn"><strong>{{ snap.stats.tracks_rejected }}</strong>
+          {% set change = change_badge(snap.stats.prev_tracks_rejected, snap.stats.tracks_rejected) %}
+          {% set badge_class = {"up": "change-up", "down": "change-down", "flat": "change-flat", "none": "change-none"}[change.direction] %}
+          <span class="change-badge {{ badge_class }}" title="Vorperiode: {{ snap.stats.prev_tracks_rejected }}">{{ change.text }}</span>
+        </span>
       </li>
       <li class="stat-kv-row">
         <span class="meta">Kurations-Feedback</span>
-        <span class="mono">👍 {{ snap.stats.likes }} &middot; 👎 {{ snap.stats.dislikes }} &middot; ⏳ {{ snap.stats.later }}</span>
+        <span class="mono">👍 {{ snap.stats.likes }}
+          {% set change = change_badge(snap.stats.prev_likes, snap.stats.likes) %}
+          {% set badge_class = {"up": "change-up", "down": "change-down", "flat": "change-flat", "none": "change-none"}[change.direction] %}
+          <span class="change-badge {{ badge_class }}" title="Vorperiode: {{ snap.stats.prev_likes }}">{{ change.text }}</span>
+          &middot; 👎 {{ snap.stats.dislikes }} &middot; ⏳ {{ snap.stats.later }}</span>
       </li>
     </ul>
 

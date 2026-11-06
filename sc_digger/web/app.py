@@ -77,13 +77,15 @@ from .database import (
     taste_model_info,
 )
 from .intake import MAX_UPLOAD_BYTES, process_uploaded_audio
-from .status import collect_status
+from .status import change_badge, collect_status
 
 _TEMPLATES = Path(__file__).parent / "templates"
 _env = Environment(
     loader=FileSystemLoader(str(_TEMPLATES)),
     autoescape=select_autoescape(("html", "xml")),
 )
+# Vergleich mit der Vorperiode (Issue #488) steht der Statusseite als Template-Funktion bereit.
+_env.globals["change_badge"] = change_badge
 log = logging.getLogger(__name__)
 
 
