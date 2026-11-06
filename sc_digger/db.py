@@ -424,10 +424,10 @@ MIGRATIONS: list[tuple[int, str, str]] = [
         """
         CREATE TABLE IF NOT EXISTS availability_watch (
             sc_id INTEGER PRIMARY KEY,
-            first_checked TEXT NOT NULL,
-            last_checked TEXT NOT NULL,
-            last_kind TEXT NOT NULL,
-            available_at TEXT
+            first_checked TEXT NOT NULL,   -- ISO-Zeitstempel der ersten Prüfung (UTC, "YYYY-MM-DD HH:MM:SS")
+            last_checked TEXT NOT NULL,    -- ISO-Zeitstempel der jüngsten Prüfung
+            last_kind TEXT NOT NULL,       -- DownloadKind.value der jüngsten Prüfung (z. B. "none", "direct", "hypeddit")
+            available_at TEXT              -- ISO-Zeitstempel, an dem erstmals != "none" beobachtet wurde; NULL solange unvollständig
         );
         """,
     ),

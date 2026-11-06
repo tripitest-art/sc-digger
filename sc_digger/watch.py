@@ -170,35 +170,35 @@ def format_available_message(changes: list[AvailabilityChange]) -> list[str]:
     """Formatiert gefundene Verfügbarkeits-Änderungen als Telegram-HTML-Nachrichten.
 
     Gibt [] zurück bei leerer Liste. Sonst Nachrichten bis max. 4000 Zeichen.
+    Header steht nur in der ersten Nachricht; Einträge sind immer durch doppelte
+    Zeilenumbrüche voneinander getrennt.
     """
     if not changes:
         return []
 
-    header = "🔓 <b>Jetzt verfügbar</b>\n\n"
     messages: list[str] = []
-    current_lines = [header]
-    current_len = len(header)
+    current_items: list[str] = []
+    is_first_msg = True
 
-    for i, c in enumerate(changes):
+    for c in changes:
         item_text = (
             f"• {html.escape(c.artist)} – {html.escape(c.title)}\n"
             f"   → {html.escape(c.kind.value)}: {html.escape(c.link)}"
         )
-        sep = "\n\n" if len(current_lines) > 1 else ""
-        add_len = len(sep) + len(item_text)
+        prefix = "🔓 <b>Jetzt verfügbar</b>\n\n" if is_first_msg else ""
+        candidate_items = current_items + [item_text]
+        candidate_msg = prefix + "\n\n".join(candidate_items)
 
-        if current_len + add_len > 4000 and len(current_lines) > 1:
-            messages.append("".join(current_lines).strip())
-            current_lines = [item_text]
-            current_len = len(item_text)
+        if len(candidate_msg) > 4000 and current_items:
+            messages.append(prefix + "\n\n".join(current_items))
+            current_items = [item_text]
+            is_first_msg = False
         else:
-            if len(current_lines) > 1:
-                current_lines.append(sep)
-            current_lines.append(item_text)
-            current_len += add_len
+            current_items.append(item_text)
 
-    if current_lines:
-        messages.append("".join(current_lines).strip())
+    if current_items:
+        prefix = "🔓 <b>Jetzt verfügbar</b>\n\n" if is_first_msg else ""
+        messages.append(prefix + "\n\n".join(current_items))
 
     return messages
 

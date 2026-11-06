@@ -122,3 +122,40 @@ def test_run_watch_dry_run_does_not_write_db(tmp_path: Path, capsys):
     with TrackDB(db_path) as db:
         count = db.db.execute("SELECT count(*) FROM availability_watch").fetchone()[0]
     assert count == 0
+
+
+def test_format_available_message_split_separation():
+    """Stellt sicher, dass auch in Folgebänden alle Einträge sauber durch doppelte Newlines getrennt sind."""
+    # 40 Einträge mit je ~200 Zeichen füllen mehr als eine Nachricht
+    changes = [
+        watch.AvailabilityChange(
+            sc_id=i,
+            title=f"Titel {i} " + "X" * 150,
+            artist=f"Artist {i}",
+            url=f"https://soundcloud.com/artist/track-{i}",
+            kind=DownloadKind.NATIVE,
+            link=f"https://example.com/dl/{i}",
+        )
+        for i in range(40)
+    ]
+    msgs = watch.format_available_message(changes)
+    assert len(msgs) >= 2
+
+    # Erste Nachricht hat den Header
+    assert msgs[0].startswith("🔓 <b>Jetzt verfügbar</b>\n\n")
+
+    # Alle Folgenachrichten haben keinen Header
+    for msg in msgs[1:]:
+        assert not msg.startswith("🔓 <b>Jetzt verfügbar</b>")
+        assert msg.startswith("• ")
+
+    # In allen Nachrichten müssen mehrere Einträge durch "\n\n" getrennt sein (kein Verkleben zu "link• Artist")
+    for msg in msgs:
+        assert len(msg) <= 4000
+        items = msg.split("\n\n")
+        # Bei msg 0 ist items[0] der Header
+        track_items = items[1:] if msg.startswith("🔓 <b>Jetzt verfügbar</b>") else items
+        assert len(track_items) >= 2
+        for itm in track_items:
+            assert itm.startswith("• ")
+
