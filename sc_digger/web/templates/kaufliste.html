@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_icons.html" import icon %}
 
 {% block title %}sc-digger Kaufliste{% endblock %}
 {% block nav_kaufliste %}active{% endblock %}
@@ -109,11 +110,20 @@
         <td>
           <div class="feedback-group" data-feedback-cell data-sc-id="{{ item.sc_id }}">
             <button type="button" class="feedback-btn {% if item.feedback == 'like' %}active{% endif %}"
-                    data-value="like" title="Gefällt mir" onclick="sendFeedback(this)">👍</button>
+                    data-value="like" title="Gefällt mir"
+                    aria-label="Gefällt mir"
+                    aria-pressed="{% if item.feedback == 'like' %}true{% else %}false{% endif %}"
+                    onclick="sendFeedback(this)">{{ icon("like", 16) }}</button>
             <button type="button" class="feedback-btn {% if item.feedback == 'dislike' %}active{% endif %}"
-                    data-value="dislike" title="Passt nicht" onclick="sendFeedback(this)">👎</button>
+                    data-value="dislike" title="Passt nicht"
+                    aria-label="Passt nicht"
+                    aria-pressed="{% if item.feedback == 'dislike' %}true{% else %}false{% endif %}"
+                    onclick="sendFeedback(this)">{{ icon("dislike", 16) }}</button>
             <button type="button" class="feedback-btn {% if item.feedback == 'later' %}active{% endif %}"
-                    data-value="later" title="Später anhören" onclick="sendFeedback(this)">⏳</button>
+                    data-value="later" title="Später anhören"
+                    aria-label="Später anhören"
+                    aria-pressed="{% if item.feedback == 'later' %}true{% else %}false{% endif %}"
+                    onclick="sendFeedback(this)">{{ icon("later", 16) }}</button>
             <span class="feedback-error meta"></span>
           </div>
         </td>
@@ -165,7 +175,11 @@
         }),
       });
       if (!response.ok) { throw new Error('HTTP ' + response.status); }
-      buttons.forEach((b) => { b.classList.toggle('active', b === button); });
+      buttons.forEach((b) => {
+        const isActive = (b === button);
+        b.classList.toggle('active', isActive);
+        b.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+      });
     } catch (error) {
       if (errorBox) { errorBox.textContent = 'nicht gespeichert'; }
     } finally {

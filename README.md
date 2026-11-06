@@ -483,7 +483,7 @@ Gefundene Tracks werden gegen die lokale Sammlung abgeglichen, Duplikate übersp
 Setzt man in `.env` ein Passwort (`SC_DIGGER_WEB_PASSWORD`, siehe `.env.example`), startet der
 Container zusätzlich einen FastAPI-Webserver (`python -m sc_digger.web`) auf Port `8080`. Ohne
 Passwort startet er nicht (Standard aus), es wird kein zusätzlicher Port geöffnet. Die Seiten sind
-im modernen Dark-Theme gestaltet (mit `color-scheme: dark` für einheitliche Scrollbars und Formularfelder) und per HTTP-Basic-Auth geschützt:
+im modernen Dark-Theme gestaltet (mit `color-scheme: dark` für einheitliche Scrollbars und Formularfelder, barrierefreien SVG-Icons statt Emoji für Header, Chips und Feedback) und per HTTP-Basic-Auth geschützt:
 
 - **Status (`/` & `/api/status`):** Ampel gesund/Achtung, letzter `discover`-Lauf mit Alter und Rohtreffern, aktiver Health-Alarm, Inbox-Größe, die letzten 10 Läufe und die Wochenstatistik mit Vergleich zur Vorperiode (▲/▼ mit Prozent oder „–“ ohne Vergleichswert).
 - **Digest-Explorer (`/digest` & `/api/digest`):** Historische Digest-Tracks aus `seen.sqlite` durchsuchen und nach Download-Weg (`Alle`, `Geladen`, `Gate`, `Store`, `Stream`), Zeitraum (`7d`, `14d`, `30d`, `Alle`) oder Text filtern; Tabellensortierung per Klick auf die Spaltenköpfe, 1-Klick Quick-Filter-Chips und wählbare Zeilenmenge (25/50/100/200). Ermöglicht direktes Track-Feedback (👍/👎/⏳) und enthält den direkten Link `[🌐 Gate öffnen ↗]` für Fangates (Hypeddit, Droploud etc.).
