@@ -178,7 +178,7 @@ Alle Optionen stehen in `config.yaml`; die folgende Liste nennt die Werte aus di
 | `scoring.spam_penalty` | Malus bei Promo-Verdacht | `20` |
 | `scoring.spam_phrases` | Phrasen, die auf Repost-Tausch/Promo hindeuten | siehe Datei |
 | `scoring.blocked_accounts` | Uploads dieser Profile werden aussortiert | `[]` |
-| `scoring.artist_reputation.*` | Reputation aus bewerteten Tracks: `enabled`, `boost_per_like`, `boost_per_download`, `max_boost`, `min_dislikes_for_penalty`, `penalty` | `true`, `5.0`, `2.0`, `20.0`, `3`, `15.0` |
+| `scoring.artist_reputation.*` | Reputation aus bewerteten Tracks: `enabled`, `boost_per_like`, `boost_per_download`, `boost_per_star`, `max_boost`, `min_dislikes_for_penalty`, `penalty` | `true`, `5.0`, `2.0`, `2.0`, `20.0`, `3`, `15.0` |
 | `download.collection_dir` | Pfad zur Sammlung (Duplikat-Check, Audit) | `/music/Schranz` |
 | `download.inbox_dir` | Zielordner für geprüfte Downloads | `/music/inbox` |
 | `download.auto_download_native_only` | nur native Originale laden; `false` schaltet Cloud-Downloads ein | `true` |
