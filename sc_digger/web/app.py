@@ -671,6 +671,57 @@ def sync_rekordbox_xml(cfg: Config) -> tuple[int, dict]:
         }
 
 
+FILTER_LABELS: dict[str, str] = {
+    "q": "Suche",
+    "status": "Status",
+    "quality": "Qualität",
+    "key_camelot": "Key",
+    "bpm_min": "BPM ab",
+    "bpm_max": "BPM bis",
+    "adopted": "Übernahme",
+    "breakdown_max": "Max. Breakdown %",
+    "taste_min": "Min. Geschmack",
+}
+
+
+def active_filter_chips(
+    filters: dict[str, str],
+    *,
+    limit: int,
+    sort: str | None = None,
+    direction: str = "asc",
+) -> list[dict[str, str]]:
+    """Ein Eintrag je Filter mit nicht leerem Wert, in der Reihenfolge von `filters`:
+    {"key": <Filterschlüssel>, "label": <deutsche Bezeichnung>, "value": <Wert>,
+     "remove_url": <"/tracks?" + urlencode(...) ohne diesen Filter, mit limit, mit sort/dir falls sort gesetzt>}.
+    Leere Filter ergeben []. Wirft nicht."""
+    try:
+        chips: list[dict[str, str]] = []
+        if not filters:
+            return chips
+        active = {k: v for k, v in filters.items() if v is not None and str(v) != ""}
+        for key, val in active.items():
+            query: dict[str, str] = {
+                k: str(v)
+                for k, v in active.items()
+                if k != key
+            }
+            query["limit"] = str(limit)
+            if sort:
+                query["sort"] = str(sort)
+                query["dir"] = str(direction)
+            remove_url = "/tracks?" + urlencode(query)
+            chips.append({
+                "key": key,
+                "label": FILTER_LABELS.get(key, key),
+                "value": str(val),
+                "remove_url": remove_url,
+            })
+        return chips
+    except Exception:
+        return []
+
+
 def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = False,
                base_path: Path | None = None, local_path: Path | None = None,
                login_limit: FailureTracker | None = None,
@@ -942,6 +993,13 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
             return "/tracks?" + urlencode(query)
 
         total_pages = max(1, (result.total + page_size - 1) // page_size)
+        filter_chips = active_filter_chips(
+            filters,
+            limit=page_size,
+            sort=sort,
+            direction=direction,
+        )
+
         template = _env.get_template("tracks.html")
         return HTMLResponse(template.render(
             tracks=result.items,
@@ -950,6 +1008,7 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
             page=offset // page_size + 1,
             total_pages=total_pages,
             filters=filters,
+            filter_chips=filter_chips,
             taste_info=taste_model_info(app.state.cfg["state"]["track_db_path"]),
             current_sort=sort,
             current_dir=direction,
