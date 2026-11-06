@@ -118,7 +118,7 @@
     {% endif %}
 
     {% if editor_available %}
-    <a href="/config" class="btn-page btn-sm">⚙️ Konfiguration bearbeiten &rarr;</a>
+    <a href="/config" class="btn-page fs-80">⚙️ Konfiguration bearbeiten &rarr;</a>
     {% endif %}
   </div>
 
@@ -179,7 +179,7 @@
       <h2 class="card-title">📥 Inbox</h2>
       <span class="badge badge-ok">DJ Ready &middot; −8.5 LUFS</span>
     </div>
-    <p class="mt-0 mb-2 fw-500">{{ snap.inbox_total }} Track(s) mit Status inbox.</p>
+    <p class="mt-0 mb-035 fw-500">{{ snap.inbox_total }} Track(s) mit Status inbox.</p>
     <p class="meta mt-0 mb-4">
       Geprüfte, pegelnormalisierte und mit BPM/Key/Cues getaggte Originale in <code>/music/inbox</code>, bereit für Rekordbox.
     </p>
@@ -189,7 +189,7 @@
           <div class="val val-blue">{{ snap.inbox_total }}</div>
           <div class="lbl">Geprüfte Tracks in /music/inbox</div>
         </div>
-        <a href="/tracks?status=inbox" class="btn-page btn-xs">Vorhören &rarr;</a>
+        <a href="/tracks?status=inbox" class="btn-page btn-preview">Vorhören &rarr;</a>
       </div>
     </div>
   </div>
@@ -226,11 +226,11 @@
       </div>
     </div>
     {% if snap.job_summary and snap.job_summary.last_heartbeat_at %}
-    <p class="meta-sm mt-3 mb-0">
+    <p class="meta meta-sm mt-3 mb-0">
       Letztes Lebenszeichen: <span class="mono">{{ snap.job_summary.last_heartbeat_at }}</span> UTC
     </p>
     {% else %}
-    <p class="meta-sm mt-3 mb-0">Noch kein Lebenszeichen eines Workers.</p>
+    <p class="meta meta-sm mt-3 mb-0">Noch kein Lebenszeichen eines Workers.</p>
     {% endif %}
   </div>
 
@@ -238,7 +238,7 @@
   <div class="card">
     <div class="card-header">
       <h2 class="card-title">🏛️ Sammlung &amp; Track-DB</h2>
-      <a href="/tracks" class="btn-sm fw-500">Track-Explorer &rarr;</a>
+      <a href="/tracks" class="fs-80 fw-500">Track-Explorer &rarr;</a>
     </div>
     <p class="meta mt-0 mb-3">
       Master-Archiv in <code>/music/Schranz</code> (schreibgeschützt) &amp; Inbox durchsuchen.
@@ -276,7 +276,7 @@
       {% endfor %}
     </div>
     {% endif %}
-    <p class="mt-4 mb-0">
+    <p class="mt-09 mb-0">
       <a href="/tracks">Zum DJ Track-Explorer &rarr;</a>
     </p>
   </div>

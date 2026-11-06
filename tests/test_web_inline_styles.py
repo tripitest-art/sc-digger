@@ -50,11 +50,61 @@ def test_base_css_has_dark_color_scheme_and_required_classes():
     assert re.search(r"color-scheme:\s*dark", css)
     expected_classes = (
         ".page-head", ".meta-sm", ".btn-sm", ".mt-1", ".mb-0",
-        ".m-0", ".mt-0", ".fw-600", ".pill-sm", ".btn-xs",
+        ".m-0", ".mt-0", ".mt-02", ".mt-09", ".mb-035", ".fw-600",
+        ".fs-80", ".fs-84", ".pill-sm", ".btn-xs", ".btn-preview",
         ".grid-2col", ".flex-between", ".flex-col-end", ".flex-wrap-gap",
+        ".text-main",
     )
     for klasse in expected_classes:
         assert re.search(re.escape(klasse) + r"\s*\{", css), f"Klasse {klasse} fehlt in base.html"
+
+
+def test_css_cascade_order_utilities_override_components():
+    """Hilfsklassen müssen nach Komponentenklassen stehen, damit sie bei gleicher Spezifität gewinnen."""
+    css = (TEMPLATES / "base.html").read_text(encoding="utf-8")
+
+    # .grid-2col nach .stat-grid
+    assert css.find(".stat-grid") < css.rfind(".grid-2col"), ".grid-2col muss nach .stat-grid definiert sein"
+    # .btn-xs und .btn-preview nach .btn-page
+    assert css.find(".btn-page") < css.rfind(".btn-xs"), ".btn-xs muss nach .btn-page definiert sein"
+    assert css.find(".btn-page") < css.rfind(".btn-preview"), ".btn-preview muss nach .btn-page definiert sein"
+    # .mb-0 und .alert-compact nach .alert-box
+    assert css.find(".alert-box") < css.rfind(".mb-0"), ".mb-0 muss nach .alert-box definiert sein"
+    assert css.find(".alert-box") < css.rfind(".alert-compact"), ".alert-compact muss nach .alert-box definiert sein"
+
+    # Utility-Block muss vor den Media Queries stehen
+    media_pos = css.find("@media")
+    assert media_pos > 0, "@media fehlt in base.html"
+    assert css.rfind(".grid-2col") < media_pos
+    assert css.rfind(".btn-xs") < media_pos
+
+
+def test_all_classes_in_status_and_tracks_are_defined():
+    """Jede statische Klasse in status.html und tracks.html muss im CSS definiert sein."""
+    base_css = (TEMPLATES / "base.html").read_text(encoding="utf-8")
+
+    for template_name in ("status.html", "tracks.html"):
+        content = (TEMPLATES / template_name).read_text(encoding="utf-8")
+        local_match = re.search(r"<style>(.*?)</style>", content, re.DOTALL)
+        local_css = local_match.group(1) if local_match else ""
+        combined_css = base_css + "\n" + local_css
+
+        # Alle Klassennamen aus class="..." extrahieren (Jinja-Blöcke herausfiltern)
+        classes: set[str] = set()
+        for raw_class in re.findall(r'class="([^"]+)"', content):
+            cleaned = re.sub(r'\{\{[^}]+\}\}', ' ', raw_class)
+            cleaned = re.sub(r'\{%[^%]+%\}', ' ', cleaned)
+            for token in cleaned.split():
+                token = token.strip()
+                if token and not token.startswith(('"', "'", "{", "%")):
+                    classes.add(token)
+
+        # match-btn ist ein semantischer Hook im Template
+        ignored = {"match-btn"}
+        for cls in sorted(classes - ignored):
+            assert re.search(r"\." + re.escape(cls) + r"[\s,.:{#>]", combined_css), (
+                f"Klasse .{cls} in {template_name} ist im Stylesheet nicht definiert!"
+            )
 
 
 def test_no_static_inline_styles_in_status_and_tracks():

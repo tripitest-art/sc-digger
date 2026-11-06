@@ -12,6 +12,9 @@
     align-items: center;
     gap: 0.75rem;
   }
+  .card-header .quick-chips {
+    margin-bottom: 0;
+  }
   .audio-preview {
     width: 165px;
     height: 32px;
@@ -152,7 +155,7 @@
   <details class="info-toggle mt-4 mb-0">
     <summary>ℹ️ Erklärung: Track-Status, Camelot-Farben &amp; DJ-Shortcuts</summary>
     <div class="info-toggle-content">
-      <div class="fw-600 mb-2">Track-Status in der Datenbank:</div>
+      <div class="fw-600 text-main mb-035">Track-Status in der Datenbank:</div>
       <div class="legend-grid">
         <div class="legend-item">
           <span class="badge badge-info">inbox</span>
@@ -267,10 +270,10 @@
 <div class="card">
   <div class="card-header">
     <h2 class="card-title m-0">Treffer</h2>
-    <span class="meta-sm" data-taste-info>
+    <span class="meta meta-sm" data-taste-info>
       {% if taste_info %}Taste-Modell vom {{ taste_info.trained_at }} · {{ taste_info.n_pos }} gefällt / {{ taste_info.n_neg }} gefällt nicht{% else %}Taste-Modell: noch nicht trainiert{% endif %}
     </span>
-    <span class="meta-sm">Tipp: Beim Vorhören öffnet sich unten das DJ-Deck (<span class="kbd">Space</span> Pause, <span class="kbd">&rarr;</span> +30s Drop-Check)</span>
+    <span class="meta meta-sm">Tipp: Beim Vorhören öffnet sich unten das DJ-Deck (<span class="kbd">Space</span> Pause, <span class="kbd">&rarr;</span> +30s Drop-Check)</span>
   </div>
   <div class="table-scroll">
   <table>
@@ -317,7 +320,7 @@
           <div class="mono meta-path">{{ track.path }}</div>
           {# Kompakte Kennzahlen-Zeile (Issue #258): SoundCloud-Engagement aus track_snapshots. #}
           {% if track.sc_plays is not none or track.sc_likes is not none %}
-          <div class="meta meta-xs mt-1">
+          <div class="meta meta-xs mt-02">
             ▶ {{ track.sc_plays or 0 }} · ♥ {{ track.sc_likes or 0 }} · 🔁 {{ track.sc_reposts or 0 }}
           </div>
           {% endif %}
