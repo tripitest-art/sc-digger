@@ -81,6 +81,7 @@ from .database import (
     taste_model_info,
 )
 from .intake import MAX_UPLOAD_BYTES, process_uploaded_audio
+from .ops import collect_ops
 from .status import change_badge, collect_status
 
 _TEMPLATES = Path(__file__).parent / "templates"
@@ -781,9 +782,10 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
     def index(request: Request):
         snap = collect_status(app.state.cfg)
         overview = get_collection_overview(app.state.cfg["state"]["track_db_path"])
+        ops = collect_ops(app.state.cfg)
         template = _env.get_template("status.html")
         return HTMLResponse(template.render(
-            snap=snap, overview=overview, editor_available=editor_available
+            snap=snap, overview=overview, editor_available=editor_available, ops=ops
         ))
 
     @app.get("/api/status")
