@@ -81,6 +81,52 @@
     gap: 0.35rem;
     margin-top: 0.75rem;
   }
+  .ops-card {
+    margin-top: 1.5rem;
+  }
+  .ops-item-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.55rem 0.75rem;
+    border-radius: 6px;
+    background-color: var(--bg-card-subtle);
+    border: 1px solid var(--border);
+    font-size: 0.86rem;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+  }
+  .ops-item-head {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .ops-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.16rem 0.58rem;
+    border-radius: 9999px;
+    font-size: 0.76rem;
+    font-weight: 600;
+    line-height: 1.35;
+    white-space: nowrap;
+    border: 1px solid transparent;
+  }
+  .ops-ok {
+    background-color: var(--accent-ok-bg);
+    color: #34d399;
+    border-color: rgba(16, 185, 129, 0.32);
+  }
+  .ops-warn {
+    background-color: var(--accent-warn-bg);
+    color: #fbbf24;
+    border-color: rgba(245, 158, 11, 0.32);
+  }
+  .ops-off {
+    background-color: var(--bg-card-subtle);
+    color: var(--text-muted);
+    border-color: var(--border);
+  }
 </style>
 {% endblock %}
 
@@ -379,6 +425,32 @@
       </tbody>
     </table>
   </div>
+</div>
+
+<!-- Betrieb -->
+<div class="card ops-card">
+  <div class="card-header">
+    <h2 class="card-title">Betrieb</h2>
+  </div>
+  {% if ops %}
+  <div class="stat-kv-list">
+    {% for item in ops %}
+    <div class="ops-item-row">
+      <div class="ops-item-head">
+        <span class="fw-600">{{ item.label }}</span>
+        {% if item.state == "ok" %}
+        <span class="ops-badge ops-ok">OK</span>
+        {% elif item.state == "warn" %}
+        <span class="ops-badge ops-warn">Warnung</span>
+        {% else %}
+        <span class="ops-badge ops-off">Aus</span>
+        {% endif %}
+      </div>
+      <div class="meta">{{ item.text }}</div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
 </div>
 
 <script>
