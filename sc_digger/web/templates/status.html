@@ -127,6 +127,10 @@
     color: var(--text-muted);
     border-color: var(--border);
   }
+  .alert-list {
+    margin: 0.35rem 0 0 1.2rem;
+    padding: 0;
+  }
 </style>
 {% endblock %}
 
@@ -170,9 +174,16 @@
     {% endif %}
   </div>
 
-  {% if snap.alert_active %}
-  <div class="alert-box warn w-full mt-2 mb-0">
-    <p class="warn m-0 fw-600">⚠️ Ein Health-Alarm ist aktiv.</p>
+  {% if snap.alerts %}
+  <div id="health-alerts" class="alert-box warn w-full mt-2 mb-0" role="alert">
+    <strong>Aktive Health-Alarme:</strong>
+    <ul class="alert-list">
+      {% for alert in snap.alerts %}
+      <li data-mode="{{ alert.mode }}">
+        {{ alert.label }}: {{ alert.error or "ohne Fehlertext" }}{% if alert.since %} (seit {{ alert.since }} UTC){% endif %}
+      </li>
+      {% endfor %}
+    </ul>
   </div>
   {% endif %}
 </div>

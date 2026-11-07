@@ -36,6 +36,24 @@ def change_badge(previous: int | float | None, current: int | float) -> dict[str
     return {"direction": "flat", "text": "● 0 %"}
 
 
+ALERT_LABELS: dict[str, str] = {
+    "discover": "Täglicher Lauf",
+    "sc_login": "SoundCloud-Login",
+    "disk": "Speicherplatz",
+    "api_schema": "SoundCloud-API-Felder",
+    "rekordbox_import": "Rekordbox-Rückkanal",
+    "availability_watch": "Verfügbarkeits-Wächter",
+}
+
+
+@dataclass
+class AlertInfo:
+    mode: str            # Schlüssel ohne Präfix "alert:", z. B. "sc_login"
+    label: str           # ALERT_LABELS[mode], unbekannte Modi: der Modus selbst
+    since: str | None = None    # finished_at ("YYYY-MM-DD HH:MM:SS", UTC) des jüngsten schlechten Laufs, sonst None
+    error: str | None = None    # dessen Fehlertext, mit redact() bereinigt; leer oder fehlt -> None
+
+
 @dataclass
 class RunInfo:
     finished_at: str        # wie in der runs-Tabelle ("YYYY-MM-DD HH:MM:SS", UTC)
@@ -79,6 +97,7 @@ class StatusSnapshot:
     stats: DigestStats | None = None
     job_summary: JobQueueSummary | None = None              # Job-Queue der KI-Workstation (jobs-Tabelle)
     version: VersionInfo = field(default_factory=VersionInfo)  # zuletzt von update.sh deployter Stand
+    alerts: list[AlertInfo] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         """JSON-fähig (asdict); enthält alle Felder oben."""
@@ -149,6 +168,61 @@ def _read_alert_active(state_db_path: str | Path) -> bool:
     except sqlite3.Error:
         return False
     return bool(row and row[0] == "1")
+
+
+def _read_active_alerts(state_db_path: str | Path) -> list[AlertInfo]:
+    """Liest alle aktiven Alarme (key LIKE 'alert:%' AND value = '1') aus health_state.
+
+    Rein lesend; fehlt die Tabelle, die Datei oder schlägt die Abfrage fehl, kommt [] zurück.
+    Gibt es zu einem Modus einen schlechten Lauf (ok=0 oder found=0), werden Zeitpunkt (finished_at)
+    und bereinigter Fehlertext (redact) ermittelt.
+    """
+    try:
+        with _connect_readonly(state_db_path) as db:
+            if not _table_exists(db, "health_state"):
+                return []
+            rows = db.execute(
+                "SELECT key FROM health_state WHERE key LIKE 'alert:%' AND value = '1'"
+            ).fetchall()
+            if not rows:
+                return []
+
+            active_modes: list[str] = []
+            for (key,) in rows:
+                k = str(key)
+                if k.startswith("alert:"):
+                    active_modes.append(k[len("alert:"):])
+
+            # Zuerst die Modi aus ALERT_LABELS in deren definierter Reihenfolge, danach unbekannte alphabetisch
+            known_index = {mode: i for i, mode in enumerate(ALERT_LABELS)}
+            active_modes = sorted(
+                list(set(active_modes)),
+                key=lambda m: (0, known_index[m], "") if m in known_index else (1, 0, m),
+            )
+
+            has_runs = _table_exists(db, "runs")
+            alerts: list[AlertInfo] = []
+            for mode in active_modes:
+                label = ALERT_LABELS.get(mode, mode)
+                since: str | None = None
+                error: str | None = None
+                if has_runs:
+                    bad_run = db.execute(
+                        "SELECT finished_at, error FROM runs "
+                        "WHERE mode = ? AND (ok = 0 OR found = 0) "
+                        "ORDER BY id DESC LIMIT 1",
+                        (mode,),
+                    ).fetchone()
+                    if bad_run:
+                        since = str(bad_run[0]) if bad_run[0] is not None else None
+                        raw_err = bad_run[1]
+                        if raw_err:
+                            cleaned = redact(str(raw_err)).strip()
+                            error = cleaned if cleaned else None
+                alerts.append(AlertInfo(mode=mode, label=label, since=since, error=error))
+            return alerts
+    except sqlite3.Error:
+        return []
 
 
 def _read_inbox_total(track_db_path: str | Path) -> int:
@@ -269,6 +343,7 @@ def collect_status(cfg: Config, *, days: int = 7, now: datetime | None = None) -
     runs = _read_runs(state_db_path)
     last_discover = _read_last_discover(state_db_path)
     alert_active = _read_alert_active(state_db_path)
+    alerts = _read_active_alerts(state_db_path)
     inbox_total = _read_inbox_total(track_db_path)
     job_summary = _read_job_summary(track_db_path, now)
 
@@ -301,4 +376,5 @@ def collect_status(cfg: Config, *, days: int = 7, now: datetime | None = None) -
         stats=stats,
         job_summary=job_summary,
         version=_read_version(state_db_path),
+        alerts=alerts,
     )
