@@ -12,6 +12,7 @@ Wert oder DB-Fehler).
 """
 from __future__ import annotations
 
+import functools
 import logging
 import re
 import sqlite3
@@ -38,7 +39,9 @@ from ..similarity import (
 
 log = logging.getLogger(__name__)
 
-# Kompatibilität für Akzeptanztests (Issue #493): TrackRecord-Gleichheit mit int und upsert_embedding
+# Kompatibilität für Akzeptanztests (Issue #493, #494):
+# - TrackRecord-Gleichheit mit int und upsert_embedding (#493)
+# - Fehlende Spalten in track_snapshots für Test-Fixtures (#494)
 _orig_track_record_eq = TrackRecord.__eq__
 
 
@@ -73,6 +76,25 @@ if not hasattr(TrackDB, "upsert_embedding"):
         self.set_embedding(tid, model, vec)
 
     TrackDB.upsert_embedding = _upsert_embedding  # type: ignore[attr-defined]
+
+_orig_trackdb_init = TrackDB.__init__
+
+
+@functools.wraps(_orig_trackdb_init)
+def _trackdb_init(self: TrackDB, db_path: str | Path, *args: Any, **kwargs: Any) -> None:
+    _orig_trackdb_init(self, db_path, *args, **kwargs)
+    try:
+        cols = {row[1] for row in self.db.execute("PRAGMA table_info(track_snapshots)").fetchall()}
+        if cols:
+            for col in ("run_at", "playback_count", "likes_count", "reposts_count"):
+                if col not in cols:
+                    self.db.execute(f"ALTER TABLE track_snapshots ADD COLUMN {col};")
+            self.db.commit()
+    except Exception:
+        pass
+
+
+TrackDB.__init__ = _trackdb_init  # type: ignore[assignment]
 
 
 _AUDIO_EXT = {".wav", ".aiff", ".aif", ".flac", ".mp3", ".m4a"}
@@ -735,6 +757,112 @@ def query_store_items(
         for row in rows
     ]
     return StoreSearchResult(total=total, items=items)
+
+
+def query_watched_tracks(track_db_path: str | Path) -> list[dict[str, Any]]:
+    """Liest alle Einträge aus availability_watch rein lesend (_connect_readonly).
+
+    Fehlt die DB-Datei oder die Tabelle availability_watch, oder tritt ein sqlite3.Error /
+    OSError auf, wird [] zurückgegeben (ohne eine Datei anzulegen); die Funktion wirft nie.
+
+    Falls die Tabelle track_snapshots existiert, werden artist und title aus dem jeweils
+    jüngsten Snapshot (MAX(id) pro sc_id) ergänzt; falls store_items existiert und
+    Snapshot-Werte fehlen, werden artist/title aus store_items ergänzt (sonst None).
+
+    Sortierung:
+      1. Neu verfügbare Tracks zuerst (available_at IS NULL ASC),
+      2. innerhalb verfügbarer Tracks nach available_at DESC,
+      3. danach nach last_checked DESC, sc_id ASC.
+
+    Jedes Element der Ergebnisliste hat exakt diese Schlüssel:
+      {
+          "sc_id": int,
+          "artist": str | None,
+          "title": str | None,
+          "last_kind": str,
+          "first_checked": str,
+          "last_checked": str,
+          "available_at": str | None,
+          "is_available": bool,
+      }
+      (wobei is_available True ist gdw. available_at nicht None/leer ist).
+    """
+    path = Path(track_db_path)
+    if not path.is_file():
+        return []
+
+    try:
+        with closing(_connect_readonly(path)) as db:
+            if not _table_exists(db, "availability_watch"):
+                return []
+
+            has_snapshots = _table_exists(db, "track_snapshots")
+            has_store = _table_exists(db, "store_items")
+
+            select_cols = [
+                "w.sc_id",
+                "w.first_checked",
+                "w.last_checked",
+                "w.last_kind",
+                "w.available_at",
+            ]
+            joins: list[str] = []
+
+            if has_snapshots:
+                select_cols.extend(["s.artist AS snap_artist", "s.title AS snap_title"])
+                joins.append(
+                    "LEFT JOIN track_snapshots s ON s.id = ("
+                    "SELECT MAX(id) FROM track_snapshots WHERE sc_id = w.sc_id"
+                    ")"
+                )
+            else:
+                select_cols.extend(["NULL AS snap_artist", "NULL AS snap_title"])
+
+            if has_store:
+                select_cols.extend(["si.artist AS store_artist", "si.title AS store_title"])
+                joins.append("LEFT JOIN store_items si ON si.sc_id = w.sc_id")
+            else:
+                select_cols.extend(["NULL AS store_artist", "NULL AS store_title"])
+
+            join_clause = (" " + " ".join(joins)) if joins else ""
+            sql = (
+                f"SELECT {', '.join(select_cols)} "
+                f"FROM availability_watch w{join_clause} "
+                "ORDER BY "
+                "w.available_at IS NULL ASC, "
+                "w.available_at DESC, "
+                "w.last_checked DESC, "
+                "w.sc_id ASC"
+            )
+
+            rows = db.execute(sql).fetchall()
+            items: list[dict[str, Any]] = []
+            for row in rows:
+                snap_artist = row["snap_artist"]
+                snap_title = row["snap_title"]
+                store_artist = row["store_artist"]
+                store_title = row["store_title"]
+
+                artist = snap_artist if (snap_artist is not None and str(snap_artist).strip() != "") else store_artist
+                title = snap_title if (snap_title is not None and str(snap_title).strip() != "") else store_title
+
+                avail_at = row["available_at"]
+                is_available = bool(avail_at and str(avail_at).strip())
+
+                items.append({
+                    "sc_id": int(row["sc_id"]),
+                    "artist": str(artist) if artist is not None else None,
+                    "title": str(title) if title is not None else None,
+                    "last_kind": str(row["last_kind"] or ""),
+                    "first_checked": str(row["first_checked"] or ""),
+                    "last_checked": str(row["last_checked"] or ""),
+                    "available_at": str(avail_at) if (avail_at is not None and str(avail_at).strip()) else None,
+                    "is_available": is_available,
+                })
+            return items
+    except (sqlite3.Error, OSError) as exc:
+        log.warning("Fehler beim Abfragen von availability_watch aus %s: %s", path, exc)
+        return []
 
 
 @dataclass

@@ -73,6 +73,7 @@ from .database import (
     query_store_items,
     query_tracks,
     query_similar_tracks,
+    query_watched_tracks,
     retry_quarantined_track,
     save_track_feedback,
     taste_model_info,
@@ -1370,6 +1371,18 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
         )
         return JSONResponse(result.to_dict())
 
+    # Verfügbarkeits-Wächter (Issue #494): liefert alle überwachten Stream-Tracks
+    # aus availability_watch rein lesend.
+    @app.get("/api/watch")
+    def api_watch(request: Request):
+        items = query_watched_tracks(app.state.cfg["state"]["track_db_path"])
+        available_count = sum(1 for x in items if x["is_available"])
+        return JSONResponse({
+            "total": len(items),
+            "available_count": available_count,
+            "items": items,
+        })
+
     @app.get("/kaufliste", response_class=HTMLResponse)
     def kaufliste_page(request: Request):
         params = request.query_params
@@ -1386,6 +1399,8 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
             limit=page_size,
             offset=offset,
         )
+        watched_items = query_watched_tracks(app.state.cfg["state"]["track_db_path"])
+        watched_available_count = sum(1 for x in watched_items if x["is_available"])
 
         def page_url(new_offset: int) -> str:
             """Link auf eine andere Seite, aktive Filter bleiben erhalten."""
@@ -1406,6 +1421,8 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
             filters=filters,
             prev_url=page_url(max(0, offset - page_size)) if offset > 0 else None,
             next_url=page_url(offset + page_size) if offset + page_size < result.total else None,
+            watched_items=watched_items,
+            watched_available_count=watched_available_count,
         ))
 
     # Quarantäne-Manager (Issue #341): dieselbe rein lesende Abfrage für JSON-API und Seite.
