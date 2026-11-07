@@ -142,7 +142,7 @@ Auf einem Server setzt `./set-secret.sh NAME` die Zugangsdaten verdeckt in die `
 
 1. `.env` aus `.env.example` kopieren und `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` sowie `SC_DIGGER_WEB_PASSWORD` (frei wählbares Passwort) eintragen.
 2. `docker compose up -d --build`
-3. `http://<host>:8080/` öffnen und das Passwort eingeben — Statusseite und Konfigeditor sind da.
+3. `http://<host>:8080/` öffnen und das Passwort eingeben — Statusseite und Konfigeditor sind da. Die Statusseite listet alle aktiven Health-Alarme (`discover`, `sc_login`, `disk`, `api_schema`, `rekordbox_import`, `availability_watch`) mit Name, letztem Fehlertext und Zeitpunkt, auch `GET /api/status` enthält sie als `alerts`.
 
 Den Port gibt man bei Bedarf an die LAN-Adresse des Hosts frei (siehe Kommentar in `docker-compose.yml`).
 
