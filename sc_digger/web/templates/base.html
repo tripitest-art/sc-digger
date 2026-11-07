@@ -934,6 +934,17 @@
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5), 0 0 10px rgba(239, 68, 68, 0.15);
   }
 
+  @media (max-width: 900px) {
+    thead { display: none; }
+    table, tbody, tr, td { display: block; width: 100%; }
+    .sticky-col { position: static; }
+    tr { margin-bottom: 1rem; border: 1px solid var(--border); border-radius: 8px; padding: 0.5rem; background: var(--bg-card); }
+    td { display: flex; justify-content: space-between; align-items: center; padding: 0.35rem 0.5rem; border: none; border-bottom: 1px solid var(--border-subtle); text-align: right; }
+    td:last-child { border-bottom: none; }
+    td::before { content: attr(data-label); font-weight: 600; color: var(--text-muted); font-size: 0.8rem; margin-right: 1rem; text-align: left; }
+    td[data-label=""]::before { content: ""; display: none; }
+  }
+
 @media (max-width: 800px) {
   .site-header { padding: 0.6rem 1rem; }
   .site-main { padding: 1.25rem 1rem 5rem; }
