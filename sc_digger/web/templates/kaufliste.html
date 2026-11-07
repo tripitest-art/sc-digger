@@ -156,6 +156,62 @@
   </div>
   {% endif %}
 </div>
+
+<div class="card" data-watch-section>
+  <div class="card-header">
+    <div>
+      <h2 class="card-title" style="margin: 0;">Verfügbarkeits-Wächter</h2>
+      <p class="meta" style="margin: 0.25rem 0 0;">
+        Überwachte 👍-Stream-Tracks ohne Original &middot;
+        <strong>{{ (watched_items or [])|length }}</strong> Tracks überwacht
+        {% if watched_available_count and watched_available_count > 0 %}
+          &middot; <strong style="color: var(--color-success, #10b981);">{{ watched_available_count }} jetzt verfügbar</strong>
+        {% endif %}
+      </p>
+    </div>
+  </div>
+  <div class="table-scroll">
+  <table>
+    <thead>
+      <tr>
+        <th>Artist</th>
+        <th>Titel</th>
+        <th>Status</th>
+        <th>Download-Art</th>
+        <th>Zuletzt geprüft</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for w in (watched_items or []) %}
+      <tr>
+        <td style="font-weight: 600;">{{ w.artist or "—" }}</td>
+        <td><strong>{{ w.title or ("Track #" ~ w.sc_id) }}</strong></td>
+        <td>
+          {% if w.is_available %}
+          <span style="font-weight: 600; color: var(--color-success, #10b981);">Jetzt verfügbar</span>
+          {% if w.available_at %}
+          <span class="meta mono" style="font-size: 0.78rem;">({{ w.available_at[:16] }})</span>
+          {% endif %}
+          {% else %}
+          <span class="meta">Warten</span>
+          {% endif %}
+        </td>
+        <td class="mono meta" style="font-size: 0.78rem;">{{ w.last_kind or "—" }}</td>
+        <td class="mono meta" style="font-size: 0.78rem; white-space: nowrap;">
+          {{ w.last_checked[:16] if w.last_checked else "—" }}
+        </td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="5" class="meta" style="text-align: center; padding: 1.5rem;">
+          Keine Tracks im Verfügbarkeits-Wächter.
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
 <script>
   // Bewertung ohne Seiten-Reload an POST /api/feedback (wie im Digest). Bis die Antwort da
   // ist, sind die Knöpfe gesperrt, damit kein zweiter Klick eine widersprüchliche Bewertung schickt.
