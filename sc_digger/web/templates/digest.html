@@ -185,18 +185,18 @@
     <tbody>
       {% for item in items %}
       <tr>
-        <td class="mono meta" style="white-space: nowrap; font-size: 0.78rem;">
+        <td data-label="Datum" class="mono meta" style="white-space: nowrap; font-size: 0.78rem;">
           {{ item.reported_at[:16] if item.reported_at else "—" }}
         </td>
-        <td style="font-weight: 600;">{{ item.artist or "—" }}</td>
-        <td>
+        <td data-label="Artist" style="font-weight: 600;">{{ item.artist or "—" }}</td>
+        <td data-label="Titel">
           <strong>{{ item.title }}</strong>
           {% set engagement = engagement_line(item.plays, item.likes, item.reposts) %}
           {% if engagement %}
           <div class="meta" style="font-size: 0.72rem; margin-top: 0.15rem;">{{ engagement }}</div>
           {% endif %}
         </td>
-        <td>
+        <td data-label="Download-Art">
           {% if item.download_kind == "store" %}
           <span class="badge badge-purple">🛒 Store</span>
           {% elif item.download_kind == "native" %}
@@ -207,7 +207,7 @@
           <span class="badge badge-muted">🎧 Stream</span>
           {% endif %}
         </td>
-        <td>
+        <td data-label="Status">
           {% if item.in_collection %}
           <span class="badge badge-ok">Sammlung</span>
           {% elif item.in_inbox %}
@@ -216,7 +216,7 @@
           <span class="badge badge-muted">Offen</span>
           {% endif %}
         </td>
-        <td>
+        <td data-label="Feedback">
           <div class="feedback-group" data-feedback-cell data-sc-id="{{ item.sc_id }}">
             <button type="button" class="feedback-btn {% if item.feedback == 'like' %}active{% endif %}"
                     data-value="like" title="Gefällt mir" onclick="sendFeedback(this)">👍</button>
@@ -227,7 +227,7 @@
             <span class="feedback-error meta"></span>
           </div>
         </td>
-        <td style="white-space: nowrap;">
+        <td data-label="" style="white-space: nowrap;">
           {# Nur http/https verlinken: die URLs stammen aus fremden Feeds, ein
              javascript:-Wert darf nicht ins href. #}
           {% set url_href = item.url if item.url and (item.url.startswith("http://") or item.url.startswith("https://")) else "" %}
@@ -251,7 +251,7 @@
       </tr>
       {% else %}
       <tr>
-        <td colspan="7">
+        <td colspan="7" data-label="">
           {{ empty_state("Keine Vorschläge für diese Filtereinstellungen gefunden.", "/digest") }}
         </td>
       </tr>
