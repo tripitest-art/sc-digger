@@ -120,4 +120,189 @@
   </div>
   {% endfor %}
 {% endif %}
+
+<section id="inbox-dup-section" class="card" style="margin-top: 2rem;">
+  <div class="duplicates-toolbar">
+    <div>
+      <h2 style="margin: 0; font-size: 1.25rem;">Gleiche SoundCloud-ID in der Inbox</h2>
+      <p class="meta" style="margin: 0.25rem 0 0;">
+        Überzählige Dateien derselben SoundCloud-ID in der Inbox. Verschieben nach <code>_rejected/duplicate/</code> (nie gelöscht).
+      </p>
+    </div>
+    <div>
+      <button id="inbox-dup-move-all" class="btn-page" style="display: none;">Alle überzähligen verschieben</button>
+    </div>
+  </div>
+  <div id="inbox-dup-status" role="status" class="meta" style="margin-top: 0.75rem;"></div>
+  <div id="inbox-dup-container" style="margin-top: 0.75rem;"></div>
+</section>
+
+<script>
+(function() {
+  const section = document.getElementById('inbox-dup-section');
+  if (!section) return;
+
+  const moveAllBtn = document.getElementById('inbox-dup-move-all');
+  const statusEl = document.getElementById('inbox-dup-status');
+  const container = document.getElementById('inbox-dup-container');
+
+  async function loadInboxDuplicates() {
+    try {
+      const resp = await fetch('/api/inbox-duplicates');
+      if (!resp.ok) {
+        statusEl.textContent = 'Fehler beim Laden: HTTP ' + resp.status;
+        return;
+      }
+      const data = await resp.json();
+      container.textContent = '';
+
+      if (!data.ok || !data.groups || data.groups.length === 0) {
+        moveAllBtn.style.display = 'none';
+        const emptyDiv = document.createElement('div');
+        emptyDiv.className = 'card';
+        emptyDiv.style.textAlign = 'center';
+        emptyDiv.style.padding = '1.5rem 1rem';
+        const emptyP = document.createElement('p');
+        emptyP.className = 'meta';
+        emptyP.style.margin = '0';
+        emptyP.textContent = 'Keine Dubletten in der Inbox.';
+        emptyDiv.appendChild(emptyP);
+        container.appendChild(emptyDiv);
+        return;
+      }
+
+      moveAllBtn.style.display = '';
+      moveAllBtn.textContent = 'Alle überzähligen verschieben (' + data.extra_files + ' Dateien, ' + data.freeable_mb + ' MB)';
+
+      data.groups.forEach(function(group) {
+        const card = document.createElement('div');
+        card.className = 'card group-card';
+
+        const header = document.createElement('div');
+        header.className = 'group-header';
+
+        const title = document.createElement('h3');
+        title.className = 'group-title';
+        title.textContent = 'SoundCloud-ID ' + group.soundcloud_id + (group.title ? ' (' + group.title + ')' : '');
+        header.appendChild(title);
+
+        const groupBtn = document.createElement('button');
+        groupBtn.className = 'btn-page';
+        groupBtn.style.fontSize = '0.8rem';
+        groupBtn.setAttribute('data-sc-id', group.soundcloud_id);
+        groupBtn.textContent = 'Diese Gruppe verschieben';
+        groupBtn.addEventListener('click', async function() {
+          if (!confirm('Überzählige Dateien dieser Gruppe nach _rejected/duplicate/ verschieben? Es wird nichts gelöscht.')) {
+            return;
+          }
+          await moveDuplicates(group.soundcloud_id);
+        });
+        header.appendChild(groupBtn);
+        card.appendChild(header);
+
+        const tableScroll = document.createElement('div');
+        tableScroll.className = 'table-scroll';
+        const table = document.createElement('table');
+        table.className = 'data-table';
+
+        const thead = document.createElement('thead');
+        const trHead = document.createElement('tr');
+        ['Status', 'Pfad', 'BPM', 'Key', 'Größe'].forEach(function(h) {
+          const th = document.createElement('th');
+          th.textContent = h;
+          trHead.appendChild(th);
+        });
+        thead.appendChild(trHead);
+        table.appendChild(thead);
+
+        const tbody = document.createElement('tbody');
+
+        function appendRow(item, statusLabel, badgeClass) {
+          const tr = document.createElement('tr');
+
+          const tdStatus = document.createElement('td');
+          const badge = document.createElement('span');
+          badge.className = 'badge ' + badgeClass;
+          badge.textContent = statusLabel;
+          tdStatus.appendChild(badge);
+          tr.appendChild(tdStatus);
+
+          const tdPath = document.createElement('td');
+          const code = document.createElement('code');
+          code.className = 'track-path-code';
+          code.textContent = item.path;
+          tdPath.appendChild(code);
+          tr.appendChild(tdPath);
+
+          const tdBpm = document.createElement('td');
+          tdBpm.textContent = item.bpm != null ? (Math.round(item.bpm * 10) / 10).toFixed(1) + ' BPM' : '-';
+          tr.appendChild(tdBpm);
+
+          const tdKey = document.createElement('td');
+          tdKey.textContent = item.key ? item.key : '-';
+          tr.appendChild(tdKey);
+
+          const tdSize = document.createElement('td');
+          tdSize.textContent = item.size_mb + ' MB';
+          tr.appendChild(tdSize);
+
+          tbody.appendChild(tr);
+        }
+
+        if (group.keep) {
+          appendRow(group.keep, 'Behalten', 'badge-ok');
+        }
+        if (group.duplicates) {
+          group.duplicates.forEach(function(d) {
+            appendRow(d, 'Überzählig', 'badge-err');
+          });
+        }
+
+        table.appendChild(tbody);
+        tableScroll.appendChild(table);
+        card.appendChild(tableScroll);
+        container.appendChild(card);
+      });
+    } catch (err) {
+      statusEl.textContent = 'Fehler beim Laden der Inbox-Dubletten.';
+    }
+  }
+
+  async function moveDuplicates(scId) {
+    statusEl.textContent = 'Verschiebe…';
+    moveAllBtn.disabled = true;
+    const allBtns = container.querySelectorAll('button[data-sc-id]');
+    allBtns.forEach(function(b) { b.disabled = true; });
+
+    try {
+      const payload = scId ? { soundcloud_id: scId } : {};
+      const resp = await fetch('/api/inbox-duplicates/move', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await resp.json().catch(function() { return {}; });
+      if (resp.ok && data.ok) {
+        statusEl.textContent = 'Verschoben: ' + data.moved + ' Datei(en), verbleibende Gruppen: ' + data.remaining_groups;
+        await loadInboxDuplicates();
+      } else {
+        statusEl.textContent = (data && data.error) ? data.error : ('Fehler HTTP ' + resp.status);
+      }
+    } catch (err) {
+      statusEl.textContent = 'Netzwerkfehler beim Verschieben.';
+    } finally {
+      moveAllBtn.disabled = false;
+    }
+  }
+
+  moveAllBtn.addEventListener('click', async function() {
+    if (!confirm('Alle überzähligen Dateien nach _rejected/duplicate/ verschieben? Es wird nichts gelöscht.')) {
+      return;
+    }
+    await moveDuplicates(null);
+  });
+
+  loadInboxDuplicates();
+})();
+</script>
 {% endblock %}

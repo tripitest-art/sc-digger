@@ -57,6 +57,7 @@ from ..schema import FIELDS, SECTION_DESCRIPTIONS, SECTION_TITLES, Problem, deep
 from ..soundcloud import SoundCloudClient, SoundCloudError
 from .audio import parse_range_header, resolve_playable_path
 from .configedit import apply_form, diff_config, format_form_value, get_path, remove_key, save_local
+from .inbox_cleanup import list_inbox_duplicates, move_inbox_duplicates
 from .database import (
     DEFAULT_LIMIT,
     MAX_LIMIT,
@@ -1054,6 +1055,39 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
             groups=groups,
             total_groups=len(groups),
         ))
+
+    # Inbox-Dubletten derselben SoundCloud-ID (Issue #501): ansehen und überzählige Dateien
+    # nach _rejected/duplicate/ verschieben. Rein lesend: GET /api/inbox-duplicates.
+    # Verschieben: POST /api/inbox-duplicates/move.
+    @app.get("/api/inbox-duplicates")
+    def api_inbox_duplicates():
+        inbox_dir = app.state.cfg["download"]["inbox_dir"]
+        return JSONResponse(list_inbox_duplicates(inbox_dir))
+
+    @app.post("/api/inbox-duplicates/move")
+    async def api_inbox_duplicates_move(request: Request):
+        ct_err = _require_json_content_type(request, allow_empty_body=True)
+        if ct_err is not None:
+            return ct_err
+        raw = await request.body()
+        payload = {}
+        if raw.strip():
+            try:
+                payload = json.loads(raw)
+            except Exception:
+                return JSONResponse({"ok": False, "error": "Ungültiges JSON"}, status_code=400)
+        if not isinstance(payload, dict):
+            return JSONResponse({"ok": False, "error": "Ungültiger Payload"}, status_code=400)
+
+        lock_dir = Path(app.state.cfg["state"]["db_path"]).parent
+        sc_id = payload.get("soundcloud_id") if payload else None
+        status, body = await run_in_threadpool(
+            move_inbox_duplicates,
+            app.state.cfg["download"]["inbox_dir"],
+            lock_dir,
+            soundcloud_id=sc_id,
+        )
+        return JSONResponse(body, status_code=status)
 
     @app.get("/mix", response_class=HTMLResponse)
     def mix_page(request: Request):
