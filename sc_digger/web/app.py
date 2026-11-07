@@ -18,21 +18,15 @@ from __future__ import annotations
 
 import json
 import logging
-import mimetypes
-import re
-import secrets
 import math
 import sqlite3
-import time
 import xml.etree.ElementTree as ET
-from collections import deque
-from collections.abc import Callable
 from contextlib import closing
 from dataclasses import asdict
 from pathlib import Path
-from urllib.parse import urlencode, urlparse
+from typing import Any
+from urllib.parse import urlencode
 
-import yaml
 from fastapi import FastAPI, Request
 from fastapi.responses import (
     HTMLResponse,
@@ -40,24 +34,53 @@ from fastapi.responses import (
     PlainTextResponse,
     RedirectResponse,
     Response,
-    StreamingResponse,
 )
-from jinja2 import Environment, FileSystemLoader, select_autoescape
 from starlette.concurrency import run_in_threadpool
 
+from .. import rekordbox
 from ..db import FEEDBACK_VALUES, JobType, TrackDB
 from ..dj_export import Playlist, order_harmonic
 from ..embeddings import apply_embedding_result
 from ..harmonic import find_mix_candidates
 from ..models import Config
 from ..pipeline import classify_download, dedupe, estimate_bpm
-from .. import rekordbox
 from ..redact import redact
 from ..schema import FIELDS, SECTION_DESCRIPTIONS, SECTION_TITLES, Problem, deep_merge, get_field
 from ..soundcloud import SoundCloudClient, SoundCloudError
-from .audio import parse_range_header, resolve_playable_path
+from .common import (
+    LOGIN_LOCKOUT_SECONDS,
+    LOGIN_MAX_FAILURES,
+    LOGIN_WINDOW_SECONDS,
+    PUBLIC_PATHS,
+    FailureTracker,
+    _AUDIO_BLOCK_SIZE,
+    _FALSES,
+    _ReadOnlyTrackDB,
+    _SCAN_NOT_TRACK_OR_PLAYLIST,
+    _ScanLinkError,
+    _TEMPLATES,
+    _TRUES,
+    _UPLOAD_OVERHEAD_BYTES,
+    _audio_response,
+    _check_auth,
+    _env,
+    _iter_file_range,
+    _load_yaml,
+    _m3u8_filename,
+    _m3u8_safe,
+    _payload_float,
+    _playable_roots,
+    _query_bool,
+    _query_float,
+    _query_int,
+    _render,
+    _require_json_content_type,
+    _same_origin,
+    _unauthorized,
+    _xml_filename,
+    client_key,
+)
 from .configedit import apply_form, diff_config, format_form_value, get_path, remove_key, save_local
-from .inbox_cleanup import list_inbox_duplicates, move_inbox_duplicates
 from .database import (
     DEFAULT_LIMIT,
     MAX_LIMIT,
@@ -70,276 +93,20 @@ from .database import (
     heartbeat_job,
     load_tracks_for_set_builder,
     query_digest,
-    query_duplicate_groups,
     query_rejected_tracks,
     query_store_items,
-    query_tracks,
-    query_similar_tracks,
     query_watched_tracks,
     retry_quarantined_track,
     save_match_override,
     save_track_feedback,
-    taste_model_info,
 )
 from .intake import MAX_UPLOAD_BYTES, process_uploaded_audio
 from .ops import collect_ops
+from .routes import tracks as tracks_routes
+from .routes.tracks import FILTER_LABELS, active_filter_chips, match_url
 from .status import change_badge, collect_status
 
-_TEMPLATES = Path(__file__).parent / "templates"
-_env = Environment(
-    loader=FileSystemLoader(str(_TEMPLATES)),
-    autoescape=select_autoescape(("html", "xml")),
-)
-# Vergleich mit der Vorperiode (Issue #488) steht der Statusseite als Template-Funktion bereit.
-_env.globals["change_badge"] = change_badge
 log = logging.getLogger(__name__)
-
-
-def _unauthorized() -> PlainTextResponse:
-    return PlainTextResponse(
-        "Anmeldung erforderlich",
-        status_code=401,
-        headers={"WWW-Authenticate": 'Basic realm="sc-digger"'},
-    )
-
-
-def _check_auth(request: Request, password: str | None, allow_anonymous: bool) -> bool:
-    if allow_anonymous:
-        return True
-    auth = request.headers.get("authorization", "")
-    if not auth.lower().startswith("basic "):
-        return False
-    import base64
-
-    try:
-        decoded = base64.b64decode(auth.split(" ", 1)[1]).decode("utf-8")
-    except Exception:
-        return False
-    _, _, given = decoded.partition(":")
-    # compare_digest wirft TypeError, sobald ein str Nicht-ASCII enthält (z. B. ein
-    # Passwort mit Umlaut). Deshalb als bytes vergleichen: gleiche Prüfung, kein 500.
-    return secrets.compare_digest(given.encode("utf-8"), (password or "").encode("utf-8"))
-
-
-# Einzige Pfade ohne Anmeldung. Alles andere (auch unbekannte Pfade) verlangt Basic-Auth:
-# Die Prüfung sitzt in einer Middleware (Default-deny), nicht in den einzelnen Handlern.
-PUBLIC_PATHS = frozenset({"/healthz"})
-
-# Login-Sperre: Basic-Auth kennt nur ein Passwort, ohne Bremse ließe es sich beliebig oft
-# durchprobieren. Fünf Fehlversuche in fünf Minuten sperren die Client-IP für 15 Minuten.
-# Multipart-Rahmen (Grenzen, Feldnamen) zählt zur Content-Length, aber nicht zur Dateigröße.
-_UPLOAD_OVERHEAD_BYTES = 1024 * 1024
-LOGIN_MAX_FAILURES = 5
-LOGIN_WINDOW_SECONDS = 300.0
-LOGIN_LOCKOUT_SECONDS = 900.0
-
-
-class FailureTracker:
-    """Zählt Fehlversuche je Schlüssel (Client-IP) im Gleitfenster und sperrt zeitweise.
-
-    Nur im Arbeitsspeicher: Ein Neustart hebt Sperren auf. Das ist bewusst so, die Sperre
-    bremst Durchprobieren, sie ist keine Buchführung.
-    """
-
-    def __init__(
-        self,
-        *,
-        max_failures: int = LOGIN_MAX_FAILURES,
-        window_seconds: float = LOGIN_WINDOW_SECONDS,
-        lockout_seconds: float = LOGIN_LOCKOUT_SECONDS,
-        clock: Callable[[], float] | None = None,
-    ) -> None:
-        self._max = max_failures
-        self._window = window_seconds
-        self._lockout = lockout_seconds
-        self._clock = clock or time.monotonic
-        self._failures: dict[str, deque[float]] = {}
-        self._locked_until: dict[str, float] = {}
-
-    def is_locked(self, key: str) -> float:
-        """Restsekunden der Sperre; 0.0 heißt frei. Abgelaufene Sperren räumt der Aufruf ab."""
-        until = self._locked_until.get(key)
-        if until is None:
-            return 0.0
-        remaining = until - self._clock()
-        if remaining <= 0:
-            del self._locked_until[key]
-            return 0.0
-        return remaining
-
-    def fail(self, key: str) -> None:
-        now = self._clock()
-        stamps = self._failures.setdefault(key, deque())
-        stamps.append(now)
-        # Fehlversuche außerhalb des Fensters zählen nicht mehr.
-        while stamps and now - stamps[0] > self._window:
-            stamps.popleft()
-        if len(stamps) >= self._max:
-            self._locked_until[key] = now + self._lockout
-            del self._failures[key]
-
-    def reset(self, key: str) -> None:
-        self._failures.pop(key, None)
-        self._locked_until.pop(key, None)
-
-
-def client_key(request: Request, *, trust_proxy: bool = False) -> str:
-    """Schlüssel für die Login-Sperre: der Socket-Peer, hinter einem Proxy die letzte Station.
-
-    Die erste Adresse in X-Forwarded-For kann der Client frei erfinden; erst die letzte hat
-    der eigene Proxy angehängt. Ohne trust_proxy bleibt der Header ganz unbeachtet.
-    """
-    if trust_proxy:
-        forwarded = request.headers.get("x-forwarded-for", "")
-        last = forwarded.split(",")[-1].strip()
-        if last:
-            return last
-    return request.client.host if request.client else "unbekannt"
-
-
-def _same_origin(request: Request) -> bool:
-    """True, wenn Origin oder Referer denselben Host (netloc) wie der Host-Header hat.
-
-    Browser schicken die Basic-Anmeldung auch bei Formularen fremder Seiten mit; ohne diese
-    Prüfung könnte eine beliebige Seite POSTs an den Editor auslösen (CSRF).
-    """
-    host = request.headers.get("host", "")
-    for header in ("origin", "referer"):
-        value = request.headers.get(header)
-        if value:
-            return urlparse(value).netloc == host
-    return False
-
-
-def _require_json_content_type(
-    request: Request, *, allow_empty_body: bool = False
-) -> JSONResponse | None:
-    """Verlangt 'Content-Type: application/json' zur Abwehr von Cross-Origin Simple Requests (Issue #415).
-
-    Browser verweigern 'application/json' als Simple Request und erzwingen einen Preflight (OPTIONS),
-    sodass fremde Webseiten keine unautorisierten Zustandsänderungen auslösen können.
-    Anfragen mit abweichendem Content-Type (z. B. text/plain) oder fehlendem Content-Type werden mit
-    HTTP 415 (Unsupported Media Type) abgelehnt.
-    """
-    if ("origin" in request.headers or "referer" in request.headers) and not _same_origin(request):
-        return JSONResponse(
-            {"ok": False, "error": "Cross-Origin-Anfragen sind nicht erlaubt"},
-            status_code=403,
-        )
-
-    ct = request.headers.get("content-type", "").strip()
-    media_type = ct.split(";")[0].strip().lower() if ct else ""
-
-    if media_type == "application/json":
-        return None
-
-    if not ct and allow_empty_body and request.headers.get("content-length", "0") in ("0", ""):
-        return None
-
-    return JSONResponse(
-        {"ok": False, "error": "Content-Type muss application/json sein"},
-        status_code=415,
-    )
-
-
-def _load_yaml(path: Path) -> dict:
-    """Liest eine YAML-Datei; fehlende oder leere Dateien ergeben {}."""
-    if not path.is_file():
-        return {}
-    with open(path, "r", encoding="utf-8") as handle:
-        data = yaml.safe_load(handle)
-    return data if isinstance(data, dict) else {}
-
-
-_TRUES = {"1", "true", "yes", "ja", "on"}
-_FALSES = {"0", "false", "no", "nein", "off"}
-
-
-def _query_float(value: str | None) -> float | None:
-    """Query-Parameter als float; leer oder ungültig -> None (kein Filter)."""
-    if value is None or value == "":
-        return None
-    try:
-        return float(value)
-    except ValueError:
-        return None
-
-
-def _query_int(value: str | None, default: int) -> int:
-    """Query-Parameter als int; leer oder ungültig -> default."""
-    if value is None or value == "":
-        return default
-    try:
-        return int(value)
-    except ValueError:
-        return default
-
-
-def _query_bool(value: str | None) -> bool | None:
-    """Query-Parameter als bool; leer oder unbekannt -> None (kein Filter)."""
-    if value is None or value == "":
-        return None
-    lowered = value.strip().lower()
-    if lowered in _TRUES:
-        return True
-    if lowered in _FALSES:
-        return False
-    return None
-
-
-def match_url(key_camelot: str | None, bpm: float | int | None) -> str | None:
-    """Erzeugt den Link zum Harmonic Mix Finder (`/mix?key=...&bpm=...`) für einen Track.
-
-    - Ist `key_camelot` leer/`None` oder kein gültiger String nach `.strip()`, oder ist `bpm`
-      `None` bzw. `<= 0`, wird `None` zurückgegeben.
-    - Sonst wird `"/mix?" + urlencode({"key": key_camelot.strip().upper(), "bpm": f"{float(bpm):g}"})`
-      zurückgegeben (z. B. `"/mix?key=8A&bpm=155"` oder `"/mix?key=8A&bpm=155.5"`).
-    """
-    if not key_camelot or not isinstance(key_camelot, str):
-        return None
-    cleaned_key = key_camelot.strip().upper()
-    if not cleaned_key:
-        return None
-    if bpm is None or isinstance(bpm, bool):
-        return None
-    try:
-        val_bpm = float(bpm)
-    except (ValueError, TypeError):
-        return None
-    if math.isnan(val_bpm) or math.isinf(val_bpm) or val_bpm <= 0:
-        return None
-    return "/mix?" + urlencode({"key": cleaned_key, "bpm": f"{val_bpm:g}"})
-
-
-def _payload_float(value: object) -> float | None:
-    """JSON-Wert als float; None, leer oder ungültig -> None (kein Filter)."""
-    if value is None or value == "":
-        return None
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
-
-
-def _m3u8_safe(value: object) -> str:
-    """Feld für eine M3U8-Zeile entschärfen: Zeilenumbrüche und Steuerzeichen entfernen.
-
-    Artist und Titel stammen aus Dateien und fremden Quellen. Ein Zeilenumbruch im Namen
-    würde sonst eine eigene M3U8-Anweisung erzeugen (Header-Injection).
-    """
-    return " ".join(str(value if value is not None else "").split())
-
-
-def _m3u8_filename(name: str) -> str:
-    """Unbedenklicher Dateiname für ``Content-Disposition`` (keine Quotes/Umbrüche)."""
-    stem = re.sub(r"[^A-Za-z0-9._-]+", "_", _m3u8_safe(name)).strip("._-")
-    return f"{stem or 'set'}.m3u8"
-
-
-def _xml_filename(name: str) -> str:
-    """Unbedenklicher Dateiname für ``Content-Disposition`` (keine Quotes/Umbrüche)."""
-    stem = re.sub(r"[^A-Za-z0-9._-]+", "_", _m3u8_safe(name)).strip("._-")
-    return f"{stem or 'set'}.xml"
 
 
 def render_set_xml(
@@ -482,18 +249,6 @@ def _build_set_playlist(
     return order_harmonic(entries)
 
 
-class _ReadOnlyTrackDB:
-    """Hülle, die dem Mix-Finder nur ``db.db`` (die ro-Verbindung) durchreicht.
-
-    ``TrackDB.__init__`` legt fehlende Dateien und das Schema an (Schreibzugriff), deshalb
-    darf die lesende GET-Route keine echte ``TrackDB`` benutzen. ``find_mix_candidates`` braucht
-    lediglich ein Objekt mit einem ``db``-Attribut (``sqlite3.Connection``).
-    """
-
-    def __init__(self, connection: sqlite3.Connection):
-        self.db = connection
-
-
 def _known_sc_statuses(cfg: Config) -> dict[int, str]:
     """SoundCloud-ID -> Status, rein lesend aus Track- und State-DB.
 
@@ -518,15 +273,6 @@ def _known_sc_statuses(cfg: Config) -> dict[int, str]:
     except sqlite3.Error:
         pass
     return statuses
-
-
-# Feste Meldung für den Browser. Die Route gibt die Konstante zurück, nicht str(exc):
-# so fließt kein Ausnahmetext nach außen (CodeQL py/stack-trace-exposure).
-_SCAN_NOT_TRACK_OR_PLAYLIST = "Das ist weder ein Track- noch ein Playlist-Link."
-
-
-class _ScanLinkError(SoundCloudError):
-    """Eingabefehler im URL-Scanner; der Browser sieht _SCAN_NOT_TRACK_OR_PLAYLIST."""
 
 
 def _scan_url(cfg: Config, url: str) -> dict:
@@ -572,71 +318,6 @@ def _scan_url(cfg: Config, url: str) -> dict:
     return {"source": source, "kind": kind, "total": len(items), "tracks": items}
 
 
-_AUDIO_BLOCK_SIZE = 64 * 1024
-
-
-def _playable_roots(cfg: Config) -> list[Path]:
-    """Erlaubte Wurzeln fürs Vorhören aus ``download.inbox_dir`` und ``collection_dir``."""
-    download = cfg.raw.get("download") or {}
-    return [
-        Path(str(download[key]))
-        for key in ("inbox_dir", "collection_dir")
-        if download.get(key)
-    ]
-
-
-def _iter_file_range(path: Path, start: int, length: int):
-    """Datei blockweise lesen, damit große Tracks nicht komplett im Speicher landen."""
-    with open(path, "rb") as handle:
-        handle.seek(start)
-        remaining = length
-        while remaining > 0:
-            chunk = handle.read(min(_AUDIO_BLOCK_SIZE, remaining))
-            if not chunk:
-                break
-            remaining -= len(chunk)
-            yield chunk
-
-
-def _audio_response(request: Request, path_value: str | None, cfg: Config) -> Response:
-    """Liefert eine Audiodatei aus Inbox oder Sammlung, mit Range-Unterstützung.
-
-    404, wenn der Pfad fehlt, per Symlink aus den erlaubten Wurzeln herausführt oder nicht
-    lesbar ist. Nur lesend; die Sammlung bleibt unberührt.
-    """
-    path = resolve_playable_path(path_value or "", _playable_roots(cfg))
-    if path is None:
-        return PlainTextResponse("Datei nicht verfügbar", status_code=404)
-    try:
-        size = path.stat().st_size
-    except OSError:
-        return PlainTextResponse("Datei nicht verfügbar", status_code=404)
-    try:
-        byte_range = parse_range_header(request.headers.get("range"), size)
-    except ValueError:
-        return Response(
-            status_code=416,
-            headers={"Content-Range": f"bytes */{size}", "Accept-Ranges": "bytes"},
-        )
-    media_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
-    if byte_range is None:
-        start, end = 0, size - 1
-        status_code = 200
-    else:
-        start, end = byte_range
-        status_code = 206
-    length = end - start + 1
-    headers = {"Accept-Ranges": "bytes", "Content-Length": str(length)}
-    if status_code == 206:
-        headers["Content-Range"] = f"bytes {start}-{end}/{size}"
-    return StreamingResponse(
-        _iter_file_range(path, start, length),
-        status_code=status_code,
-        media_type=media_type,
-        headers=headers,
-    )
-
-
 def sync_rekordbox_xml(cfg: Config) -> tuple[int, dict]:
     """Schreibt die Rekordbox-XML der Inbox neu und liefert (HTTP-Status, JSON-Body).
 
@@ -675,57 +356,6 @@ def sync_rekordbox_xml(cfg: Config) -> tuple[int, dict]:
             "ok": False,
             "error": "Rekordbox-XML konnte nicht geschrieben werden, siehe Container-Log.",
         }
-
-
-FILTER_LABELS: dict[str, str] = {
-    "q": "Suche",
-    "status": "Status",
-    "quality": "Qualität",
-    "key_camelot": "Key",
-    "bpm_min": "BPM ab",
-    "bpm_max": "BPM bis",
-    "adopted": "Übernahme",
-    "breakdown_max": "Max. Breakdown %",
-    "taste_min": "Min. Geschmack",
-}
-
-
-def active_filter_chips(
-    filters: dict[str, str],
-    *,
-    limit: int,
-    sort: str | None = None,
-    direction: str = "asc",
-) -> list[dict[str, str]]:
-    """Ein Eintrag je Filter mit nicht leerem Wert, in der Reihenfolge von `filters`:
-    {"key": <Filterschlüssel>, "label": <deutsche Bezeichnung>, "value": <Wert>,
-     "remove_url": <"/tracks?" + urlencode(...) ohne diesen Filter, mit limit, mit sort/dir falls sort gesetzt>}.
-    Leere Filter ergeben []. Wirft nicht."""
-    try:
-        chips: list[dict[str, str]] = []
-        if not filters:
-            return chips
-        active = {k: v for k, v in filters.items() if v is not None and str(v) != ""}
-        for key, val in active.items():
-            query: dict[str, str] = {
-                k: str(v)
-                for k, v in active.items()
-                if k != key
-            }
-            query["limit"] = str(limit)
-            if sort:
-                query["sort"] = str(sort)
-                query["dir"] = str(direction)
-            remove_url = "/tracks?" + urlencode(query)
-            chips.append({
-                "key": key,
-                "label": FILTER_LABELS.get(key, key),
-                "value": str(val),
-                "remove_url": remove_url,
-            })
-        return chips
-    except Exception:
-        return []
 
 
 def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = False,
@@ -895,199 +525,7 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
     def api_database_overview(request: Request):
         return JSONResponse(get_collection_overview(app.state.cfg["state"]["track_db_path"]).to_dict())
 
-    @app.get("/api/tracks")
-    def api_tracks(request: Request):
-        params = request.query_params
-        sort = params.get("sort") or None
-        direction = (params.get("dir") or "asc").lower()
-        result = query_tracks(
-            app.state.cfg["state"]["track_db_path"],
-            status=params.get("status") or None,
-            search=params.get("q") or None,
-            bpm_min=_query_float(params.get("bpm_min")),
-            bpm_max=_query_float(params.get("bpm_max")),
-            key_camelot=params.get("key_camelot") or None,
-            quality_status=params.get("quality") or None,
-            adopted=_query_bool(params.get("adopted")),
-            breakdown_ratio_max=_query_float(params.get("breakdown_max")),
-            taste_min=_query_float(params.get("taste_min")),
-            sort=sort,
-            descending=(direction == "desc"),
-            limit=_query_int(params.get("limit"), DEFAULT_LIMIT),
-            offset=_query_int(params.get("offset"), 0),
-        )
-        return JSONResponse(result.to_dict())
-
-    # Klangliche Ähnlichkeitssuche im Track-Explorer (Issue #493)
-    @app.get("/api/tracks/{track_id}/similar")
-    def api_track_similar(request: Request, track_id: int):
-        raw_top_n = request.query_params.get("top_n")
-        top_n = _query_int(raw_top_n, 5)
-        top_n = min(max(top_n, 1), 20)
-        track_db_path = app.state.cfg["state"]["track_db_path"]
-        result = query_similar_tracks(track_db_path, track_id, top_n=top_n)
-        if result is None:
-            return JSONResponse({"detail": "Track nicht gefunden"}, status_code=404)
-        return JSONResponse(result)
-
-    # Vorhören im Track-Explorer (Issue #350): liefert die lokale Datei aus Inbox oder
-    # Sammlung, nur lesend und nur innerhalb der konfigurierten Wurzeln. Range-Requests
-    # erlauben das Springen im Track, ohne die Datei komplett zu laden.
-    @app.get("/api/audio/{track_id}")
-    def api_audio(request: Request, track_id: int):
-        with TrackDB(app.state.cfg["state"]["track_db_path"]) as db:
-            track = db.get_track_by_id(track_id)
-        if track is None:
-            return PlainTextResponse("Track nicht gefunden", status_code=404)
-        return _audio_response(request, track.path, app.state.cfg)
-
-    # DJ-Ansicht auf dieselben rein lesenden Abfragen (Teil 2 des Dashboards): Filter-Formular
-    # und Treffertabelle serverseitig gerendert, Paginierung über offset.
-    @app.get("/tracks", response_class=HTMLResponse)
-    def tracks_page(request: Request):
-        params = request.query_params
-        filters = {
-            "q": params.get("q") or "",
-            "status": params.get("status") or "",
-            "quality": params.get("quality") or "",
-            "key_camelot": params.get("key_camelot") or "",
-            "bpm_min": params.get("bpm_min") or "",
-            "bpm_max": params.get("bpm_max") or "",
-            "adopted": params.get("adopted") or "",
-            "breakdown_max": params.get("breakdown_max") or "",
-            "taste_min": params.get("taste_min") or "",
-        }
-        raw_limit = params.get("limit")
-        limit_val = DEFAULT_LIMIT if raw_limit == "" else _query_int(raw_limit, DEFAULT_LIMIT)
-        page_size = max(1, min(limit_val, MAX_LIMIT))
-        offset = max(0, _query_int(params.get("offset"), 0))
-        sort = params.get("sort") or None
-        direction = (params.get("dir") or "asc").lower()
-        descending = (direction == "desc")
-
-        result = query_tracks(
-            app.state.cfg["state"]["track_db_path"],
-            status=filters["status"] or None,
-            search=filters["q"] or None,
-            bpm_min=_query_float(filters["bpm_min"]),
-            bpm_max=_query_float(filters["bpm_max"]),
-            key_camelot=filters["key_camelot"] or None,
-            quality_status=filters["quality"] or None,
-            adopted=_query_bool(filters["adopted"]),
-            breakdown_ratio_max=_query_float(filters["breakdown_max"]),
-            taste_min=_query_float(filters["taste_min"]),
-            sort=sort,
-            descending=descending,
-            limit=page_size,
-            offset=offset,
-        )
-
-        # Nur Zeilen mit vorhandener lokaler Datei bekommen einen Abspiel-Knopf.
-        roots = _playable_roots(app.state.cfg)
-        for item in result.items:
-            item["playable"] = (
-                resolve_playable_path(str(item.get("path") or ""), roots) is not None
-            )
-
-        def page_url(new_offset: int) -> str:
-            """Link auf eine andere Seite, aktive Filter bleiben erhalten."""
-            query = {key: value for key, value in filters.items() if value}
-            query["limit"] = str(page_size)
-            if sort:
-                query["sort"] = sort
-                query["dir"] = direction
-            if new_offset > 0:
-                query["offset"] = str(new_offset)
-            return "/tracks?" + urlencode(query)
-
-        def sort_url(field: str) -> str:
-            """Link zum Umschalten der Sortierung; Filter und Zeilenmenge bleiben erhalten."""
-            query = {key: value for key, value in filters.items() if value}
-            query["limit"] = str(page_size)
-            query["sort"] = field
-            if sort == field:
-                query["dir"] = "desc" if direction == "asc" else "asc"
-            else:
-                query["dir"] = "asc"
-            return "/tracks?" + urlencode(query)
-
-        total_pages = max(1, (result.total + page_size - 1) // page_size)
-        filter_chips = active_filter_chips(
-            filters,
-            limit=page_size,
-            sort=sort,
-            direction=direction,
-        )
-
-        template = _env.get_template("tracks.html")
-        return HTMLResponse(template.render(
-            tracks=result.items,
-            total=result.total,
-            page_size=page_size,
-            page=offset // page_size + 1,
-            total_pages=total_pages,
-            filters=filters,
-            filter_chips=filter_chips,
-            taste_info=taste_model_info(app.state.cfg["state"]["track_db_path"]),
-            current_sort=sort,
-            current_dir=direction,
-            sort_url=sort_url,
-            prev_url=page_url(max(0, offset - page_size)) if offset > 0 else None,
-            next_url=page_url(offset + page_size) if offset + page_size < result.total else None,
-            match_url=match_url,
-        ))
-
-    # Duplikat-Kandidaten-Ansicht (Issue #468): Gruppen gleicher Aufnahmen per Chromaprint-Fingerprint.
-    @app.get("/api/duplicates")
-    def api_duplicates() -> JSONResponse:
-        """Gibt `{"ok": True, "total_groups": len(groups), "groups": groups}` zurück (HTTP Basic Auth, rein lesend)."""
-        track_db_path = app.state.cfg["state"]["track_db_path"]
-        groups = query_duplicate_groups(track_db_path)
-        return JSONResponse({"ok": True, "total_groups": len(groups), "groups": groups})
-
-    @app.get("/duplicates", response_class=HTMLResponse)
-    def duplicates_page() -> HTMLResponse:
-        """Rendert `duplicates.html` mit `groups` und `total_groups = len(groups)` (HTTP Basic Auth, rein lesend)."""
-        track_db_path = app.state.cfg["state"]["track_db_path"]
-        groups = query_duplicate_groups(track_db_path)
-        template = _env.get_template("duplicates.html")
-        return HTMLResponse(template.render(
-            groups=groups,
-            total_groups=len(groups),
-        ))
-
-    # Inbox-Dubletten derselben SoundCloud-ID (Issue #501): ansehen und überzählige Dateien
-    # nach _rejected/duplicate/ verschieben. Rein lesend: GET /api/inbox-duplicates.
-    # Verschieben: POST /api/inbox-duplicates/move.
-    @app.get("/api/inbox-duplicates")
-    def api_inbox_duplicates():
-        inbox_dir = app.state.cfg["download"]["inbox_dir"]
-        return JSONResponse(list_inbox_duplicates(inbox_dir))
-
-    @app.post("/api/inbox-duplicates/move")
-    async def api_inbox_duplicates_move(request: Request):
-        ct_err = _require_json_content_type(request, allow_empty_body=True)
-        if ct_err is not None:
-            return ct_err
-        raw = await request.body()
-        payload = {}
-        if raw.strip():
-            try:
-                payload = json.loads(raw)
-            except Exception:
-                return JSONResponse({"ok": False, "error": "Ungültiges JSON"}, status_code=400)
-        if not isinstance(payload, dict):
-            return JSONResponse({"ok": False, "error": "Ungültiger Payload"}, status_code=400)
-
-        lock_dir = Path(app.state.cfg["state"]["db_path"]).parent
-        sc_id = payload.get("soundcloud_id") if payload else None
-        status, body = await run_in_threadpool(
-            move_inbox_duplicates,
-            app.state.cfg["download"]["inbox_dir"],
-            lock_dir,
-            soundcloud_id=sc_id,
-        )
-        return JSONResponse(body, status_code=status)
+    tracks_routes.register(app)
 
     @app.get("/mix", response_class=HTMLResponse)
     def mix_page(request: Request):
@@ -1829,6 +1267,3 @@ def _section_title(path: str) -> str:
         if candidate in SECTION_TITLES:
             return SECTION_TITLES[candidate]
     return parts[0] if len(parts) > 1 else "Allgemein"
-
-
-
