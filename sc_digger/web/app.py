@@ -18,11 +18,14 @@ from __future__ import annotations
 
 import json
 import logging
+import re
+import unicodedata
 import math
 import sqlite3
 import xml.etree.ElementTree as ET
 from contextlib import closing
-from dataclasses import asdict
+from contextvars import ContextVar
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
@@ -105,6 +108,11 @@ from .ops import collect_ops
 from .routes import tracks as tracks_routes
 from .routes.tracks import FILTER_LABELS, active_filter_chips, match_url
 from .status import change_badge, collect_status
+
+# Ob der Konfigeditor in der aktuellen Anfrage verfuegbar ist (die Umgebung _env ist modulweit,
+# die Apps sind es nicht); base.html zeigt das Zahnrad nur dann, sonst laege es auf einem 404.
+_config_enabled: ContextVar[bool] = ContextVar("sc_digger_config_enabled", default=False)
+_env.globals["config_enabled"] = lambda: _config_enabled.get()
 
 log = logging.getLogger(__name__)
 
@@ -381,6 +389,11 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
     app.state.password = password
     app.state.allow_anonymous = allow_anonymous
     app.state.login_limit = login_limit
+
+    @app.middleware("http")
+    async def mark_config_enabled(request: Request, call_next):
+        _config_enabled.set(editor_available)
+        return await call_next(request)
 
     @app.middleware("http")
     async def require_login(request: Request, call_next):
@@ -1182,62 +1195,80 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
                 values[field.path] = format_form_value(field, get_path(merged, field.path))
         return values
 
-    def _render_config(base: dict, local: dict, problems: list, form: dict[str, str] | None = None,
-                       saved: bool = False, status_code: int = 200) -> HTMLResponse:
+    def _render_config(section: ConfigSection, base: dict, local: dict, problems: list,
+                       form: dict[str, str] | None = None, saved: bool = False,
+                       status_code: int = 200) -> HTMLResponse:
         values = _form_values(base, local, form)
         defaults = {f.path: format_form_value(f, get_path(base, f.path))
-                    for f in FIELDS if f.editable}
-        local_paths = {f.path for f in FIELDS
-                       if f.editable and get_path(local, f.path, _MISSING) is not _MISSING}
-        groups: list[tuple[str, list]] = []
-        for field in FIELDS:
-            if not field.editable:
-                continue
-            section = _section_title(field.path)
-            if not groups or groups[-1][0] != section:
-                groups.append((section, []))
-            groups[-1][1].append(field)
+                    for f in section.fields}
+        local_paths = {f.path for f in section.fields
+                       if get_path(local, f.path, _MISSING) is not _MISSING}
         template = _env.get_template("config.html")
         return HTMLResponse(template.render(
-            groups=groups, values=values, defaults=defaults, local_paths=local_paths,
-            problems=problems, saved=saved, section_descriptions=SECTION_DESCRIPTIONS,
+            sections=config_sections(), section=section, values=values, defaults=defaults,
+            local_paths=local_paths, problems=problems, saved=saved,
+            section_description=SECTION_DESCRIPTIONS.get(section.title),
             save_action="/config/save", preview_action="/config/preview",
-            reset_action="/config/reset",
+            reset_action="/config/reset", section_field=SECTION_FIELD,
         ), status_code=status_code)
 
-    @app.get("/config", response_class=HTMLResponse)
-    def config_page(request: Request):
+    def _section_of_form(form: dict[str, str]) -> ConfigSection | None:
+        """Abschnitt aus dem Formularfeld `_section` (nimmt es aus dem Formular heraus)."""
+        slug = form.pop(SECTION_FIELD, "")
+        return config_section(slug) if slug else None
+
+    @app.get("/config")
+    def config_index(request: Request):
+        # Das Gespeichert-Banner übersteht die Umleitung über den Query-String.
+        query = "?" + request.url.query if request.url.query else ""
+        return RedirectResponse(f"/config/{config_sections()[0].slug}{query}", status_code=302)
+
+    @app.get("/config/{section_id}", response_class=HTMLResponse)
+    def config_page(section_id: str, request: Request):
+        section = config_section(section_id)
+        if section is None:
+            return PlainTextResponse("Unbekannter Abschnitt", status_code=404)
         base, local = _read_files()
         saved = request.query_params.get("saved") == "1"
-        return _render_config(base, local, problems=[], saved=saved)
+        return _render_config(section, base, local, problems=[], saved=saved)
 
     @app.post("/config/preview")
     async def config_preview(request: Request):
         if not _same_origin(request):
             return PlainTextResponse("Ungültige Herkunft", status_code=403)
         form = {key: value for key, value in (await request.form()).items()}
+        section = _section_of_form(form)
+        if section is not None:
+            form = _only_section_fields(form, section)
         base, local = _read_files()
         new_local, problems = apply_form(base, local, form)
         if any(problem.level == "error" for problem in problems):
-            return _render_config(base, local, problems=problems, form=form, status_code=422)
+            return _render_config(section or config_sections()[0], base, local,
+                                  problems=problems, form=form, status_code=422)
         changes = diff_config(deep_merge(base, local), deep_merge(base, new_local))
         warnings = [problem for problem in problems if problem.level == "warning"]
         template = _env.get_template("config_preview.html")
-        return HTMLResponse(template.render(changes=changes, warnings=warnings, config_action="/config"))
+        back = f"/config/{section.slug}" if section else "/config"
+        return HTMLResponse(template.render(changes=changes, warnings=warnings, config_action=back))
 
     @app.post("/config/save")
     async def config_save(request: Request):
         if not _same_origin(request):
             return PlainTextResponse("Ungültige Herkunft", status_code=403)
         form = {key: value for key, value in (await request.form()).items()}
+        section = _section_of_form(form)
+        if section is not None:
+            form = _only_section_fields(form, section)
         base, local = _read_files()
         new_local, problems = apply_form(base, local, form)
         if any(problem.level == "error" for problem in problems):
-            return _render_config(base, local, problems=problems, form=form, status_code=422)
+            return _render_config(section or config_sections()[0], base, local,
+                                  problems=problems, form=form, status_code=422)
         if new_local != local:
             save_local(_local_path, new_local)
             app.state.cfg = Config.load(_base_path, local=_local_path)
-        return RedirectResponse("/config?saved=1", status_code=303)
+        target = f"/config/{section.slug}" if section else "/config"
+        return RedirectResponse(f"{target}?saved=1", status_code=303)
 
     @app.post("/config/reset")
     async def config_reset(request: Request):
@@ -1248,10 +1279,14 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
         base, local = _read_files()
         if field is None or not field.editable:
             problem = Problem("error", path, "Dieser Schlüssel ist nicht editierbar.")
-            return _render_config(base, local, problems=[problem], status_code=422)
+            return _render_config(config_sections()[0], base, local, problems=[problem],
+                                  status_code=422)
         save_local(_local_path, remove_key(local, path))
         app.state.cfg = Config.load(_base_path, local=_local_path)
-        return RedirectResponse("/config?saved=1", status_code=303)
+        # Der Abschnitt folgt aus dem Feld selbst, nicht aus dem Formular.
+        section = config_section_of_field(path)
+        target = f"/config/{section.slug}" if section else "/config"
+        return RedirectResponse(f"{target}?saved=1", status_code=303)
 
     return app
 
@@ -1267,3 +1302,62 @@ def _section_title(path: str) -> str:
         if candidate in SECTION_TITLES:
             return SECTION_TITLES[candidate]
     return parts[0] if len(parts) > 1 else "Allgemein"
+
+
+SECTION_FIELD = "_section"
+
+
+@dataclass(frozen=True)
+class ConfigSection:
+    """Ein Abschnitt des Konfigeditors: stabiler URL-Name, Überschrift, editierbare Felder."""
+    slug: str
+    title: str
+    fields: tuple
+
+
+_TRANSLIT = {"ä": "ae", "ö": "oe", "ü": "ue", "ß": "ss"}
+
+
+def slugify_section(title: str) -> str:
+    """URL-Name eines Abschnitts: klein, nur a-z0-9 und Bindestrich, Umlaute umgeschrieben."""
+    text = "".join(_TRANSLIT.get(ch, ch) for ch in title.lower())
+    text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("ascii")
+    return re.sub(r"[^a-z0-9]+", "-", text).strip("-")
+
+
+_SECTIONS_CACHE: list[ConfigSection] = []
+
+
+def config_sections() -> list[ConfigSection]:
+    """Alle Abschnitte in Schema-Reihenfolge; gleiche Überschriften werden zusammengefasst.
+
+    Das Schema ist zur Laufzeit konstant, deshalb einmal berechnet. Kollidieren zwei
+    Überschriften auf denselben URL-Namen, ist das ein Programmierfehler und bricht laut ab,
+    statt dass ein Abschnitt unerreichbar würde.
+    """
+    if not _SECTIONS_CACHE:
+        grouped: dict[str, list] = {}
+        for field in FIELDS:
+            if field.editable:
+                grouped.setdefault(_section_title(field.path), []).append(field)
+        sections = [ConfigSection(slugify_section(title), title, tuple(fields))
+                    for title, fields in grouped.items()]
+        slugs = [section.slug for section in sections]
+        if len(set(slugs)) != len(slugs) or not all(slugs):
+            raise ValueError(f"URL-Namen der Konfig-Abschnitte nicht eindeutig: {slugs}")
+        _SECTIONS_CACHE.extend(sections)
+    return _SECTIONS_CACHE
+
+
+def config_section(slug: str) -> ConfigSection | None:
+    return next((s for s in config_sections() if s.slug == slug), None)
+
+
+def config_section_of_field(path: str) -> ConfigSection | None:
+    return next((s for s in config_sections() if any(f.path == path for f in s.fields)), None)
+
+
+def _only_section_fields(form: dict[str, str], section: ConfigSection) -> dict[str, str]:
+    """Verwirft Formularwerte fremder Abschnitte, damit ein Abschnitts-Save nur den eigenen ändert."""
+    allowed = {f.path for f in section.fields}
+    return {key: value for key, value in form.items() if key in allowed}

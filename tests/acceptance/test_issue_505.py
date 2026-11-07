@@ -44,10 +44,14 @@ def test_hauptnavigation_behaelt_ihre_eintraege_in_der_reihenfolge():
     assert haupt == ["/", "/tracks", "/digest", "/intake", "/mix", "/kaufliste"], haupt
 
 
-def test_mehr_menue_behaelt_duplikate_quarantaene_konfiguration():
+def test_mehr_menue_behaelt_duplikate_quarantaene_und_verliert_konfiguration():
+    # Konfiguration ist seit der Aufteilung des Editors das Zahnrad im Header, damit es nur
+    # einen Weg dorthin gibt (siehe tests/test_web_config_sections.py).
     mehr = _mehr_liste(_nav(BASE))
-    for pfad in ("/duplicates", "/rejected", "/config"):
+    for pfad in ("/duplicates", "/rejected"):
         assert f'href="{pfad}"' in mehr, f"{pfad} fehlt im Mehr-Menü"
+    assert 'href="/config"' not in mehr
+    assert 'class="gear-link' in BASE
 
 
 def test_hauptnavigation_bleibt_im_gerenderten_html(tmp_path):

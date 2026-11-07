@@ -263,6 +263,24 @@ def make_app(tmp_path, local=None, **kw):
     return app, TestClient(app), local_path
 
 
+def get_all_config_pages(c):
+    """GET /config und alle Abschnittsseiten; Text aller Seiten zusammengefügt.
+
+    /config leitet seit der Aufteilung auf den ersten Abschnitt um, jeder Abschnitt hat eine
+    eigene Seite. Die Prüfungen "alle Felder kommen vor" laufen deshalb über alle Seiten.
+    """
+    import re
+    from types import SimpleNamespace
+    first = c.get("/config", auth=AUTH)
+    pages = [first]
+    for href in dict.fromkeys(re.findall(r'href="(/config/[a-z0-9-]+)"', first.text)):
+        if str(first.url).endswith(href):
+            continue
+        pages.append(c.get(href, auth=AUTH))
+    return SimpleNamespace(status_code=first.status_code, headers=first.headers,
+                           text="\n".join(p.text for p in pages))
+
+
 def full_form(**overrides):
     raw = base_raw()
     form = {f.path: format_form_value(f, get_path(raw, f.path)) for f in FIELDS if f.editable}
@@ -284,7 +302,7 @@ def test_editor_requires_auth(tmp_path):
 
 def test_form_lists_editable_fields_only(tmp_path):
     _, c, _ = make_app(tmp_path, local={"search": {"bpm_min": 140}})
-    r = c.get("/config", auth=AUTH)
+    r = get_all_config_pages(c)
     assert r.status_code == 200 and r.headers["content-type"].startswith("text/html")
     for f in FIELDS:
         if f.editable:
@@ -296,7 +314,7 @@ def test_form_lists_editable_fields_only(tmp_path):
 
 def test_form_escapes_values(tmp_path):
     _, c, _ = make_app(tmp_path, local={"search": {"tags": ["<b>x</b>", "schranz"]}})
-    r = c.get("/config", auth=AUTH)
+    r = get_all_config_pages(c)
     assert "<b>x</b>" not in r.text
     assert "&lt;b&gt;x&lt;/b&gt;" in r.text
 
@@ -401,7 +419,7 @@ def test_reset_rejects_unknown_and_operational_paths(tmp_path):
 def test_secrets_never_appear_in_the_editor(tmp_path, monkeypatch):
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123456789:SECRETTOKENSECRETTOKENSECRETTOKEN12")
     _, c, _ = make_app(tmp_path)
-    r = c.get("/config", auth=AUTH)
+    r = get_all_config_pages(c)
     assert "SECRETTOKEN" not in r.text and PASSWORD not in r.text
     assert not any("token" in f.path.lower() or "password" in f.path.lower() for f in FIELDS)
 
