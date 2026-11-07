@@ -1,0 +1,7 @@
+# Orca: gemeinsam genutzte Verzeichnisse fuer neue Worktrees.
+# Eintraege muessen im Primaercheckout existieren und gitignored sein;
+# Orca bindet sie beim Anlegen eines Worktrees als Symlink ein.
+# .venv haelt das Test-Env (Python 3.12 + requirements + pytest, ffmpeg im PATH).
+worktree:
+  sharedDirectories:
+    - .venv
