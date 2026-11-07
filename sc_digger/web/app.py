@@ -72,6 +72,7 @@ from .database import (
     query_rejected_tracks,
     query_store_items,
     query_tracks,
+    query_similar_tracks,
     retry_quarantined_track,
     save_track_feedback,
     taste_model_info,
@@ -910,6 +911,18 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
             offset=_query_int(params.get("offset"), 0),
         )
         return JSONResponse(result.to_dict())
+
+    # Klangliche Ähnlichkeitssuche im Track-Explorer (Issue #493)
+    @app.get("/api/tracks/{track_id}/similar")
+    def api_track_similar(request: Request, track_id: int):
+        raw_top_n = request.query_params.get("top_n")
+        top_n = _query_int(raw_top_n, 5)
+        top_n = min(max(top_n, 1), 20)
+        track_db_path = app.state.cfg["state"]["track_db_path"]
+        result = query_similar_tracks(track_db_path, track_id, top_n=top_n)
+        if result is None:
+            return JSONResponse({"detail": "Track nicht gefunden"}, status_code=404)
+        return JSONResponse(result)
 
     # Vorhören im Track-Explorer (Issue #350): liefert die lokale Datei aus Inbox oder
     # Sammlung, nur lesend und nur innerhalb der konfigurierten Wurzeln. Range-Requests

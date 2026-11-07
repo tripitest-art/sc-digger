@@ -14,6 +14,9 @@
   .card-tracks > .card-header {
     order: 1;
   }
+  .card-tracks > #similar-panel {
+    order: 2;
+  }
   .card-tracks > .filter-chips {
     order: 2;
   }
@@ -22,6 +25,22 @@
   }
   .card-tracks > .pager {
     order: 4;
+  }
+  .similar-panel {
+    background-color: var(--bg-card-subtle);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.85rem 1.15rem;
+    margin: 0.75rem 1rem;
+  }
+  .similar-panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+  }
+  .similar-panel-error {
+    color: var(--err);
   }
   .tracks-toolbar {
     display: flex;
@@ -294,6 +313,7 @@
     </span>
     <span class="meta meta-sm">Tipp: Beim Vorhören öffnet sich unten das DJ-Deck (<span class="kbd">Space</span> Pause, <span class="kbd">&rarr;</span> +30s Drop-Check)</span>
   </div>
+  <div id="similar-panel" hidden class="similar-panel"></div>
   <div class="table-scroll">
   <table>
     <thead>
@@ -440,8 +460,8 @@
           {# Nur http/https verlinken: source_url stammt aus fremden Feeds. #}
           {% set source_href = track.source_url if track.source_url and (track.source_url.startswith("http://") or track.source_url.startswith("https://")) else "" %}
           {% set m_url = match_url(track.key_camelot, track.bpm) %}
-          {% if m_url or source_href %}
           <div class="flex-inline-gap">
+            <button type="button" class="btn-page btn-xs" data-similar-btn data-track-id="{{ track.id }}" onclick="showSimilarTracks(this)">Ähnlich</button>
             {% if m_url %}
             <a href="{{ m_url }}" class="btn-page match-btn btn-xs" title="Harmonisch passende Tracks im Mix-Finder suchen" data-label="⚡ Match">{{ icon("match", 14) }} Match</a>
             {% endif %}
@@ -449,7 +469,6 @@
             <a href="{{ source_href }}" target="_blank" rel="noopener noreferrer" class="btn-page btn-xs">SoundCloud ↗</a>
             {% endif %}
           </div>
-          {% else %}—{% endif %}
         </td>
       </tr>
       {% else %}
@@ -545,6 +564,86 @@
       showToast("Speichern fehlgeschlagen", "err");
     } finally {
       buttons.forEach((b) => { b.disabled = false; });
+    }
+  }
+
+  // Klanglich ähnliche Tracks laden und im Panel anzeigen (Issue #493)
+  async function showSimilarTracks(btn) {
+    const trackId = btn.dataset.trackId || btn.getAttribute('data-track-id');
+    const panel = document.getElementById('similar-panel');
+    if (!panel || !trackId) return;
+
+    panel.hidden = false;
+    panel.innerHTML = '<div class="meta">Lade ähnliche Tracks...</div>';
+    panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+    try {
+      const resp = await fetch(`/api/tracks/${trackId}/similar`);
+      if (!resp.ok) {
+        throw new Error('HTTP ' + resp.status);
+      }
+      const data = await resp.json();
+      const methodLabel = data.method === 'embedding' ? 'Audio-Embedding' :
+                          data.method === 'fingerprint' ? 'Chromaprint-Fingerprint' : 'Keine';
+      if (!data.items || data.items.length === 0) {
+        panel.innerHTML = `
+          <div class="similar-panel-header">
+            <strong>🎧 Klanglich ähnliche Tracks (Track #${trackId})</strong>
+            <button type="button" class="btn-page btn-xs" onclick="document.getElementById('similar-panel').hidden=true">✕ Schließen</button>
+          </div>
+          <div class="meta">Keine ähnlichen Aufnahmen gefunden (${methodLabel}).</div>
+        `;
+        return;
+      }
+      let html = `
+        <div class="similar-panel-header">
+          <strong>🎧 Klanglich ähnliche Tracks (Verfahren: ${methodLabel})</strong>
+          <button type="button" class="btn-page btn-xs" onclick="document.getElementById('similar-panel').hidden=true">✕ Schließen</button>
+        </div>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Rang</th>
+                <th>Artist</th>
+                <th>Titel</th>
+                <th>BPM</th>
+                <th>Key</th>
+                <th>Status</th>
+                <th>Ähnlichkeit</th>
+              </tr>
+            </thead>
+            <tbody>
+      `;
+      data.items.forEach((item, idx) => {
+        const pct = (item.similarity * 100).toFixed(1) + '%';
+        const keyVal = item.key_camelot || item.key || '—';
+        const bpmVal = item.bpm !== null && item.bpm !== undefined ? item.bpm : '—';
+        html += `
+          <tr>
+            <td class="mono">${idx + 1}</td>
+            <td><strong>${item.artist || '—'}</strong></td>
+            <td>${item.title || '—'}</td>
+            <td class="mono">${bpmVal}</td>
+            <td class="mono">${keyVal}</td>
+            <td><span class="badge badge-muted">${item.status || '—'}</span></td>
+            <td class="mono"><strong>${pct}</strong></td>
+          </tr>
+        `;
+      });
+      html += `
+            </tbody>
+          </table>
+        </div>
+      `;
+      panel.innerHTML = html;
+    } catch (err) {
+      panel.innerHTML = `
+        <div class="similar-panel-header">
+          <div class="meta similar-panel-error">Fehler beim Laden der ähnlichen Tracks: ${err.message}</div>
+          <button type="button" class="btn-page btn-xs" onclick="document.getElementById('similar-panel').hidden=true">✕ Schließen</button>
+        </div>
+      `;
     }
   }
 
