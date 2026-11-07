@@ -959,12 +959,12 @@
     <a href="/" class="nav-tab {% block nav_status %}{% endblock %}">Status</a>
     <a href="/tracks" class="nav-tab {% block nav_tracks %}{% endblock %}">Tracks</a>
     <a href="/digest" class="nav-tab {% block nav_digest %}{% endblock %}">Digest</a>
+    <a href="/intake" class="nav-tab {% block nav_intake %}{% endblock %}">Upload</a>
     <a href="/mix" class="nav-tab {% block nav_mix %}{% endblock %}">Mix</a>
     <a href="/kaufliste" class="nav-tab {% block nav_kaufliste %}{% endblock %}">Kaufliste</a>
     <details class="nav-more">
       <summary class="nav-tab">Mehr</summary>
       <div class="nav-more-list">
-        <a href="/intake" class="nav-tab {% block nav_intake %}{% endblock %}">Upload</a>
         <a href="/duplicates" class="nav-tab {% block nav_duplicates %}{% endblock %}">Duplikate</a>
         <a href="/rejected" class="nav-tab {% block nav_rejected %}{% endblock %}">Quarantäne</a>
         {% if editor_available or save_action or config_action %}

@@ -22,7 +22,7 @@ def test_haupteintraege_ausserhalb_von_mehr(tmp_path):
 def test_weitere_ziele_in_mehr(tmp_path):
     nav = _nav(_get(tmp_path, "/").text)
     mehr = nav.split('<details class="nav-more">')[1]
-    for ziel in ("/intake", "/duplicates", "/rejected"):
+    for ziel in ("/duplicates", "/rejected"):
         assert f'href="{ziel}"' in mehr
 
 
