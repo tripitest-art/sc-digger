@@ -170,9 +170,14 @@
     {% endif %}
   </div>
 
-  {% if snap.alert_active %}
-  <div class="alert-box warn w-full mt-2 mb-0">
-    <p class="warn m-0 fw-600">⚠️ Ein Health-Alarm ist aktiv.</p>
+  {% if snap.alerts %}
+  <div id="health-alerts" class="alert-box warn w-full mt-2 mb-0" role="alert">
+    <p class="warn m-0 fw-600">⚠️ Aktive Health-Alarme</p>
+    <ul class="m-0">
+      {% for a in snap.alerts %}
+      <li data-mode="{{ a.mode }}">{{ a.label }}: {{ a.error or "ohne Fehlertext" }}{% if a.since %} (seit {{ a.since }} UTC){% endif %}</li>
+      {% endfor %}
+    </ul>
   </div>
   {% endif %}
 </div>

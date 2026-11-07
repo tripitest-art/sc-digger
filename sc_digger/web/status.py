@@ -45,6 +45,24 @@ class RunInfo:
     error: str | None       # bereits mit redact() bereinigt
 
 
+ALERT_LABELS: dict[str, str] = {
+    "discover": "Täglicher Lauf",
+    "sc_login": "SoundCloud-Login",
+    "disk": "Speicherplatz",
+    "api_schema": "SoundCloud-API-Felder",
+    "rekordbox_import": "Rekordbox-Rückkanal",
+    "availability_watch": "Verfügbarkeits-Wächter",
+}
+
+
+@dataclass
+class AlertInfo:
+    mode: str            # Schlüssel ohne Präfix "alert:", z. B. "sc_login"
+    label: str           # ALERT_LABELS[mode], unbekannte Modi: der Modus selbst
+    since: str | None    # finished_at des jüngsten schlechten Laufs, sonst None
+    error: str | None    # dessen Fehlertext, mit redact() bereinigt; leer oder fehlt -> None
+
+
 @dataclass
 class JobQueueSummary:
     pending: int = 0
@@ -75,6 +93,7 @@ class StatusSnapshot:
     last_discover_age_hours: float | None = None            # auf 0,1 gerundet
     healthy: bool = False
     alert_active: bool = False                              # health_state: key "alert:discover" == "1"
+    alerts: list[AlertInfo] = field(default_factory=list)   # alle aktiven Alarme (health_state "alert:<modus>" == "1")
     inbox_total: int = 0                                    # Zeilen in tracks mit status = 'inbox' (gesamt)
     stats: DigestStats | None = None
     job_summary: JobQueueSummary | None = None              # Job-Queue der KI-Workstation (jobs-Tabelle)
@@ -149,6 +168,53 @@ def _read_alert_active(state_db_path: str | Path) -> bool:
     except sqlite3.Error:
         return False
     return bool(row and row[0] == "1")
+
+
+def _read_active_alerts(state_db_path: str | Path) -> list[AlertInfo]:
+    """Alle aktiven Health-Alarme (health_state 'alert:<modus>' == '1'), rein lesend.
+
+    Zeitpunkt und Fehlertext stammen vom jüngsten schlechten Lauf des Modus (ok = 0 oder
+    found = 0). Reihenfolge: bekannte Modi wie in ALERT_LABELS, danach unbekannte alphabetisch.
+    Fehlt die DB oder eine Tabelle oder ist sie defekt: [] ohne Ausnahme, keine neue Datei.
+    """
+    try:
+        with _connect_readonly(state_db_path) as db:
+            if not _table_exists(db, "health_state"):
+                return []
+            modes = [
+                str(key)[len("alert:"):]
+                for (key,) in db.execute(
+                    "SELECT key FROM health_state WHERE key LIKE 'alert:%' AND value='1'"
+                ).fetchall()
+            ]
+            has_runs = _table_exists(db, "runs")
+            bad: dict[str, tuple[Any, Any]] = {}
+            if has_runs:
+                for mode in modes:
+                    row = db.execute(
+                        "SELECT finished_at, error FROM runs "
+                        "WHERE mode=? AND (ok=0 OR found=0) ORDER BY id DESC LIMIT 1",
+                        (mode,),
+                    ).fetchone()
+                    if row:
+                        bad[mode] = (row[0], row[1])
+    except sqlite3.Error:
+        return []
+
+    known = [m for m in ALERT_LABELS if m in modes]
+    unknown = sorted(set(modes) - set(ALERT_LABELS))
+    alerts: list[AlertInfo] = []
+    for mode in known + unknown:
+        finished_at, error = bad.get(mode, (None, None))
+        alerts.append(
+            AlertInfo(
+                mode=mode,
+                label=ALERT_LABELS.get(mode, mode),
+                since=str(finished_at) if finished_at else None,
+                error=redact(error) if error else None,
+            )
+        )
+    return alerts
 
 
 def _read_inbox_total(track_db_path: str | Path) -> int:
@@ -269,6 +335,7 @@ def collect_status(cfg: Config, *, days: int = 7, now: datetime | None = None) -
     runs = _read_runs(state_db_path)
     last_discover = _read_last_discover(state_db_path)
     alert_active = _read_alert_active(state_db_path)
+    alerts = _read_active_alerts(state_db_path)
     inbox_total = _read_inbox_total(track_db_path)
     job_summary = _read_job_summary(track_db_path, now)
 
@@ -297,6 +364,7 @@ def collect_status(cfg: Config, *, days: int = 7, now: datetime | None = None) -
         last_discover_age_hours=age,
         healthy=healthy,
         alert_active=alert_active,
+        alerts=alerts,
         inbox_total=inbox_total,
         stats=stats,
         job_summary=job_summary,
