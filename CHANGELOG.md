@@ -14,7 +14,7 @@ unter „Unreleased“ (Regeln: `AGENTS.md`, Abschnitt „Doku und Changelog“)
 - Merge-Gate schließt die Issues selbst: Nach einem Squash-Merge über den Workflow `merge-nach-freigabe` schließt `.github/scripts/merge_nach_freigabe.py` die Issues aus `Closes`/`Fixes`/`Resolves #N` im PR-Text; GitHub vollzog das bei PRs der Worker-App nicht (Issues #488 und #486 blieben nach dem Merge offen). Ein Fehler beim Schließen macht den vollzogenen Merge nicht rückgängig und läuft nur ins Log.
 
 ### Hinzugefügt
-- Web-Dashboard: Statusseite zeigt Speicherplatz-Wächter, tägliche Sicherung und API-Kanarienvogel in einer gemeinsamen Betriebskarte mit Statuswörtern und Badges (#521).
+- Web-Dashboard: Statusseite zeigt Speicherplatz-Wächter, tägliche Sicherung und API-Kanarienvogel in einer gemeinsamen Betriebskarte mit Statuswörtern und Badges (#520).
 - Web-Dashboard: Matcher-Korrektur per Button im Digest („Schon in Sammlung“, „Kein Duplikat“, „Zurücknehmen“) und schreibender REST-Endpunkt POST /api/match-override mit Origin-Prüfung (#519).
 - Web-Dashboard: Verfügbarkeits-Wächter-Ansicht auf der Kaufliste (/kaufliste) und REST-Endpunkt GET /api/watch zur Einsicht überwachter 👍-Stream-Tracks mit Hervorhebung neu verfügbarer Tracks (#518).
 - Web-Dashboard: Klangliche Ähnlichkeitssuche im Track-Explorer (`/tracks`) per „Ähnlich“-Button und Endpunkt `GET /api/tracks/{track_id}/similar` auf Basis von Audio-Embeddings mit Chromaprint-Fallback (#516).
