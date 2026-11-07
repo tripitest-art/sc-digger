@@ -215,6 +215,13 @@
           {% else %}
           <span class="badge badge-muted">Offen</span>
           {% endif %}
+          {% if item.sc_id %}
+          <div class="match-fix" data-sc-id="{{ item.sc_id }}" style="margin-top: 0.35rem; display: flex; gap: 0.25rem; flex-wrap: wrap;">
+            <button type="button" class="btn-page btn-xs" data-override="already_in_collection" onclick="sendMatchOverride(this)">Schon in Sammlung</button>
+            <button type="button" class="btn-page btn-xs" data-override="not_duplicate" onclick="sendMatchOverride(this)">Kein Duplikat</button>
+            <button type="button" class="btn-page btn-xs" data-override="clear" onclick="sendMatchOverride(this)">Zurücknehmen</button>
+          </div>
+          {% endif %}
         </td>
         <td data-label="Feedback">
           <div class="feedback-group" data-feedback-cell data-sc-id="{{ item.sc_id }}">
@@ -299,6 +306,47 @@
       buttons.forEach((b) => { b.classList.toggle('active', b === button); });
     } catch (error) {
       if (errorBox) { errorBox.textContent = 'nicht gespeichert'; }
+    } finally {
+      buttons.forEach((b) => { b.disabled = false; });
+    }
+  }
+
+  // Matcher-Korrektur ohne Seiten-Reload an POST /api/match-override (Issue #498).
+  async function sendMatchOverride(button) {
+    const container = button.closest('.match-fix') || button.closest('[data-sc-id]');
+    if (!container) { return; }
+    const scId = parseInt(container.dataset.scId, 10);
+    const overrideType = button.dataset.override;
+    const buttons = container.querySelectorAll('button[data-override]');
+    buttons.forEach((b) => { b.disabled = true; });
+    try {
+      const response = await fetch('/api/match-override', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sc_id: scId,
+          override_type: overrideType,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.ok) {
+        throw new Error(data.error || ('HTTP ' + response.status));
+      }
+      const msg = overrideType === 'clear'
+        ? 'Matcher-Korrektur zurückgenommen'
+        : 'Matcher-Korrektur gespeichert';
+      if (typeof showToast === 'function') {
+        showToast(msg, 'ok');
+      } else {
+        alert(msg);
+      }
+    } catch (error) {
+      const msg = 'Fehler beim Speichern der Matcher-Korrektur';
+      if (typeof showToast === 'function') {
+        showToast(msg, 'err');
+      } else {
+        alert(msg);
+      }
     } finally {
       buttons.forEach((b) => { b.disabled = false; });
     }
