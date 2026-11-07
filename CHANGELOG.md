@@ -8,6 +8,7 @@ unter „Unreleased“ (Regeln: `AGENTS.md`, Abschnitt „Doku und Changelog“)
 ## Unreleased
 
 ### Geändert
+- Web-Dashboard: Tracks-, Audio- und Duplikat-Routen (`/tracks`, `/api/tracks`, `/api/tracks/{track_id}/similar`, `/api/audio/{track_id}`, `/duplicates`, `/api/duplicates`, `/api/inbox-duplicates`, `POST /api/inbox-duplicates/move`) aus `sc_digger/web/app.py` in `sc_digger/web/routes/tracks.py` sowie gemeinsame Web-Helfer (`_ReadOnlyTrackDB`, `_ScanLinkError`, Auth, Rendering) nach `sc_digger/web/common.py` ausgelagert (#524).
 - Web-Dashboard: Statusseite listet alle aktiven Health-Alarme (SoundCloud-Login, Speicherplatz, API-Felder, Rekordbox-Rückkanal, Verfügbarkeits-Wächter) mit Fehlertext und Zeitpunkt, nicht nur den von `discover` (#503).
 - Web-Dashboard: Tracks- und Digest-Tabelle schalten unter 900 px per data-label in eine responsive Kartenansicht um (#517).
 - Web-Dashboard: Upload (/intake) als eigenen Menüpunkt in die Hauptnavigation vor Mix und Kaufliste verlegt (aus dem Ausklappmenü „Mehr“ heraus) (#515).
