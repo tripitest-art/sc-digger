@@ -1,7 +1,8 @@
 """FastAPI-App der Statusseite: HTTP-Basic geschützt, ohne API-Dokumentation.
 
 Die Status- und Explorer-Routen sind rein lesend (GET). Schreibende Pfade gibt es beim
-Feedback (``POST /api/feedback``, Issue #229) und beim Upload (``POST /api/upload-intake``,
+Feedback (``POST /api/feedback``, Issue #229), Matcher-Korrekturen (``POST /api/match-override``,
+Issue #498) und beim Upload (``POST /api/upload-intake``,
 Issue #230). Der Mix-Finder (``GET /mix``) und der On-Demand-URL-Scanner
 (``POST /api/check-url``, Issue #231) lesen nur: sie öffnen die Track-DB über ``mode=ro``
 und ändern weder State noch Sammlung – anders als ``main.run_link``, das dieselbe Auswahl
@@ -75,6 +76,7 @@ from .database import (
     query_similar_tracks,
     query_watched_tracks,
     retry_quarantined_track,
+    save_match_override,
     save_track_feedback,
     taste_model_info,
 )
@@ -1529,6 +1531,39 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
                 {"ok": False, "sc_id": sc_id_int, "value": str(value)}, status_code=500
             )
         return JSONResponse({"ok": True, "sc_id": sc_id_int, "value": str(value)})
+
+    # Matcher-Korrektur aus dem Web-Dashboard (Issue #498): schreibt dieselbe
+    # Tabelle match_overrides wie die Telegram-Befehle /is_duplicate und /not_duplicate.
+    # Origin-Prüfung wie beim Feedback (CSRF-Schutz).
+    @app.post("/api/match-override")
+    async def api_match_override(request: Request):
+        if not _same_origin(request):
+            return JSONResponse({"ok": False, "error": "Ungültige Herkunft"}, status_code=403)
+        try:
+            payload = await request.json()
+        except Exception:
+            return JSONResponse({"ok": False, "error": "Ungültiges JSON"}, status_code=400)
+        if not isinstance(payload, dict):
+            return JSONResponse({"ok": False, "error": "Ungültiger Payload"}, status_code=400)
+        sc_id = payload.get("sc_id")
+        override_type = payload.get("override_type")
+        if (
+            override_type not in ("already_in_collection", "not_duplicate", "clear")
+            or isinstance(sc_id, bool)
+            or not isinstance(sc_id, int)
+        ):
+            return JSONResponse(
+                {"ok": False, "error": "Ungültige Parameter"},
+                status_code=400,
+            )
+        if not save_match_override(
+            app.state.cfg["state"]["track_db_path"], sc_id, str(override_type)
+        ):
+            return JSONResponse(
+                {"ok": False, "sc_id": sc_id, "override_type": override_type},
+                status_code=500,
+            )
+        return JSONResponse({"ok": True, "sc_id": sc_id, "override_type": override_type})
 
     # Datei-Upload in den Eingangsordner (Issue #230, Gate-Assistent): Stephan legt Dateien
     # ab, die er nach einem Gate (Hypeddit, Droploud, …) selbst am PC geholt hat. Der Upload

@@ -6,9 +6,9 @@ Anlegen, kein Schreiben) und liefern zusammengefasste Kennzahlen
 Fehlt die Datei oder das Schema, kommen leere Ergebnisse zurück statt einer Exception –
 die Statusoberfläche darf an einem fehlenden Index nie scheitern.
 
-Seit Issue #229 gibt es genau einen schreibenden Pfad, :func:`save_track_feedback`: er
-schreibt ein Feedback in ``sc_feedback`` und wirft nie (Rückgabe ``False`` bei ungültigem
-Wert oder DB-Fehler).
+Seit Issue #229 und #498 gibt es schreibende Pfade: :func:`save_track_feedback` (schreibt ein
+Feedback in ``sc_feedback``) und :func:`save_match_override` (Handkorrekturen in ``match_overrides``);
+beide werfen nie (Rückgabe ``False`` bei ungültigem Wert oder DB-Fehler).
 """
 from __future__ import annotations
 
@@ -1286,6 +1286,37 @@ def save_track_feedback(
     except sqlite3.Error:
         return False
     return True
+
+
+def save_match_override(
+    track_db_path: str | Path,
+    sc_id: int,
+    override_type: str,
+) -> bool:
+    """Speichert oder löscht die Handkorrektur zu einer SoundCloud-ID in match_overrides.
+
+    override_type "already_in_collection" oder "not_duplicate": TrackDB.set_match_override(sc_id, override_type, "Dashboard").
+    override_type "clear": TrackDB.remove_match_override(sc_id); True auch, wenn nichts zu löschen war.
+    Anderer Typ, nicht zahlige sc_id, fehlende Datenbankdatei oder DB-Fehler: False, nichts wird geschrieben.
+    Eine fehlende Datei wird nicht angelegt. Wirft nie.
+    """
+    if isinstance(sc_id, bool) or not isinstance(sc_id, int):
+        return False
+    if override_type not in ("already_in_collection", "not_duplicate", "clear"):
+        return False
+    try:
+        path = Path(track_db_path)
+        if not path.is_file():
+            return False
+        with TrackDB(path) as db:
+            if override_type == "clear":
+                db.remove_match_override(sc_id)
+            else:
+                db.set_match_override(sc_id, override_type, "Dashboard")
+        return True
+    except Exception as exc:
+        log.debug("save_match_override fehlgeschlagen: %s", exc)
+        return False
 
 
 # ------------------------------------------------------------- Quarantäne (Issue #341)
