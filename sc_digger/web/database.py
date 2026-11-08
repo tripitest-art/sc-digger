@@ -114,7 +114,7 @@ MAX_LIMIT = 200
 
 # Erlaubte Sortierfelder für Tracks und Digest (Issue #427).
 TRACK_SORT_FIELDS = ("artist", "title", "bpm", "key_camelot", "quality", "status", "taste")
-DIGEST_SORT_FIELDS = ("date", "artist", "title", "download_kind", "status", "feedback")
+DIGEST_SORT_FIELDS = ("date", "artist", "title", "download_kind", "status", "feedback", "plays", "likes")
 
 _TRACK_SORT_MAP = {
     "artist": "artist",
@@ -1232,6 +1232,10 @@ def query_digest(
                     v = "offen"
             elif sort == "feedback":
                 v = (it.feedback or "").lower()
+            elif sort == "plays":
+                v = int(it.plays or 0)
+            elif sort == "likes":
+                v = int(it.likes or 0)
             else:
                 v = ""
             is_empty = (v == "")
