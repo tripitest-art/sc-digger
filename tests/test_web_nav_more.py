@@ -89,17 +89,17 @@ def test_aktive_seiten_markierung(tmp_path: Path):
 
 
 def test_konfiguration_sichtbarkeit(tmp_path: Path):
-    """Prüft Sichtbarkeit des Konfigurations-Links abhängig vom Editor-Zustand."""
-    # Ohne editor_available: Konfiguration nicht im Mehr-Menü
-    client_without = client_for(tmp_path)
-    resp_without = client_without.get("/", auth=("sc", PASSWORD))
-    nav_without = _nav(resp_without.text)
-    mehr_without = nav_without.split('<details class="nav-more">')[1]
-    assert 'href="/config"' not in mehr_without
+    """Der Konfigurations-Zugang ist das Zahnrad im Header, nicht mehr das Mehr-Menü.
 
-    # Mit gesetztem base_path und local_path: Konfiguration sichtbar
+    Es gibt nur diesen einen Weg; ohne Editor (base_path und local_path) fehlt er ganz,
+    weil /config dann 404 liefert.
+    """
+    # Ohne Editor: weder Zahnrad noch Link im Mehr-Menü
+    resp_without = client_for(tmp_path).get("/", auth=("sc", PASSWORD))
+    assert 'href="/config"' not in resp_without.text
+    assert 'class="gear-link' not in resp_without.text
+
     from fastapi.testclient import TestClient
-    from sc_digger.models import Config
     from sc_digger.web.app import create_app
     from tests.test_web_tracks_ui import ROOT, make_cfg
 
@@ -112,12 +112,12 @@ def test_konfiguration_sichtbarkeit(tmp_path: Path):
         base_path=ROOT / "config.yaml",
         local_path=local_path,
     )
-    client_with = TestClient(app)
-    resp_with = client_with.get("/", auth=("sc", PASSWORD))
+    resp_with = TestClient(app).get("/", auth=("sc", PASSWORD))
     nav_with = _nav(resp_with.text)
     mehr_with = nav_with.split('<details class="nav-more">')[1]
-    assert 'href="/config"' in mehr_with
-    assert "Konfiguration" in mehr_with
+    assert 'href="/config"' not in mehr_with
+    assert "Konfiguration" not in mehr_with
+    assert 'title="Konfiguration" aria-label="Konfiguration"' in resp_with.text
 
 
 def test_tracks_chips_bereinigt(tmp_path: Path):

@@ -176,6 +176,9 @@
     color: var(--text-muted);
     text-decoration: none;
   }
+  .gear-link { display: inline-flex; align-items: center; justify-content: center; width: 2.1rem; height: 2.1rem; border-radius: 8px; border: 1px solid var(--border); color: var(--text-muted); background-color: rgba(11, 14, 21, 0.65); text-decoration: none; transition: all 0.15s ease; }
+  .gear-link:hover { color: var(--text-main); background-color: var(--bg-card-subtle); text-decoration: none; }
+  .gear-link.active { color: #fff; border-color: rgba(59, 130, 246, 0.45); background: linear-gradient(180deg, rgba(59, 130, 246, 0.22), rgba(59, 130, 246, 0.1)); }
   .nav-more { position: relative; display: inline-block; }
   .nav-more summary { cursor: pointer; list-style: none; user-select: none; }
   .nav-more summary::-webkit-details-marker { display: none; }
@@ -735,6 +738,11 @@
     text-decoration: none;
     transition: all 0.15s ease;
   }
+  .jump-nav a.active {
+    color: #fff;
+    border-color: rgba(59, 130, 246, 0.45);
+    background: linear-gradient(180deg, rgba(59, 130, 246, 0.22), rgba(59, 130, 246, 0.1));
+  }
   .jump-nav a:hover {
     color: #fff;
     border-color: var(--accent-primary);
@@ -978,12 +986,12 @@
       <div class="nav-more-list">
         <a href="/duplicates" class="nav-tab {% block nav_duplicates %}{% endblock %}">Duplikate</a>
         <a href="/rejected" class="nav-tab {% block nav_rejected %}{% endblock %}">Quarantäne</a>
-        {% if editor_available or save_action or config_action %}
-        <a href="/config" class="nav-tab {% block nav_config %}{% endblock %}">Konfiguration</a>
-        {% endif %}
       </div>
     </details>
   </nav>
+  {% if config_enabled() or editor_available or save_action or config_action %}
+  <a href="/config" class="gear-link {% block nav_config %}{% endblock %}" title="Konfiguration" aria-label="Konfiguration">{{ icon("settings", 18) }}</a>
+  {% endif %}
 </header>
 
 <main class="site-main">

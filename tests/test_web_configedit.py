@@ -46,10 +46,28 @@ def make_app(tmp_path, local=None, **kw):
     return app, TestClient(app), local_path
 
 
+def get_all_config_pages(c):
+    """GET /config und alle Abschnittsseiten; Text aller Seiten zusammengefügt.
+
+    /config leitet seit der Aufteilung auf den ersten Abschnitt um, jeder Abschnitt hat eine
+    eigene Seite. Die Prüfungen "alle Felder kommen vor" laufen deshalb über alle Seiten.
+    """
+    import re
+    from types import SimpleNamespace
+    first = c.get("/config", auth=AUTH)
+    pages = [first]
+    for href in dict.fromkeys(re.findall(r'href="(/config/[a-z0-9-]+)"', first.text)):
+        if str(first.url).endswith(href):
+            continue
+        pages.append(c.get(href, auth=AUTH))
+    return SimpleNamespace(status_code=first.status_code, headers=first.headers,
+                           text="\n".join(p.text for p in pages))
+
+
 def test_form_shows_section_headings(tmp_path):
     from markupsafe import escape
     _, c, _ = make_app(tmp_path)
-    r = c.get("/config", auth=AUTH)
+    r = get_all_config_pages(c)
     assert r.status_code == 200
     # Jedes editierbare Feld hat einen Abschnitt; dessen Überschrift muss vorkommen.
     titles = set()
@@ -69,14 +87,14 @@ def test_form_shows_section_headings(tmp_path):
 
 def test_form_marks_value_from_local_file(tmp_path):
     _, c, _ = make_app(tmp_path, local={"search": {"bpm_min": 140}})
-    r = c.get("/config", auth=AUTH)
+    r = get_all_config_pages(c)
     assert "Wert stammt aus der lokalen Datei" in r.text
     assert 'value="140"' in r.text
 
 
 def test_form_never_offers_non_editable_fields_as_input(tmp_path):
     _, c, _ = make_app(tmp_path)
-    r = c.get("/config", auth=AUTH)
+    r = get_all_config_pages(c)
     for field in FIELDS:
         if not field.editable:
             assert f'name="{field.path}"' not in r.text, field.path
