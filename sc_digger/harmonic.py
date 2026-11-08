@@ -71,16 +71,28 @@ def find_mix_candidates(
     *,
     bpm_tolerance: float = 3.0,
     limit: int = 30,
+    centroid_min: float | None = None,
+    centroid_max: float | None = None,
 ) -> list[TrackRecord]:
     """Tracks aus der Tabelle tracks mit key_camelot in compatible_keys(key) und
     |bpm - Ziel| <= bpm_tolerance (Grenze einschließlich). Ausgeschlossen: bpm oder key_camelot NULL,
     status 'rejected', quality_status 'fake_transcode', 'clipped', 'corrupt'.
     Sortierung: Position des Keys in compatible_keys, dann |BPM-Abstand|, dann artist, title, path.
+    Optional `centroid_min`/`centroid_max` (Hz, Grenzen einschließlich) filtern nach Helligkeit
+    (`spectral_centroid_hz`); mit Angabe fallen Tracks ohne bekannten Wert heraus.
     Höchstens limit Einträge. Nur lesend. Ungültiger Key -> ValueError (aus compatible_keys).
     SQL direkt über db.db in diesem Modul (db.py wird gerade in PR #71 geändert, Regel 8)."""
     comp_keys = compatible_keys(key)
     from .db import TrackRecord
 
+    centroid_sql = ""
+    centroid_params: list[float] = []
+    if centroid_min is not None:
+        centroid_sql += "AND spectral_centroid_hz >= ? "
+        centroid_params.append(float(centroid_min))
+    if centroid_max is not None:
+        centroid_sql += "AND spectral_centroid_hz <= ? "
+        centroid_params.append(float(centroid_max))
     query = """
         SELECT * FROM tracks
         WHERE key_camelot IN (?, ?, ?, ?)
@@ -89,6 +101,7 @@ def find_mix_candidates(
           AND abs(bpm - ?) <= ?
           AND (status IS NULL OR status != 'rejected')
           AND (quality_status IS NULL OR quality_status NOT IN ('fake_transcode', 'clipped', 'corrupt'))
+          {centroid_sql}
         ORDER BY
             CASE key_camelot
                 WHEN ? THEN 0
@@ -102,7 +115,7 @@ def find_mix_candidates(
             COALESCE(title, '') ASC,
             path ASC
         LIMIT ?
-    """
+    """.replace("{centroid_sql}", centroid_sql)
     params = (
         comp_keys[0],
         comp_keys[1],
@@ -110,6 +123,7 @@ def find_mix_candidates(
         comp_keys[3],
         float(bpm),
         float(bpm_tolerance),
+        *centroid_params,
         comp_keys[0],
         comp_keys[1],
         comp_keys[2],

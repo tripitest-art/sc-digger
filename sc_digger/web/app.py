@@ -549,14 +549,20 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
         key = (params.get("key") or "").strip()
         bpm_raw = (params.get("bpm") or "").strip()
         tol_raw = (params.get("tol") or "").strip()
+        cmin_raw = (params.get("cmin") or "").strip()
+        cmax_raw = (params.get("cmax") or "").strip()
         bpm = _query_float(bpm_raw)
         tolerance = _query_float(tol_raw)
+        cmin = _query_float(cmin_raw)
+        cmax = _query_float(cmax_raw)
         candidates: list = []
         error: str | None = None
         searched = bool(key)
         if searched:
             if bpm is None:
                 error = "Bitte eine Ziel-BPM angeben."
+            elif (cmin_raw and cmin is None) or (cmax_raw and cmax is None):
+                error = "Helligkeit bitte als Zahl in Hz angeben."
             else:
                 if tolerance is None or tolerance <= 0:
                     tolerance = 3.0
@@ -565,6 +571,7 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
                         candidates = find_mix_candidates(
                             _ReadOnlyTrackDB(db), key, bpm,
                             bpm_tolerance=tolerance, limit=30,
+                            centroid_min=cmin, centroid_max=cmax,
                         )
                 except ValueError as exc:
                     error = str(exc)
@@ -572,7 +579,7 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
                     error = "Track-Datenbank nicht lesbar."
         template = _env.get_template("mix.html")
         return HTMLResponse(template.render(
-            key=key, bpm=bpm_raw, tol=tol_raw,
+            key=key, bpm=bpm_raw, tol=tol_raw, cmin=cmin_raw, cmax=cmax_raw,
             candidates=candidates, error=error, searched=searched,
         ))
 
