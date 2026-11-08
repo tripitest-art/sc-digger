@@ -328,6 +328,7 @@
         <th aria-sort="{% if current_sort == 'bpm' %}{{ 'ascending' if current_dir == 'asc' else 'descending' }}{% else %}none{% endif %}">
           <a href="{{ sort_url('bpm') }}">BPM{% if current_sort == 'bpm' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
         </th>
+        <th>Energie</th>
         <th aria-sort="{% if current_sort == 'key_camelot' %}{{ 'ascending' if current_dir == 'asc' else 'descending' }}{% else %}none{% endif %}">
           <a href="{{ sort_url('key_camelot') }}">Key{% if current_sort == 'key_camelot' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
         </th>
@@ -385,6 +386,9 @@
         </td>
         <td class="mono" data-label="BPM">
           {% if track.bpm is not none %}{{ track.bpm }}{% else %}—{% endif %}
+        </td>
+        <td class="mono" data-label="Energie">
+          {% if track.energy is not none %}{{ track.energy }}{% else %}—{% endif %}
         </td>
         <td class="mono" data-label="Key">
           {% if track.key_camelot %}
@@ -474,7 +478,7 @@
       </tr>
       {% else %}
       <tr>
-        <td colspan="12" data-label="">
+        <td colspan="13" data-label="">
           {{ empty_state("Keine Treffer für diese Filter.", "/tracks") }}
         </td>
       </tr>

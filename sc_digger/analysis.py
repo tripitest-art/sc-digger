@@ -522,29 +522,49 @@ def detect_key(path: Path) -> tuple[str, str] | None:
         return None
 
 
-def compute_energy_features(path: Path) -> dict[str, float | None]:
-    """Berechnet energiebezogene Audio-Features via librosa aus Mono-Audio (22050 Hz, 60s Offset 30s).
+def _energy_features_from_audio(audio: np.ndarray, sr: int) -> dict[str, float | None]:
+    """Energie-Features aus bereits dekodiertem Mono-Audio (wirft nie).
 
-    Rückgabe: {"spectral_centroid_hz": float | None, "rms": float | None}
-    Bei fehlendem librosa oder defekter/unlesbarer Datei: None-Werte, wirft nie.
+    Die Kalibrierung der Schwellen in style.calculate_energy gilt für 22050 Hz und
+    60 s ab Sekunde 30. Ist das Audio lang genug, wird genau dieser Ausschnitt
+    genommen, kürzere Dateien gehen komplett ein (sonst hätten sie immer None).
     """
     leer: dict[str, float | None] = {"spectral_centroid_hz": None, "rms": None}
     try:
         import librosa
     except ImportError:
         log.warning("librosa nicht installiert – Energie-Features übersprungen")
-        return dict(leer)
-
+        return leer
     try:
-        audio = _decode_audio(path, sr=22050, duration=60, offset=30)
-        if audio is None:
-            return dict(leer)
+        start, ende = 30 * sr, 90 * sr
+        if audio.size >= start + 5 * sr:
+            audio = audio[start:ende]
+        if sr != 22050:
+            audio = resample(audio, sr, 22050)
         centroid = librosa.feature.spectral_centroid(y=audio, sr=22050)
         rms = librosa.feature.rms(y=audio)
         return {
             "spectral_centroid_hz": float(np.mean(centroid)),
             "rms": float(np.mean(rms)),
         }
+    except Exception as e:
+        log.warning("Energie-Features fehlgeschlagen: %s", e)
+        return leer
+
+
+def compute_energy_features(path: Path) -> dict[str, float | None]:
+    """Berechnet energiebezogene Audio-Features via librosa aus Mono-Audio (22050 Hz, 60s Offset 30s).
+
+    Rückgabe: {"spectral_centroid_hz": float | None, "rms": float | None}
+    Bei fehlendem librosa oder defekter/unlesbarer Datei: None-Werte, wirft nie.
+    Dateien unter 30 s werden ab Offset 0 dekodiert (`_decode_audio` fällt dafür selbst zurück).
+    """
+    leer: dict[str, float | None] = {"spectral_centroid_hz": None, "rms": None}
+    try:
+        audio = _decode_audio(path, sr=22050, duration=60, offset=30)
+        if audio is None:
+            return dict(leer)
+        return _energy_features_from_audio(audio, 22050)
     except Exception as e:
         log.warning("Energie-Features fehlgeschlagen für %s: %s", path.name, e)
         return dict(leer)
@@ -566,12 +586,16 @@ def analyze_track(path: Path, *, want_bpm: bool = True, want_key: bool = True,
             "key_name": str | None,
             "key_confidence": float,   # Mode-Konfidenz (0.0 bis 1.0)
             "key_margin": float,       # Marge zum zweitbesten Key-Kandidaten
+            "energy": int | None,      # Energie-Stufe 1..5 (style.calculate_energy)
+            "spectral_centroid_hz": float | None,
+            "rms": float | None,
         }
     """
     result: dict = {
         "bpm": None, "bpm_confidence": 0.0, "bpm_octave": 1,
         "key_camelot": None, "key_name": None,
         "key_confidence": 0.0, "key_margin": 0.0,
+        "energy": None, "spectral_centroid_hz": None, "rms": None,
     }
     try:
         audio = _decode_for_analysis(path)
@@ -588,6 +612,16 @@ def analyze_track(path: Path, *, want_bpm: bool = True, want_key: bool = True,
             result["key_name"] = key["key_name"]
             result["key_confidence"] = key["mode_conf"]
             result["key_margin"] = key["margin"]
+        # Energie aus demselben Decode (kein zweiter ffmpeg-Aufruf, Issue #283)
+        feats = _energy_features_from_audio(audio, SR)
+        result["spectral_centroid_hz"] = feats["spectral_centroid_hz"]
+        result["rms"] = feats["rms"]
+        if feats["spectral_centroid_hz"] is not None:
+            from .style import calculate_energy
+            result["energy"] = int(calculate_energy(
+                bpm=result["bpm"], spectral_centroid_hz=feats["spectral_centroid_hz"],
+                rms=feats["rms"], subgenre=None,
+            ))
     except Exception as e:
         log.warning("Audio-Analyse fehlgeschlagen für %s: %s", path.name, e)
     return result

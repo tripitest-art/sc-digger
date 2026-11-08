@@ -9,6 +9,7 @@ unter „Unreleased“ (Regeln: `AGENTS.md`, Abschnitt „Doku und Changelog“)
 
 ### Geändert
 - Aufgeräumt: ungenutzte `TrackDB.count_tracks` sowie `dj_export.write_m3u8`, `export_report` und `load_entries` entfernt; der Export läuft unverändert über `build_dj_set` (Issue #533).
+- Energie verdrahtet: `analyze_track` liefert `energy` (1..5), `spectral_centroid_hz` und `rms`; die Stufe wird beim Erfassen in der Track-DB und im Datei-Tag gespeichert und im Track-Explorer als Spalte „Energie“ angezeigt; kurze Dateien (< 30 s) werden für die Features ab Anfang dekodiert (#530).
 - Web-Dashboard: Der Digest-Explorer lässt sich per Spaltenklick nach Plays und Likes sortieren (jüngster Snapshot, ohne Snapshot 0) (#529).
 - Web-Dashboard: Tracks-, Audio- und Duplikat-Routen (`/tracks`, `/api/tracks`, `/api/tracks/{track_id}/similar`, `/api/audio/{track_id}`, `/duplicates`, `/api/duplicates`, `/api/inbox-duplicates`, `POST /api/inbox-duplicates/move`) aus `sc_digger/web/app.py` in `sc_digger/web/routes/tracks.py` sowie gemeinsame Web-Helfer (`_ReadOnlyTrackDB`, `_ScanLinkError`, Auth, Rendering) nach `sc_digger/web/common.py` ausgelagert (#524).
 - Web-Dashboard: Der Konfigeditor ist in eine Seite je Abschnitt aufgeteilt (`/config/<abschnitt>`, `/config` leitet auf den ersten um, Abschnittsnavigation mit hervorgehobenem aktiven Eintrag); Speichern, Vorschau und Zurücksetzen bleiben bei ihren Endpunkten und ändern nur den eigenen Abschnitt. Der Zugang ist jetzt ein Zahnrad rechts im Header auf allen Seiten statt eines Eintrags im „Mehr“-Menü (#527).
