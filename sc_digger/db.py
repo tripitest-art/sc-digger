@@ -719,6 +719,19 @@ class TrackDB:
         self.db.commit()
         return cur.rowcount > 0
 
+    def tracks_without_energy(self, limit: int | None = None) -> list[TrackRecord]:
+        """Tracks ohne Energie-Stufe (`energy IS NULL`), nach id sortiert (Backfill, Issue #537)."""
+        sql = "SELECT * FROM tracks WHERE energy IS NULL ORDER BY id"
+        params: tuple = ()
+        if limit is not None:
+            sql += " LIMIT ?"
+            params = (max(0, int(limit)),)
+        return [TrackRecord.from_row(r) for r in self.db.execute(sql, params).fetchall()]
+
+    def count_tracks_with_energy(self) -> int:
+        """Anzahl der Tracks, die schon eine Energie-Stufe haben."""
+        return self.db.execute("SELECT COUNT(*) FROM tracks WHERE energy IS NOT NULL").fetchone()[0]
+
     def search_tracks(self, query: str, limit: int = 6) -> list[TrackRecord]:
         """Sucht Tracks zu einem Suchtext. Der Suchtext wird an Leerzeichen in
         Wörter geteilt; ein Track trifft zu, wenn JEDES Wort (ohne
