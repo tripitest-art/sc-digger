@@ -59,6 +59,7 @@ docker compose exec sc-digger python -m sc_digger.main <modus> [...]
 | `stats` | Zeigt die Wochenstatistik auf der Konsole. `--days` (Standard 7) setzt das Fenster, `--chart <datei.png>` speichert ein Balkendiagramm, `--send` schickt die Statistik zusätzlich per Telegram. |
 | `scout` | Bandcamp-Feeds (`bandcamp.py`) und Beatport-Charts (`beatport.py`) abfragen und in `store_items` ablegen. |
 | `embed-backfill` | Reiht Embedding-Jobs für vorhandene Tracks ohne Embedding ein (Trainingsdaten für den Taste-Score). Standard: nur bewertete Tracks (👍/👎, übernommen, Rekordbox-Rating); `--all` nimmt alle, bewertete zuerst, `--limit N` begrenzt die neuen Jobs, `--dry-run` zählt nur. Fehlende Dateien und schon aktive Jobs werden übersprungen und gezählt. |
+| `energy-backfill` | Trägt die Energie-Stufe (1..5) für bereits erfasste Tracks ohne Wert nach. Schreibt nur in die Track-DB, nie Datei-Tags (die Sammlung bleibt unberührt); `--limit N` begrenzt die Anzahl, `--dry-run` rechnet ohne zu speichern. Fortschritt alle 50 Tracks, Zusammenfassung am Ende. |
 | `taste` | Trainiert den Taste-Score auf allen bewerteten Tracks mit Embedding, legt das Modell in der Track-DB ab und schreibt `tracks.taste_score` (0..1). `--dry-run` zeigt nur, wie viele Tracks bewertet würden. |
 | `cleanup-inbox` | Dubletten derselben SoundCloud-ID in der Inbox identifizieren; `--move` verschiebt überzählige Dateien nach `<inbox>/_rejected/duplicate/`, `--inbox` überschreibt den Standardpfad. |
 
@@ -78,6 +79,7 @@ python -m sc_digger.main stats --days 7 --chart woche.png
 python -m sc_digger.main stats --send
 python -m sc_digger.main scout
 python -m sc_digger.main embed-backfill --limit 200
+python -m sc_digger.main energy-backfill --dry-run --limit 100
 python -m sc_digger.main taste --dry-run
 python -m sc_digger.main cleanup-inbox --move
 ```
