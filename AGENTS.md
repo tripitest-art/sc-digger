@@ -159,8 +159,12 @@ Gleiche Regeln; statt `gh` die Werkzeuge aus `MCP.md` (dort auch die Einrichtung
 ## Doku und Changelog
 
 Doku gehört in denselben PR wie die Änderung: Verhalten, Betrieb oder neue Datei → `README.md`
-(und `ROADMAP.md`, falls betroffen) im selben PR anpassen. Dazu eine Zeile unter „Unreleased“
-in `CHANGELOG.md` mit PR-Nummer. Der Reviewer prüft es; `tests/test_doku.py` auch.
+(und `ROADMAP.md`, falls betroffen) im selben PR anpassen. Den Changelog-Eintrag schreibst du
+als Fragment `changelog.d/<PR-Nummer>.md` (Überschrift `### Hinzugefügt|Geändert|Behoben|Entfernt`,
+darunter `- Zeile`; `(#Nr)` ergänzt das Werkzeug aus dem Dateinamen), **nie** direkt in
+`CHANGELOG.md` (das gab Merge-Konflikte). Nach dem Merge führt der Workflow `changelog` die
+Fragmente unter „Unreleased“ zusammen; PRs ohne Fragment lehnt er ab, Ausnahme Label
+`kein-changelog`. Der Reviewer prüft es; `tests/test_doku.py` auch.
 
 ## Architektur, Betrieb, Entwickeln
 
