@@ -8,7 +8,6 @@ unter „Unreleased“ (Regeln: `AGENTS.md`, Abschnitt „Doku und Changelog“)
 ## Unreleased
 
 ### Geändert
-- Modus `energy-backfill`: trägt die Energie-Stufe (1..5) für bestehende Tracks ohne Wert in der Track-DB nach, mit `--dry-run` und `--limit N`; schreibt keine Datei-Tags (`backfill.backfill_energy`, `TrackDB.tracks_without_energy`) (#537).
 - Aufgeräumt: ungenutzte `TrackDB.count_tracks` sowie `dj_export.write_m3u8`, `export_report` und `load_entries` entfernt; der Export läuft unverändert über `build_dj_set` (Issue #533).
 - Energie verdrahtet: `analyze_track` liefert `energy` (1..5), `spectral_centroid_hz` und `rms`; die Stufe wird beim Erfassen in der Track-DB und im Datei-Tag gespeichert und im Track-Explorer als Spalte „Energie“ angezeigt; kurze Dateien (< 30 s) werden für die Features ab Anfang dekodiert (#530).
 - Web-Dashboard: Der Digest-Explorer lässt sich per Spaltenklick nach Plays und Likes sortieren (jüngster Snapshot, ohne Snapshot 0) (#529).
