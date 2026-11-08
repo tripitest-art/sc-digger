@@ -105,7 +105,7 @@ _TRACK_COLUMNS = (
     "id", "path", "artist", "title", "format", "bitrate_kbps", "cutoff_hz",
     "quality_status", "bpm", "key_camelot", "key_name", "status", "adopted_at",
     "feedback", "source_url", "created_at", "updated_at", "rb_play_count",
-    "breakdown_ratio", "taste_score",
+    "breakdown_ratio", "taste_score", "energy",
 )
 
 # Schutz vor versehentlich riesigen Antworten; das Frontend blättert über offset.
@@ -422,6 +422,7 @@ def query_tracks(
         item = dict(row)
         item.setdefault("breakdown_ratio", None)
         item.setdefault("taste_score", None)
+        item.setdefault("energy", None)
         sc_id = _sc_id_from_path(item.get("path"))
         item["sc_id"] = sc_id
         item["sc_feedback"] = feedback_map.get(sc_id) if sc_id is not None else None

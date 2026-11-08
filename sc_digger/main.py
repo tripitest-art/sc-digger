@@ -43,6 +43,7 @@ from .health import Health
 from .intake import AUDIO_EXTS, find_ready_files, track_from_file
 from .models import Config, DownloadKind, Track
 from .organize import organize, write_tags
+from .style import calculate_energy
 from .phrase import quantize_to_phrase
 from .quality import convert_wav_to_flac
 from .redact import install_redacting_logging, redact
@@ -198,6 +199,7 @@ def finish_file(t: Track, path: Path, inbox: Path, cfg: Config) -> Path | None:
     bpm_confidence: float | None = None
     key_confidence: float | None = None
     key_margin: float | None = None
+    energy: int | None = None
     if org.get("detect_bpm", True) or org.get("detect_key", True):
         try:
             analysis = analyze_track(path)
@@ -227,6 +229,12 @@ def finish_file(t: Track, path: Path, inbox: Path, cfg: Config) -> Path | None:
                 t.key_name = analysis["key_name"]
                 key_confidence = analysis.get("key_confidence")
                 key_margin = analysis.get("key_margin")
+            # Energie mit der aufgelösten BPM neu bewerten (analysis["energy"] kennt nur die Roh-BPM)
+            if analysis.get("spectral_centroid_hz") is not None:
+                energy = calculate_energy(
+                    t.bpm, spectral_centroid_hz=analysis["spectral_centroid_hz"],
+                    rms=analysis.get("rms"), subgenre=None,
+                )
         except Exception as e:
             t.notes.append(f"Audio-Analyse fehlgeschlagen: {e}")
 
@@ -250,7 +258,7 @@ def finish_file(t: Track, path: Path, inbox: Path, cfg: Config) -> Path | None:
                 genre=t.genre or org.get("default_genre", "Schranz"),
                 comment=comment.strip(" |"), url=t.url,
                 loudness=t.quality_report,
-                key_camelot=t.key_camelot, text_bpm=t.text_bpm,
+                key_camelot=t.key_camelot, text_bpm=t.text_bpm, energy=energy,
                 padding_kb=float(org.get("write_tags_padding_kb", 4)),
             )
         except Exception as e:
@@ -322,9 +330,12 @@ def finish_file(t: Track, path: Path, inbox: Path, cfg: Config) -> Path | None:
                 cutoff_hz=q_rep.get("cutoff_hz"),
                 quality_status=q_status,
                 breakdown_ratio=t.breakdown_ratio,
+                energy=energy,
             )
             with TrackDB(track_db_path) as db:
                 stored = db.upsert_track(rec)
+                if energy is not None and stored.id is not None:
+                    db.set_energy(stored.id, energy)
                 # Der GPU-Worker holt den Job per API und schreibt Cues zurück (Issue #349).
                 if (cfg.raw.get("cues") or {}).get("auto_queue", True):
                     enqueue_cue_job(db, stored)
