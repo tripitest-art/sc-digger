@@ -283,9 +283,9 @@ def test_feedback_and_filtering(db: TrackDB):
     loaded_t2 = db.get_track_by_id(t2.id)
     assert loaded_t2 is not None and loaded_t2.feedback == "dislike"
 
-    assert db.count_tracks() == 3
-    assert db.count_tracks(status=TrackStatus.INBOX) == 2
-    assert db.count_tracks(quality_status=QualityStatus.FAKE_TRANSCODE) == 1
+    assert len(db.list_tracks()) == 3
+    assert len(db.list_tracks(status=TrackStatus.INBOX)) == 2
+    assert len(db.list_tracks(quality_status=QualityStatus.FAKE_TRANSCODE)) == 1
 
     inbox_tracks = db.list_tracks(status=TrackStatus.INBOX)
     assert len(inbox_tracks) == 2

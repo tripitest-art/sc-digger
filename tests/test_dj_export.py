@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 
 from sc_digger.dj_export import (
+    _read_entries,
     BPM_COMFORT,
     BPM_TOLERANCE,
     CSV_COLUMNS,
@@ -22,9 +23,8 @@ from sc_digger.dj_export import (
     camelot_relation,
     export_csv,
     export_m3u8,
-    export_report,
-    load_entries,
     main,
+    write_report,
     order_harmonic,
     parse_camelot,
     transition_cost,
@@ -288,7 +288,7 @@ def test_export_csv_round_trip_through_write_and_load(tmp_path):
         e.path = tmp_path / f"{e.title}.wav"
     pl = order_harmonic(entries)
     csv_path = write_csv(pl, tmp_path / "set.csv")
-    reloaded = load_entries(csv_path)
+    reloaded = _read_entries(csv_path, ";")
     assert [e.bpm for e in reloaded] == [e.bpm for e in pl.entries]
     assert [e.camelot for e in reloaded] == [e.camelot for e in pl.entries]
     assert [e.artist for e in reloaded] == [e.artist for e in pl.entries]
@@ -296,7 +296,7 @@ def test_export_csv_round_trip_through_write_and_load(tmp_path):
 
 def test_export_report_lists_counts_and_playlist(tmp_path):
     entries = [_entry(f"t{i}", 152.0 + i, "5A") for i in range(3)]
-    out = export_report(entries, tmp_path / "report.txt")
+    out = write_report(entries, order_harmonic(list(entries)), tmp_path / "report.txt")
     text = out.read_text(encoding="utf-8")
     assert "Tracks insgesamt" in text and ": 3" in text
     assert "Mix-Anker (BPM+Key sicher): 3" in text
@@ -307,7 +307,8 @@ def test_export_report_lists_counts_and_playlist(tmp_path):
 def test_export_report_flags_uncertain_tracks(tmp_path):
     sicher = _entry("sicher", 155.0, "5A")
     unsicher = _entry("unsicher", 155.0, "5A", margin=0.001, confidence=0.1)
-    out = export_report([sicher, unsicher], tmp_path / "report.txt")
+    alle = [sicher, unsicher]
+    out = write_report(alle, order_harmonic(list(alle)), tmp_path / "report.txt")
     text = out.read_text(encoding="utf-8")
     assert "Unsicher / manuell pruefen" in text
     assert "unsicher" in text
