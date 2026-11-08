@@ -1339,27 +1339,6 @@ class TrackDB:
             stored += 1
         return stored
 
-    def count_tracks(
-        self,
-        status: TrackStatus | str | None = None,
-        quality_status: QualityStatus | str | None = None,
-    ) -> int:
-        """Zählt Tracks mit optionaler Filterung nach Status oder Qualitätsurteil."""
-        conds: list[str] = []
-        params: list[Any] = []
-        if status:
-            val = status.value if isinstance(status, Enum) else status
-            conds.append("status = ?")
-            params.append(val)
-        if quality_status:
-            val = quality_status.value if isinstance(quality_status, Enum) else quality_status
-            conds.append("quality_status = ?")
-            params.append(val)
-
-        where = f"WHERE {' AND '.join(conds)}" if conds else ""
-        row = self.db.execute(f"SELECT COUNT(*) FROM tracks {where}", params).fetchone()
-        return row[0] if row else 0
-
     def list_tracks(
         self,
         status: TrackStatus | str | None = None,

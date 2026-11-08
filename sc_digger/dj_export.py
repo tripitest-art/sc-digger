@@ -420,12 +420,6 @@ def _write_m3u8(pl: Playlist, out: Path, *, title: str | None = None,
     return out
 
 
-def write_m3u8(pl: Playlist, out: Path, *, absolute: bool = False,
-               mark_segments: bool = True) -> Path:
-    """Schreibt eine bereits sortierte Playlist (ohne Kopfzeile mit dem Set-Namen)."""
-    return _write_m3u8(pl, out, absolute=absolute, mark_segments=mark_segments)
-
-
 def export_m3u8(entries: list[Entry], path: Path, title: str = "DJ Set") -> Path:
     """Schreibt eine M3U8-Playlist mit Segmentmarken (absolute Pfade)."""
     pl = order_harmonic(list(entries))
@@ -538,13 +532,6 @@ def write_report(entries: list[Entry], pl: Playlist, out: Path,
     return out
 
 
-def export_report(entries: list[Entry], path: Path,
-                  *, bpm_tolerance: float = BPM_TOLERANCE) -> Path:
-    """Erzeugt den Set-Report zu einer Track-Menge (sortiert sie dabei harmonisch)."""
-    pl = order_harmonic(list(entries), bpm_tolerance=bpm_tolerance)
-    return write_report(list(entries), pl, path, bpm_tolerance=bpm_tolerance)
-
-
 def _read_entries(path: Path, delimiter: str) -> list[Entry]:
     out: list[Entry] = []
     with path.open(encoding="utf-8") as fh:
@@ -561,11 +548,6 @@ def _read_entries(path: Path, delimiter: str) -> list[Entry]:
                 score=float(row["score"]) if row.get("score") else 0.0,
             ))
     return out
-
-
-def load_entries(path: Path) -> list[Entry]:
-    """Liest eine von write_csv geschriebene CSV (Semikolon) wieder ein."""
-    return _read_entries(path, ";")
 
 
 # ------------------------------------------------------------------ Hauptfunktion
