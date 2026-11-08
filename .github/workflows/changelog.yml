@@ -3,16 +3,12 @@ name: changelog
 on:
   pull_request:
     types: [opened, synchronize, reopened, labeled, unlabeled]
-  push:
-    branches: [main]
-    paths: ["changelog.d/**"]
 
 permissions:
   contents: read
 
 jobs:
   pruefen:
-    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -31,28 +27,3 @@ jobs:
         run: |
           gh api "repos/${{ github.repository }}/pulls/${PR_NUMBER}/files" --paginate --jq '.[].filename' \
             | python scripts/changelog.py check --labels "$LABELS"
-
-  zusammenfuehren:
-    if: github.event_name == 'push'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.12"
-      - name: Fragmente in CHANGELOG.md zusammenführen
-        run: python scripts/changelog.py merge
-      - name: Committen
-        run: |
-          if git diff --quiet && [ -z "$(git status --porcelain)" ]; then
-            echo "Nichts zusammenzuführen"
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A CHANGELOG.md changelog.d
-          git commit -m "Changelog: Fragmente zusammengeführt [skip ci]"
-          git push

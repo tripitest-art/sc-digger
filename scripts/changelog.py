@@ -2,8 +2,8 @@
 
 Jeder PR legt eine Datei ``changelog.d/<PR-Nummer>.md`` an, statt in ``CHANGELOG.md`` zu
 schreiben. Alle PRs änderten dieselbe Stelle unter „Unreleased“, das erzeugte bei jedem
-parallelen Merge einen Konflikt. Nach dem Merge führt der Workflow ``changelog`` die
-Fragmente in ``CHANGELOG.md`` zusammen und löscht sie.
+parallelen Merge einen Konflikt. Ein Sammel-PR (Label ``changelog-zusammenfuehren``) führt die
+Fragmente mit ``merge`` in ``CHANGELOG.md`` zusammen und löscht sie.
 
 CLI::
 
@@ -21,6 +21,8 @@ import sys
 # Feste Reihenfolge der Abschnitte unter „Unreleased“.
 SECTIONS = ["Hinzugefügt", "Geändert", "Behoben", "Entfernt"]
 NO_CHANGELOG_LABEL = "kein-changelog"
+# Sammel-PR, der die Fragmente in CHANGELOG.md zusammenführt (main-schutz verbietet Direkt-Pushes).
+ASSEMBLE_LABEL = "changelog-zusammenfuehren"
 FRAGMENT_DIR = "changelog.d"
 
 _PR_REF = re.compile(r"\(#\d+\)")
@@ -131,9 +133,12 @@ def merge_fragments(changelog_path, fragment_dir) -> list[pathlib.Path]:
 def check_pr(changed_paths, labels) -> list[str]:
     """Prüft einen PR: Fragment unter ``changelog.d/`` (oder Label ``kein-changelog``).
 
-    ``CHANGELOG.md`` selbst darf kein PR ändern, sonst kehren die Konflikte zurück.
+    ``CHANGELOG.md`` selbst darf kein PR ändern, sonst kehren die Konflikte zurück;
+    Ausnahme ist der Sammel-PR mit Label ``changelog-zusammenfuehren``.
     """
     paths = list(changed_paths)
+    if ASSEMBLE_LABEL in set(labels):
+        return []  # Sammel-PR: ändert CHANGELOG.md und löscht Fragmente, braucht keins
     fehler: list[str] = []
     if "CHANGELOG.md" in paths:
         fehler.append(
