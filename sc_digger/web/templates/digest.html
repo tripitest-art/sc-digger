@@ -179,6 +179,12 @@
         <th aria-sort="{% if current_sort == 'feedback' %}{{ 'ascending' if current_dir == 'asc' else 'descending' }}{% else %}none{% endif %}">
           <a href="{{ sort_url('feedback') }}">Feedback{% if current_sort == 'feedback' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
         </th>
+        <th aria-sort="{% if current_sort == 'plays' %}{{ 'ascending' if current_dir == 'asc' else 'descending' }}{% else %}none{% endif %}">
+          <a href="{{ sort_url('plays') }}">Plays{% if current_sort == 'plays' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
+        </th>
+        <th aria-sort="{% if current_sort == 'likes' %}{{ 'ascending' if current_dir == 'asc' else 'descending' }}{% else %}none{% endif %}">
+          <a href="{{ sort_url('likes') }}">Likes{% if current_sort == 'likes' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
+        </th>
         <th>Links</th>
       </tr>
     </thead>
@@ -234,6 +240,8 @@
             <span class="feedback-error meta"></span>
           </div>
         </td>
+        <td data-label="Plays" class="mono meta">{{ item.plays or 0 }}</td>
+        <td data-label="Likes" class="mono meta">{{ item.likes or 0 }}</td>
         <td data-label="" style="white-space: nowrap;">
           {# Nur http/https verlinken: die URLs stammen aus fremden Feeds, ein
              javascript:-Wert darf nicht ins href. #}
@@ -258,7 +266,7 @@
       </tr>
       {% else %}
       <tr>
-        <td colspan="7" data-label="">
+        <td colspan="9" data-label="">
           {{ empty_state("Keine Vorschläge für diese Filtereinstellungen gefunden.", "/digest") }}
         </td>
       </tr>
