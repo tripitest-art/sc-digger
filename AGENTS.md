@@ -162,8 +162,9 @@ Doku gehört in denselben PR wie die Änderung: Verhalten, Betrieb oder neue Dat
 (und `ROADMAP.md`, falls betroffen) im selben PR anpassen. Den Changelog-Eintrag schreibst du
 als Fragment `changelog.d/<PR-Nummer>.md` (Überschrift `### Hinzugefügt|Geändert|Behoben|Entfernt`,
 darunter `- Zeile`; `(#Nr)` ergänzt das Werkzeug aus dem Dateinamen), **nie** direkt in
-`CHANGELOG.md` (das gab Merge-Konflikte). Nach dem Merge führt der Workflow `changelog` die
-Fragmente unter „Unreleased“ zusammen; PRs ohne Fragment lehnt er ab, Ausnahme Label
+`CHANGELOG.md` (das gab Merge-Konflikte). Unter „Unreleased“ führt ein Sammel-PR mit
+Label `changelog-zusammenfuehren` die Fragmente zusammen (`python scripts/changelog.py merge`), nie per Direkt-Push;
+der Workflow `changelog` prüft nur: PRs ohne Fragment lehnt er ab, Ausnahme Label
 `kein-changelog`. Der Reviewer prüft es; `tests/test_doku.py` auch.
 
 ## Architektur, Betrieb, Entwickeln
