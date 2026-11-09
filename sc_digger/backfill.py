@@ -51,6 +51,7 @@ def backfill_energy(
                 if dry_run:
                     res["would_set"] += 1
                 elif db.set_energy(rec.id, stufe):
+                    db.set_spectral_centroid(rec.id, centroid)
                     res["set"] += 1
                 else:
                     res["failed"] += 1
