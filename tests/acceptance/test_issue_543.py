@@ -67,7 +67,7 @@ def test_gesetzter_wert_wird_angewendet(tmp_path):
 def test_schalter_zeigt_aus_zustand(tmp_path):
     client, _ = _client(tmp_path, local={"organize": {"enabled": False}})
     html = client.get(SEITE, auth=AUTH).text
-    treffer = re.search(r'<input[^>]*id="f-organize\\.enabled"[^>]*>', html)
+    treffer = re.search(r'<input[^>]*id="f-organize\.enabled"[^>]*>', html)
     assert treffer, "kein Schalter-Element fuer organize.enabled"
     tag = treffer.group(0)
     assert 'role="switch"' in tag
