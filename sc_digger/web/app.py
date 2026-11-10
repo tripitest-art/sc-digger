@@ -1249,7 +1249,7 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
         form = {key: value for key, value in (await request.form()).items()}
         section = _section_of_form(form)
         if section is not None:
-            form = _only_section_fields(form, section)
+            form = _default_bools_false(section, _only_section_fields(form, section))
         base, local = _read_files()
         new_local, problems = apply_form(base, local, form)
         if any(problem.level == "error" for problem in problems):
@@ -1268,7 +1268,7 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
         form = {key: value for key, value in (await request.form()).items()}
         section = _section_of_form(form)
         if section is not None:
-            form = _only_section_fields(form, section)
+            form = _default_bools_false(section, _only_section_fields(form, section))
         base, local = _read_files()
         new_local, problems = apply_form(base, local, form)
         if any(problem.level == "error" for problem in problems):
@@ -1371,3 +1371,15 @@ def _only_section_fields(form: dict[str, str], section: ConfigSection) -> dict[s
     """Verwirft Formularwerte fremder Abschnitte, damit ein Abschnitts-Save nur den eigenen ändert."""
     allowed = {f.path for f in section.fields}
     return {key: value for key, value in form.items() if key in allowed}
+
+def _default_bools_false(section: ConfigSection, form: dict[str, str]) -> dict[str, str]:
+    """Ergänzt fehlende Boolean-Felder des Abschnitts mit „false“.
+
+    Eine nicht angehakte Checkbox wird vom Browser gar nicht gesendet; ein verstecktes
+    Feld gleichen Namens käme wegen der Dict-Umwandlung des Formulars nicht an. Nur Felder
+    des abgeschickten Abschnitts, damit andere Abschnitte nicht auf „false“ fallen."""
+    ergaenzt = dict(form)
+    for field in section.fields:
+        if field.kind == "bool" and field.path not in ergaenzt:
+            ergaenzt[field.path] = "false"
+    return ergaenzt
