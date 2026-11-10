@@ -21,13 +21,14 @@ import logging
 import re
 import unicodedata
 import math
+import shutil
 import sqlite3
 import xml.etree.ElementTree as ET
 from contextlib import closing
 from contextvars import ContextVar
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 from urllib.parse import urlencode
 
 from fastapi import FastAPI, Request
@@ -369,7 +370,8 @@ def sync_rekordbox_xml(cfg: Config) -> tuple[int, dict]:
 def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = False,
                base_path: Path | None = None, local_path: Path | None = None,
                login_limit: FailureTracker | None = None,
-               trust_proxy: bool = False) -> FastAPI:
+               trust_proxy: bool = False,
+               disk_usage: Callable[[str], Any] = shutil.disk_usage) -> FastAPI:
     """Erzeugt die Status-App.
 
     password leer/None und allow_anonymous False: ValueError (nie versehentlich offen starten).
@@ -389,6 +391,7 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
     app.state.password = password
     app.state.allow_anonymous = allow_anonymous
     app.state.login_limit = login_limit
+    app.state.disk_usage = disk_usage
 
     @app.middleware("http")
     async def mark_config_enabled(request: Request, call_next):
@@ -426,7 +429,7 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
     def index(request: Request):
         snap = collect_status(app.state.cfg)
         overview = get_collection_overview(app.state.cfg["state"]["track_db_path"])
-        ops = collect_ops(app.state.cfg)
+        ops = collect_ops(app.state.cfg, usage=app.state.disk_usage)
         template = _env.get_template("status.html")
         return HTMLResponse(template.render(
             snap=snap, overview=overview, editor_available=editor_available, ops=ops
@@ -1246,7 +1249,7 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
         form = {key: value for key, value in (await request.form()).items()}
         section = _section_of_form(form)
         if section is not None:
-            form = _only_section_fields(form, section)
+            form = _default_bools_false(section, _only_section_fields(form, section))
         base, local = _read_files()
         new_local, problems = apply_form(base, local, form)
         if any(problem.level == "error" for problem in problems):
@@ -1265,7 +1268,7 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
         form = {key: value for key, value in (await request.form()).items()}
         section = _section_of_form(form)
         if section is not None:
-            form = _only_section_fields(form, section)
+            form = _default_bools_false(section, _only_section_fields(form, section))
         base, local = _read_files()
         new_local, problems = apply_form(base, local, form)
         if any(problem.level == "error" for problem in problems):
@@ -1368,3 +1371,15 @@ def _only_section_fields(form: dict[str, str], section: ConfigSection) -> dict[s
     """Verwirft Formularwerte fremder Abschnitte, damit ein Abschnitts-Save nur den eigenen ändert."""
     allowed = {f.path for f in section.fields}
     return {key: value for key, value in form.items() if key in allowed}
+
+def _default_bools_false(section: ConfigSection, form: dict[str, str]) -> dict[str, str]:
+    """Ergänzt fehlende Boolean-Felder des Abschnitts mit „false“.
+
+    Eine nicht angehakte Checkbox wird vom Browser gar nicht gesendet; ein verstecktes
+    Feld gleichen Namens käme wegen der Dict-Umwandlung des Formulars nicht an. Nur Felder
+    des abgeschickten Abschnitts, damit andere Abschnitte nicht auf „false“ fallen."""
+    ergaenzt = dict(form)
+    for field in section.fields:
+        if field.kind == "bool" and field.path not in ergaenzt:
+            ergaenzt[field.path] = "false"
+    return ergaenzt
