@@ -24,16 +24,25 @@ def backfill_energy(
     *,
     dry_run: bool = False,
     limit: int | None = None,
+    force: bool = False,
     progress: Callable[[int, int], None] | None = None,
 ) -> dict[str, int]:
-    """Berechnet die Energie-Stufe für Tracks mit `energy IS NULL`.
+    """Berechnet die Energie-Stufe für Tracks.
+
+    force=True: alle Tracks neu messen (auch die mit vorhandener Energie),
+    damit fehlende Einzelwerte wie spectral_centroid_hz nachgezogen werden.
+    Ohne force: nur Tracks mit `energy IS NULL`.
 
     Rückgabe: seen (betrachtet), set (geschrieben), skipped (hatten schon eine Stufe),
     failed (Datei fehlt/nicht lesbar), would_set (im Probelauf berechnet, nicht
     geschrieben). `progress(erledigt, gesamt)` wird alle 50 Tracks aufgerufen.
     """
-    skipped = db.count_tracks_with_energy()
-    offen = db.tracks_without_energy(limit)
+    if force:
+        skipped = 0
+        offen = db.list_tracks(limit=limit)
+    else:
+        skipped = db.count_tracks_with_energy()
+        offen = db.tracks_without_energy(limit)
     res = {"seen": skipped + len(offen), "set": 0, "skipped": skipped, "failed": 0, "would_set": 0}
     gesamt = len(offen)
     for i, rec in enumerate(offen, 1):
