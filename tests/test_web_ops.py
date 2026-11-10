@@ -147,7 +147,10 @@ def test_status_page_renders_betriebskarte(tmp_path: Path):
     with Health(cfg.raw["state"]["db_path"]) as h:
         h.record("api_schema", ok=False, found=0, error="secret_token_123")
 
-    client = TestClient(create_app(cfg, password=PASSWORD))
+    def _usage(pfad):
+        return SimpleNamespace(free=50 * GB)
+
+    client = TestClient(create_app(cfg, password=PASSWORD, disk_usage=_usage))
     resp = client.get("/", auth=AUTH)
     assert resp.status_code == 200
 
@@ -164,5 +167,22 @@ def test_status_page_renders_betriebskarte(tmp_path: Path):
     assert "Warnung" in html
     assert "ops-ok" in html
     assert "OK" in html
+    assert "50.0 GB frei" in html
     assert "Letzte Sicherung: 2026-11-06" in html
     assert "Felder fehlen: [REDACTED]" in html or "Felder fehlen: secret_token_123" in html or "Felder fehlen:" in html
+
+
+def test_status_page_renders_betriebskarte_warnung_bei_wenig_speicher(tmp_path: Path):
+    cfg = _make_cfg(tmp_path, min_free_gb=10)
+
+    def _usage(pfad):
+        return SimpleNamespace(free=1 * GB)
+
+    client = TestClient(create_app(cfg, password=PASSWORD, disk_usage=_usage))
+    resp = client.get("/", auth=AUTH)
+    assert resp.status_code == 200
+
+    html = resp.text
+    assert "Nur 1.0 GB frei" in html
+    assert "ops-warn" in html
+    assert "Warnung" in html

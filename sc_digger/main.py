@@ -201,6 +201,7 @@ def finish_file(t: Track, path: Path, inbox: Path, cfg: Config) -> Path | None:
     key_confidence: float | None = None
     key_margin: float | None = None
     energy: int | None = None
+    centroid_hz: float | None = None
     if org.get("detect_bpm", True) or org.get("detect_key", True):
         try:
             analysis = analyze_track(path)
@@ -232,6 +233,7 @@ def finish_file(t: Track, path: Path, inbox: Path, cfg: Config) -> Path | None:
                 key_margin = analysis.get("key_margin")
             # Energie mit der aufgelösten BPM neu bewerten (analysis["energy"] kennt nur die Roh-BPM)
             if analysis.get("spectral_centroid_hz") is not None:
+                centroid_hz = float(analysis["spectral_centroid_hz"])
                 energy = calculate_energy(
                     t.bpm, spectral_centroid_hz=analysis["spectral_centroid_hz"],
                     rms=analysis.get("rms"), subgenre=None,
@@ -337,6 +339,8 @@ def finish_file(t: Track, path: Path, inbox: Path, cfg: Config) -> Path | None:
                 stored = db.upsert_track(rec)
                 if energy is not None and stored.id is not None:
                     db.set_energy(stored.id, energy)
+                if centroid_hz is not None and stored.id is not None:
+                    db.set_spectral_centroid(stored.id, centroid_hz)
                 # Der GPU-Worker holt den Job per API und schreibt Cues zurück (Issue #349).
                 if (cfg.raw.get("cues") or {}).get("auto_queue", True):
                     enqueue_cue_job(db, stored)

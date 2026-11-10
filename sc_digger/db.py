@@ -109,6 +109,7 @@ class TrackRecord:
     rb_cues: str | None = None        # JSON-String der Cue-Liste
     energy: int | None = None         # 1..5 Energie-Level (berechnet, siehe sc_digger.style)
     duration: float | None = None     # Länge der Datei in Sekunden (ffprobe)
+    spectral_centroid_hz: float | None = None  # Helligkeit: mittlerer spektraler Schwerpunkt in Hz (librosa)
     created_at: str | None = None
     updated_at: str | None = None
 
@@ -447,6 +448,14 @@ MIGRATIONS: list[tuple[int, str, str]] = [
         );
         """,
     ),
+    (
+        # Nummer 19 statt der im Auftrag genannten 20: 19 ist die nächste freie Version.
+        19,
+        "0019_tracks_helligkeit",
+        """
+        ALTER TABLE tracks ADD COLUMN spectral_centroid_hz REAL;
+        """,
+    ),
 ]
 
 # Erlaubte Werte in ``match_overrides.override_type``: die Handkorrektur ersetzt den
@@ -715,6 +724,18 @@ class TrackDB:
         cur = self.db.execute(
             "UPDATE tracks SET energy = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
             (energy, track_id),
+        )
+        self.db.commit()
+        return cur.rowcount > 0
+
+    def set_spectral_centroid(self, track_id: int, hz: float) -> bool:
+        """Setzt die Helligkeit (spektraler Schwerpunkt in Hz) für einen Track.
+
+        Gibt True zurück, wenn der Track existiert und aktualisiert wurde, sonst False.
+        """
+        cur = self.db.execute(
+            "UPDATE tracks SET spectral_centroid_hz = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (float(hz), track_id),
         )
         self.db.commit()
         return cur.rowcount > 0

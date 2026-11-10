@@ -21,13 +21,14 @@ import logging
 import re
 import unicodedata
 import math
+import shutil
 import sqlite3
 import xml.etree.ElementTree as ET
 from contextlib import closing
 from contextvars import ContextVar
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 from urllib.parse import urlencode
 
 from fastapi import FastAPI, Request
@@ -369,7 +370,8 @@ def sync_rekordbox_xml(cfg: Config) -> tuple[int, dict]:
 def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = False,
                base_path: Path | None = None, local_path: Path | None = None,
                login_limit: FailureTracker | None = None,
-               trust_proxy: bool = False) -> FastAPI:
+               trust_proxy: bool = False,
+               disk_usage: Callable[[str], Any] = shutil.disk_usage) -> FastAPI:
     """Erzeugt die Status-App.
 
     password leer/None und allow_anonymous False: ValueError (nie versehentlich offen starten).
@@ -389,6 +391,7 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
     app.state.password = password
     app.state.allow_anonymous = allow_anonymous
     app.state.login_limit = login_limit
+    app.state.disk_usage = disk_usage
 
     @app.middleware("http")
     async def mark_config_enabled(request: Request, call_next):
@@ -426,7 +429,7 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
     def index(request: Request):
         snap = collect_status(app.state.cfg)
         overview = get_collection_overview(app.state.cfg["state"]["track_db_path"])
-        ops = collect_ops(app.state.cfg)
+        ops = collect_ops(app.state.cfg, usage=app.state.disk_usage)
         template = _env.get_template("status.html")
         return HTMLResponse(template.render(
             snap=snap, overview=overview, editor_available=editor_available, ops=ops
@@ -549,14 +552,20 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
         key = (params.get("key") or "").strip()
         bpm_raw = (params.get("bpm") or "").strip()
         tol_raw = (params.get("tol") or "").strip()
+        cmin_raw = (params.get("cmin") or "").strip()
+        cmax_raw = (params.get("cmax") or "").strip()
         bpm = _query_float(bpm_raw)
         tolerance = _query_float(tol_raw)
+        cmin = _query_float(cmin_raw)
+        cmax = _query_float(cmax_raw)
         candidates: list = []
         error: str | None = None
         searched = bool(key)
         if searched:
             if bpm is None:
                 error = "Bitte eine Ziel-BPM angeben."
+            elif (cmin_raw and cmin is None) or (cmax_raw and cmax is None):
+                error = "Helligkeit bitte als Zahl in Hz angeben."
             else:
                 if tolerance is None or tolerance <= 0:
                     tolerance = 3.0
@@ -565,6 +574,7 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
                         candidates = find_mix_candidates(
                             _ReadOnlyTrackDB(db), key, bpm,
                             bpm_tolerance=tolerance, limit=30,
+                            centroid_min=cmin, centroid_max=cmax,
                         )
                 except ValueError as exc:
                     error = str(exc)
@@ -572,7 +582,7 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
                     error = "Track-Datenbank nicht lesbar."
         template = _env.get_template("mix.html")
         return HTMLResponse(template.render(
-            key=key, bpm=bpm_raw, tol=tol_raw,
+            key=key, bpm=bpm_raw, tol=tol_raw, cmin=cmin_raw, cmax=cmax_raw,
             candidates=candidates, error=error, searched=searched,
         ))
 
