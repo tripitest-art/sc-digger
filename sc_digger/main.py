@@ -8,7 +8,7 @@
   python -m sc_digger.main audit [--path ...] [--report ...] # Library-Audit (read-only)
   python -m sc_digger.main scout [--dry-run]                 # Bandcamp-Feeds + Beatport-Charts in store_items
   python -m sc_digger.main embed-backfill [--all] [--limit N] # Embedding-Jobs für vorhandene Tracks einreihen
-  python -m sc_digger.main energy-backfill [--dry-run] [--limit N] # Energie-Stufe für Tracks ohne Wert nachtragen (nur DB)
+  python -m sc_digger.main energy-backfill [--dry-run] [--limit N] [--force] # Energie-Stufe für Tracks nachtragen (nur DB)
   python -m sc_digger.main taste [--dry-run]                 # Taste-Score trainieren und speichern
 
 Alle Modi: --dry-run (nichts laden/senden), -v, --config, --no-telegram
@@ -1159,15 +1159,21 @@ def run_embed_backfill(
     return text
 
 
-def run_energy_backfill(cfg: Config, *, dry_run: bool = False, limit: int | None = None) -> str:
-    """Trägt die Energie-Stufe für Tracks ohne Wert nach (nur Track-DB, keine Tags); druckt und liefert die Zeile."""
+def run_energy_backfill(
+    cfg: Config,
+    *,
+    dry_run: bool = False,
+    limit: int | None = None,
+    force: bool = False,
+) -> str:
+    """Trägt die Energie-Stufe für Tracks nach (nur Track-DB, keine Tags); druckt und liefert die Zeile."""
     from .backfill import backfill_energy
 
     def fortschritt(erledigt: int, gesamt: int) -> None:
         print(f"Energie-Backfill: {erledigt}/{gesamt} …", flush=True)
 
     with TrackDB(cfg["state"]["track_db_path"]) as db:
-        r = backfill_energy(db, dry_run=dry_run, limit=limit, progress=fortschritt)
+        r = backfill_energy(db, dry_run=dry_run, limit=limit, force=force, progress=fortschritt)
     text = (f"Energie-Backfill: {r['seen']} Tracks betrachtet, {r['set']} gesetzt, "
             f"{r['would_set']} würden gesetzt, {r['skipped']} übersprungen (schon vorhanden), "
             f"{r['failed']} fehlgeschlagen")
@@ -1356,6 +1362,8 @@ def cli() -> None:
     en = sub.add_parser("energy-backfill", parents=[common],
                         help="Energie-Stufe (1..5) für Tracks ohne Wert nachtragen (nur Datenbank, keine Tags)")
     en.add_argument("--limit", type=int, help="Höchstens N Tracks bearbeiten")
+    en.add_argument("--force", action="store_true",
+                    help="Alle Tracks neu messen (auch mit vorhandener Energie), um fehlende Einzelwerte wie spectral_centroid_hz nachzuziehen")
 
     sub.add_parser("taste", parents=[common],
                    help="Taste-Score trainieren und für Tracks mit Embedding speichern")
@@ -1406,7 +1414,7 @@ def cli() -> None:
         elif a.mode == "embed-backfill":
             run_embed_backfill(cfg, labeled_only=not a.all, limit=a.limit, dry_run=a.dry_run)
         elif a.mode == "energy-backfill":
-            run_energy_backfill(cfg, dry_run=a.dry_run, limit=a.limit)
+            run_energy_backfill(cfg, dry_run=a.dry_run, limit=a.limit, force=a.force)
         elif a.mode == "taste":
             run_taste_cmd(cfg, dry_run=a.dry_run)
         else:

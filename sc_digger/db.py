@@ -749,6 +749,15 @@ class TrackDB:
             params = (max(0, int(limit)),)
         return [TrackRecord.from_row(r) for r in self.db.execute(sql, params).fetchall()]
 
+    def tracks_without_centroid(self, limit: int | None = None) -> list[TrackRecord]:
+        """Tracks ohne Centroid (`spectral_centroid_hz IS NULL`), nach id sortiert (Backfill, Issue #552)."""
+        sql = "SELECT * FROM tracks WHERE spectral_centroid_hz IS NULL ORDER BY id"
+        params: tuple = ()
+        if limit is not None:
+            sql += " LIMIT ?"
+            params = (max(0, int(limit)),)
+        return [TrackRecord.from_row(r) for r in self.db.execute(sql, params).fetchall()]
+
     def count_tracks_with_energy(self) -> int:
         """Anzahl der Tracks, die schon eine Energie-Stufe haben."""
         return self.db.execute("SELECT COUNT(*) FROM tracks WHERE energy IS NOT NULL").fetchone()[0]
