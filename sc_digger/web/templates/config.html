@@ -4,6 +4,25 @@
 {% block nav_config %}active{% endblock %}
 
 {% block content %}
+<style>
+  /* Ja/Nein-Felder als Schalter; nicht angehakt = Feld fehlt im Formular = aus (app.py: _default_bools_false). */
+  input.switch {
+    appearance: none; -webkit-appearance: none;
+    position: relative; display: inline-block; vertical-align: middle;
+    width: 40px; height: 22px; margin: 0.25rem 0.6rem 0.25rem 0;
+    background: var(--bg-input); border: 1px solid var(--border); border-radius: 11px;
+    cursor: pointer; transition: background-color 120ms ease, border-color 120ms ease;
+  }
+  input.switch::before {
+    content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px;
+    border-radius: 50%; background: var(--text-dim); transition: transform 120ms ease, background-color 120ms ease;
+  }
+  input.switch:checked { background: var(--accent-primary-bg); border-color: var(--accent-primary); }
+  input.switch:checked::before { transform: translateX(18px); background: var(--accent-primary); }
+  input.switch:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; }
+  input.switch::after { content: "Aus"; position: absolute; left: 48px; top: 2px; font-size: 0.85rem; color: var(--text-dim); }
+  input.switch:checked::after { content: "An"; color: var(--accent-primary); }
+</style>
 <div class="card">
   <h1>sc-digger Konfiguration</h1>
   <p class="help" style="margin-bottom: 0;">Änderungen werden nur in die lokale Override-Datei geschrieben und gelten ab dem
@@ -52,16 +71,13 @@ nächsten Lauf. Der laufende Telegram-Bot liest die Datei erst nach einem Neusta
         {% endif %}
       </div>
       <span class="help">{{ field.help }}</span>
-      {% if field.kind in ("bool", "choice") %}
+      {% if field.kind == "bool" %}
+      <input type="checkbox" class="switch" role="switch" id="f-{{ field.path }}" name="{{ field.path }}" value="true"{% if values[field.path] == "true" %} checked{% endif %}>
+      {% elif field.kind == "choice" %}
       <select id="f-{{ field.path }}" name="{{ field.path }}">
-        {% if field.kind == "bool" %}
-        <option value="true" {% if values[field.path] == "true" %}selected{% endif %}>true</option>
-        <option value="false" {% if values[field.path] == "false" %}selected{% endif %}>false</option>
-        {% else %}
         {% for choice in field.choices %}
         <option value="{{ choice }}" {% if values[field.path] == choice %}selected{% endif %}>{{ choice }}</option>
         {% endfor %}
-        {% endif %}
       </select>
       {% elif field.kind == "list" %}
       <textarea id="f-{{ field.path }}" name="{{ field.path }}" rows="3">{{ values[field.path] }}</textarea>
