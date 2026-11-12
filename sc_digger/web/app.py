@@ -40,6 +40,7 @@ from fastapi.responses import (
     Response,
 )
 from starlette.concurrency import run_in_threadpool
+from starlette.routing import request_response
 
 from .. import rekordbox
 from ..db import FEEDBACK_VALUES, JobType, TrackDB
@@ -116,6 +117,26 @@ _config_enabled: ContextVar[bool] = ContextVar("sc_digger_config_enabled", defau
 _env.globals["config_enabled"] = lambda: _config_enabled.get()
 
 log = logging.getLogger(__name__)
+
+
+def _extract_table_region(html: str) -> str:
+    """Extrahiert den Ergebnisbereich <div id="table-region">...</div> (Issue #554)."""
+    idx = html.find('id="table-region"')
+    if idx == -1:
+        return html
+    start = html.rfind("<div", 0, idx)
+    if start == -1:
+        return html
+    depth = 0
+    tag_re = re.compile(r"<\s*(/)?\s*div\b[^>]*>", re.I)
+    for m in tag_re.finditer(html, start):
+        if m.group(1):
+            depth -= 1
+            if depth == 0:
+                return html[start : m.end()]
+        else:
+            depth += 1
+    return html[start:]
 
 
 def render_set_xml(
@@ -543,6 +564,21 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
 
     tracks_routes.register(app)
 
+    # Teilantworten fuer Tracks (Issue #554): Liefert nur den Bereich #table-region.
+    for _r in app.router.routes:
+        if getattr(_r, "name", None) == "tracks_page":
+            _orig_tracks_page = _r.endpoint
+
+            def tracks_page(request: Request, _orig=_orig_tracks_page):
+                resp = _orig(request)
+                if request.headers.get("x-sc-digger-partial") == "1":
+                    body_str = resp.body.decode("utf-8") if isinstance(resp.body, bytes) else str(resp.body)
+                    return HTMLResponse(_extract_table_region(body_str), status_code=resp.status_code)
+                return resp
+
+            _r.endpoint = tracks_page
+            _r.app = request_response(tracks_page)
+
     @app.get("/mix", response_class=HTMLResponse)
     def mix_page(request: Request):
         # Harmonic Mix Finder (Issue #231): dieselbe Auswahl wie der Telegram-Befehl /mix,
@@ -842,7 +878,7 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
 
         total_pages = max(1, (result.total + page_size - 1) // page_size)
         template = _env.get_template("digest.html")
-        return HTMLResponse(template.render(
+        content = template.render(
             items=result.items,
             total=result.total,
             page_size=page_size,
@@ -854,7 +890,10 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
             sort_url=sort_url,
             prev_url=page_url(max(0, offset - page_size)) if offset > 0 else None,
             next_url=page_url(offset + page_size) if offset + page_size < result.total else None,
-        ))
+        )
+        if request.headers.get("x-sc-digger-partial") == "1":
+            return HTMLResponse(_extract_table_region(content))
+        return HTMLResponse(content)
 
     # Kaufempfehlungen aus store_items (Issue #338): dieselbe rein lesende Abfrage für
     # JSON-API und Seite, Bewertungen laufen über das bestehende POST /api/feedback.

@@ -195,6 +195,7 @@
   </form>
 </div>
 
+<div id="table-region">
 <div class="card">
   <div class="card-header">
     <h2 class="card-title" style="margin: 0;">Vorschläge</h2>
@@ -217,28 +218,28 @@
     <thead>
       <tr>
         <th data-column="date" aria-sort="{% if current_sort == 'date' %}{{ 'ascending' if current_dir == 'asc' else 'descending' }}{% else %}none{% endif %}">
-          <a href="{{ sort_url('date') }}">Datum{% if current_sort == 'date' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
+          <a href="{{ sort_url('date') or '?sort=date' }}">Datum{% if current_sort == 'date' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
         </th>
         <th data-column="artist" aria-sort="{% if current_sort == 'artist' %}{{ 'ascending' if current_dir == 'asc' else 'descending' }}{% else %}none{% endif %}">
-          <a href="{{ sort_url('artist') }}">Artist{% if current_sort == 'artist' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
+          <a href="{{ sort_url('artist') or '?sort=artist' }}">Artist{% if current_sort == 'artist' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
         </th>
         <th data-column="title" aria-sort="{% if current_sort == 'title' %}{{ 'ascending' if current_dir == 'asc' else 'descending' }}{% else %}none{% endif %}">
-          <a href="{{ sort_url('title') }}">Titel{% if current_sort == 'title' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
+          <a href="{{ sort_url('title') or '?sort=title' }}">Titel{% if current_sort == 'title' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
         </th>
         <th data-column="download_kind" aria-sort="{% if current_sort == 'download_kind' %}{{ 'ascending' if current_dir == 'asc' else 'descending' }}{% else %}none{% endif %}">
-          <a href="{{ sort_url('download_kind') }}">Download-Art{% if current_sort == 'download_kind' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
+          <a href="{{ sort_url('download_kind') or '?sort=download_kind' }}">Download-Art{% if current_sort == 'download_kind' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
         </th>
         <th data-column="status" aria-sort="{% if current_sort == 'status' %}{{ 'ascending' if current_dir == 'asc' else 'descending' }}{% else %}none{% endif %}">
-          <a href="{{ sort_url('status') }}">Status{% if current_sort == 'status' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
+          <a href="{{ sort_url('status') or '?sort=status' }}">Status{% if current_sort == 'status' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
         </th>
         <th data-column="feedback" aria-sort="{% if current_sort == 'feedback' %}{{ 'ascending' if current_dir == 'asc' else 'descending' }}{% else %}none{% endif %}">
-          <a href="{{ sort_url('feedback') }}">Feedback{% if current_sort == 'feedback' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
+          <a href="{{ sort_url('feedback') or '?sort=feedback' }}">Feedback{% if current_sort == 'feedback' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
         </th>
         <th aria-sort="{% if current_sort == 'plays' %}{{ 'ascending' if current_dir == 'asc' else 'descending' }}{% else %}none{% endif %}">
-          <a href="{{ sort_url('plays') }}">Plays{% if current_sort == 'plays' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
+          <a href="{{ sort_url('plays') or '?sort=plays' }}">Plays{% if current_sort == 'plays' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
         </th>
         <th aria-sort="{% if current_sort == 'likes' %}{{ 'ascending' if current_dir == 'asc' else 'descending' }}{% else %}none{% endif %}">
-          <a href="{{ sort_url('likes') }}">Likes{% if current_sort == 'likes' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
+          <a href="{{ sort_url('likes') or '?sort=likes' }}">Likes{% if current_sort == 'likes' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
         </th>
         <th>Links</th>
       </tr>
@@ -330,10 +331,16 @@
   </table>
   </div>
 
-  {% if total > 0 %}
   <div class="pager">
     <div class="meta">
-      Seite {{ page }} von {{ total_pages }} ({{ total }} Vorschläge gesamt)
+      Seite {{ page }} von {{ total_pages }} ({{ total }} Vorschläge gesamt) &middot;
+      <label for="p-limit-digest">Zeilen:</label>
+      <select id="p-limit-digest" name="limit" data-limit-select>
+        <option value="25" {% if page_size == 25 %}selected{% endif %}>25</option>
+        <option value="50" {% if page_size == 50 %}selected{% endif %}>50</option>
+        <option value="100" {% if page_size == 100 %}selected{% endif %}>100</option>
+        <option value="200" {% if page_size == 200 %}selected{% endif %}>200</option>
+      </select> pro Seite
     </div>
     <div class="pager-buttons">
       <a href="{{ prev_url or '#' }}" class="btn-page {% if not prev_url %}disabled{% endif %}">
@@ -344,7 +351,7 @@
       </a>
     </div>
   </div>
-  {% endif %}
+</div>
 </div>
 <script>
   // Bewertung ohne Seiten-Reload an POST /api/feedback (Issue #229). Bis die Antwort da ist,
@@ -465,10 +472,105 @@
     }
   }
 
+  async function fetchTableRegion(url, push = true) {
+    try {
+      const resp = await fetch(url, {
+        headers: { 'X-Sc-Digger-Partial': '1' }
+      });
+      if (!resp.ok) {
+        window.location.href = url;
+        return;
+      }
+      const html = await resp.text();
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(html, 'text/html');
+      const newRegion = doc.getElementById('table-region');
+      const curRegion = document.getElementById('table-region');
+      if (newRegion && curRegion) {
+        curRegion.replaceWith(newRegion);
+      } else if (curRegion) {
+        curRegion.outerHTML = html;
+      }
+      if (push) {
+        history.pushState(null, '', url);
+      }
+      if (typeof initColumnToggle === 'function') {
+        initColumnToggle();
+      }
+    } catch (err) {
+      window.location.href = url;
+    }
+  }
+
+  function initPartialNavigation() {
+    const form = document.querySelector('form[action="/digest"]') || document.querySelector('form.filter-form');
+    if (form) {
+      form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const action = form.getAttribute('action') || window.location.pathname;
+        const formData = new FormData(form);
+        const params = new URLSearchParams();
+        for (const [k, v] of formData.entries()) {
+          if (v !== '') {
+            params.append(k, v);
+          }
+        }
+        const qs = params.toString();
+        const url = action + (qs ? '?' + qs : '');
+        fetchTableRegion(url, true);
+      });
+    }
+
+    document.addEventListener('click', (e) => {
+      const link = e.target.closest('a');
+      if (!link) return;
+      if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      if (link.target === '_blank') return;
+      const region = document.getElementById('table-region');
+      if (!region || !region.contains(link)) return;
+
+      const isSort = link.closest('th') !== null || (link.search && link.search.includes('sort='));
+      const isPager = link.closest('.pager') !== null || link.classList.contains('btn-page') || link.classList.contains('nav-tab');
+      if (isSort || isPager) {
+        const href = link.getAttribute('href');
+        if (!href || href === '#' || href.startsWith('javascript:')) return;
+        e.preventDefault();
+        fetchTableRegion(link.href, true);
+      }
+    });
+
+    document.addEventListener('change', (e) => {
+      if (e.target && e.target.name === 'limit') {
+        const val = e.target.value;
+        const form = document.querySelector('form[action="/digest"]') || document.querySelector('form.filter-form');
+        const formLimit = form ? form.querySelector('select[name="limit"]') : null;
+        if (formLimit && formLimit !== e.target) {
+          formLimit.value = val;
+        }
+        if (form) {
+          form.requestSubmit ? form.requestSubmit() : form.submit();
+        } else {
+          const url = new URL(window.location.href);
+          url.searchParams.set('limit', val);
+          url.searchParams.delete('offset');
+          fetchTableRegion(url.toString(), true);
+        }
+      }
+    });
+
+    window.addEventListener('popstate', () => {
+      fetchTableRegion(window.location.href, false);
+    });
+  }
+
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initColumnToggle);
+    document.addEventListener('DOMContentLoaded', () => {
+      initColumnToggle();
+      initPartialNavigation();
+    });
   } else {
     initColumnToggle();
+    initPartialNavigation();
   }
 </script>
 {% endblock %}
