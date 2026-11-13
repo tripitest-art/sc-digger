@@ -18,13 +18,17 @@ from __future__ import annotations
 
 import json
 import logging
+import re
+import unicodedata
 import math
+import shutil
 import sqlite3
 import xml.etree.ElementTree as ET
 from contextlib import closing
-from dataclasses import asdict
+from contextvars import ContextVar
+from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 from urllib.parse import urlencode
 
 from fastapi import FastAPI, Request
@@ -36,6 +40,7 @@ from fastapi.responses import (
     Response,
 )
 from starlette.concurrency import run_in_threadpool
+from starlette.routing import request_response
 
 from .. import rekordbox
 from ..db import FEEDBACK_VALUES, JobType, TrackDB
@@ -106,7 +111,32 @@ from .routes import tracks as tracks_routes
 from .routes.tracks import FILTER_LABELS, active_filter_chips, match_url
 from .status import change_badge, collect_status
 
+# Ob der Konfigeditor in der aktuellen Anfrage verfuegbar ist (die Umgebung _env ist modulweit,
+# die Apps sind es nicht); base.html zeigt das Zahnrad nur dann, sonst laege es auf einem 404.
+_config_enabled: ContextVar[bool] = ContextVar("sc_digger_config_enabled", default=False)
+_env.globals["config_enabled"] = lambda: _config_enabled.get()
+
 log = logging.getLogger(__name__)
+
+
+def _extract_table_region(html: str) -> str:
+    """Extrahiert den Ergebnisbereich <div id="table-region">...</div> (Issue #554)."""
+    idx = html.find('id="table-region"')
+    if idx == -1:
+        return html
+    start = html.rfind("<div", 0, idx)
+    if start == -1:
+        return html
+    depth = 0
+    tag_re = re.compile(r"<\s*(/)?\s*div\b[^>]*>", re.I)
+    for m in tag_re.finditer(html, start):
+        if m.group(1):
+            depth -= 1
+            if depth == 0:
+                return html[start : m.end()]
+        else:
+            depth += 1
+    return html[start:]
 
 
 def render_set_xml(
@@ -361,7 +391,8 @@ def sync_rekordbox_xml(cfg: Config) -> tuple[int, dict]:
 def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = False,
                base_path: Path | None = None, local_path: Path | None = None,
                login_limit: FailureTracker | None = None,
-               trust_proxy: bool = False) -> FastAPI:
+               trust_proxy: bool = False,
+               disk_usage: Callable[[str], Any] = shutil.disk_usage) -> FastAPI:
     """Erzeugt die Status-App.
 
     password leer/None und allow_anonymous False: ValueError (nie versehentlich offen starten).
@@ -381,6 +412,12 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
     app.state.password = password
     app.state.allow_anonymous = allow_anonymous
     app.state.login_limit = login_limit
+    app.state.disk_usage = disk_usage
+
+    @app.middleware("http")
+    async def mark_config_enabled(request: Request, call_next):
+        _config_enabled.set(editor_available)
+        return await call_next(request)
 
     @app.middleware("http")
     async def require_login(request: Request, call_next):
@@ -413,7 +450,7 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
     def index(request: Request):
         snap = collect_status(app.state.cfg)
         overview = get_collection_overview(app.state.cfg["state"]["track_db_path"])
-        ops = collect_ops(app.state.cfg)
+        ops = collect_ops(app.state.cfg, usage=app.state.disk_usage)
         template = _env.get_template("status.html")
         return HTMLResponse(template.render(
             snap=snap, overview=overview, editor_available=editor_available, ops=ops
@@ -527,6 +564,21 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
 
     tracks_routes.register(app)
 
+    # Teilantworten fuer Tracks (Issue #554): Liefert nur den Bereich #table-region.
+    for _r in app.router.routes:
+        if getattr(_r, "name", None) == "tracks_page":
+            _orig_tracks_page = _r.endpoint
+
+            def tracks_page(request: Request, _orig=_orig_tracks_page):
+                resp = _orig(request)
+                if request.headers.get("x-sc-digger-partial") == "1":
+                    body_str = resp.body.decode("utf-8") if isinstance(resp.body, bytes) else str(resp.body)
+                    return HTMLResponse(_extract_table_region(body_str), status_code=resp.status_code)
+                return resp
+
+            _r.endpoint = tracks_page
+            _r.app = request_response(tracks_page)
+
     @app.get("/mix", response_class=HTMLResponse)
     def mix_page(request: Request):
         # Harmonic Mix Finder (Issue #231): dieselbe Auswahl wie der Telegram-Befehl /mix,
@@ -536,14 +588,20 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
         key = (params.get("key") or "").strip()
         bpm_raw = (params.get("bpm") or "").strip()
         tol_raw = (params.get("tol") or "").strip()
+        cmin_raw = (params.get("cmin") or "").strip()
+        cmax_raw = (params.get("cmax") or "").strip()
         bpm = _query_float(bpm_raw)
         tolerance = _query_float(tol_raw)
+        cmin = _query_float(cmin_raw)
+        cmax = _query_float(cmax_raw)
         candidates: list = []
         error: str | None = None
         searched = bool(key)
         if searched:
             if bpm is None:
                 error = "Bitte eine Ziel-BPM angeben."
+            elif (cmin_raw and cmin is None) or (cmax_raw and cmax is None):
+                error = "Helligkeit bitte als Zahl in Hz angeben."
             else:
                 if tolerance is None or tolerance <= 0:
                     tolerance = 3.0
@@ -552,6 +610,7 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
                         candidates = find_mix_candidates(
                             _ReadOnlyTrackDB(db), key, bpm,
                             bpm_tolerance=tolerance, limit=30,
+                            centroid_min=cmin, centroid_max=cmax,
                         )
                 except ValueError as exc:
                     error = str(exc)
@@ -559,7 +618,7 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
                     error = "Track-Datenbank nicht lesbar."
         template = _env.get_template("mix.html")
         return HTMLResponse(template.render(
-            key=key, bpm=bpm_raw, tol=tol_raw,
+            key=key, bpm=bpm_raw, tol=tol_raw, cmin=cmin_raw, cmax=cmax_raw,
             candidates=candidates, error=error, searched=searched,
         ))
 
@@ -819,7 +878,7 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
 
         total_pages = max(1, (result.total + page_size - 1) // page_size)
         template = _env.get_template("digest.html")
-        return HTMLResponse(template.render(
+        content = template.render(
             items=result.items,
             total=result.total,
             page_size=page_size,
@@ -831,7 +890,10 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
             sort_url=sort_url,
             prev_url=page_url(max(0, offset - page_size)) if offset > 0 else None,
             next_url=page_url(offset + page_size) if offset + page_size < result.total else None,
-        ))
+        )
+        if request.headers.get("x-sc-digger-partial") == "1":
+            return HTMLResponse(_extract_table_region(content))
+        return HTMLResponse(content)
 
     # Kaufempfehlungen aus store_items (Issue #338): dieselbe rein lesende Abfrage für
     # JSON-API und Seite, Bewertungen laufen über das bestehende POST /api/feedback.
@@ -1182,62 +1244,80 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
                 values[field.path] = format_form_value(field, get_path(merged, field.path))
         return values
 
-    def _render_config(base: dict, local: dict, problems: list, form: dict[str, str] | None = None,
-                       saved: bool = False, status_code: int = 200) -> HTMLResponse:
+    def _render_config(section: ConfigSection, base: dict, local: dict, problems: list,
+                       form: dict[str, str] | None = None, saved: bool = False,
+                       status_code: int = 200) -> HTMLResponse:
         values = _form_values(base, local, form)
         defaults = {f.path: format_form_value(f, get_path(base, f.path))
-                    for f in FIELDS if f.editable}
-        local_paths = {f.path for f in FIELDS
-                       if f.editable and get_path(local, f.path, _MISSING) is not _MISSING}
-        groups: list[tuple[str, list]] = []
-        for field in FIELDS:
-            if not field.editable:
-                continue
-            section = _section_title(field.path)
-            if not groups or groups[-1][0] != section:
-                groups.append((section, []))
-            groups[-1][1].append(field)
+                    for f in section.fields}
+        local_paths = {f.path for f in section.fields
+                       if get_path(local, f.path, _MISSING) is not _MISSING}
         template = _env.get_template("config.html")
         return HTMLResponse(template.render(
-            groups=groups, values=values, defaults=defaults, local_paths=local_paths,
-            problems=problems, saved=saved, section_descriptions=SECTION_DESCRIPTIONS,
+            sections=config_sections(), section=section, values=values, defaults=defaults,
+            local_paths=local_paths, problems=problems, saved=saved,
+            section_description=SECTION_DESCRIPTIONS.get(section.title),
             save_action="/config/save", preview_action="/config/preview",
-            reset_action="/config/reset",
+            reset_action="/config/reset", section_field=SECTION_FIELD,
         ), status_code=status_code)
 
-    @app.get("/config", response_class=HTMLResponse)
-    def config_page(request: Request):
+    def _section_of_form(form: dict[str, str]) -> ConfigSection | None:
+        """Abschnitt aus dem Formularfeld `_section` (nimmt es aus dem Formular heraus)."""
+        slug = form.pop(SECTION_FIELD, "")
+        return config_section(slug) if slug else None
+
+    @app.get("/config")
+    def config_index(request: Request):
+        # Das Gespeichert-Banner übersteht die Umleitung über den Query-String.
+        query = "?" + request.url.query if request.url.query else ""
+        return RedirectResponse(f"/config/{config_sections()[0].slug}{query}", status_code=302)
+
+    @app.get("/config/{section_id}", response_class=HTMLResponse)
+    def config_page(section_id: str, request: Request):
+        section = config_section(section_id)
+        if section is None:
+            return PlainTextResponse("Unbekannter Abschnitt", status_code=404)
         base, local = _read_files()
         saved = request.query_params.get("saved") == "1"
-        return _render_config(base, local, problems=[], saved=saved)
+        return _render_config(section, base, local, problems=[], saved=saved)
 
     @app.post("/config/preview")
     async def config_preview(request: Request):
         if not _same_origin(request):
             return PlainTextResponse("Ungültige Herkunft", status_code=403)
         form = {key: value for key, value in (await request.form()).items()}
+        section = _section_of_form(form)
+        if section is not None:
+            form = _default_bools_false(section, _only_section_fields(form, section))
         base, local = _read_files()
         new_local, problems = apply_form(base, local, form)
         if any(problem.level == "error" for problem in problems):
-            return _render_config(base, local, problems=problems, form=form, status_code=422)
+            return _render_config(section or config_sections()[0], base, local,
+                                  problems=problems, form=form, status_code=422)
         changes = diff_config(deep_merge(base, local), deep_merge(base, new_local))
         warnings = [problem for problem in problems if problem.level == "warning"]
         template = _env.get_template("config_preview.html")
-        return HTMLResponse(template.render(changes=changes, warnings=warnings, config_action="/config"))
+        back = f"/config/{section.slug}" if section else "/config"
+        return HTMLResponse(template.render(changes=changes, warnings=warnings, config_action=back))
 
     @app.post("/config/save")
     async def config_save(request: Request):
         if not _same_origin(request):
             return PlainTextResponse("Ungültige Herkunft", status_code=403)
         form = {key: value for key, value in (await request.form()).items()}
+        section = _section_of_form(form)
+        if section is not None:
+            form = _default_bools_false(section, _only_section_fields(form, section))
         base, local = _read_files()
         new_local, problems = apply_form(base, local, form)
         if any(problem.level == "error" for problem in problems):
-            return _render_config(base, local, problems=problems, form=form, status_code=422)
+            return _render_config(section or config_sections()[0], base, local,
+                                  problems=problems, form=form, status_code=422)
         if new_local != local:
             save_local(_local_path, new_local)
             app.state.cfg = Config.load(_base_path, local=_local_path)
-        return RedirectResponse("/config?saved=1", status_code=303)
+        target = f"/config/{section.slug}" if section else "/config"
+        return RedirectResponse(f"{target}?saved=1", status_code=303)
 
     @app.post("/config/reset")
     async def config_reset(request: Request):
@@ -1248,10 +1328,14 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
         base, local = _read_files()
         if field is None or not field.editable:
             problem = Problem("error", path, "Dieser Schlüssel ist nicht editierbar.")
-            return _render_config(base, local, problems=[problem], status_code=422)
+            return _render_config(config_sections()[0], base, local, problems=[problem],
+                                  status_code=422)
         save_local(_local_path, remove_key(local, path))
         app.state.cfg = Config.load(_base_path, local=_local_path)
-        return RedirectResponse("/config?saved=1", status_code=303)
+        # Der Abschnitt folgt aus dem Feld selbst, nicht aus dem Formular.
+        section = config_section_of_field(path)
+        target = f"/config/{section.slug}" if section else "/config"
+        return RedirectResponse(f"{target}?saved=1", status_code=303)
 
     return app
 
@@ -1267,3 +1351,74 @@ def _section_title(path: str) -> str:
         if candidate in SECTION_TITLES:
             return SECTION_TITLES[candidate]
     return parts[0] if len(parts) > 1 else "Allgemein"
+
+
+SECTION_FIELD = "_section"
+
+
+@dataclass(frozen=True)
+class ConfigSection:
+    """Ein Abschnitt des Konfigeditors: stabiler URL-Name, Überschrift, editierbare Felder."""
+    slug: str
+    title: str
+    fields: tuple
+
+
+_TRANSLIT = {"ä": "ae", "ö": "oe", "ü": "ue", "ß": "ss"}
+
+
+def slugify_section(title: str) -> str:
+    """URL-Name eines Abschnitts: klein, nur a-z0-9 und Bindestrich, Umlaute umgeschrieben."""
+    text = "".join(_TRANSLIT.get(ch, ch) for ch in title.lower())
+    text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("ascii")
+    return re.sub(r"[^a-z0-9]+", "-", text).strip("-")
+
+
+_SECTIONS_CACHE: list[ConfigSection] = []
+
+
+def config_sections() -> list[ConfigSection]:
+    """Alle Abschnitte in Schema-Reihenfolge; gleiche Überschriften werden zusammengefasst.
+
+    Das Schema ist zur Laufzeit konstant, deshalb einmal berechnet. Kollidieren zwei
+    Überschriften auf denselben URL-Namen, ist das ein Programmierfehler und bricht laut ab,
+    statt dass ein Abschnitt unerreichbar würde.
+    """
+    if not _SECTIONS_CACHE:
+        grouped: dict[str, list] = {}
+        for field in FIELDS:
+            if field.editable:
+                grouped.setdefault(_section_title(field.path), []).append(field)
+        sections = [ConfigSection(slugify_section(title), title, tuple(fields))
+                    for title, fields in grouped.items()]
+        slugs = [section.slug for section in sections]
+        if len(set(slugs)) != len(slugs) or not all(slugs):
+            raise ValueError(f"URL-Namen der Konfig-Abschnitte nicht eindeutig: {slugs}")
+        _SECTIONS_CACHE.extend(sections)
+    return _SECTIONS_CACHE
+
+
+def config_section(slug: str) -> ConfigSection | None:
+    return next((s for s in config_sections() if s.slug == slug), None)
+
+
+def config_section_of_field(path: str) -> ConfigSection | None:
+    return next((s for s in config_sections() if any(f.path == path for f in s.fields)), None)
+
+
+def _only_section_fields(form: dict[str, str], section: ConfigSection) -> dict[str, str]:
+    """Verwirft Formularwerte fremder Abschnitte, damit ein Abschnitts-Save nur den eigenen ändert."""
+    allowed = {f.path for f in section.fields}
+    return {key: value for key, value in form.items() if key in allowed}
+
+def _default_bools_false(section: ConfigSection, form: dict[str, str]) -> dict[str, str]:
+    """Ergänzt fehlende Boolean-Felder des Abschnitts mit „false“.
+
+    Eine nicht angehakte Checkbox wird vom Browser gar nicht gesendet; ein verstecktes
+    Feld gleichen Namens käme wegen der Dict-Umwandlung des Formulars nicht an. Nur Felder
+    des abgeschickten Abschnitts, damit andere Abschnitte nicht auf „false“ fallen."""
+    ergaenzt = dict(form)
+    for field in section.fields:
+        if field.kind == "bool" and field.path not in ergaenzt:
+            ergaenzt[field.path] = "false"
+    return ergaenzt

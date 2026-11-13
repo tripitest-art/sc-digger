@@ -8,7 +8,16 @@ unter „Unreleased“ (Regeln: `AGENTS.md`, Abschnitt „Doku und Changelog“)
 ## Unreleased
 
 ### Geändert
+- `create_app` nimmt optionalen Parameter `disk_usage` entgegen und reicht ihn an die Betriebskarte (`collect_ops`) durch; Web-Ops-Tests messen keinen echten Datenträger mehr (#547).
+- Konfigeditor: Ja/Nein-Felder erscheinen als Schalter statt als Auswahlliste; ein nicht angehakter Schalter speichert „aus“, und nur Felder des gerade gespeicherten Abschnitts werden dabei berücksichtigt (#543).
+- Changelog-Fragmente werden per Sammel-PR mit Label `changelog-zusammenfuehren` zusammengeführt statt per Direkt-Push auf `main` (den `main-schutz` verbietet); der Workflow `changelog` prüft nur noch PRs und schreibt nichts mehr ins Repository. (#539)
+- Changelog als Fragmente: Jeder PR legt `changelog.d/<PR-Nummer>.md` an, statt `CHANGELOG.md` zu ändern; der Workflow `changelog` führt die Fragmente nach dem Merge unter „Unreleased“ zusammen (`scripts/changelog.py`) und prüft, dass jeder PR ein Fragment hat (Label `kein-changelog` als Ausnahme). Das beendet die Merge-Konflikte an der gemeinsamen Zeile. (#536)
+- ROADMAP: Status der Phase 5 in der Übersicht von „geplant“ auf „5.1–5.4 umgesetzt, Rest Vision“ korrigiert (#528).
+- Aufgeräumt: ungenutzte `TrackDB.count_tracks` sowie `dj_export.write_m3u8`, `export_report` und `load_entries` entfernt; der Export läuft unverändert über `build_dj_set` (Issue #533).
+- Energie verdrahtet: `analyze_track` liefert `energy` (1..5), `spectral_centroid_hz` und `rms`; die Stufe wird beim Erfassen in der Track-DB und im Datei-Tag gespeichert und im Track-Explorer als Spalte „Energie“ angezeigt; kurze Dateien (< 30 s) werden für die Features ab Anfang dekodiert (#530).
+- Web-Dashboard: Der Digest-Explorer lässt sich per Spaltenklick nach Plays und Likes sortieren (jüngster Snapshot, ohne Snapshot 0) (#529).
 - Web-Dashboard: Tracks-, Audio- und Duplikat-Routen (`/tracks`, `/api/tracks`, `/api/tracks/{track_id}/similar`, `/api/audio/{track_id}`, `/duplicates`, `/api/duplicates`, `/api/inbox-duplicates`, `POST /api/inbox-duplicates/move`) aus `sc_digger/web/app.py` in `sc_digger/web/routes/tracks.py` sowie gemeinsame Web-Helfer (`_ReadOnlyTrackDB`, `_ScanLinkError`, Auth, Rendering) nach `sc_digger/web/common.py` ausgelagert (#524).
+- Web-Dashboard: Der Konfigeditor ist in eine Seite je Abschnitt aufgeteilt (`/config/<abschnitt>`, `/config` leitet auf den ersten um, Abschnittsnavigation mit hervorgehobenem aktiven Eintrag); Speichern, Vorschau und Zurücksetzen bleiben bei ihren Endpunkten und ändern nur den eigenen Abschnitt. Der Zugang ist jetzt ein Zahnrad rechts im Header auf allen Seiten statt eines Eintrags im „Mehr“-Menü (#527).
 - Web-Dashboard: Statusseite listet alle aktiven Health-Alarme (SoundCloud-Login, Speicherplatz, API-Felder, Rekordbox-Rückkanal, Verfügbarkeits-Wächter) mit Fehlertext und Zeitpunkt, nicht nur den von `discover` (#503).
 - Web-Dashboard: Tracks- und Digest-Tabelle schalten unter 900 px per data-label in eine responsive Kartenansicht um (#517).
 - Web-Dashboard: Upload (/intake) als eigenen Menüpunkt in die Hauptnavigation vor Mix und Kaufliste verlegt (aus dem Ausklappmenü „Mehr“ heraus) (#515).
@@ -16,6 +25,8 @@ unter „Unreleased“ (Regeln: `AGENTS.md`, Abschnitt „Doku und Changelog“)
 - Merge-Gate schließt die Issues selbst: Nach einem Squash-Merge über den Workflow `merge-nach-freigabe` schließt `.github/scripts/merge_nach_freigabe.py` die Issues aus `Closes`/`Fixes`/`Resolves #N` im PR-Text; GitHub vollzog das bei PRs der Worker-App nicht (Issues #488 und #486 blieben nach dem Merge offen). Ein Fehler beim Schließen macht den vollzogenen Merge nicht rückgängig und läuft nur ins Log.
 
 ### Hinzugefügt
+- Helligkeit (spektraler Schwerpunkt in Hz) wird je Track gespeichert (Migration 19, `tracks.spectral_centroid_hz`), beim Erfassen und im `energy-backfill` mitgeschrieben und im Mix-Finder (`/mix`, Felder „Helligkeit von/bis“) als Filter angeboten (#542).
+- Modus `energy-backfill`: trägt die Energie-Stufe (1..5) für bestehende Tracks ohne Wert in der Track-DB nach, mit `--dry-run` und `--limit N`; schreibt keine Datei-Tags (`backfill.backfill_energy`, `TrackDB.tracks_without_energy`) (#537).
 - Web-Dashboard: Inbox-Dubletten derselben SoundCloud-ID ansehen und überzählige Dateien nach _rejected/duplicate/ verschieben (/duplicates, GET /api/inbox-duplicates & POST /api/inbox-duplicates/move) (#522).
 - Web-Dashboard: Statusseite zeigt Speicherplatz-Wächter, tägliche Sicherung und API-Kanarienvogel in einer gemeinsamen Betriebskarte mit Statuswörtern und Badges (#520).
 - Web-Dashboard: Matcher-Korrektur per Button im Digest („Schon in Sammlung“, „Kein Duplikat“, „Zurücknehmen“) und schreibender REST-Endpunkt POST /api/match-override mit Origin-Prüfung (#519).

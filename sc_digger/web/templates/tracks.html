@@ -167,6 +167,52 @@
     border-radius: 4px;
     color: var(--text-muted);
   }
+  .spalten-wahl {
+    order: 2;
+    margin: 0.5rem 1rem;
+    padding: 0.5rem 0.75rem;
+    background-color: var(--bg-card-subtle);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 0.82rem;
+  }
+  .spalten-wahl summary {
+    cursor: pointer;
+    font-weight: 600;
+    color: var(--text-muted);
+  }
+  .spalten-wahl summary:hover {
+    color: var(--text-main);
+  }
+  .spalten-wahl-content {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+    margin-top: 0.5rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid var(--border);
+  }
+  .spalten-wahl-content label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    cursor: pointer;
+    color: var(--text-main);
+  }
+  [data-column][hidden] {
+    display: none !important;
+  }
+  table[data-hidden-columns*="artist"] [data-column="artist"],
+  table[data-hidden-columns*="title"] [data-column="title"],
+  table[data-hidden-columns*="format"] [data-column="format"],
+  table[data-hidden-columns*="bpm"] [data-column="bpm"],
+  table[data-hidden-columns*="key"] [data-column="key"],
+  table[data-hidden-columns*="quality"] [data-column="quality"],
+  table[data-hidden-columns*="status"] [data-column="status"],
+  table[data-hidden-columns*="source"] [data-column="source"] {
+    display: none;
+  }
 </style>
 {% endblock %}
 
@@ -305,6 +351,7 @@
   </form>
 </div>
 
+<div id="table-region">
 <div class="card card-tracks">
   <div class="card-header">
     <h2 class="card-title m-0">Treffer</h2>
@@ -314,36 +361,51 @@
     <span class="meta meta-sm">Tipp: Beim Vorhören öffnet sich unten das DJ-Deck (<span class="kbd">Space</span> Pause, <span class="kbd">&rarr;</span> +30s Drop-Check)</span>
   </div>
   <div id="similar-panel" hidden class="similar-panel"></div>
+  <details class="spalten-wahl">
+    <summary>Spalten auswählen</summary>
+    <div class="spalten-wahl-content">
+      <label><input type="checkbox" data-column="artist" checked> Artist</label>
+      <label><input type="checkbox" data-column="title" checked> Titel</label>
+      <label><input type="checkbox" data-column="format" checked> Format</label>
+      <label><input type="checkbox" data-column="bpm" checked> BPM</label>
+      <label><input type="checkbox" data-column="key" checked> Key</label>
+      <label><input type="checkbox" data-column="quality" checked> Qualität</label>
+      <label><input type="checkbox" data-column="status" checked> Status</label>
+      <label><input type="checkbox" data-column="source" checked> Quelle</label>
+      <button type="button" class="btn-page btn-xs" data-action="alle-spalten">Alle Spalten</button>
+    </div>
+  </details>
   <div class="table-scroll">
   <table>
     <thead>
       <tr>
-        <th class="sticky-col" aria-sort="{% if current_sort == 'artist' %}{{ 'ascending' if current_dir == 'asc' else 'descending' }}{% else %}none{% endif %}">
-          <a href="{{ sort_url('artist') }}">Artist{% if current_sort == 'artist' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
+        <th class="sticky-col" data-column="artist" aria-sort="{% if current_sort == 'artist' %}{{ 'ascending' if current_dir == 'asc' else 'descending' }}{% else %}none{% endif %}">
+          <a href="{{ sort_url('artist') or '?sort=artist' }}">Artist{% if current_sort == 'artist' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
         </th>
-        <th class="sticky-col" aria-sort="{% if current_sort == 'title' %}{{ 'ascending' if current_dir == 'asc' else 'descending' }}{% else %}none{% endif %}">
-          <a href="{{ sort_url('title') }}">Titel{% if current_sort == 'title' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
+        <th class="sticky-col" data-column="title" aria-sort="{% if current_sort == 'title' %}{{ 'ascending' if current_dir == 'asc' else 'descending' }}{% else %}none{% endif %}">
+          <a href="{{ sort_url('title') or '?sort=title' }}">Titel{% if current_sort == 'title' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
         </th>
-        <th>Format</th>
-        <th aria-sort="{% if current_sort == 'bpm' %}{{ 'ascending' if current_dir == 'asc' else 'descending' }}{% else %}none{% endif %}">
-          <a href="{{ sort_url('bpm') }}">BPM{% if current_sort == 'bpm' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
+        <th data-column="format">Format</th>
+        <th data-column="bpm" aria-sort="{% if current_sort == 'bpm' %}{{ 'ascending' if current_dir == 'asc' else 'descending' }}{% else %}none{% endif %}">
+          <a href="{{ sort_url('bpm') or '?sort=bpm' }}">BPM{% if current_sort == 'bpm' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
         </th>
-        <th aria-sort="{% if current_sort == 'key_camelot' %}{{ 'ascending' if current_dir == 'asc' else 'descending' }}{% else %}none{% endif %}">
-          <a href="{{ sort_url('key_camelot') }}">Key{% if current_sort == 'key_camelot' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
+        <th>Energie</th>
+        <th data-column="key" aria-sort="{% if current_sort == 'key_camelot' %}{{ 'ascending' if current_dir == 'asc' else 'descending' }}{% else %}none{% endif %}">
+          <a href="{{ sort_url('key_camelot') or '?sort=key_camelot' }}">Key{% if current_sort == 'key_camelot' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
         </th>
-        <th aria-sort="{% if current_sort == 'quality' %}{{ 'ascending' if current_dir == 'asc' else 'descending' }}{% else %}none{% endif %}">
-          <a href="{{ sort_url('quality') }}">Qualität{% if current_sort == 'quality' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
+        <th data-column="quality" aria-sort="{% if current_sort == 'quality' %}{{ 'ascending' if current_dir == 'asc' else 'descending' }}{% else %}none{% endif %}">
+          <a href="{{ sort_url('quality') or '?sort=quality' }}">Qualität{% if current_sort == 'quality' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
         </th>
-        <th aria-sort="{% if current_sort == 'status' %}{{ 'ascending' if current_dir == 'asc' else 'descending' }}{% else %}none{% endif %}">
-          <a href="{{ sort_url('status') }}">Status{% if current_sort == 'status' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
+        <th data-column="status" aria-sort="{% if current_sort == 'status' %}{{ 'ascending' if current_dir == 'asc' else 'descending' }}{% else %}none{% endif %}">
+          <a href="{{ sort_url('status') or '?sort=status' }}">Status{% if current_sort == 'status' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
         </th>
         <th aria-sort="{% if current_sort == 'taste' %}{{ 'ascending' if current_dir == 'asc' else 'descending' }}{% else %}none{% endif %}">
-          <a href="{{ sort_url('taste') }}">Taste{% if current_sort == 'taste' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
+          <a href="{{ sort_url('taste') or '?sort=taste' }}">Taste{% if current_sort == 'taste' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
         </th>
         <th>Anhören</th>
         <th>Übernahme</th>
         <th>Feedback</th>
-        <th>Quelle</th>
+        <th data-column="source">Quelle</th>
       </tr>
     </thead>
     <tbody>
@@ -354,8 +416,8 @@
           data-title="{{ track.title or '—' }}"
           data-bpm="{{ track.bpm if track.bpm is not none else '' }}"
           data-key="{{ track.key_camelot or '' }}">
-        <td class="sticky-col fw-600" data-label="Artist">{{ track.artist or "—" }}</td>
-        <td class="sticky-col" data-label="Titel">
+        <td class="sticky-col fw-600" data-label="Artist" data-column="artist">{{ track.artist or "—" }}</td>
+        <td class="sticky-col" data-label="Titel" data-column="title">
           <strong>{{ track.title or "—" }}</strong>
           <div class="mono meta-path">{{ track.path }}</div>
           {# Kompakte Kennzahlen-Zeile (Issue #258): SoundCloud-Engagement aus track_snapshots. #}
@@ -379,19 +441,22 @@
           </span>
           {% endif %}
         </td>
-        <td class="mono" data-label="Format">
+        <td class="mono" data-label="Format" data-column="format">
           {{ track.format or "?" }}
           {% if track.bitrate_kbps %}<div class="meta meta-xs">{{ track.bitrate_kbps | round(0) | int }} kbps</div>{% endif %}
         </td>
-        <td class="mono" data-label="BPM">
+        <td class="mono" data-label="BPM" data-column="bpm">
           {% if track.bpm is not none %}{{ track.bpm }}{% else %}—{% endif %}
         </td>
-        <td class="mono" data-label="Key">
+        <td class="mono" data-label="Energie">
+          {% if track.energy is not none %}{{ track.energy }}{% else %}—{% endif %}
+        </td>
+        <td class="mono" data-label="Key" data-column="key">
           {% if track.key_camelot %}
           <span class="camelot-pill" data-camelot="{{ track.key_camelot }}">{{ track.key_camelot }}</span>
           {% else %}—{% endif %}
         </td>
-        <td data-label="Qualität">
+        <td data-label="Qualität" data-column="quality">
           {% if track.quality_status == "ok" %}
           <span class="badge badge-ok">OK</span>
           {% elif track.quality_status == "clipped" %}
@@ -402,7 +467,7 @@
           <span class="badge badge-muted">{{ track.quality_status or "unbekannt" }}</span>
           {% endif %}
         </td>
-        <td data-label="Status">
+        <td data-label="Status" data-column="status">
           {% if track.status == "archive" %}
           <span class="badge badge-info">Sammlung</span>
           {% elif track.status == "inbox" %}
@@ -457,7 +522,7 @@
           <span class="meta">—</span>
           {% endif %}
         </td>
-        <td data-label="Quelle">
+        <td data-label="Quelle" data-column="source">
           {# Nur http/https verlinken: source_url stammt aus fremden Feeds. #}
           {% set source_href = track.source_url if track.source_url and (track.source_url.startswith("http://") or track.source_url.startswith("https://")) else "" %}
           {% set m_url = match_url(track.key_camelot, track.bpm) %}
@@ -474,7 +539,7 @@
       </tr>
       {% else %}
       <tr>
-        <td colspan="12" data-label="">
+        <td colspan="13" data-label="">
           {{ empty_state("Keine Treffer für diese Filter.", "/tracks") }}
         </td>
       </tr>
@@ -494,17 +559,20 @@
   <div class="pager">
     <span class="meta">
       Seite {{ page }} von {{ total_pages }} &middot; {{ total }} Treffer &middot;
-      {{ page_size }} pro Seite
+      <label for="p-limit-tracks">Zeilen:</label>
+      <select id="p-limit-tracks" name="limit" data-limit-select>
+        <option value="25" {% if page_size == 25 %}selected{% endif %}>25</option>
+        <option value="50" {% if page_size == 50 %}selected{% endif %}>50</option>
+        <option value="100" {% if page_size == 100 %}selected{% endif %}>100</option>
+        <option value="200" {% if page_size == 200 %}selected{% endif %}>200</option>
+      </select> pro Seite
     </span>
     <div class="pager-buttons">
-      {% if prev_url %}
-      <a class="nav-tab" href="{{ prev_url }}">&larr; Zurück</a>
-      {% endif %}
-      {% if next_url %}
-      <a class="nav-tab" href="{{ next_url }}">Weiter &rarr;</a>
-      {% endif %}
+      <a href="{{ prev_url or '#' }}" class="btn-page nav-tab {% if not prev_url %}disabled{% endif %}">&larr; Zurück</a>
+      <a href="{{ next_url or '#' }}" class="btn-page nav-tab {% if not next_url %}disabled{% endif %}">Weiter &rarr;</a>
     </div>
   </div>
+</div>
 </div>
 
 <!-- Sticky Bottom DJ Deck Bar -->
@@ -728,8 +796,156 @@
     players[nextIdx].scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 
+  function initColumnToggle() {
+    const storageKey = 'sc-digger.columns.tracks';
+    const container = document.querySelector('.card-tracks');
+    if (!container) return;
+    const table = container.querySelector('table');
+    const details = container.querySelector('.spalten-wahl');
+    if (!table || !details) return;
+
+    const checkboxes = Array.from(details.querySelectorAll('input[type="checkbox"][data-column]'));
+    const resetBtn = details.querySelector('[data-action="alle-spalten"]');
+
+    function apply() {
+      const hidden = checkboxes.filter((c) => !c.checked).map((c) => c.dataset.column);
+      if (hidden.length > 0) {
+        table.setAttribute('data-hidden-columns', hidden.join(','));
+      } else {
+        table.removeAttribute('data-hidden-columns');
+      }
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(hidden));
+      } catch (err) {}
+    }
+
+    try {
+      const raw = localStorage.getItem(storageKey);
+      if (raw) {
+        const hidden = JSON.parse(raw);
+        if (Array.isArray(hidden)) {
+          checkboxes.forEach((cb) => {
+            cb.checked = !hidden.includes(cb.dataset.column);
+          });
+        }
+      }
+    } catch (err) {}
+
+    const initialHidden = checkboxes.filter((c) => !c.checked).map((c) => c.dataset.column);
+    if (initialHidden.length > 0) {
+      table.setAttribute('data-hidden-columns', initialHidden.join(','));
+    }
+
+    checkboxes.forEach((cb) => {
+      cb.addEventListener('change', apply);
+    });
+
+    if (resetBtn) {
+      resetBtn.addEventListener('click', () => {
+        checkboxes.forEach((cb) => { cb.checked = true; });
+        apply();
+      });
+    }
+  }
+
+  async function fetchTableRegion(url, push = true) {
+    try {
+      const resp = await fetch(url, {
+        headers: { 'X-Sc-Digger-Partial': '1' }
+      });
+      if (!resp.ok) {
+        window.location.href = url;
+        return;
+      }
+      const html = await resp.text();
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(html, 'text/html');
+      const newRegion = doc.getElementById('table-region');
+      const curRegion = document.getElementById('table-region');
+      if (newRegion && curRegion) {
+        curRegion.replaceWith(newRegion);
+      } else if (curRegion) {
+        curRegion.outerHTML = html;
+      }
+      if (push) {
+        history.pushState(null, '', url);
+      }
+      if (typeof initColumnToggle === 'function') {
+        initColumnToggle();
+      }
+      if (typeof bindDeckPlayers === 'function') {
+        bindDeckPlayers();
+      }
+    } catch (err) {
+      window.location.href = url;
+    }
+  }
+
+  function initPartialNavigation() {
+    const form = document.querySelector('form[action="/tracks"]') || document.querySelector('form.filter-form');
+    if (form) {
+      form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const action = form.getAttribute('action') || window.location.pathname;
+        const formData = new FormData(form);
+        const params = new URLSearchParams();
+        for (const [k, v] of formData.entries()) {
+          if (v !== '') {
+            params.append(k, v);
+          }
+        }
+        const qs = params.toString();
+        const url = action + (qs ? '?' + qs : '');
+        fetchTableRegion(url, true);
+      });
+    }
+
+    document.addEventListener('click', (e) => {
+      const link = e.target.closest('a');
+      if (!link) return;
+      if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      if (link.target === '_blank') return;
+      const region = document.getElementById('table-region');
+      if (!region || !region.contains(link)) return;
+
+      const isSort = link.closest('th') !== null || (link.search && link.search.includes('sort='));
+      const isPager = link.closest('.pager') !== null || link.classList.contains('btn-page') || link.classList.contains('nav-tab');
+      if (isSort || isPager) {
+        const href = link.getAttribute('href');
+        if (!href || href === '#' || href.startsWith('javascript:')) return;
+        e.preventDefault();
+        fetchTableRegion(link.href, true);
+      }
+    });
+
+    document.addEventListener('change', (e) => {
+      if (e.target && e.target.name === 'limit') {
+        const val = e.target.value;
+        const form = document.querySelector('form[action="/tracks"]') || document.querySelector('form.filter-form');
+        const formLimit = form ? form.querySelector('select[name="limit"]') : null;
+        if (formLimit && formLimit !== e.target) {
+          formLimit.value = val;
+        }
+        if (form) {
+          form.requestSubmit ? form.requestSubmit() : form.submit();
+        } else {
+          const url = new URL(window.location.href);
+          url.searchParams.set('limit', val);
+          url.searchParams.delete('offset');
+          fetchTableRegion(url.toString(), true);
+        }
+      }
+    });
+
+    window.addEventListener('popstate', () => {
+      fetchTableRegion(window.location.href, false);
+    });
+  }
+
   document.addEventListener('DOMContentLoaded', () => {
+    initColumnToggle();
     bindDeckPlayers();
+    initPartialNavigation();
     document.addEventListener('keydown', (e) => {
       const tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : '';
       if (tag === 'input' || tag === 'textarea' || tag === 'select') { return; }

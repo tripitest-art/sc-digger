@@ -8,6 +8,7 @@
   python -m sc_digger.main audit [--path ...] [--report ...] # Library-Audit (read-only)
   python -m sc_digger.main scout [--dry-run]                 # Bandcamp-Feeds + Beatport-Charts in store_items
   python -m sc_digger.main embed-backfill [--all] [--limit N] # Embedding-Jobs für vorhandene Tracks einreihen
+  python -m sc_digger.main energy-backfill [--dry-run] [--limit N] [--force] # Energie-Stufe für Tracks nachtragen (nur DB)
   python -m sc_digger.main taste [--dry-run]                 # Taste-Score trainieren und speichern
 
 Alle Modi: --dry-run (nichts laden/senden), -v, --config, --no-telegram
@@ -43,6 +44,7 @@ from .health import Health
 from .intake import AUDIO_EXTS, find_ready_files, track_from_file
 from .models import Config, DownloadKind, Track
 from .organize import organize, write_tags
+from .style import calculate_energy
 from .phrase import quantize_to_phrase
 from .quality import convert_wav_to_flac
 from .redact import install_redacting_logging, redact
@@ -198,6 +200,8 @@ def finish_file(t: Track, path: Path, inbox: Path, cfg: Config) -> Path | None:
     bpm_confidence: float | None = None
     key_confidence: float | None = None
     key_margin: float | None = None
+    energy: int | None = None
+    centroid_hz: float | None = None
     if org.get("detect_bpm", True) or org.get("detect_key", True):
         try:
             analysis = analyze_track(path)
@@ -227,6 +231,13 @@ def finish_file(t: Track, path: Path, inbox: Path, cfg: Config) -> Path | None:
                 t.key_name = analysis["key_name"]
                 key_confidence = analysis.get("key_confidence")
                 key_margin = analysis.get("key_margin")
+            # Energie mit der aufgelösten BPM neu bewerten (analysis["energy"] kennt nur die Roh-BPM)
+            if analysis.get("spectral_centroid_hz") is not None:
+                centroid_hz = float(analysis["spectral_centroid_hz"])
+                energy = calculate_energy(
+                    t.bpm, spectral_centroid_hz=analysis["spectral_centroid_hz"],
+                    rms=analysis.get("rms"), subgenre=None,
+                )
         except Exception as e:
             t.notes.append(f"Audio-Analyse fehlgeschlagen: {e}")
 
@@ -250,7 +261,7 @@ def finish_file(t: Track, path: Path, inbox: Path, cfg: Config) -> Path | None:
                 genre=t.genre or org.get("default_genre", "Schranz"),
                 comment=comment.strip(" |"), url=t.url,
                 loudness=t.quality_report,
-                key_camelot=t.key_camelot, text_bpm=t.text_bpm,
+                key_camelot=t.key_camelot, text_bpm=t.text_bpm, energy=energy,
                 padding_kb=float(org.get("write_tags_padding_kb", 4)),
             )
         except Exception as e:
@@ -322,9 +333,14 @@ def finish_file(t: Track, path: Path, inbox: Path, cfg: Config) -> Path | None:
                 cutoff_hz=q_rep.get("cutoff_hz"),
                 quality_status=q_status,
                 breakdown_ratio=t.breakdown_ratio,
+                energy=energy,
             )
             with TrackDB(track_db_path) as db:
                 stored = db.upsert_track(rec)
+                if energy is not None and stored.id is not None:
+                    db.set_energy(stored.id, energy)
+                if centroid_hz is not None and stored.id is not None:
+                    db.set_spectral_centroid(stored.id, centroid_hz)
                 # Der GPU-Worker holt den Job per API und schreibt Cues zurück (Issue #349).
                 if (cfg.raw.get("cues") or {}).get("auto_queue", True):
                     enqueue_cue_job(db, stored)
@@ -1143,6 +1159,28 @@ def run_embed_backfill(
     return text
 
 
+def run_energy_backfill(
+    cfg: Config,
+    *,
+    dry_run: bool = False,
+    limit: int | None = None,
+    force: bool = False,
+) -> str:
+    """Trägt die Energie-Stufe für Tracks nach (nur Track-DB, keine Tags); druckt und liefert die Zeile."""
+    from .backfill import backfill_energy
+
+    def fortschritt(erledigt: int, gesamt: int) -> None:
+        print(f"Energie-Backfill: {erledigt}/{gesamt} …", flush=True)
+
+    with TrackDB(cfg["state"]["track_db_path"]) as db:
+        r = backfill_energy(db, dry_run=dry_run, limit=limit, force=force, progress=fortschritt)
+    text = (f"Energie-Backfill: {r['seen']} Tracks betrachtet, {r['set']} gesetzt, "
+            f"{r['would_set']} würden gesetzt, {r['skipped']} übersprungen (schon vorhanden), "
+            f"{r['failed']} fehlgeschlagen")
+    print(text)
+    return text
+
+
 def run_taste_cmd(cfg: Config, *, dry_run: bool = False, now: str | None = None) -> str:
     """Trainiert den Taste-Score und schreibt ihn in die Track-DB; druckt und liefert die Zeile."""
     if now is None:
@@ -1321,6 +1359,12 @@ def cli() -> None:
     eb.add_argument("--all", action="store_true", help="Auch unbewertete Tracks einreihen (bewertete zuerst)")
     eb.add_argument("--limit", type=int, help="Höchstens N neue Jobs einreihen")
 
+    en = sub.add_parser("energy-backfill", parents=[common],
+                        help="Energie-Stufe (1..5) für Tracks ohne Wert nachtragen (nur Datenbank, keine Tags)")
+    en.add_argument("--limit", type=int, help="Höchstens N Tracks bearbeiten")
+    en.add_argument("--force", action="store_true",
+                    help="Alle Tracks neu messen (auch mit vorhandener Energie), um fehlende Einzelwerte wie spectral_centroid_hz nachzuziehen")
+
     sub.add_parser("taste", parents=[common],
                    help="Taste-Score trainieren und für Tracks mit Embedding speichern")
 
@@ -1369,6 +1413,8 @@ def cli() -> None:
                               dry_run=a.dry_run, no_telegram=a.no_telegram)
         elif a.mode == "embed-backfill":
             run_embed_backfill(cfg, labeled_only=not a.all, limit=a.limit, dry_run=a.dry_run)
+        elif a.mode == "energy-backfill":
+            run_energy_backfill(cfg, dry_run=a.dry_run, limit=a.limit, force=a.force)
         elif a.mode == "taste":
             run_taste_cmd(cfg, dry_run=a.dry_run)
         else:

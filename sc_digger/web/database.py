@@ -105,7 +105,7 @@ _TRACK_COLUMNS = (
     "id", "path", "artist", "title", "format", "bitrate_kbps", "cutoff_hz",
     "quality_status", "bpm", "key_camelot", "key_name", "status", "adopted_at",
     "feedback", "source_url", "created_at", "updated_at", "rb_play_count",
-    "breakdown_ratio", "taste_score",
+    "breakdown_ratio", "taste_score", "energy",
 )
 
 # Schutz vor versehentlich riesigen Antworten; das Frontend blättert über offset.
@@ -114,7 +114,7 @@ MAX_LIMIT = 200
 
 # Erlaubte Sortierfelder für Tracks und Digest (Issue #427).
 TRACK_SORT_FIELDS = ("artist", "title", "bpm", "key_camelot", "quality", "status", "taste")
-DIGEST_SORT_FIELDS = ("date", "artist", "title", "download_kind", "status", "feedback")
+DIGEST_SORT_FIELDS = ("date", "artist", "title", "download_kind", "status", "feedback", "plays", "likes")
 
 _TRACK_SORT_MAP = {
     "artist": "artist",
@@ -422,6 +422,7 @@ def query_tracks(
         item = dict(row)
         item.setdefault("breakdown_ratio", None)
         item.setdefault("taste_score", None)
+        item.setdefault("energy", None)
         sc_id = _sc_id_from_path(item.get("path"))
         item["sc_id"] = sc_id
         item["sc_feedback"] = feedback_map.get(sc_id) if sc_id is not None else None
@@ -1232,6 +1233,10 @@ def query_digest(
                     v = "offen"
             elif sort == "feedback":
                 v = (it.feedback or "").lower()
+            elif sort == "plays":
+                v = int(it.plays or 0)
+            elif sort == "likes":
+                v = int(it.likes or 0)
             else:
                 v = ""
             is_empty = (v == "")

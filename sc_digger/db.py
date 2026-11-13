@@ -109,6 +109,7 @@ class TrackRecord:
     rb_cues: str | None = None        # JSON-String der Cue-Liste
     energy: int | None = None         # 1..5 Energie-Level (berechnet, siehe sc_digger.style)
     duration: float | None = None     # Länge der Datei in Sekunden (ffprobe)
+    spectral_centroid_hz: float | None = None  # Helligkeit: mittlerer spektraler Schwerpunkt in Hz (librosa)
     created_at: str | None = None
     updated_at: str | None = None
 
@@ -447,6 +448,14 @@ MIGRATIONS: list[tuple[int, str, str]] = [
         );
         """,
     ),
+    (
+        # Nummer 19 statt der im Auftrag genannten 20: 19 ist die nächste freie Version.
+        19,
+        "0019_tracks_helligkeit",
+        """
+        ALTER TABLE tracks ADD COLUMN spectral_centroid_hz REAL;
+        """,
+    ),
 ]
 
 # Erlaubte Werte in ``match_overrides.override_type``: die Handkorrektur ersetzt den
@@ -718,6 +727,40 @@ class TrackDB:
         )
         self.db.commit()
         return cur.rowcount > 0
+
+    def set_spectral_centroid(self, track_id: int, hz: float) -> bool:
+        """Setzt die Helligkeit (spektraler Schwerpunkt in Hz) für einen Track.
+
+        Gibt True zurück, wenn der Track existiert und aktualisiert wurde, sonst False.
+        """
+        cur = self.db.execute(
+            "UPDATE tracks SET spectral_centroid_hz = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (float(hz), track_id),
+        )
+        self.db.commit()
+        return cur.rowcount > 0
+
+    def tracks_without_energy(self, limit: int | None = None) -> list[TrackRecord]:
+        """Tracks ohne Energie-Stufe (`energy IS NULL`), nach id sortiert (Backfill, Issue #537)."""
+        sql = "SELECT * FROM tracks WHERE energy IS NULL ORDER BY id"
+        params: tuple = ()
+        if limit is not None:
+            sql += " LIMIT ?"
+            params = (max(0, int(limit)),)
+        return [TrackRecord.from_row(r) for r in self.db.execute(sql, params).fetchall()]
+
+    def tracks_without_centroid(self, limit: int | None = None) -> list[TrackRecord]:
+        """Tracks ohne Centroid (`spectral_centroid_hz IS NULL`), nach id sortiert (Backfill, Issue #552)."""
+        sql = "SELECT * FROM tracks WHERE spectral_centroid_hz IS NULL ORDER BY id"
+        params: tuple = ()
+        if limit is not None:
+            sql += " LIMIT ?"
+            params = (max(0, int(limit)),)
+        return [TrackRecord.from_row(r) for r in self.db.execute(sql, params).fetchall()]
+
+    def count_tracks_with_energy(self) -> int:
+        """Anzahl der Tracks, die schon eine Energie-Stufe haben."""
+        return self.db.execute("SELECT COUNT(*) FROM tracks WHERE energy IS NOT NULL").fetchone()[0]
 
     def search_tracks(self, query: str, limit: int = 6) -> list[TrackRecord]:
         """Sucht Tracks zu einem Suchtext. Der Suchtext wird an Leerzeichen in
@@ -1338,27 +1381,6 @@ class TrackDB:
             )
             stored += 1
         return stored
-
-    def count_tracks(
-        self,
-        status: TrackStatus | str | None = None,
-        quality_status: QualityStatus | str | None = None,
-    ) -> int:
-        """Zählt Tracks mit optionaler Filterung nach Status oder Qualitätsurteil."""
-        conds: list[str] = []
-        params: list[Any] = []
-        if status:
-            val = status.value if isinstance(status, Enum) else status
-            conds.append("status = ?")
-            params.append(val)
-        if quality_status:
-            val = quality_status.value if isinstance(quality_status, Enum) else quality_status
-            conds.append("quality_status = ?")
-            params.append(val)
-
-        where = f"WHERE {' AND '.join(conds)}" if conds else ""
-        row = self.db.execute(f"SELECT COUNT(*) FROM tracks {where}", params).fetchone()
-        return row[0] if row else 0
 
     def list_tracks(
         self,

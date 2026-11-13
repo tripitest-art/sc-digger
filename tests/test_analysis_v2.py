@@ -48,7 +48,8 @@ def _tremolo(bpm: float, *, freq: float = 440.0, dauer: float = 15.0) -> np.ndar
 def test_analyze_track_liefert_genau_die_dokumentierten_felder(tmp_path):
     res = A.analyze_track(_synthetischer_track(tmp_path / "felder.wav"))
     assert set(res) == {"bpm", "bpm_confidence", "bpm_octave", "key_camelot",
-                        "key_name", "key_confidence", "key_margin"}
+                        "key_name", "key_confidence", "key_margin",
+                        "energy", "spectral_centroid_hz", "rms"}
     assert isinstance(res["bpm"], float)
     assert isinstance(res["bpm_octave"], int)
     assert 0.0 <= res["bpm_confidence"] <= 1.0

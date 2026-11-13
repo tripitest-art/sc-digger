@@ -14,6 +14,49 @@
     align-items: center;
     gap: 0.75rem;
   }
+  .spalten-wahl {
+    margin: 0.75rem 1rem 0;
+    padding: 0.5rem 0.75rem;
+    background-color: var(--bg-card-subtle);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 0.82rem;
+  }
+  .spalten-wahl summary {
+    cursor: pointer;
+    font-weight: 600;
+    color: var(--text-muted);
+  }
+  .spalten-wahl summary:hover {
+    color: var(--text-main);
+  }
+  .spalten-wahl-content {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+    margin-top: 0.5rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid var(--border);
+  }
+  .spalten-wahl-content label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    cursor: pointer;
+    color: var(--text-main);
+  }
+  [data-column][hidden] {
+    display: none !important;
+  }
+  table[data-hidden-columns*="date"] [data-column="date"],
+  table[data-hidden-columns*="artist"] [data-column="artist"],
+  table[data-hidden-columns*="title"] [data-column="title"],
+  table[data-hidden-columns*="download_kind"] [data-column="download_kind"],
+  table[data-hidden-columns*="status"] [data-column="status"],
+  table[data-hidden-columns*="feedback"] [data-column="feedback"] {
+    display: none;
+  }
 </style>
 {% endblock %}
 
@@ -152,32 +195,51 @@
   </form>
 </div>
 
+<div id="table-region">
 <div class="card">
   <div class="card-header">
     <h2 class="card-title" style="margin: 0;">Vorschläge</h2>
     <span class="meta">Seite {{ page }} von {{ total_pages }}</span>
   </div>
+  <details class="spalten-wahl">
+    <summary>Spalten auswählen</summary>
+    <div class="spalten-wahl-content">
+      <label><input type="checkbox" data-column="date" checked> Datum</label>
+      <label><input type="checkbox" data-column="artist" checked> Artist</label>
+      <label><input type="checkbox" data-column="title" checked> Titel</label>
+      <label><input type="checkbox" data-column="download_kind" checked> Download-Art</label>
+      <label><input type="checkbox" data-column="status" checked> Status</label>
+      <label><input type="checkbox" data-column="feedback" checked> Feedback</label>
+      <button type="button" class="btn-page btn-xs" data-action="alle-spalten">Alle Spalten</button>
+    </div>
+  </details>
   <div class="table-scroll">
   <table>
     <thead>
       <tr>
-        <th aria-sort="{% if current_sort == 'date' %}{{ 'ascending' if current_dir == 'asc' else 'descending' }}{% else %}none{% endif %}">
-          <a href="{{ sort_url('date') }}">Datum{% if current_sort == 'date' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
+        <th data-column="date" aria-sort="{% if current_sort == 'date' %}{{ 'ascending' if current_dir == 'asc' else 'descending' }}{% else %}none{% endif %}">
+          <a href="{{ sort_url('date') or '?sort=date' }}">Datum{% if current_sort == 'date' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
         </th>
-        <th aria-sort="{% if current_sort == 'artist' %}{{ 'ascending' if current_dir == 'asc' else 'descending' }}{% else %}none{% endif %}">
-          <a href="{{ sort_url('artist') }}">Artist{% if current_sort == 'artist' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
+        <th data-column="artist" aria-sort="{% if current_sort == 'artist' %}{{ 'ascending' if current_dir == 'asc' else 'descending' }}{% else %}none{% endif %}">
+          <a href="{{ sort_url('artist') or '?sort=artist' }}">Artist{% if current_sort == 'artist' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
         </th>
-        <th aria-sort="{% if current_sort == 'title' %}{{ 'ascending' if current_dir == 'asc' else 'descending' }}{% else %}none{% endif %}">
-          <a href="{{ sort_url('title') }}">Titel{% if current_sort == 'title' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
+        <th data-column="title" aria-sort="{% if current_sort == 'title' %}{{ 'ascending' if current_dir == 'asc' else 'descending' }}{% else %}none{% endif %}">
+          <a href="{{ sort_url('title') or '?sort=title' }}">Titel{% if current_sort == 'title' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
         </th>
-        <th aria-sort="{% if current_sort == 'download_kind' %}{{ 'ascending' if current_dir == 'asc' else 'descending' }}{% else %}none{% endif %}">
-          <a href="{{ sort_url('download_kind') }}">Download-Art{% if current_sort == 'download_kind' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
+        <th data-column="download_kind" aria-sort="{% if current_sort == 'download_kind' %}{{ 'ascending' if current_dir == 'asc' else 'descending' }}{% else %}none{% endif %}">
+          <a href="{{ sort_url('download_kind') or '?sort=download_kind' }}">Download-Art{% if current_sort == 'download_kind' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
         </th>
-        <th aria-sort="{% if current_sort == 'status' %}{{ 'ascending' if current_dir == 'asc' else 'descending' }}{% else %}none{% endif %}">
-          <a href="{{ sort_url('status') }}">Status{% if current_sort == 'status' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
+        <th data-column="status" aria-sort="{% if current_sort == 'status' %}{{ 'ascending' if current_dir == 'asc' else 'descending' }}{% else %}none{% endif %}">
+          <a href="{{ sort_url('status') or '?sort=status' }}">Status{% if current_sort == 'status' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
         </th>
-        <th aria-sort="{% if current_sort == 'feedback' %}{{ 'ascending' if current_dir == 'asc' else 'descending' }}{% else %}none{% endif %}">
-          <a href="{{ sort_url('feedback') }}">Feedback{% if current_sort == 'feedback' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
+        <th data-column="feedback" aria-sort="{% if current_sort == 'feedback' %}{{ 'ascending' if current_dir == 'asc' else 'descending' }}{% else %}none{% endif %}">
+          <a href="{{ sort_url('feedback') or '?sort=feedback' }}">Feedback{% if current_sort == 'feedback' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
+        </th>
+        <th aria-sort="{% if current_sort == 'plays' %}{{ 'ascending' if current_dir == 'asc' else 'descending' }}{% else %}none{% endif %}">
+          <a href="{{ sort_url('plays') or '?sort=plays' }}">Plays{% if current_sort == 'plays' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
+        </th>
+        <th aria-sort="{% if current_sort == 'likes' %}{{ 'ascending' if current_dir == 'asc' else 'descending' }}{% else %}none{% endif %}">
+          <a href="{{ sort_url('likes') or '?sort=likes' }}">Likes{% if current_sort == 'likes' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
         </th>
         <th>Links</th>
       </tr>
@@ -185,18 +247,18 @@
     <tbody>
       {% for item in items %}
       <tr>
-        <td data-label="Datum" class="mono meta" style="white-space: nowrap; font-size: 0.78rem;">
+        <td data-label="Datum" data-column="date" class="mono meta" style="white-space: nowrap; font-size: 0.78rem;">
           {{ item.reported_at[:16] if item.reported_at else "—" }}
         </td>
-        <td data-label="Artist" style="font-weight: 600;">{{ item.artist or "—" }}</td>
-        <td data-label="Titel">
+        <td data-label="Artist" data-column="artist" style="font-weight: 600;">{{ item.artist or "—" }}</td>
+        <td data-label="Titel" data-column="title">
           <strong>{{ item.title }}</strong>
           {% set engagement = engagement_line(item.plays, item.likes, item.reposts) %}
           {% if engagement %}
           <div class="meta" style="font-size: 0.72rem; margin-top: 0.15rem;">{{ engagement }}</div>
           {% endif %}
         </td>
-        <td data-label="Download-Art">
+        <td data-label="Download-Art" data-column="download_kind">
           {% if item.download_kind == "store" %}
           <span class="badge badge-purple">🛒 Store</span>
           {% elif item.download_kind == "native" %}
@@ -207,7 +269,7 @@
           <span class="badge badge-muted">🎧 Stream</span>
           {% endif %}
         </td>
-        <td data-label="Status">
+        <td data-label="Status" data-column="status">
           {% if item.in_collection %}
           <span class="badge badge-ok">Sammlung</span>
           {% elif item.in_inbox %}
@@ -223,7 +285,7 @@
           </div>
           {% endif %}
         </td>
-        <td data-label="Feedback">
+        <td data-label="Feedback" data-column="feedback">
           <div class="feedback-group" data-feedback-cell data-sc-id="{{ item.sc_id }}">
             <button type="button" class="feedback-btn {% if item.feedback == 'like' %}active{% endif %}"
                     data-value="like" title="Gefällt mir" onclick="sendFeedback(this)">👍</button>
@@ -234,6 +296,8 @@
             <span class="feedback-error meta"></span>
           </div>
         </td>
+        <td data-label="Plays" class="mono meta">{{ item.plays or 0 }}</td>
+        <td data-label="Likes" class="mono meta">{{ item.likes or 0 }}</td>
         <td data-label="" style="white-space: nowrap;">
           {# Nur http/https verlinken: die URLs stammen aus fremden Feeds, ein
              javascript:-Wert darf nicht ins href. #}
@@ -258,7 +322,7 @@
       </tr>
       {% else %}
       <tr>
-        <td colspan="7" data-label="">
+        <td colspan="9" data-label="">
           {{ empty_state("Keine Vorschläge für diese Filtereinstellungen gefunden.", "/digest") }}
         </td>
       </tr>
@@ -267,10 +331,16 @@
   </table>
   </div>
 
-  {% if total > 0 %}
   <div class="pager">
     <div class="meta">
-      Seite {{ page }} von {{ total_pages }} ({{ total }} Vorschläge gesamt)
+      Seite {{ page }} von {{ total_pages }} ({{ total }} Vorschläge gesamt) &middot;
+      <label for="p-limit-digest">Zeilen:</label>
+      <select id="p-limit-digest" name="limit" data-limit-select>
+        <option value="25" {% if page_size == 25 %}selected{% endif %}>25</option>
+        <option value="50" {% if page_size == 50 %}selected{% endif %}>50</option>
+        <option value="100" {% if page_size == 100 %}selected{% endif %}>100</option>
+        <option value="200" {% if page_size == 200 %}selected{% endif %}>200</option>
+      </select> pro Seite
     </div>
     <div class="pager-buttons">
       <a href="{{ prev_url or '#' }}" class="btn-page {% if not prev_url %}disabled{% endif %}">
@@ -281,7 +351,7 @@
       </a>
     </div>
   </div>
-  {% endif %}
+</div>
 </div>
 <script>
   // Bewertung ohne Seiten-Reload an POST /api/feedback (Issue #229). Bis die Antwort da ist,
@@ -350,6 +420,157 @@
     } finally {
       buttons.forEach((b) => { b.disabled = false; });
     }
+  }
+
+  function initColumnToggle() {
+    const storageKey = 'sc-digger.columns.digest';
+    const details = document.querySelector('.spalten-wahl');
+    const table = document.querySelector('.table-scroll table') || document.querySelector('table');
+    if (!table || !details) return;
+
+    const checkboxes = Array.from(details.querySelectorAll('input[type="checkbox"][data-column]'));
+    const resetBtn = details.querySelector('[data-action="alle-spalten"]');
+
+    function apply() {
+      const hidden = checkboxes.filter((c) => !c.checked).map((c) => c.dataset.column);
+      if (hidden.length > 0) {
+        table.setAttribute('data-hidden-columns', hidden.join(','));
+      } else {
+        table.removeAttribute('data-hidden-columns');
+      }
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(hidden));
+      } catch (err) {}
+    }
+
+    try {
+      const raw = localStorage.getItem(storageKey);
+      if (raw) {
+        const hidden = JSON.parse(raw);
+        if (Array.isArray(hidden)) {
+          checkboxes.forEach((cb) => {
+            cb.checked = !hidden.includes(cb.dataset.column);
+          });
+        }
+      }
+    } catch (err) {}
+
+    const initialHidden = checkboxes.filter((c) => !c.checked).map((c) => c.dataset.column);
+    if (initialHidden.length > 0) {
+      table.setAttribute('data-hidden-columns', initialHidden.join(','));
+    }
+
+    checkboxes.forEach((cb) => {
+      cb.addEventListener('change', apply);
+    });
+
+    if (resetBtn) {
+      resetBtn.addEventListener('click', () => {
+        checkboxes.forEach((cb) => { cb.checked = true; });
+        apply();
+      });
+    }
+  }
+
+  async function fetchTableRegion(url, push = true) {
+    try {
+      const resp = await fetch(url, {
+        headers: { 'X-Sc-Digger-Partial': '1' }
+      });
+      if (!resp.ok) {
+        window.location.href = url;
+        return;
+      }
+      const html = await resp.text();
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(html, 'text/html');
+      const newRegion = doc.getElementById('table-region');
+      const curRegion = document.getElementById('table-region');
+      if (newRegion && curRegion) {
+        curRegion.replaceWith(newRegion);
+      } else if (curRegion) {
+        curRegion.outerHTML = html;
+      }
+      if (push) {
+        history.pushState(null, '', url);
+      }
+      if (typeof initColumnToggle === 'function') {
+        initColumnToggle();
+      }
+    } catch (err) {
+      window.location.href = url;
+    }
+  }
+
+  function initPartialNavigation() {
+    const form = document.querySelector('form[action="/digest"]') || document.querySelector('form.filter-form');
+    if (form) {
+      form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const action = form.getAttribute('action') || window.location.pathname;
+        const formData = new FormData(form);
+        const params = new URLSearchParams();
+        for (const [k, v] of formData.entries()) {
+          if (v !== '') {
+            params.append(k, v);
+          }
+        }
+        const qs = params.toString();
+        const url = action + (qs ? '?' + qs : '');
+        fetchTableRegion(url, true);
+      });
+    }
+
+    document.addEventListener('click', (e) => {
+      const link = e.target.closest('a');
+      if (!link) return;
+      if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      if (link.target === '_blank') return;
+      const region = document.getElementById('table-region');
+      if (!region || !region.contains(link)) return;
+
+      const isSort = link.closest('th') !== null || (link.search && link.search.includes('sort='));
+      const isPager = link.closest('.pager') !== null || link.classList.contains('btn-page') || link.classList.contains('nav-tab');
+      if (isSort || isPager) {
+        const href = link.getAttribute('href');
+        if (!href || href === '#' || href.startsWith('javascript:')) return;
+        e.preventDefault();
+        fetchTableRegion(link.href, true);
+      }
+    });
+
+    document.addEventListener('change', (e) => {
+      if (e.target && e.target.name === 'limit') {
+        const val = e.target.value;
+        const form = document.querySelector('form[action="/digest"]') || document.querySelector('form.filter-form');
+        const formLimit = form ? form.querySelector('select[name="limit"]') : null;
+        if (formLimit && formLimit !== e.target) {
+          formLimit.value = val;
+        }
+        if (form) {
+          form.requestSubmit ? form.requestSubmit() : form.submit();
+        } else {
+          const url = new URL(window.location.href);
+          url.searchParams.set('limit', val);
+          url.searchParams.delete('offset');
+          fetchTableRegion(url.toString(), true);
+        }
+      }
+    });
+
+    window.addEventListener('popstate', () => {
+      fetchTableRegion(window.location.href, false);
+    });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+      initColumnToggle();
+      initPartialNavigation();
+    });
+  } else {
+    initColumnToggle();
+    initPartialNavigation();
   }
 </script>
 {% endblock %}

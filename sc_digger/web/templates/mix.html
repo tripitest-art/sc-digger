@@ -201,7 +201,18 @@
         <input type="text" id="f-tol" name="tol" value="{{ tol or '3' }}"
                placeholder="3" autocomplete="off" spellcheck="false">
       </div>
+      <div class="filter-field">
+        <label for="f-cmin">Helligkeit von (Hz)</label>
+        <input type="text" id="f-cmin" name="cmin" value="{{ cmin }}"
+               placeholder="2500" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="filter-field">
+        <label for="f-cmax">Helligkeit bis (Hz)</label>
+        <input type="text" id="f-cmax" name="cmax" value="{{ cmax }}"
+               placeholder="3500" autocomplete="off" spellcheck="false">
+      </div>
     </div>
+    <p class="meta">Helligkeit = spektraler Schwerpunkt; der Median der Sammlung liegt bei ca. 3000 Hz. Tracks ohne gemessenen Wert fallen bei gesetztem Filter heraus.</p>
     <div class="filter-actions">
       <button type="submit">Passende Tracks finden</button>
       <a href="/mix" class="meta">Zurücksetzen</a>
