@@ -42,11 +42,11 @@ Zuruf. Details: `README.md`, Ausbaustufen: `ROADMAP.md`.
 
 ## Ablauf pro Aufgabe
 
-Ein Thema pro Pull Request, Umfang klein halten. Committen (Nachricht: *warum*, nicht nur
+Ein Thema pro PR, klein halten. Committen (Nachricht: *warum*, nicht nur
 *was*), Branch pushen, PR nach Vorlage öffnen; kann das Werkzeug keinen PR öffnen, Branch
 pushen und den Link `https://github.com/tripitest-art/sc-digger/pull/new/<branch>` melden.
-Review durch einen Agenten, der den Code nicht geschrieben hat, oder durch Stephan. Deploy:
-`./update.sh` auf dem Server, nur nach Merge in `main` (`BETRIEB.md`).
+Review durch einen anderen Agenten oder Stephan. Deploy: `./update.sh` auf dem Server, nur
+nach Merge in `main` (`BETRIEB.md`). Danach `scripts/cleanup_worktrees.py`.
 
 ## Worker-Aufgaben (Issues mit Label `worker-task`)
 
