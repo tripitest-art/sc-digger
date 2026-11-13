@@ -1,18 +1,3 @@
-# scripts/cleanup_worktrees.py
-def merged_branches(repo: str) -> set[str]:
-    """Branch-Namen aller PRs im Zustand MERGED (gh pr list --state merged)."""
-
-def plan(worktrees: list[tuple[str, str]], merged: set[str],
-         *, protect: tuple[str, ...] = ("main", "master")) -> list[str]:
-    """worktrees = [(pfad, branch)]. Liefert die Pfade, die weg koennen:
-    Branch in merged, nicht in protect, Pfad existiert."""
-
-def remove_worktrees(repo, paths: list[str], *, dry_run: bool = False) -> list[str]:
-    """Entfernt die Worktrees (git worktree remove --force) und gibt die entfernten
-    Pfade zurueck. Bei dry_run: nichts entfernen, leere Liste. Branches bleiben."""
-
-# CLI
-# python scripts/cleanup_worktrees.py --repo tripitest-art/sc-digger --root /home/dev/orca/workspaces/sc-digger [--dry-run]
 """Akzeptanztests: Worktrees gemergter Branches aufraeumen."""
 
 import importlib.util
