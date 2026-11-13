@@ -351,6 +351,7 @@
   </form>
 </div>
 
+<div id="table-region">
 <div class="card card-tracks">
   <div class="card-header">
     <h2 class="card-title m-0">Treffer</h2>
@@ -379,27 +380,27 @@
     <thead>
       <tr>
         <th class="sticky-col" data-column="artist" aria-sort="{% if current_sort == 'artist' %}{{ 'ascending' if current_dir == 'asc' else 'descending' }}{% else %}none{% endif %}">
-          <a href="{{ sort_url('artist') }}">Artist{% if current_sort == 'artist' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
+          <a href="{{ sort_url('artist') or '?sort=artist' }}">Artist{% if current_sort == 'artist' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
         </th>
         <th class="sticky-col" data-column="title" aria-sort="{% if current_sort == 'title' %}{{ 'ascending' if current_dir == 'asc' else 'descending' }}{% else %}none{% endif %}">
-          <a href="{{ sort_url('title') }}">Titel{% if current_sort == 'title' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
+          <a href="{{ sort_url('title') or '?sort=title' }}">Titel{% if current_sort == 'title' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
         </th>
         <th data-column="format">Format</th>
         <th data-column="bpm" aria-sort="{% if current_sort == 'bpm' %}{{ 'ascending' if current_dir == 'asc' else 'descending' }}{% else %}none{% endif %}">
-          <a href="{{ sort_url('bpm') }}">BPM{% if current_sort == 'bpm' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
+          <a href="{{ sort_url('bpm') or '?sort=bpm' }}">BPM{% if current_sort == 'bpm' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
         </th>
         <th>Energie</th>
         <th data-column="key" aria-sort="{% if current_sort == 'key_camelot' %}{{ 'ascending' if current_dir == 'asc' else 'descending' }}{% else %}none{% endif %}">
-          <a href="{{ sort_url('key_camelot') }}">Key{% if current_sort == 'key_camelot' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
+          <a href="{{ sort_url('key_camelot') or '?sort=key_camelot' }}">Key{% if current_sort == 'key_camelot' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
         </th>
         <th data-column="quality" aria-sort="{% if current_sort == 'quality' %}{{ 'ascending' if current_dir == 'asc' else 'descending' }}{% else %}none{% endif %}">
-          <a href="{{ sort_url('quality') }}">Qualität{% if current_sort == 'quality' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
+          <a href="{{ sort_url('quality') or '?sort=quality' }}">Qualität{% if current_sort == 'quality' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
         </th>
         <th data-column="status" aria-sort="{% if current_sort == 'status' %}{{ 'ascending' if current_dir == 'asc' else 'descending' }}{% else %}none{% endif %}">
-          <a href="{{ sort_url('status') }}">Status{% if current_sort == 'status' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
+          <a href="{{ sort_url('status') or '?sort=status' }}">Status{% if current_sort == 'status' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
         </th>
         <th aria-sort="{% if current_sort == 'taste' %}{{ 'ascending' if current_dir == 'asc' else 'descending' }}{% else %}none{% endif %}">
-          <a href="{{ sort_url('taste') }}">Taste{% if current_sort == 'taste' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
+          <a href="{{ sort_url('taste') or '?sort=taste' }}">Taste{% if current_sort == 'taste' %}{{ ' ▲' if current_dir == 'asc' else ' ▼' }}{% endif %}</a>
         </th>
         <th>Anhören</th>
         <th>Übernahme</th>
@@ -558,17 +559,20 @@
   <div class="pager">
     <span class="meta">
       Seite {{ page }} von {{ total_pages }} &middot; {{ total }} Treffer &middot;
-      {{ page_size }} pro Seite
+      <label for="p-limit-tracks">Zeilen:</label>
+      <select id="p-limit-tracks" name="limit" data-limit-select>
+        <option value="25" {% if page_size == 25 %}selected{% endif %}>25</option>
+        <option value="50" {% if page_size == 50 %}selected{% endif %}>50</option>
+        <option value="100" {% if page_size == 100 %}selected{% endif %}>100</option>
+        <option value="200" {% if page_size == 200 %}selected{% endif %}>200</option>
+      </select> pro Seite
     </span>
     <div class="pager-buttons">
-      {% if prev_url %}
-      <a class="nav-tab" href="{{ prev_url }}">&larr; Zurück</a>
-      {% endif %}
-      {% if next_url %}
-      <a class="nav-tab" href="{{ next_url }}">Weiter &rarr;</a>
-      {% endif %}
+      <a href="{{ prev_url or '#' }}" class="btn-page nav-tab {% if not prev_url %}disabled{% endif %}">&larr; Zurück</a>
+      <a href="{{ next_url or '#' }}" class="btn-page nav-tab {% if not next_url %}disabled{% endif %}">Weiter &rarr;</a>
     </div>
   </div>
+</div>
 </div>
 
 <!-- Sticky Bottom DJ Deck Bar -->
@@ -844,9 +848,104 @@
     }
   }
 
+  async function fetchTableRegion(url, push = true) {
+    try {
+      const resp = await fetch(url, {
+        headers: { 'X-Sc-Digger-Partial': '1' }
+      });
+      if (!resp.ok) {
+        window.location.href = url;
+        return;
+      }
+      const html = await resp.text();
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(html, 'text/html');
+      const newRegion = doc.getElementById('table-region');
+      const curRegion = document.getElementById('table-region');
+      if (newRegion && curRegion) {
+        curRegion.replaceWith(newRegion);
+      } else if (curRegion) {
+        curRegion.outerHTML = html;
+      }
+      if (push) {
+        history.pushState(null, '', url);
+      }
+      if (typeof initColumnToggle === 'function') {
+        initColumnToggle();
+      }
+      if (typeof bindDeckPlayers === 'function') {
+        bindDeckPlayers();
+      }
+    } catch (err) {
+      window.location.href = url;
+    }
+  }
+
+  function initPartialNavigation() {
+    const form = document.querySelector('form[action="/tracks"]') || document.querySelector('form.filter-form');
+    if (form) {
+      form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const action = form.getAttribute('action') || window.location.pathname;
+        const formData = new FormData(form);
+        const params = new URLSearchParams();
+        for (const [k, v] of formData.entries()) {
+          if (v !== '') {
+            params.append(k, v);
+          }
+        }
+        const qs = params.toString();
+        const url = action + (qs ? '?' + qs : '');
+        fetchTableRegion(url, true);
+      });
+    }
+
+    document.addEventListener('click', (e) => {
+      const link = e.target.closest('a');
+      if (!link) return;
+      if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      if (link.target === '_blank') return;
+      const region = document.getElementById('table-region');
+      if (!region || !region.contains(link)) return;
+
+      const isSort = link.closest('th') !== null || (link.search && link.search.includes('sort='));
+      const isPager = link.closest('.pager') !== null || link.classList.contains('btn-page') || link.classList.contains('nav-tab');
+      if (isSort || isPager) {
+        const href = link.getAttribute('href');
+        if (!href || href === '#' || href.startsWith('javascript:')) return;
+        e.preventDefault();
+        fetchTableRegion(link.href, true);
+      }
+    });
+
+    document.addEventListener('change', (e) => {
+      if (e.target && e.target.name === 'limit') {
+        const val = e.target.value;
+        const form = document.querySelector('form[action="/tracks"]') || document.querySelector('form.filter-form');
+        const formLimit = form ? form.querySelector('select[name="limit"]') : null;
+        if (formLimit && formLimit !== e.target) {
+          formLimit.value = val;
+        }
+        if (form) {
+          form.requestSubmit ? form.requestSubmit() : form.submit();
+        } else {
+          const url = new URL(window.location.href);
+          url.searchParams.set('limit', val);
+          url.searchParams.delete('offset');
+          fetchTableRegion(url.toString(), true);
+        }
+      }
+    });
+
+    window.addEventListener('popstate', () => {
+      fetchTableRegion(window.location.href, false);
+    });
+  }
+
   document.addEventListener('DOMContentLoaded', () => {
     initColumnToggle();
     bindDeckPlayers();
+    initPartialNavigation();
     document.addEventListener('keydown', (e) => {
       const tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : '';
       if (tag === 'input' || tag === 'textarea' || tag === 'select') { return; }
