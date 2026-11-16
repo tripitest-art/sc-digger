@@ -230,8 +230,12 @@ Bewertungssignale: `feedback` (👍/👎), die Digest-Buttons in `sc_feedback` �
 SoundCloud-ID, übernommene Tracks (`adopted_at`, auch die Archivzeile über dieselbe
 SoundCloud-ID) und Rekordbox-Ratings ab 4 Sternen. Ein positives Signal gewinnt immer;
 `later` und Unbewertete fließen nicht ein. Unter fünf Beispielen je Klasse bleibt der Lauf
-ohne Fehler und ohne Änderung: Das alte Modell und die alten Scores bleiben stehen. Der Score
-dient zunächst nur der Anzeige und beeinflusst die tägliche Auswahl nicht; SoundCloud-
+ohne Fehler und ohne Änderung: Das alte Modell und die alten Scores bleiben stehen. Trifft
+das Ergebnis eines Embedding-Jobs ein (`apply_embedding_result`), wird der Score des Tracks
+sofort mit dem gespeicherten Modell nachgezogen (`taste.load_and_score`), ohne auf den
+nächtlichen Lauf zu warten; Fehler dabei werden nur protokolliert. Der Score dient zunächst
+nur der Anzeige und beeinflusst die tägliche Auswahl nicht — er steht aber schon beim
+Eintreffen des Embeddings im Dashboard bereit, statt erst am nächsten Morgen. SoundCloud-
 Kandidaten haben ohne Download kein Embedding. `--dry-run` zeigt die Zahl der bewertbaren
 Tracks, ohne Modell oder Scores zu schreiben.
 
