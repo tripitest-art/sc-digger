@@ -15,10 +15,17 @@ def test_standardprofil_ist_schranz():
     assert DEFAULT_PROFILE == "schranz"
 
 
-def test_migrationsliste_bleibt_gueltig_und_kennt_version_19():
+def _profil_migration() -> tuple[int, str, str]:
+    treffer = [m for m in MIGRATIONS if m[1].endswith("_profiles")]
+    assert len(treffer) == 1, "genau eine Migration *_profiles erwartet"
+    return treffer[0]
+
+
+def test_migrationsliste_bleibt_gueltig_und_kennt_profil_migration():
     assert check_migrations() == []
-    assert max(version for version, _, _ in MIGRATIONS) == 19
-    assert [name for version, name, _ in MIGRATIONS if version == 19][0].startswith("0019_")
+    version, name, _ = _profil_migration()
+    assert version == max(v for v, _, _ in MIGRATIONS), "die Profil-Migration ist die jüngste"
+    assert name.startswith(f"{version:04d}_")
 
 
 def test_trackdb_kennt_sein_profil(tmp_path):
@@ -88,7 +95,8 @@ def test_store_und_gate_items_sind_je_profil_eindeutig(tmp_path):
 
 def test_bestandsdaten_bekommen_das_standardprofil(tmp_path, monkeypatch):
     pfad = tmp_path / "alt.sqlite"
-    monkeypatch.setattr(db_mod, "MIGRATIONS", [m for m in MIGRATIONS if m[0] <= 18])
+    monkeypatch.setattr(db_mod, "MIGRATIONS",
+                        [m for m in MIGRATIONS if m[0] < _profil_migration()[0]])
     with TrackDB(pfad) as db:
         db.db.execute("INSERT INTO tracks (path, mtime, size, status) VALUES ('/x/a.flac', 1.0, 2, 'inbox')")
         db.db.execute("INSERT INTO taste_model (id, embedding_model, trained_at, n_pos, n_neg, model_json) "
@@ -114,7 +122,8 @@ def test_bestandsdaten_bekommen_das_standardprofil(tmp_path, monkeypatch):
 
 def test_migration_ist_wiederholbar(tmp_path):
     pfad = tmp_path / "t.sqlite"
+    version = _profil_migration()[0]
     with TrackDB(pfad) as db:
-        assert db.db.execute("SELECT COUNT(*) FROM schema_migrations WHERE version = 19").fetchone()[0] == 1
+        assert db.db.execute("SELECT COUNT(*) FROM schema_migrations WHERE version = ?", (version,)).fetchone()[0] == 1
     with TrackDB(pfad) as db:
-        assert db.db.execute("SELECT COUNT(*) FROM schema_migrations WHERE version = 19").fetchone()[0] == 1
+        assert db.db.execute("SELECT COUNT(*) FROM schema_migrations WHERE version = ?", (version,)).fetchone()[0] == 1
