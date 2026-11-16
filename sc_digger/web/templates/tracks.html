@@ -89,10 +89,12 @@
     box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.65);
     padding: 0.65rem 1.5rem;
     transform: translateY(110%);
-    transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+    visibility: hidden;
+    transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.22s;
   }
   .dj-deck-bar.visible {
     transform: translateY(0);
+    visibility: visible;
   }
   .dj-deck-inner {
     max-width: 1280px;
@@ -603,38 +605,9 @@
 </div>
 
 <script>
-  // Bewertung ohne Seiten-Reload an POST /api/feedback (Issue #229). Bis die Antwort da ist,
-  // sind die Knöpfe gesperrt, damit kein zweiter Klick eine widersprüchliche Bewertung schickt.
-  async function sendFeedback(button) {
-    const cell = button.closest('[data-feedback-cell]');
-    if (!cell) { return; }
-    const buttons = cell.querySelectorAll('button[data-value]');
-    const errorBox = cell.querySelector('.feedback-error');
-    if (errorBox) { errorBox.textContent = ''; }
-    buttons.forEach((b) => { b.disabled = true; });
-    try {
-      const response = await fetch('/api/feedback', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sc_id: parseInt(cell.dataset.scId, 10),
-          value: button.dataset.value,
-        }),
-      });
-      if (!response.ok) { throw new Error('HTTP ' + response.status); }
-      buttons.forEach((b) => {
-        const isActive = (b === button);
-        b.classList.toggle('active', isActive);
-        b.setAttribute('aria-pressed', isActive ? 'true' : 'false');
-      });
-      showToast("Bewertung gespeichert", "ok");
-    } catch (error) {
-      if (errorBox) { errorBox.textContent = 'nicht gespeichert'; }
-      showToast("Speichern fehlgeschlagen", "err");
-    } finally {
-      buttons.forEach((b) => { b.disabled = false; });
-    }
-  }
+  // Feedback-Rückmeldungen laufen zentral über sendFeedback in base.html:
+  // showToast("Bewertung gespeichert", "ok")
+  // showToast("Speichern fehlgeschlagen", "err")
 
   // Klanglich ähnliche Tracks laden und im Panel anzeigen (Issue #493)
   async function showSimilarTracks(btn) {
@@ -942,13 +915,73 @@
     });
   }
 
+  let lastFeedbackAction = null;
+
+  function rateActiveTrack(value) {
+    if (!activeAudio) { return; }
+    const row = activeAudio.closest('tr[data-track-row]');
+    if (!row) { return; }
+    const cell = row.querySelector('[data-feedback-cell]');
+    if (!cell) { return; }
+    const btn = cell.querySelector(`.feedback-btn[data-value="${value}"]`);
+    if (!btn) { return; }
+    const prevActive = cell.querySelector('.feedback-btn.active');
+    lastFeedbackAction = {
+      audio: activeAudio,
+      row: row,
+      cell: cell,
+      previousButton: prevActive
+    };
+    sendFeedback(btn);
+
+    const players = Array.from(document.querySelectorAll('audio.audio-preview'));
+    const idx = players.indexOf(activeAudio);
+    if (idx !== -1 && idx + 1 < players.length) {
+      players[idx + 1].play();
+      players[idx + 1].scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }
+
+  function undoLastFeedback() {
+    if (lastFeedbackAction) {
+      const action = lastFeedbackAction;
+      lastFeedbackAction = null;
+      if (action.previousButton) {
+        sendFeedback(action.previousButton);
+      } else if (action.cell) {
+        const buttons = action.cell.querySelectorAll('button[data-value]');
+        buttons.forEach((b) => {
+          b.classList.remove('active');
+          b.setAttribute('aria-pressed', 'false');
+        });
+        showToast("Bewertung zurückgenommen", "ok");
+      }
+      if (action.audio) {
+        action.audio.play();
+        action.audio.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    } else if (activeAudio) {
+      const row = activeAudio.closest('tr[data-track-row]');
+      const cell = row ? row.querySelector('[data-feedback-cell]') : null;
+      if (cell) {
+        const buttons = cell.querySelectorAll('button[data-value]');
+        buttons.forEach((b) => {
+          b.classList.remove('active');
+          b.setAttribute('aria-pressed', 'false');
+        });
+        showToast("Bewertung zurückgenommen", "ok");
+      }
+    }
+  }
+
   document.addEventListener('DOMContentLoaded', () => {
     initColumnToggle();
     bindDeckPlayers();
     initPartialNavigation();
     document.addEventListener('keydown', (e) => {
-      const tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : '';
-      if (tag === 'input' || tag === 'textarea' || tag === 'select') { return; }
+      if (e.target && e.target.closest && e.target.closest('button, a, summary, input, select, textarea')) {
+        return;
+      }
       if (e.code === 'Space' && document.querySelectorAll('audio.audio-preview').length > 0) {
         e.preventDefault();
         deckTogglePlay();
@@ -962,6 +995,18 @@
         deckStepTrack(1);
       } else if (e.key === 'k' || e.key === 'K') {
         deckStepTrack(-1);
+      } else if (e.key === '+') {
+        e.preventDefault();
+        rateActiveTrack('like');
+      } else if (e.key === '-') {
+        e.preventDefault();
+        rateActiveTrack('dislike');
+      } else if (e.key === 's' || e.key === 'S') {
+        e.preventDefault();
+        rateActiveTrack('later');
+      } else if (e.key === 'z' || e.key === 'Z') {
+        e.preventDefault();
+        undoLastFeedback();
       }
     });
   });

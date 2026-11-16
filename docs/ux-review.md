@@ -88,7 +88,7 @@ gedimmt, „✓ freigegeben“, Toast (`rejected.html:179-184`).
 Sortiert nach Nutzen im Verhältnis zum Aufwand. Aufwand: S = nur Templates, bis ein halber Tag;
 M = mehrere Templates oder kleine Route; L = neue Route oder neuer Zustand.
 
-**1. Bewerten geht nicht per Taste und springt nicht weiter**
+**1. Bewerten geht nicht per Taste und springt nicht weiter** (umgesetzt in #576)
 - Beleg: `tracks.html:949-966`, `tracks.html:504-518`, `digest.html:290-295`
 - Beobachtung: Der Player hat Shortcuts, die Bewertung nicht. Wer 30 Tracks durchhört, greift 30-mal
   zur Maus oder tabbt durch drei Knöpfe je Zeile.
@@ -96,7 +96,7 @@ M = mehrere Templates oder kleine Route; L = neue Route oder neuer Zustand.
   startet der nächste. `Z` nimmt die letzte Bewertung zurück.
 - Aufwand: S. Nutzen: Handgriff 1 und 2 werden zu einer Taste je Track.
 
-**2. Tastatur-Fallen im Player**
+**2. Tastatur-Fallen im Player** (umgesetzt in #576)
 - Beleg: `tracks.html:950-954`, `tracks.html:91`, `tracks.html:589-594`, `base.html:817`
 - Beobachtung: Leertaste auf einem fokussierten Knopf („Ähnlich“, 👍, Spaltenwahl) startet oder
   pausiert zusätzlich die Wiedergabe; je nach Browser löst der Knopf gar nicht aus. Die unsichtbare
@@ -106,7 +106,7 @@ M = mehrere Templates oder kleine Route; L = neue Route oder neuer Zustand.
   `aria-label` geben.
 - Aufwand: S. Nutzen: alle Handgriffe, die Tastatur wird verlässlich.
 
-**3. Der Digest bewertet stumm**
+**3. Der Digest bewertet stumm** (umgesetzt in #576)
 - Beleg: `digest.html:359-382`, `digest.html:290-295`; Vergleich `tracks.html:625-634`
 - Beobachtung: Dieselbe Funktion `sendFeedback` steht dreimal im Code. Die Digest-Kopie zeigt keinen
   Toast, setzt kein `aria-pressed` und nutzt Emoji statt der Icons aus `_icons.html`.
