@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any, Sequence
 
 from .fingerprint import decode_fingerprint
+from .tags import normalize_tag
 
 log = logging.getLogger(__name__)
 
@@ -593,6 +594,21 @@ MIGRATIONS: list[tuple[int, str, str]] = [
         DROP TABLE gate_items;
         ALTER TABLE gate_items_neu RENAME TO gate_items;
         CREATE INDEX IF NOT EXISTS idx_gate_items_last_seen ON gate_items(last_seen);
+        """,
+    ),
+    (
+        21,
+        "0021_track_tags",
+        """
+        -- Issue #563: freie Tags je Track. Der Tag steht normalisiert in der Tabelle
+        -- (sc_digger.tags.normalize_tag); mit dem Track verschwinden auch seine Tags.
+        CREATE TABLE track_tags (
+            track_id INTEGER NOT NULL REFERENCES tracks(id) ON DELETE CASCADE,
+            tag TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (track_id, tag)
+        );
+        CREATE INDEX idx_track_tags_tag ON track_tags(tag);
         """,
     ),
 ]
@@ -1192,6 +1208,59 @@ class TrackDB:
         cur = self.db.execute("DELETE FROM match_overrides WHERE sc_id = ?", (int(sc_id),))
         self.db.commit()
         return cur.rowcount > 0
+
+    # ------------------------------------------------------------ Freie Tags (Issue #563)
+
+    def add_track_tag(self, track_id: int, tag: str) -> str:
+        """Fügt den normalisierten Tag hinzu; idempotent, gibt den normalisierten Tag zurück.
+
+        ``ValueError`` bei ungültigem Tag, ``sqlite3.IntegrityError`` bei unbekanntem Track.
+        """
+        norm = normalize_tag(tag)
+        try:
+            # Nur der Primärschlüssel-Konflikt wird geschluckt (Tag schon vorhanden); eine
+            # Fremdschlüsselverletzung bleibt ein Fehler.
+            self.db.execute(
+                "INSERT INTO track_tags (track_id, tag) VALUES (?, ?) "
+                "ON CONFLICT(track_id, tag) DO NOTHING",
+                (int(track_id), norm),
+            )
+        except sqlite3.Error:
+            self.db.rollback()
+            raise
+        self.db.commit()
+        return norm
+
+    def remove_track_tag(self, track_id: int, tag: str) -> bool:
+        """True, wenn ein Tag entfernt wurde."""
+        cur = self.db.execute(
+            "DELETE FROM track_tags WHERE track_id = ? AND tag = ?",
+            (int(track_id), normalize_tag(tag)),
+        )
+        self.db.commit()
+        return cur.rowcount > 0
+
+    def get_track_tags(self, track_id: int) -> list[str]:
+        """Tags des Tracks, alphabetisch."""
+        rows = self.db.execute(
+            "SELECT tag FROM track_tags WHERE track_id = ? ORDER BY tag", (int(track_id),)
+        ).fetchall()
+        return [str(r["tag"]) for r in rows]
+
+    def list_tags(self) -> list[tuple[str, int]]:
+        """(tag, Anzahl Tracks), absteigend nach Anzahl, bei Gleichstand alphabetisch."""
+        rows = self.db.execute(
+            "SELECT tag, COUNT(*) AS n FROM track_tags GROUP BY tag ORDER BY n DESC, tag ASC"
+        ).fetchall()
+        return [(str(r["tag"]), int(r["n"])) for r in rows]
+
+    def list_track_ids_by_tag(self, tag: str) -> list[int]:
+        """Track-IDs mit diesem Tag, aufsteigend."""
+        rows = self.db.execute(
+            "SELECT track_id FROM track_tags WHERE tag = ? ORDER BY track_id",
+            (normalize_tag(tag),),
+        ).fetchall()
+        return [int(r["track_id"]) for r in rows]
 
     def record_exploration_use(self, tag: str, success: bool, now: datetime | None = None) -> None:
         ts = (now or datetime.now(timezone.utc)).strftime("%Y-%m-%d %H:%M:%S")
