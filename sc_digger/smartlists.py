@@ -240,22 +240,36 @@ def _sort_key(track: TrackRecord) -> tuple[Any, ...]:
 
 def select_tracks(db: TrackDB, rules: Rules, *, limit: int | None = None) -> list[TrackRecord]:
     """Alle passenden Tracks, sortiert nach bpm aufsteigend (None zuletzt), dann key_camelot,
-    dann id. Liest die Tags über die Tabelle `track_tags`."""
+    dann id. Liest die Tags über die Tabelle `track_tags`.
+
+    - Tracks mit ``status = 'rejected'`` werden nie geliefert (eine Smartlist ist zum Spielen
+      da, nicht zum Wiederfinden von Ausschuss).
+    - Die Tags und die Tracks stammen aus der Sicht von ``db.profile_id``.
+    """
     if limit is not None and limit < 0:
         raise ValueError(f"limit darf nicht negativ sein: {limit}.")
 
     # Tags nur laden, wenn eine Regel sie braucht – dann in einer Abfrage statt je Track.
     tags: dict[int, list[str]] = {}
     if rules.tags_all or rules.tags_any:
-        for zeile in db.db.execute("SELECT track_id, tag FROM track_tags"):
+        for zeile in db.db.execute(
+            "SELECT tt.track_id, tt.tag FROM track_tags AS tt "
+            "JOIN tracks AS t ON t.id = tt.track_id WHERE t.profile_id = ?",
+            (db.profile_id,),
+        ):
             tags.setdefault(int(zeile["track_id"]), []).append(str(zeile["tag"]))
 
     # Gefiltert wird in Python über ``matches`` statt in SQL, damit es genau eine Stelle
     # gibt, die entscheidet, was eine Regel bedeutet. ``matches`` bekommt die rohe Zeile:
-    # ``TrackRecord`` führt nicht jede Spalte (z. B. ``taste_score``).
+    # ``TrackRecord`` führt nicht jede Spalte (z. B. ``taste_score``). Profil und Ausschuss
+    # sind keine Regeln, sondern die Sicht, auf der die Regeln gelten – deshalb im SQL.
+    # ``IS NOT`` statt ``!=``: ein Track ohne Status (NULL) ist kein Ausschuss.
     treffer = [
         TrackRecord.from_row(zeile)
-        for zeile in db.db.execute("SELECT * FROM tracks")
+        for zeile in db.db.execute(
+            "SELECT * FROM tracks WHERE profile_id = ? AND status IS NOT 'rejected'",
+            (db.profile_id,),
+        )
         if matches(zeile, rules, tags.get(int(zeile["id"]), ()))
     ]
     treffer.sort(key=_sort_key)

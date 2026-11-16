@@ -288,6 +288,34 @@ def test_auswahl_mit_kombinierten_regeln_aus_der_datenbank(tmp_path):
         assert isinstance(treffer[0], TrackRecord) and treffer[0].bpm == 155.0
 
 
+def test_rejected_wird_nie_geliefert_auch_wenn_die_regeln_passen(tmp_path):
+    with TrackDB(tmp_path / "t.sqlite") as db:
+        _track(db, "spielbar", bpm=155.0, status="inbox")
+        _track(db, "ausschuss", bpm=155.0, status="rejected")
+        _track(db, "ohne_status", bpm=156.0)      # status NULL ist kein Ausschuss
+        db.add_track_tag(_track(db, "ausschuss_getaggt", bpm=157.0, status="rejected").id, "peak")
+        db.add_track_tag(_track(db, "getaggt", bpm=158.0, status="archive").id, "peak")
+
+        assert _namen(select_tracks(db, Rules())) == ["spielbar", "ohne_status", "getaggt"]
+        assert _namen(select_tracks(db, parse_rules({"bpm_min": 150, "bpm_max": 160}))) == [
+            "spielbar", "ohne_status", "getaggt"]
+        assert _namen(select_tracks(db, parse_rules({"tags_all": ["peak"]}))) == ["getaggt"]
+        # Das Limit zählt nur, was übrig bleibt.
+        assert _namen(select_tracks(db, Rules(), limit=2)) == ["spielbar", "ohne_status"]
+
+
+def test_auswahl_sieht_nur_tracks_und_tags_des_eigenen_profils(tmp_path):
+    pfad = tmp_path / "t.sqlite"
+    with TrackDB(pfad, profile_id="house") as db:
+        db.add_track_tag(_track(db, "house", bpm=124.0).id, "peak")
+    with TrackDB(pfad) as db:
+        db.add_track_tag(_track(db, "schranz", bpm=155.0).id, "peak")
+        assert _namen(select_tracks(db, Rules())) == ["schranz"]
+        assert _namen(select_tracks(db, parse_rules({"tags_any": ["peak"]}))) == ["schranz"]
+    with TrackDB(pfad, profile_id="house") as db:
+        assert _namen(select_tracks(db, parse_rules({"tags_any": ["peak"]}))) == ["house"]
+
+
 def test_auswahl_auf_leerer_datenbank(tmp_path):
     with TrackDB(tmp_path / "t.sqlite") as db:
         assert select_tracks(db, Rules()) == []
@@ -302,8 +330,11 @@ def test_migration_ist_eingetragen_und_die_liste_bleibt_gueltig(tmp_path):
     with TrackDB(tmp_path / "t.sqlite") as db:
         spalten = {r["name"]: (r["type"], r["notnull"], r["pk"])
                    for r in db.db.execute("PRAGMA table_info(smartlists)")}
+        # Seit Migration 0023 (Issue #565) gehört die Smartlist zu einem Profil: der
+        # Primärschlüssel ist (profile_id, name).
         assert spalten == {
-            "name": ("TEXT", 0, 1),
+            "profile_id": ("TEXT", 1, 1),
+            "name": ("TEXT", 1, 2),
             "rules_json": ("TEXT", 1, 0),
             "created_at": ("TEXT", 1, 0),
             "updated_at": ("TEXT", 1, 0),
@@ -386,3 +417,18 @@ def test_smartlists_ueberleben_das_erneute_oeffnen(tmp_path):
         gespeichert = db.get_smartlist("opener")
         assert gespeichert == {"bpm_min": 150.0, "tags_all": ["opener"]}
         assert _namen(select_tracks(db, parse_rules(gespeichert))) == ["a"]
+
+
+def test_liste_zaehlt_nur_das_eigene_profil_und_ersetzt_nur_dort(tmp_path):
+    pfad = tmp_path / "t.sqlite"
+    with TrackDB(pfad) as db:
+        db.save_smartlist("peak", {"bpm_min": 150, "energy_min": 4})
+        db.save_smartlist("warmup", {"bpm_max": 150})
+    with TrackDB(pfad, profile_id="house") as db:
+        db.save_smartlist("peak", {"bpm_min": 124})
+        db.save_smartlist("peak", {"bpm_min": 126})          # ersetzt nur die eigene
+        assert db.list_smartlists() == [("peak", 1)]
+        assert db.db.execute("SELECT COUNT(*) FROM smartlists").fetchone()[0] == 3
+    with TrackDB(pfad) as db:
+        assert db.list_smartlists() == [("peak", 2), ("warmup", 1)]
+        assert db.get_smartlist("peak") == {"bpm_min": 150.0, "energy_min": 4}

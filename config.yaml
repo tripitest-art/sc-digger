@@ -352,3 +352,19 @@ scout:
   beatport:
     # Chart-URLs von Beatport, z. B. https://www.beatport.com/genre/hard-techno/2/top-100
     charts: []
+
+# Genre-Profile (Issue #565). Ohne diesen Block gibt es genau das Profil "schranz", das
+# bpm_min, bpm_max, tags und reference_accounts aus "search" übernimmt – also das bisherige
+# Verhalten. Ein weiteres Profil nennt nur, was es anders haben will; alles andere erbt es
+# aus "search". Beispiel (auskommentiert, ändert nichts):
+#
+# profiles:
+#   house:
+#     bpm_min: 120
+#     bpm_max: 128
+#     tags:
+#       - house
+#       - tech house
+#     reference_accounts:
+#       - https://soundcloud.com/<account>
+#     default_genre: House
