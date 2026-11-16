@@ -18,7 +18,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Mapping, Sequence
 
 from .fingerprint import decode_fingerprint
 from .tags import normalize_tag
@@ -609,6 +609,20 @@ MIGRATIONS: list[tuple[int, str, str]] = [
             PRIMARY KEY (track_id, tag)
         );
         CREATE INDEX idx_track_tags_tag ON track_tags(tag);
+        """,
+    ),
+    (
+        22,
+        "0022_smartlists",
+        """
+        -- Issue #564: gespeicherte Smartlist-Regeln. rules_json enthält das geprüfte und
+        -- normalisierte Regelwerk (sc_digger.smartlists.parse_rules), nie die rohe Eingabe.
+        CREATE TABLE smartlists (
+            name TEXT PRIMARY KEY,
+            rules_json TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
         """,
     ),
 ]
@@ -1261,6 +1275,54 @@ class TrackDB:
             (normalize_tag(tag),),
         ).fetchall()
         return [int(r["track_id"]) for r in rows]
+
+    # ------------------------------------------------------------ Smartlists (Issue #564)
+
+    def save_smartlist(self, name: str, rules: Mapping[str, Any]) -> None:
+        """Speichert die Regeln unter ``name``; ein vorhandener Eintrag wird ersetzt.
+
+        Abgelegt wird das geprüfte, normalisierte Regelwerk (nur gesetzte Schlüssel, Tags
+        normalisiert), damit ``get_smartlist`` nie etwas liefert, das ``parse_rules`` ablehnt.
+        ``RuleError`` bei ungültigen Regeln, ``ValueError`` bei leerem Namen.
+        """
+        # Lokal importiert: smartlists importiert TrackDB aus diesem Modul.
+        from .smartlists import parse_rules
+
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError("Smartlist braucht einen Namen.")
+        geprueft = parse_rules(rules)
+        daten: dict[str, Any] = {}
+        for feld in dataclasses.fields(geprueft):
+            wert = getattr(geprueft, feld.name)
+            if wert is None or wert == ():
+                continue
+            if isinstance(wert, frozenset):
+                # Mengen haben keine Reihenfolge; sortiert bleibt das JSON stabil.
+                wert = sorted(wert)
+            elif isinstance(wert, tuple):
+                wert = list(wert)
+            daten[feld.name] = wert
+        self.db.execute(
+            "INSERT INTO smartlists (name, rules_json) VALUES (?, ?) "
+            "ON CONFLICT(name) DO UPDATE SET "
+            "rules_json = excluded.rules_json, updated_at = CURRENT_TIMESTAMP",
+            (name, json.dumps(daten, ensure_ascii=False, sort_keys=True)),
+        )
+        self.db.commit()
+
+    def get_smartlist(self, name: str) -> dict[str, Any] | None:
+        """Gespeicherte Regeln als dict (Eingabe für ``parse_rules``) oder ``None``."""
+        row = self.db.execute(
+            "SELECT rules_json FROM smartlists WHERE name = ?", (name,)
+        ).fetchone()
+        return dict(json.loads(row["rules_json"])) if row else None
+
+    def list_smartlists(self) -> list[tuple[str, int]]:
+        """(name, Anzahl gesetzter Regeln), alphabetisch ohne Rücksicht auf Groß/klein."""
+        rows = self.db.execute(
+            "SELECT name, rules_json FROM smartlists ORDER BY name COLLATE NOCASE ASC, name ASC"
+        ).fetchall()
+        return [(str(r["name"]), len(json.loads(r["rules_json"]))) for r in rows]
 
     def record_exploration_use(self, tag: str, success: bool, now: datetime | None = None) -> None:
         ts = (now or datetime.now(timezone.utc)).strftime("%Y-%m-%d %H:%M:%S")
