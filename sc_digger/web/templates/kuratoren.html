@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+
+{% block title %}Kuratoren – sc-digger{% endblock %}
+{% block nav_kuratoren %}active{% endblock %}
+
+{% block meta %}
+<style>
+  .curator-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.75rem;
+  }
+  .curator-tracks summary {
+    cursor: pointer;
+    color: var(--accent-primary);
+    font-size: 0.82rem;
+    font-weight: 500;
+  }
+  .curator-tracks summary:hover {
+    text-decoration: underline;
+  }
+  .curator-tracks[open] summary {
+    margin-bottom: 0.5rem;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="curator-toolbar">
+    <div>
+      <h1 style="margin: 0;">🎧 Kuratoren-Übersicht</h1>
+      <p class="meta" style="margin: 0.25rem 0 0;">
+        Tragende Artists &amp; Labels der Sammlung &middot;
+        <strong>{{ entries | length }}</strong> {% if entries | length == 1 %}Künstler{% else %}Künstler{% endif %}
+      </p>
+    </div>
+    <div style="display: flex; gap: 0.6rem;">
+      <a href="/tracks" class="btn-page" style="font-size: 0.82rem;">&larr; Zum Track-Explorer</a>
+      <a href="/" class="btn-page" style="font-size: 0.82rem;">Status</a>
+    </div>
+  </div>
+  <p class="meta" style="margin-top: 0.6rem; margin-bottom: 0;">
+    Gruppiert Sammlungs-Tracks (Status <code>archive</code> oder <code>adopted</code>) ab {{ min_tracks }} Tracks nach Artist,
+    sortiert nach Tragweite. Grundlage für neue Referenz-Accounts in <code>config.yaml</code>.
+  </p>
+</div>
+
+{% if not entries %}
+<div class="card" style="margin-top: 1rem; text-align: center; padding: 2.5rem 1rem;">
+  <p class="meta" style="margin: 0; font-size: 0.95rem;">
+    Keine Kuratoren mit mindestens {{ min_tracks }} Tracks in der Sammlung gefunden.
+  </p>
+</div>
+{% else %}
+<div class="card" style="margin-top: 1.25rem;">
+  <div class="table-scroll">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Artist</th>
+          <th>Tracks</th>
+          <th>Anteil ≥ 4★</th>
+          <th>Ø BPM</th>
+          <th>Aufklappbare Tracks</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for entry in entries %}
+        <tr>
+          <td data-label="Artist">
+            <strong>{{ entry.artist }}</strong>
+          </td>
+          <td data-label="Tracks">
+            {{ entry.track_count }}
+          </td>
+          <td data-label="Anteil ≥ 4★">
+            {{ (entry.rated_share * 100) | round(1) }}%
+          </td>
+          <td data-label="Ø BPM">
+            {% if entry.avg_bpm %}
+              {{ entry.avg_bpm | round(1) }} BPM
+            {% else %}
+              <span class="meta">-</span>
+            {% endif %}
+          </td>
+          <td data-label="Tracks">
+            <details class="curator-tracks">
+              <summary>{{ entry.tracks | length }} Tracks anzeigen</summary>
+              <div class="table-scroll" style="margin-top: 0.35rem;">
+                <table class="data-table" style="width: 100%; font-size: 0.82rem;">
+                  <thead>
+                    <tr>
+                      <th>Titel</th>
+                      <th>Tempo</th>
+                      <th>Tonart</th>
+                      <th>Rating</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for t in entry.tracks %}
+                    <tr>
+                      <td data-label="Titel">{{ t.title or t.path.split('/')[-1] }}</td>
+                      <td data-label="Tempo">
+                        {% if t.bpm %}{{ t.bpm | round(1) }} BPM{% else %}-{% endif %}
+                      </td>
+                      <td data-label="Tonart">
+                        {% if t.key_camelot %}
+                          <span class="camelot-pill" data-key="{{ t.key_camelot }}">{{ t.key_camelot }}</span>
+                        {% else %}
+                          -
+                        {% endif %}
+                      </td>
+                      <td data-label="Rating">
+                        {% if t.rb_rating and t.rb_rating > 0 %}
+                          {{ t.rb_rating }}★
+                        {% else %}
+                          -
+                        {% endif %}
+                      </td>
+                      <td data-label="Status">
+                        <span class="badge {% if t.status == 'adopted' %}badge-ok{% else %}badge-purple{% endif %}">{{ t.status }}</span>
+                      </td>
+                    </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            </details>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

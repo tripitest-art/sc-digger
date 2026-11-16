@@ -43,6 +43,7 @@ from starlette.concurrency import run_in_threadpool
 from starlette.routing import request_response
 
 from .. import rekordbox
+from ..curator import curator_overview
 from ..db import FEEDBACK_VALUES, JobType, TrackDB
 from ..dj_export import Playlist, order_harmonic
 from ..embeddings import apply_embedding_result
@@ -92,6 +93,7 @@ from .database import (
     _connect_readonly,
     _sc_id_from_path,
     _set_builder_entries,
+    _table_exists,
     claim_job_for_worker,
     finish_job,
     get_collection_overview,
@@ -1011,6 +1013,51 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
                 page_url(offset + page_size)
                 if offset + page_size < result["total"] else None
             ),
+        ))
+
+    @app.get("/api/kuratoren")
+    def api_kuratoren(request: Request):
+        params = request.query_params
+        min_tracks = _query_int(params.get("min_tracks"), 3)
+        limit = _query_int(params.get("limit"), 30)
+        track_db_path = app.state.cfg["state"]["track_db_path"]
+        try:
+            with closing(_connect_readonly(track_db_path)) as db:
+                if not _table_exists(db, "tracks"):
+                    entries = []
+                else:
+                    entries = curator_overview(_ReadOnlyTrackDB(db), min_tracks=min_tracks, limit=limit)
+        except (sqlite3.Error, OSError):
+            entries = []
+        return JSONResponse([
+            {
+                "artist": e.artist,
+                "track_count": e.track_count,
+                "rated_share": e.rated_share,
+                "avg_bpm": e.avg_bpm,
+            }
+            for e in entries
+        ])
+
+    @app.get("/kuratoren", response_class=HTMLResponse)
+    def kuratoren_page(request: Request):
+        params = request.query_params
+        min_tracks = _query_int(params.get("min_tracks"), 3)
+        limit = _query_int(params.get("limit"), 30)
+        track_db_path = app.state.cfg["state"]["track_db_path"]
+        try:
+            with closing(_connect_readonly(track_db_path)) as db:
+                if not _table_exists(db, "tracks"):
+                    entries = []
+                else:
+                    entries = curator_overview(_ReadOnlyTrackDB(db), min_tracks=min_tracks, limit=limit)
+        except (sqlite3.Error, OSError):
+            entries = []
+        template = _env.get_template("kuratoren.html")
+        return HTMLResponse(template.render(
+            entries=entries,
+            min_tracks=min_tracks,
+            limit=limit,
         ))
 
     @app.post("/api/retry")
