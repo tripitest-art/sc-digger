@@ -207,9 +207,16 @@ def apply_embedding_result(db: TrackDB, job_id: int, result: dict[str, Any]) -> 
         return False
     try:
         db.set_embedding(job.track_id, model, [float(x) for x in vector])
-        return True
     except Exception:
         return False
+    # Neuer Track ist sofort bewertet; eine Modellpanne lässt den Job nicht scheitern.
+    try:
+        from .taste import load_and_score
+
+        load_and_score(db, track_ids=[job.track_id])
+    except Exception as exc:  # noqa: BLE001
+        log.warning("Taste-Score für Track %s nicht nachgezogen: %s", job.track_id, exc)
+    return True
 
 
 def make_embedding_handler(

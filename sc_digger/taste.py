@@ -330,6 +330,59 @@ def score_tracks(db: TrackDB, model: TasteModel, embedding_model: str) -> int:
     return scored
 
 
+def load_and_score(db: TrackDB, *, track_ids: Sequence[int] | None = None) -> int:
+    """Bewertet Tracks mit dem gespeicherten Modell und schreibt ``tracks.taste_score``.
+
+    Ohne Modell oder bei unlesbarem JSON: 0 und keine Änderung. ``track_ids=None``
+    bewertet alle Tracks (Delegation an :func:`score_tracks`), sonst nur die genannten;
+    unbekannte IDs werden übergangen. Wirft nie: der Aufrufer (Embedding-Ergebnis)
+    darf an einer Modellpanne nicht scheitern.
+    """
+    import logging
+
+    from .embeddings import unpack_vector
+
+    try:
+        loaded = load_taste_model(db)
+        if loaded is None:
+            return 0
+        embedding_model, model = loaded
+        if track_ids is None:
+            return score_tracks(db, model, embedding_model)
+
+        updates: list[tuple[float | None, int]] = []
+        scored = 0
+        for track_id in dict.fromkeys(int(i) for i in track_ids):
+            # Eine Zeile je Track: unbekannte IDs liefern nichts und werden übergangen.
+            row = db.db.execute(
+                """
+                SELECT t.id AS track_id, e.model AS model, e.vector AS vector
+                FROM tracks t
+                LEFT JOIN track_embeddings e ON e.track_id = t.id
+                WHERE t.id = ?
+                """,
+                (track_id,),
+            ).fetchone()
+            if row is None:
+                continue
+            score: float | None = None
+            if row["vector"] is not None and row["model"] == embedding_model:
+                vector = unpack_vector(row["vector"])
+                if len(vector) == len(model.weights):
+                    try:
+                        score = model.score(vector)
+                        scored += 1
+                    except ValueError:
+                        score = None
+            updates.append((score, track_id))
+        with db.db:
+            db.db.executemany("UPDATE tracks SET taste_score = ? WHERE id = ?", updates)
+        return scored
+    except Exception as exc:  # noqa: BLE001 – darf den Aufrufer nie abbrechen
+        logging.getLogger("sc_digger.taste").warning("Taste-Score nicht berechnet: %s", exc)
+        return 0
+
+
 def run_taste(db: TrackDB, *, now: str, dry_run: bool = False) -> TasteRun:
     """Trainiert den Taste-Score und schreibt Modell und Scores.
 
