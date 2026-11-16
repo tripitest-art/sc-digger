@@ -24,7 +24,10 @@ def _profil_migration() -> tuple[int, str, str]:
 def test_migrationsliste_bleibt_gueltig_und_kennt_profil_migration():
     assert check_migrations() == []
     version, name, _ = _profil_migration()
-    assert version == max(v for v, _, _ in MIGRATIONS), "die Profil-Migration ist die jüngste"
+    # Nicht "die jüngste": jede spätere Migration (z. B. 0021_track_tags) verschiebt das
+    # Maximum und würde diesen Test ohne Grund rot machen. Geprüft wird, dass genau eine
+    # Profil-Migration existiert, ihre Nummer plausibel ist und ihr Name zur Version passt.
+    assert version >= 20
     assert name.startswith(f"{version:04d}_")
 
 
