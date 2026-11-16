@@ -106,6 +106,7 @@ def test_bestandsdaten_bekommen_das_standardprofil(tmp_path, monkeypatch):
         db.db.execute("INSERT INTO gate_items (sc_id, title, artist, gate_url) "
                       "VALUES (4711, 'T', 'A', 'https://example.test/g')")
         db.db.execute("INSERT INTO exploration_tag_stats (tag, uses, successes) VALUES ('tribal', 3, 2)")
+        db.db.commit()  # ohne commit rollt der Aufbau beim Schließen zurück
     monkeypatch.undo()
 
     with TrackDB(pfad) as db:
