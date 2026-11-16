@@ -8,6 +8,7 @@ unter „Unreleased“ (Regeln: `AGENTS.md`, Abschnitt „Doku und Changelog“)
 ## Unreleased
 
 ### Geändert
+- Track-DB: Migration `0020_profiles` legt den Profil-Namensraum an – `tracks.profile_id` (Vorgabe `schranz`), `taste_model` mit `profile_id` als Primärschlüssel statt der Einzeiler-Sperre `id = 1`, `exploration_tag_stats`, `store_items` und `gate_items` je Profil eindeutig; Bestandsdaten gehören zu `schranz`. `TrackDB(pfad, profile_id=…)` kennt sein Profil, `save_taste_model`/`load_taste_model` lesen und schreiben das Modell des Profils. Verhalten unverändert (#561).
 - `create_app` nimmt optionalen Parameter `disk_usage` entgegen und reicht ihn an die Betriebskarte (`collect_ops`) durch; Web-Ops-Tests messen keinen echten Datenträger mehr (#547).
 - Konfigeditor: Ja/Nein-Felder erscheinen als Schalter statt als Auswahlliste; ein nicht angehakter Schalter speichert „aus“, und nur Felder des gerade gespeicherten Abschnitts werden dabei berücksichtigt (#543).
 - Changelog-Fragmente werden per Sammel-PR mit Label `changelog-zusammenfuehren` zusammengeführt statt per Direkt-Push auf `main` (den `main-schutz` verbietet); der Workflow `changelog` prüft nur noch PRs und schreibt nichts mehr ins Repository. (#539)
