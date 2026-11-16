@@ -191,6 +191,11 @@ class ArtistReputation:
 FEEDBACK_VALUES: tuple[str, ...] = ("like", "dislike", "later")
 
 
+# Profil, zu dem Zeilen ohne ausdrückliche Angabe gehören. Muss zum DEFAULT der Spalten
+# ``profile_id`` aus Migration 0020 passen, sonst fänden Bestandsdaten ihr Profil nicht.
+DEFAULT_PROFILE = "schranz"
+
+
 # ================================================================= Migrationen
 
 MIGRATIONS: list[tuple[int, str, str]] = [
@@ -456,6 +461,140 @@ MIGRATIONS: list[tuple[int, str, str]] = [
         ALTER TABLE tracks ADD COLUMN spectral_centroid_hz REAL;
         """,
     ),
+    (
+        # Nummer 20 statt der im Issue #561 genannten 19: 19 ist auf main bereits durch
+        # 0019_tracks_helligkeit (#544) belegt und ausgerollt. Eine zweite 19 lehnt
+        # check_migrations ab, und eine umgewidmete 19 liefe auf dem Server nie.
+        #
+        # Profil-Namensraum: alle profilabhängigen Tabellen bekommen profile_id mit
+        # Vorgabe 'schranz', die bisher globalen Schlüssel gelten je Profil. SQLite kann
+        # Primärschlüssel und UNIQUE nicht per ALTER ändern, deshalb der Tabellenneubau
+        # (neu anlegen, umkopieren, alte löschen, umbenennen). Die Indizes verschwinden
+        # mit DROP TABLE und werden danach neu angelegt.
+        #
+        # Die CREATE TABLE IF NOT EXISTS in alter Form vor jedem Neubau sind für echte
+        # Datenbanken wirkungslos. Sie fangen Datenbanken ab, in denen eine frühere
+        # Migration als angewendet vermerkt ist, die Tabelle aber fehlt (so gebaut in
+        # tests/test_analysis_confidence_db.py); ohne sie bräche das Umkopieren ab.
+        #
+        # taste_model.id bleibt als berechnete Spalte (immer 1) erhalten, obwohl das Issue
+        # sie nicht nennt: sc_digger/web/database.py (taste_model_info) und die
+        # Akzeptanztests zu #479/#480 lesen "WHERE id = 1" bzw. row["id"], und beide darf
+        # diese Aufgabe nicht ändern. Die Spalte nimmt keine Werte an und zählt bei
+        # "INSERT ... VALUES" nicht mit; sie kann weg, sobald das Web das Profil kennt.
+        20,
+        "0020_profiles",
+        """
+        ALTER TABLE tracks ADD COLUMN profile_id TEXT NOT NULL DEFAULT 'schranz';
+
+        CREATE TABLE IF NOT EXISTS taste_model (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            embedding_model TEXT NOT NULL,
+            trained_at TEXT NOT NULL,
+            n_pos INTEGER NOT NULL,
+            n_neg INTEGER NOT NULL,
+            model_json TEXT NOT NULL
+        );
+        CREATE TABLE taste_model_neu (
+            profile_id TEXT PRIMARY KEY NOT NULL DEFAULT 'schranz',
+            embedding_model TEXT NOT NULL,
+            trained_at TEXT NOT NULL,
+            n_pos INTEGER NOT NULL,
+            n_neg INTEGER NOT NULL,
+            model_json TEXT NOT NULL,
+            id INTEGER GENERATED ALWAYS AS (1) VIRTUAL
+        );
+        INSERT INTO taste_model_neu
+            (profile_id, embedding_model, trained_at, n_pos, n_neg, model_json)
+            SELECT 'schranz', embedding_model, trained_at, n_pos, n_neg, model_json
+            FROM taste_model;
+        DROP TABLE taste_model;
+        ALTER TABLE taste_model_neu RENAME TO taste_model;
+
+        CREATE TABLE IF NOT EXISTS exploration_tag_stats (
+            tag TEXT PRIMARY KEY,
+            uses INTEGER NOT NULL,
+            successes INTEGER NOT NULL,
+            last_used_at TEXT,
+            last_success_at TEXT
+        );
+        CREATE TABLE exploration_tag_stats_neu (
+            profile_id TEXT NOT NULL DEFAULT 'schranz',
+            tag TEXT NOT NULL,
+            uses INTEGER NOT NULL,
+            successes INTEGER NOT NULL,
+            last_used_at TEXT,
+            last_success_at TEXT,
+            PRIMARY KEY (profile_id, tag)
+        );
+        INSERT INTO exploration_tag_stats_neu
+            (profile_id, tag, uses, successes, last_used_at, last_success_at)
+            SELECT 'schranz', tag, uses, successes, last_used_at, last_success_at
+            FROM exploration_tag_stats;
+        DROP TABLE exploration_tag_stats;
+        ALTER TABLE exploration_tag_stats_neu RENAME TO exploration_tag_stats;
+
+        CREATE TABLE IF NOT EXISTS store_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sc_id INTEGER UNIQUE NOT NULL,
+            title TEXT NOT NULL,
+            artist TEXT NOT NULL,
+            purchase_url TEXT NOT NULL,
+            purchase_title TEXT,
+            first_seen TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            last_seen TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE store_items_neu (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            profile_id TEXT NOT NULL DEFAULT 'schranz',
+            sc_id INTEGER NOT NULL,
+            title TEXT NOT NULL,
+            artist TEXT NOT NULL,
+            purchase_url TEXT NOT NULL,
+            purchase_title TEXT,
+            first_seen TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            last_seen TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE (profile_id, sc_id)
+        );
+        INSERT INTO store_items_neu
+            (id, profile_id, sc_id, title, artist, purchase_url, purchase_title, first_seen, last_seen)
+            SELECT id, 'schranz', sc_id, title, artist, purchase_url, purchase_title, first_seen, last_seen
+            FROM store_items;
+        DROP TABLE store_items;
+        ALTER TABLE store_items_neu RENAME TO store_items;
+        CREATE INDEX IF NOT EXISTS idx_store_items_last_seen ON store_items(last_seen);
+
+        CREATE TABLE IF NOT EXISTS gate_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sc_id INTEGER UNIQUE NOT NULL,
+            title TEXT NOT NULL,
+            artist TEXT NOT NULL,
+            gate_url TEXT NOT NULL,
+            gate_type TEXT,
+            first_seen TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            last_seen TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE gate_items_neu (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            profile_id TEXT NOT NULL DEFAULT 'schranz',
+            sc_id INTEGER NOT NULL,
+            title TEXT NOT NULL,
+            artist TEXT NOT NULL,
+            gate_url TEXT NOT NULL,
+            gate_type TEXT,
+            first_seen TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            last_seen TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE (profile_id, sc_id)
+        );
+        INSERT INTO gate_items_neu
+            (id, profile_id, sc_id, title, artist, gate_url, gate_type, first_seen, last_seen)
+            SELECT id, 'schranz', sc_id, title, artist, gate_url, gate_type, first_seen, last_seen
+            FROM gate_items;
+        DROP TABLE gate_items;
+        ALTER TABLE gate_items_neu RENAME TO gate_items;
+        CREATE INDEX IF NOT EXISTS idx_gate_items_last_seen ON gate_items(last_seen);
+        """,
+    ),
 ]
 
 # Erlaubte Werte in ``match_overrides.override_type``: die Handkorrektur ersetzt den
@@ -566,8 +705,11 @@ def _apply_migrations(db: sqlite3.Connection) -> None:
 class TrackDB:
     """Verwaltet den persistenten Track-Index und Hintergrund-Jobs."""
 
-    def __init__(self, db_path: str | Path):
+    def __init__(self, db_path: str | Path, *, profile_id: str = DEFAULT_PROFILE) -> None:
         self.path = Path(db_path)
+        # Issue #561: bestimmt das Profil der Upserts mit Schlüssel je Profil (Tags, Kauf-
+        # und Gate-Einträge) und des Taste-Modells; Abfragen filtern noch nicht danach.
+        self.profile_id = profile_id
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.db = sqlite3.connect(str(self.path))
         self.db.row_factory = sqlite3.Row
@@ -1055,15 +1197,16 @@ class TrackDB:
         ts = (now or datetime.now(timezone.utc)).strftime("%Y-%m-%d %H:%M:%S")
         self.db.execute(
             """
-            INSERT INTO exploration_tag_stats (tag, uses, successes, last_used_at, last_success_at)
-            VALUES (?, 1, ?, ?, ?)
-            ON CONFLICT(tag) DO UPDATE SET
+            INSERT INTO exploration_tag_stats
+                (profile_id, tag, uses, successes, last_used_at, last_success_at)
+            VALUES (?, ?, 1, ?, ?, ?)
+            ON CONFLICT(profile_id, tag) DO UPDATE SET
                 uses = uses + 1,
                 successes = successes + excluded.successes,
                 last_used_at = excluded.last_used_at,
                 last_success_at = COALESCE(excluded.last_success_at, last_success_at)
             """,
-            (tag, int(bool(success)), ts, ts if success else None),
+            (self.profile_id, tag, int(bool(success)), ts, ts if success else None),
         )
         self.db.commit()
 
@@ -1088,16 +1231,17 @@ class TrackDB:
         """INSERT OR REPLACE mit UPDATE von last_seen."""
         self.db.execute(
             """
-            INSERT INTO store_items (sc_id, title, artist, purchase_url, purchase_title, first_seen, last_seen)
-            VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-            ON CONFLICT(sc_id) DO UPDATE SET
+            INSERT INTO store_items
+                (profile_id, sc_id, title, artist, purchase_url, purchase_title, first_seen, last_seen)
+            VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            ON CONFLICT(profile_id, sc_id) DO UPDATE SET
                 title = excluded.title,
                 artist = excluded.artist,
                 purchase_url = excluded.purchase_url,
                 purchase_title = COALESCE(excluded.purchase_title, store_items.purchase_title),
                 last_seen = CURRENT_TIMESTAMP
             """,
-            (sc_id, title, artist, purchase_url, purchase_title),
+            (self.profile_id, sc_id, title, artist, purchase_url, purchase_title),
         )
         self.db.commit()
 
@@ -1139,16 +1283,17 @@ class TrackDB:
         """Fügt ein Gate-Item (Hypeddit, Droploud, etc.) in gate_items ein oder aktualisiert last_seen."""
         self.db.execute(
             """
-            INSERT INTO gate_items (sc_id, title, artist, gate_url, gate_type, first_seen, last_seen)
-            VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-            ON CONFLICT(sc_id) DO UPDATE SET
+            INSERT INTO gate_items
+                (profile_id, sc_id, title, artist, gate_url, gate_type, first_seen, last_seen)
+            VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            ON CONFLICT(profile_id, sc_id) DO UPDATE SET
                 title = excluded.title,
                 artist = excluded.artist,
                 gate_url = excluded.gate_url,
                 gate_type = COALESCE(excluded.gate_type, gate_items.gate_type),
                 last_seen = CURRENT_TIMESTAMP
             """,
-            (sc_id, title, artist, gate_url, gate_type),
+            (self.profile_id, sc_id, title, artist, gate_url, gate_type),
         )
         self.db.commit()
 

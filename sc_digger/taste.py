@@ -262,23 +262,24 @@ def build_training_set(db: TrackDB) -> list[tuple[list[float], int]]:
 
 def save_taste_model(db: TrackDB, model: TasteModel, embedding_model: str, *,
                      n_pos: int, n_neg: int, trained_at: str) -> None:
-    """Ersetzt die einzige Modellzeile (id = 1) samt Metadaten und JSON."""
+    """Ersetzt die Modellzeile des Profils (``db.profile_id``) samt Metadaten und JSON."""
     db.db.execute(
         """
         INSERT OR REPLACE INTO taste_model
-            (id, embedding_model, trained_at, n_pos, n_neg, model_json)
-        VALUES (1, ?, ?, ?, ?, ?)
+            (profile_id, embedding_model, trained_at, n_pos, n_neg, model_json)
+        VALUES (?, ?, ?, ?, ?, ?)
         """,
-        (embedding_model, trained_at, n_pos, n_neg,
+        (db.profile_id, embedding_model, trained_at, n_pos, n_neg,
          json.dumps(model.to_dict())),
     )
     db.db.commit()
 
 
 def load_taste_model(db: TrackDB) -> tuple[str, TasteModel] | None:
-    """Liest das gespeicherte Modell; None ohne Zeile oder bei unlesbarem JSON."""
+    """Liest das Modell des Profils (``db.profile_id``); None ohne Zeile oder bei unlesbarem JSON."""
     row = db.db.execute(
-        "SELECT embedding_model, model_json FROM taste_model WHERE id = 1"
+        "SELECT embedding_model, model_json FROM taste_model WHERE profile_id = ?",
+        (db.profile_id,),
     ).fetchone()
     if row is None:
         return None
