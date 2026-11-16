@@ -495,7 +495,6 @@
     transition: border-color 0.15s ease, box-shadow 0.15s ease;
   }
   input[type=text]:focus, textarea:focus, select:focus {
-    outline: none;
     border-color: var(--border-focus);
     box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
   }
@@ -814,7 +813,6 @@
     color: #93c5fd;
     background-color: var(--bg-card-subtle);
     user-select: none;
-    outline: none;
   }
   details.info-toggle summary:hover {
     color: #fff;
@@ -900,6 +898,12 @@
   .val-blue { color: #60a5fa; }
   .hero-title { margin: 0; font-size: 1.55rem; }
   .alert-compact { margin-top: 0.85rem; margin-bottom: 0; padding: 0.55rem 0.75rem; }
+  .dj-deck-bar {
+    visibility: hidden;
+  }
+  .dj-deck-bar.visible {
+    visibility: visible;
+  }
   .deck-time { font-size: 0.76rem; min-width: 5.5rem; }
   .logo-deck { width: 2rem; height: 2rem; font-size: 1rem; }
 
@@ -1016,6 +1020,39 @@
     setTimeout(function() {
       if (el.parentNode) el.parentNode.removeChild(el);
     }, duration);
+  }
+
+  // Bewertung ohne Seiten-Reload an POST /api/feedback (Issue #229, #576). Bis die Antwort da ist,
+  // sind die Knöpfe gesperrt, damit kein zweiter Klick eine widersprüchliche Bewertung schickt.
+  async function sendFeedback(button) {
+    const cell = button.closest('[data-feedback-cell]');
+    if (!cell) { return; }
+    const buttons = cell.querySelectorAll('button[data-value]');
+    const errorBox = cell.querySelector('.feedback-error');
+    if (errorBox) { errorBox.textContent = ''; }
+    buttons.forEach((b) => { b.disabled = true; });
+    try {
+      const response = await fetch('/api/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sc_id: parseInt(cell.dataset.scId, 10),
+          value: button.dataset.value,
+        }),
+      });
+      if (!response.ok) { throw new Error('HTTP ' + response.status); }
+      buttons.forEach((b) => {
+        const isActive = (b === button);
+        b.classList.toggle('active', isActive);
+        b.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+      });
+      showToast("Bewertung gespeichert", "ok");
+    } catch (error) {
+      if (errorBox) { errorBox.textContent = 'nicht gespeichert'; }
+      showToast("Speichern fehlgeschlagen", "err");
+    } finally {
+      buttons.forEach((b) => { b.disabled = false; });
+    }
   }
 </script>
 </body>
