@@ -1197,6 +1197,23 @@ def run_taste_cmd(cfg: Config, *, dry_run: bool = False, now: str | None = None)
     return text
 
 
+def run_requeue_cmd(cfg: Config, *, timeout_minutes: int | None = None) -> str:
+    """Setzt hängende Jobs zurück; druckt und liefert die Zeile.
+
+    Stirbt der GPU-Worker mitten im Job, bleibt der Job sonst für immer auf ``running`` und
+    blockiert jeden neuen Job für denselben Track. ``timeout_minutes=None`` nimmt die
+    Zeitgrenze je Job-Typ aus ``db.STALE_TIMEOUT_MINUTES``.
+    """
+    with TrackDB(cfg["state"]["track_db_path"]) as db:
+        n = db.requeue_stale_jobs(timeout_minutes=timeout_minutes)
+    if n > 0:
+        text = f"Job-Warteschlange: {n} hängende Jobs zurückgesetzt"
+    else:
+        text = "Job-Warteschlange: keine hängenden Jobs"
+    print(text)
+    return text
+
+
 def run_scout(cfg: Config, *, dry_run: bool = False) -> int:
     """Führt Bandcamp- und Beatport-Scout aus.
 
@@ -1368,6 +1385,11 @@ def cli() -> None:
     sub.add_parser("taste", parents=[common],
                    help="Taste-Score trainieren und für Tracks mit Embedding speichern")
 
+    rq = sub.add_parser("requeue", parents=[common],
+                        help="Hängende Jobs der Job-Warteschlange (running, Worker abgestürzt) auf pending zurücksetzen")
+    rq.add_argument("--timeout-minutes", type=int,
+                    help="Zeitgrenze in Minuten für alle Job-Typen (Standard: je Job-Typ)")
+
     a = ap.parse_args()
     install_redacting_logging(logging.DEBUG if a.verbose else logging.INFO)
     cfg = Config.load(a.config)
@@ -1417,6 +1439,8 @@ def cli() -> None:
             run_energy_backfill(cfg, dry_run=a.dry_run, limit=a.limit, force=a.force)
         elif a.mode == "taste":
             run_taste_cmd(cfg, dry_run=a.dry_run)
+        elif a.mode == "requeue":
+            run_requeue_cmd(cfg, timeout_minutes=a.timeout_minutes)
         else:
             run_discover(cfg, a.dry_run, a.no_telegram)
 
