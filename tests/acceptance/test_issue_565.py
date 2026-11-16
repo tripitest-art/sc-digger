@@ -41,7 +41,7 @@ def test_tracks_werden_nach_profil_getrennt(tmp_path):
     with TrackDB(pfad, profile_id="house") as db:
         db.upsert_track(TrackRecord(path="/x/b.flac", mtime=1.0, size=2))
         assert [t.path for t in db.list_tracks()] == ["/x/b.flac"]
-        assert db.count_tracks() == 1
+        assert len(db.list_tracks()) == 1
         assert db.get_track_by_path("/x/a.flac") is None
         assert db.get_track_by_path("/x/b.flac") is not None
     with TrackDB(pfad, profile_id="schranz") as db:
