@@ -45,8 +45,20 @@ _TAG_KEYS = ("tags_all", "tags_any")
 # Paare, bei denen eine Untergrenze über der Obergrenze nie einen Track träfe.
 _RANGES = (("bpm_min", "bpm_max"), ("energy_min", "energy_max"), ("duration_min", "duration_max"))
 
-# Nur für die Sortierung: Zahl und Buchstabe eines Camelot-Keys ("10A" -> (10, "A")).
-_CAMELOT_RE = re.compile(r"^(\d{1,2})([AB])$")
+# Erlaubte Wertebereiche (Grenzen einschließlich). Ohne sie liefe ein Tippfehler wie
+# "taste_min: 7" (statt 0.7) oder "rating_min: 9" still auf eine leere Liste hinaus.
+_BOUNDS: dict[str, tuple[int, int]] = {
+    "taste_min": (0, 1),
+    "rating_min": (0, 5),
+    "energy_min": (1, 5),
+    "energy_max": (1, 5),
+}
+# BPM und Dauer haben keine feste Obergrenze, müssen aber größer als 0 sein.
+_POSITIVE_KEYS = ("bpm_min", "bpm_max", "duration_min", "duration_max")
+
+# Camelot-Key: 1..12 gefolgt von A oder B. Dient der Prüfung in ``parse_rules`` und der
+# Sortierung ("10A" -> (10, "A")).
+_CAMELOT_RE = re.compile(r"^([1-9]|1[0-2])([AB])$")
 
 
 def _number(key: str, value: Any) -> float:
@@ -95,9 +107,13 @@ def _tags(key: str, value: Any) -> tuple[str, ...]:
 def _keys(key: str, value: Any) -> frozenset[str] | None:
     keys: set[str] = set()
     for roh in _strings(key, value):
+        # Groß/klein und Rand wie in harmonic.compatible_keys: "8a" meint "8A".
         camelot = roh.strip().upper()
-        if not camelot:
-            raise RuleError(f"{key}: leerer Camelot-Key.")
+        if not _CAMELOT_RE.match(camelot):
+            raise RuleError(
+                f"{key}: {roh!r} ist kein Camelot-Key "
+                "(erlaubt: 1..12 gefolgt von A oder B, z. B. 8A oder 12B)."
+            )
         keys.add(camelot)
     # Eine leere Liste heißt „keine Key-Regel“, nicht „kein Key passt“.
     return frozenset(keys) or None
@@ -109,6 +125,9 @@ def parse_rules(data: Mapping[str, Any]) -> Rules:
     Tags werden über sc_digger.tags.normalize_tag normalisiert.
 
     Ein Wert ``None`` gilt als „nicht gesetzt“, ebenso eine leere Liste.
+    Wertebereiche: ``taste_min`` 0..1, ``rating_min`` 0..5, ``energy_*`` 1..5, ``bpm_*`` und
+    ``duration_*`` größer als 0, ``keys`` nur Camelot (1..12 gefolgt von A oder B).
+    Ein Wert außerhalb ⇒ RuleError mit Schlüssel und erlaubtem Bereich.
     """
     if not isinstance(data, Mapping):
         raise RuleError(f"Regeln: dict erwartet, nicht {type(data).__name__}.")
@@ -129,6 +148,18 @@ def parse_rules(data: Mapping[str, Any]) -> Rules:
             werte[key] = _tags(key, value)
         else:
             werte[key] = _keys(key, value)
+
+        if key in _BOUNDS:
+            unten, oben = _BOUNDS[key]
+            if not unten <= werte[key] <= oben:
+                raise RuleError(
+                    f"{key}: {werte[key]:g} liegt außerhalb des erlaubten Bereichs "
+                    f"{unten}..{oben}."
+                )
+        elif key in _POSITIVE_KEYS and werte[key] <= 0:
+            raise RuleError(
+                f"{key}: {werte[key]:g} ist nicht erlaubt (erlaubter Bereich: größer als 0)."
+            )
 
     for unten, oben in _RANGES:
         if unten in werte and oben in werte and werte[unten] > werte[oben]:

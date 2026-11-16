@@ -86,6 +86,64 @@ def test_falscher_typ_nennt_den_schluessel(daten, schluessel):
     assert schluessel in str(fehler.value)
 
 
+@pytest.mark.parametrize(
+    ("daten", "schluessel", "bereich"),
+    [
+        ({"taste_min": 7}, "taste_min", "0..1"),
+        ({"taste_min": 1.01}, "taste_min", "0..1"),
+        ({"taste_min": -0.1}, "taste_min", "0..1"),
+        ({"rating_min": 6}, "rating_min", "0..5"),
+        ({"rating_min": -1}, "rating_min", "0..5"),
+        ({"energy_min": 0}, "energy_min", "1..5"),
+        ({"energy_min": 6}, "energy_min", "1..5"),
+        ({"energy_max": 0}, "energy_max", "1..5"),
+        ({"energy_max": 9}, "energy_max", "1..5"),
+        ({"bpm_min": 0}, "bpm_min", "größer als 0"),
+        ({"bpm_min": -150}, "bpm_min", "größer als 0"),
+        ({"bpm_max": 0.0}, "bpm_max", "größer als 0"),
+        ({"duration_min": 0}, "duration_min", "größer als 0"),
+        ({"duration_max": -420}, "duration_max", "größer als 0"),
+        ({"keys": ["13A"]}, "keys", "1..12"),
+        ({"keys": ["0B"]}, "keys", "1..12"),
+        ({"keys": ["8C"]}, "keys", "A oder B"),
+        ({"keys": ["8A", "Am"]}, "keys", "A oder B"),
+        ({"keys": ["8"]}, "keys", "A oder B"),
+        ({"keys": ["08A"]}, "keys", "1..12"),
+        ({"keys": ["8A9A"]}, "keys", "1..12"),
+    ],
+)
+def test_wert_ausserhalb_des_bereichs_nennt_schluessel_und_bereich(daten, schluessel, bereich):
+    with pytest.raises(RuleError) as fehler:
+        parse_rules(daten)
+    assert schluessel in str(fehler.value)
+    assert bereich in str(fehler.value)
+
+
+def test_falscher_key_nennt_den_eingegebenen_wert():
+    # Bei mehreren Keys muss erkennbar sein, welcher der Tippfehler ist.
+    with pytest.raises(RuleError) as fehler:
+        parse_rules({"keys": ["8A", "9A", "13C"]})
+    assert "13C" in str(fehler.value)
+
+
+def test_bereichsgrenzen_selbst_sind_erlaubt():
+    rules = parse_rules({
+        "taste_min": 0, "rating_min": 0, "energy_min": 1, "energy_max": 5,
+        "bpm_min": 0.1, "duration_min": 0.5, "keys": ["1A", "12B"],
+    })
+    assert rules == Rules(taste_min=0.0, rating_min=0, energy_min=1, energy_max=5,
+                          bpm_min=0.1, duration_min=0.5, keys=frozenset({"1A", "12B"}))
+    assert parse_rules({"taste_min": 1, "rating_min": 5}) == Rules(taste_min=1.0, rating_min=5)
+
+
+def test_bereichsfehler_geht_dem_grenzvergleich_vor():
+    # energy_min 9 ist schon für sich falsch; die Meldung soll den Bereich nennen und nicht
+    # nur, dass 9 über energy_max liegt.
+    with pytest.raises(RuleError) as fehler:
+        parse_rules({"energy_min": 9, "energy_max": 5})
+    assert "1..5" in str(fehler.value)
+
+
 def test_regelfehler_ist_ein_valueerror():
     assert issubclass(RuleError, ValueError)
     with pytest.raises(RuleError):
@@ -297,6 +355,10 @@ def test_ungueltige_regeln_und_leerer_name_schreiben_nichts(tmp_path):
             db.save_smartlist("kaputt", {"farbe": "rot"})
         with pytest.raises(RuleError):
             db.save_smartlist("kaputt", {"bpm_min": 170, "bpm_max": 150})
+        with pytest.raises(RuleError):
+            db.save_smartlist("kaputt", {"taste_min": 70})
+        with pytest.raises(RuleError):
+            db.save_smartlist("kaputt", {"keys": ["13A"]})
         with pytest.raises(ValueError):
             db.save_smartlist("  ", {"bpm_min": 150})
         assert db.list_smartlists() == []
