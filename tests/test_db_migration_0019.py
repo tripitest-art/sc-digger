@@ -271,3 +271,26 @@ def test_gescheiterte_migration_laesst_die_alte_db_unveraendert(tmp_path, monkey
     # Danach läuft die unveränderte Migration sauber durch.
     with TrackDB(pfad) as db:
         assert db.db.execute("SELECT COUNT(*) FROM tracks WHERE profile_id = 'schranz'").fetchone()[0] == 3
+
+
+def test_upserts_schreiben_in_das_profil_der_trackdb(tmp_path):
+    """Dieselbe sc_id bzw. derselbe Tag in zwei Profilen: je eine eigene Zeile, kein Überschreiben."""
+    pfad = tmp_path / "t.sqlite"
+    jetzt = datetime(2026, 11, 16, 7, 0, tzinfo=timezone.utc)
+    with TrackDB(pfad) as db:
+        db.upsert_store_item(4711, "Schranz-Titel", "A", "https://example.test/s")
+        db.upsert_gate_item(811, "Schranz-Gate", "A", "https://example.test/gs")
+        db.record_exploration_use("tribal", True, now=jetzt)
+    with TrackDB(pfad, profile_id="house") as db:
+        db.upsert_store_item(4711, "House-Titel", "B", "https://example.test/h")
+        db.upsert_gate_item(811, "House-Gate", "B", "https://example.test/gh")
+        db.record_exploration_use("tribal", False, now=jetzt)
+        db.record_exploration_use("tribal", False, now=jetzt)
+        db.upsert_store_item(4711, "House-Titel 2", "B", "https://example.test/h")
+
+        assert _zeilen(db, "SELECT profile_id, title FROM store_items WHERE sc_id = 4711 "
+                           "ORDER BY profile_id") == [("house", "House-Titel 2"), ("schranz", "Schranz-Titel")]
+        assert _zeilen(db, "SELECT profile_id, title FROM gate_items WHERE sc_id = 811 "
+                           "ORDER BY profile_id") == [("house", "House-Gate"), ("schranz", "Schranz-Gate")]
+        assert _zeilen(db, "SELECT profile_id, uses, successes FROM exploration_tag_stats "
+                           "WHERE tag = 'tribal' ORDER BY profile_id") == [("house", 2, 0), ("schranz", 1, 1)]

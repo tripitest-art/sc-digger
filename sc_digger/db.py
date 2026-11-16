@@ -707,7 +707,8 @@ class TrackDB:
 
     def __init__(self, db_path: str | Path, *, profile_id: str = DEFAULT_PROFILE) -> None:
         self.path = Path(db_path)
-        # Vorerst nur gespeichert (Issue #561); allein taste.py liest es schon.
+        # Issue #561: bestimmt das Profil der Upserts mit Schlüssel je Profil (Tags, Kauf-
+        # und Gate-Einträge) und des Taste-Modells; Abfragen filtern noch nicht danach.
         self.profile_id = profile_id
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.db = sqlite3.connect(str(self.path))
@@ -1196,15 +1197,16 @@ class TrackDB:
         ts = (now or datetime.now(timezone.utc)).strftime("%Y-%m-%d %H:%M:%S")
         self.db.execute(
             """
-            INSERT INTO exploration_tag_stats (tag, uses, successes, last_used_at, last_success_at)
-            VALUES (?, 1, ?, ?, ?)
+            INSERT INTO exploration_tag_stats
+                (profile_id, tag, uses, successes, last_used_at, last_success_at)
+            VALUES (?, ?, 1, ?, ?, ?)
             ON CONFLICT(profile_id, tag) DO UPDATE SET
                 uses = uses + 1,
                 successes = successes + excluded.successes,
                 last_used_at = excluded.last_used_at,
                 last_success_at = COALESCE(excluded.last_success_at, last_success_at)
             """,
-            (tag, int(bool(success)), ts, ts if success else None),
+            (self.profile_id, tag, int(bool(success)), ts, ts if success else None),
         )
         self.db.commit()
 
@@ -1229,8 +1231,9 @@ class TrackDB:
         """INSERT OR REPLACE mit UPDATE von last_seen."""
         self.db.execute(
             """
-            INSERT INTO store_items (sc_id, title, artist, purchase_url, purchase_title, first_seen, last_seen)
-            VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            INSERT INTO store_items
+                (profile_id, sc_id, title, artist, purchase_url, purchase_title, first_seen, last_seen)
+            VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
             ON CONFLICT(profile_id, sc_id) DO UPDATE SET
                 title = excluded.title,
                 artist = excluded.artist,
@@ -1238,7 +1241,7 @@ class TrackDB:
                 purchase_title = COALESCE(excluded.purchase_title, store_items.purchase_title),
                 last_seen = CURRENT_TIMESTAMP
             """,
-            (sc_id, title, artist, purchase_url, purchase_title),
+            (self.profile_id, sc_id, title, artist, purchase_url, purchase_title),
         )
         self.db.commit()
 
@@ -1280,8 +1283,9 @@ class TrackDB:
         """Fügt ein Gate-Item (Hypeddit, Droploud, etc.) in gate_items ein oder aktualisiert last_seen."""
         self.db.execute(
             """
-            INSERT INTO gate_items (sc_id, title, artist, gate_url, gate_type, first_seen, last_seen)
-            VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            INSERT INTO gate_items
+                (profile_id, sc_id, title, artist, gate_url, gate_type, first_seen, last_seen)
+            VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
             ON CONFLICT(profile_id, sc_id) DO UPDATE SET
                 title = excluded.title,
                 artist = excluded.artist,
@@ -1289,7 +1293,7 @@ class TrackDB:
                 gate_type = COALESCE(excluded.gate_type, gate_items.gate_type),
                 last_seen = CURRENT_TIMESTAMP
             """,
-            (sc_id, title, artist, gate_url, gate_type),
+            (self.profile_id, sc_id, title, artist, gate_url, gate_type),
         )
         self.db.commit()
 
