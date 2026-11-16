@@ -625,6 +625,30 @@ MIGRATIONS: list[tuple[int, str, str]] = [
         );
         """,
     ),
+    (
+        23,
+        "0023_smartlists_profile",
+        """
+        -- Issue #565: Smartlists gehören zu einem Profil; derselbe Name darf in zwei Profilen
+        -- vorkommen. SQLite kann den Primärschlüssel nicht per ALTER ändern, deshalb der
+        -- Tabellenneubau wie in 0020 (neu anlegen, umkopieren, alte löschen, umbenennen).
+        -- Bestandsdaten gehören zum Standardprofil. Eine Zeile ohne Namen (der alte
+        -- Primärschlüssel ließ NULL zu, save_smartlist nie) war nicht abrufbar und entfällt.
+        CREATE TABLE smartlists_neu (
+            profile_id TEXT NOT NULL DEFAULT 'schranz',
+            name TEXT NOT NULL,
+            rules_json TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (profile_id, name)
+        );
+        INSERT INTO smartlists_neu (profile_id, name, rules_json, created_at, updated_at)
+            SELECT 'schranz', name, rules_json, created_at, updated_at
+            FROM smartlists WHERE name IS NOT NULL;
+        DROP TABLE smartlists;
+        ALTER TABLE smartlists_neu RENAME TO smartlists;
+        """,
+    ),
 ]
 
 # Erlaubte Werte in ``match_overrides.override_type``: die Handkorrektur ersetzt den
@@ -737,8 +761,10 @@ class TrackDB:
 
     def __init__(self, db_path: str | Path, *, profile_id: str = DEFAULT_PROFILE) -> None:
         self.path = Path(db_path)
-        # Issue #561: bestimmt das Profil der Upserts mit Schlüssel je Profil (Tags, Kauf-
-        # und Gate-Einträge) und des Taste-Modells; Abfragen filtern noch nicht danach.
+        # Issue #561/#565: bestimmt das Profil aller Upserts (Tracks, Explorations-Tags, Kauf-
+        # und Gate-Einträge, Smartlists) und des Taste-Modells. Danach filtern list_tracks,
+        # get_track_by_path, get_store_items, get_gate_items und die Smartlist-Methoden;
+        # die übrigen Abfragen sehen weiterhin alle Profile.
         self.profile_id = profile_id
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.db = sqlite3.connect(str(self.path))
@@ -771,11 +797,15 @@ class TrackDB:
             if v is not None and k not in ("id", "created_at", "updated_at", "feedback")
         }
         data["path"] = _normalize_path(data["path"])
+        # Issue #565: eine neue Zeile gehört zum Profil dieser Instanz. Beim Aktualisieren
+        # bleibt das Profil der Zeile stehen (der Pfad ist über alle Profile eindeutig),
+        # sonst zöge ein Upsert aus einem anderen Profil den Track still um.
+        data["profile_id"] = self.profile_id
 
         fields = list(data.keys())
         placeholders = ", ".join(f":{f}" for f in fields)
         set_clause = ", ".join(
-            f"{f} = excluded.{f}" for f in fields if f != "path"
+            f"{f} = excluded.{f}" for f in fields if f not in ("path", "profile_id")
         )
 
         query = f"""
@@ -792,9 +822,11 @@ class TrackDB:
         return TrackRecord.from_row(row)
 
     def get_track_by_path(self, path: str | Path) -> TrackRecord | None:
-        """Sucht einen Track anhand seines normalisierten Dateipfads."""
+        """Sucht einen Track des eigenen Profils anhand seines normalisierten Dateipfads."""
         p_str = _normalize_path(path)
-        row = self.db.execute("SELECT * FROM tracks WHERE path = ?", (p_str,)).fetchone()
+        row = self.db.execute(
+            "SELECT * FROM tracks WHERE path = ? AND profile_id = ?", (p_str, self.profile_id)
+        ).fetchone()
         return TrackRecord.from_row(row) if row else None
 
     def get_track_by_id(self, track_id: int) -> TrackRecord | None:
@@ -1279,7 +1311,8 @@ class TrackDB:
     # ------------------------------------------------------------ Smartlists (Issue #564)
 
     def save_smartlist(self, name: str, rules: Mapping[str, Any]) -> None:
-        """Speichert die Regeln unter ``name``; ein vorhandener Eintrag wird ersetzt.
+        """Speichert die Regeln unter ``name`` im eigenen Profil; ein vorhandener Eintrag
+        dieses Profils wird ersetzt.
 
         Abgelegt wird das geprüfte, normalisierte Regelwerk (nur gesetzte Schlüssel, Tags
         normalisiert), damit ``get_smartlist`` nie etwas liefert, das ``parse_rules`` ablehnt.
@@ -1303,24 +1336,29 @@ class TrackDB:
                 wert = list(wert)
             daten[feld.name] = wert
         self.db.execute(
-            "INSERT INTO smartlists (name, rules_json) VALUES (?, ?) "
-            "ON CONFLICT(name) DO UPDATE SET "
+            "INSERT INTO smartlists (profile_id, name, rules_json) VALUES (?, ?, ?) "
+            "ON CONFLICT(profile_id, name) DO UPDATE SET "
             "rules_json = excluded.rules_json, updated_at = CURRENT_TIMESTAMP",
-            (name, json.dumps(daten, ensure_ascii=False, sort_keys=True)),
+            (self.profile_id, name, json.dumps(daten, ensure_ascii=False, sort_keys=True)),
         )
         self.db.commit()
 
     def get_smartlist(self, name: str) -> dict[str, Any] | None:
-        """Gespeicherte Regeln als dict (Eingabe für ``parse_rules``) oder ``None``."""
+        """Gespeicherte Regeln des eigenen Profils als dict (Eingabe für ``parse_rules``)
+        oder ``None``."""
         row = self.db.execute(
-            "SELECT rules_json FROM smartlists WHERE name = ?", (name,)
+            "SELECT rules_json FROM smartlists WHERE profile_id = ? AND name = ?",
+            (self.profile_id, name),
         ).fetchone()
         return dict(json.loads(row["rules_json"])) if row else None
 
     def list_smartlists(self) -> list[tuple[str, int]]:
-        """(name, Anzahl gesetzter Regeln), alphabetisch ohne Rücksicht auf Groß/klein."""
+        """(name, Anzahl gesetzter Regeln) des eigenen Profils, alphabetisch ohne Rücksicht
+        auf Groß/klein."""
         rows = self.db.execute(
-            "SELECT name, rules_json FROM smartlists ORDER BY name COLLATE NOCASE ASC, name ASC"
+            "SELECT name, rules_json FROM smartlists WHERE profile_id = ? "
+            "ORDER BY name COLLATE NOCASE ASC, name ASC",
+            (self.profile_id,),
         ).fetchall()
         return [(str(r["name"]), len(json.loads(r["rules_json"]))) for r in rows]
 
@@ -1379,12 +1417,12 @@ class TrackDB:
     def get_store_items(
         self, only_liked: bool = False, since_days: int | None = None
     ) -> list[dict[str, Any]]:
-        """Gibt alle store_items zurück.
+        """Gibt alle store_items des eigenen Profils zurück.
         only_liked=True: JOIN mit sc_feedback WHERE value='like'.
         since_days: filtert nach last_seen >= NOW - since_days Tage.
         """
-        conds: list[str] = []
-        params: list[Any] = []
+        conds: list[str] = ["store_items.profile_id = ?"]
+        params: list[Any] = [self.profile_id]
         join_clause = ""
         if only_liked:
             join_clause = "JOIN sc_feedback ON sc_feedback.sc_id = store_items.sc_id"
@@ -1393,7 +1431,7 @@ class TrackDB:
             conds.append("datetime(store_items.last_seen) >= datetime('now', '-' || ? || ' days')")
             params.append(int(since_days))
 
-        where_clause = f"WHERE {' AND '.join(conds)}" if conds else ""
+        where_clause = f"WHERE {' AND '.join(conds)}"
         query = f"""
             SELECT store_items.* FROM store_items
             {join_clause}
@@ -1429,9 +1467,10 @@ class TrackDB:
         self.db.commit()
 
     def get_gate_items(self) -> list[dict[str, Any]]:
-        """Gibt alle gate_items sortiert nach last_seen DESC zurück."""
+        """Gibt die gate_items des eigenen Profils sortiert nach last_seen DESC zurück."""
         rows = self.db.execute(
-            "SELECT * FROM gate_items ORDER BY last_seen DESC, id DESC"
+            "SELECT * FROM gate_items WHERE profile_id = ? ORDER BY last_seen DESC, id DESC",
+            (self.profile_id,),
         ).fetchall()
         return [dict(r) for r in rows]
 
@@ -1665,9 +1704,9 @@ class TrackDB:
         limit: int | None = None,
         offset: int = 0,
     ) -> list[TrackRecord]:
-        """Listet Tracks sortiert nach Aktualisierung."""
-        conds: list[str] = []
-        params: list[Any] = []
+        """Listet die Tracks des eigenen Profils, nach id aufsteigend."""
+        conds: list[str] = ["profile_id = ?"]
+        params: list[Any] = [self.profile_id]
         if status:
             val = status.value if isinstance(status, Enum) else status
             conds.append("status = ?")
@@ -1677,7 +1716,7 @@ class TrackDB:
             conds.append("quality_status = ?")
             params.append(val)
 
-        where = f"WHERE {' AND '.join(conds)}" if conds else ""
+        where = f"WHERE {' AND '.join(conds)}"
         limit_clause = f"LIMIT {int(limit)} OFFSET {int(offset)}" if limit is not None else ""
         query = f"SELECT * FROM tracks {where} ORDER BY id ASC {limit_clause}"
         rows = self.db.execute(query, params).fetchall()
