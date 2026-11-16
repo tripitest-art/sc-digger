@@ -1,0 +1,90 @@
+"""Kuratoren-Übersicht aus der Sammlung (Issue #567).
+
+Gruppiert Sammlungs-Tracks (status archive/adopted) nach Artist,
+berechnet Anzahl, Anteil gut bewerteter Tracks (rb_rating >= 4),
+mittleres Tempo und sortiert Tracks nach BPM aufsteigend.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+from .db import TrackRecord
+
+if TYPE_CHECKING:
+    from .db import TrackDB
+
+
+@dataclass(frozen=True)
+class CuratorEntry:
+    artist: str
+    track_count: int
+    rated_share: float          # Anteil der Tracks mit rb_rating >= 4, 0.0..1.0
+    avg_bpm: float | None       # Mittel über die Tracks mit gesetztem bpm, sonst None
+    tracks: list[TrackRecord]   # nach bpm aufsteigend, Tracks ohne bpm zuletzt
+
+
+def curator_overview(
+    db: TrackDB, *, min_tracks: int = 3, limit: int = 30
+) -> list[CuratorEntry]:
+    """Artists der Sammlung (status 'archive' oder 'adopted', artist nicht leer).
+
+    Gruppiert nach `artist` (exakt, ohne Normalisierung), nur Gruppen mit mindestens
+    `min_tracks` Tracks. Sortierung: track_count absteigend, bei Gleichstand artist
+    alphabetisch. Danach die ersten `limit` Einträge.
+    """
+    if hasattr(db, "list_collection_tracks"):
+        raw_tracks = db.list_collection_tracks()
+    else:
+        conn = getattr(db, "db", db)
+        rows = conn.execute(
+            "SELECT * FROM tracks WHERE status IN ('archive', 'adopted') ORDER BY id ASC"
+        ).fetchall()
+        raw_tracks = [TrackRecord.from_row(r) for r in rows]
+
+    grouped: dict[str, list[TrackRecord]] = {}
+    for track in raw_tracks:
+        if not track.artist or not track.artist.strip():
+            continue
+        grouped.setdefault(track.artist, []).append(track)
+
+    entries: list[CuratorEntry] = []
+    for artist, tracks in grouped.items():
+        if len(tracks) < min_tracks:
+            continue
+
+        # Tracks nach bpm aufsteigend sortieren, Tracks ohne bpm zuletzt
+        sorted_tracks = sorted(
+            tracks,
+            key=lambda t: (t.bpm is None, t.bpm if t.bpm is not None else 0.0),
+        )
+
+        # Anteil rb_rating >= 4
+        rated_count = sum(
+            1 for t in tracks if t.rb_rating is not None and t.rb_rating >= 4
+        )
+        rated_share = rated_count / len(tracks) if tracks else 0.0
+
+        # Mittelwert über Tracks mit gesetztem bpm
+        bpm_values = [t.bpm for t in tracks if t.bpm is not None]
+        avg_bpm = sum(bpm_values) / len(bpm_values) if bpm_values else None
+
+        entries.append(
+            CuratorEntry(
+                artist=artist,
+                track_count=len(tracks),
+                rated_share=rated_share,
+                avg_bpm=avg_bpm,
+                tracks=sorted_tracks,
+            )
+        )
+
+    # Sortierung: track_count absteigend, bei Gleichstand artist alphabetisch
+    entries.sort(key=lambda e: (-e.track_count, e.artist))
+
+    if limit is not None:
+        if limit <= 0:
+            return []
+        entries = entries[:limit]
+
+    return entries

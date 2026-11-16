@@ -152,6 +152,8 @@ def test_create_app_behaelt_alle_routen_und_reihenfolge(tmp_path: Path):
         ("GET", "/kaufliste"),
         ("GET", "/api/rejected"),
         ("GET", "/rejected"),
+        ("GET", "/api/kuratoren"),
+        ("GET", "/kuratoren"),
         ("POST", "/api/retry"),
         ("POST", "/api/feedback"),
         ("POST", "/api/match-override"),
