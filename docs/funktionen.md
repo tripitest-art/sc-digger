@@ -321,6 +321,32 @@ dieselbe Adresse: `SC_DIGGER_WEB_TRUST_PROXY=1` zählt stattdessen die letzte St
 `X-Forwarded-For`. Nur setzen, wenn der Webserver ausschließlich über den Proxy erreichbar ist,
 sonst kann ein Client den Header selbst setzen.
 
+## Kuratoren
+
+`GET /kuratoren` (JSON: `GET /api/kuratoren`) beantwortet die Frage, welche Artists die Sammlung tragen — die Grundlage dafür, einen Account in `search.reference_accounts` aufzunehmen. Es wird nichts geladen: alles kommt aus der Track-DB.
+
+Gezählt werden Tracks mit Status `archive` oder `adopted`, Gruppen unter `min_tracks` (Standard 3) fallen weg. Sortiert wird nach Anzahl absteigend, bei Gleichstand alphabetisch, dann auf `limit` (Standard 30) gekürzt. Je Artist stehen Anzahl, Anteil der Tracks mit `rb_rating >= 4`, mittleres BPM (nur über Tracks mit gesetztem BPM) und die Tracks selbst — nach BPM aufsteigend, Tracks ohne BPM zuletzt.
+
+Im Dashboard liegt die Seite unter „Mehr" → „Kuratoren".
+
+## Smartlists
+
+Regeln über die Bibliothek, ohne sie in `config.yaml` zu schreiben: „BPM 150–160, Camelot 8A/9A, Energie 4–5, Taste ≥ 70 %, Rating ≥ 4, Tag `peak time`". `sc_digger/smartlists.py` trennt Auswertung und Ablage.
+
+`parse_rules(dict)` baut `Rules`. Unbekannte Schlüssel, falsche Typen und widersprüchliche Grenzen (`min > max`) scheitern mit `RuleError`, dessen Meldung Schlüssel und erlaubten Bereich nennt. Geprüfte Bereiche: `taste_min` 0..1, `rating_min` 0..5, `energy_*` 1..5, `bpm_*` und `duration_*` größer als 0, `keys` im Camelot-Muster (1..12 plus A/B; `8a` wird zu `8A` gespeichert). Ein `taste_min: 7` statt `0.7` läuft deshalb nicht mehr still auf eine leere Trefferliste.
+
+`matches(row, rules, tags)` ist reine Auswertung ohne Datenbank: fehlt ein Wert, den eine gesetzte Regel braucht (`NULL`), gilt der Track als nicht passend; leere Regeln passen immer. `select_tracks(db, rules, limit=None)` liefert die Treffer nach BPM aufsteigend (`NULL` zuletzt), dann Key, dann ID — Tracks mit `status = 'rejected'` sind immer ausgeschlossen.
+
+Gespeichert wird in `smartlists` je Profil (`profile_id` plus `name` als zusammengesetzter Schlüssel), derselbe Name darf also in zwei Genres existieren. `save_smartlist`, `get_smartlist` und `list_smartlists` arbeiten auf dem Profil der `TrackDB`. Eine Weboberfläche und ein Export (M3U8, Rekordbox-XML) fehlen noch.
+
+## Freie Tags
+
+Eigene Markierungen jenseits der Schranz-Matrix: „Opener", „Peak Time", „Warmup", „Fake-Drop". `track_tags` hält beliebig viele Tags je Track (Primärschlüssel `(track_id, tag)`, Fremdschlüssel mit `ON DELETE CASCADE`).
+
+`sc_digger.tags.normalize_tag` ist der einzige Weg in die Tabelle: Kleinschreibung, Leerraum zusammengefasst und am Rand entfernt, erlaubt sind `a-z 0-9 ä ö ü ß`, Leerzeichen, `-` und `_`, höchstens 40 Zeichen. Alles andere („Opener!", leer, zu lang) wirft `ValueError` — auch beim Entfernen und Suchen, damit ein Tippfehler nicht als „nichts gefunden" durchgeht.
+
+`TrackDB` bietet `add_track_tag` (idempotent, gibt den normalisierten Tag zurück), `remove_track_tag`, `get_track_tags`, `list_tags` (absteigend nach Anzahl) und `list_track_ids_by_tag`. Filter im Track-Explorer und die Nutzung als Smartlist-Regel (`tags_all`, `tags_any`) sind die nächsten Schritte; die Regel-Engine liest die Tabelle bereits.
+
 ## Wartung: Gate-Backfill
 
 Wurden in früheren Läufen Gated Tracks im Telegram-Digest gemeldet, bevor die Tabelle `gate_items` existierte, können deren Gate-Links mit dem Wartungsskript nachträglich per SoundCloud-Batch-Abfrage in wenigen Sekunden nachgeladen werden:
