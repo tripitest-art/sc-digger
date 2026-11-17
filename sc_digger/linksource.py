@@ -11,7 +11,7 @@ import logging
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Sequence
+from typing import Mapping, Sequence
 from urllib.parse import urlsplit, urlunsplit
 
 from .collection import name_key, names_match
@@ -74,6 +74,8 @@ def _record_key(record: TrackRecord):
 def propose_links(
     records: Sequence[TrackRecord],
     candidates: Sequence[Track],
+    *,
+    overrides: Mapping[int, str] | None = None,
 ) -> list[LinkProposal]:
     """Genau ein Vorschlag je Datenbankzeile, die passt.
 
@@ -83,7 +85,16 @@ def propose_links(
     Titel enthalten oft schon „Artist - Titel“. Passen mehrere, gewinnt der Kandidat mit den
     meisten gemeinsamen Wörtern, bei Gleichstand der erste in ``candidates``; der Vorschlag
     gilt dann als unsicher. Reihenfolge der Rückgabe wie ``records``.
+
+    Ein Kandidat, dessen ``id`` in ``overrides`` steht (``match_overrides``, SoundCloud-ID ->
+    ``override_type``), wird nie vorgeschlagen – egal welcher ``override_type``. Eine
+    Handkorrektur ist eine Entscheidung („kein Duplikat“ oder „schon in der Sammlung“), die
+    diese Logik nicht überstimmt. ``overrides=None`` verhält sich wie bisher.
     """
+    if overrides:
+        # Vor dem Abgleich aussortieren: ein ausgeschlossener Kandidat macht einen sonst
+        # eindeutigen Treffer nicht „mehrdeutig“ und gewinnt auch keinen Gleichstand.
+        candidates = [c for c in candidates if c.id not in overrides]
     proposals: list[LinkProposal] = []
     for record in records:
         if record.id is None or (record.source_url or "").strip():

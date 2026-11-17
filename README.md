@@ -109,6 +109,7 @@ Alle Modi verstehen `--config <datei>` (Standard `config.yaml`), `--dry-run`, `-
 | `cleanup-inbox` | Listet Inbox-Dubletten derselben SoundCloud-ID; `--move` verschiebt sie nach `_rejected/duplicate/`. |
 | `embed-backfill` | Reiht Embedding-Jobs für vorhandene Tracks ein; `--all` und `--limit`. |
 | `taste` | Trainiert den Taste-Score und schreibt ihn in die Track-DB. |
+| `requeue` | Setzt hängende Jobs der Job-Warteschlange (`running`, Worker abgestürzt) auf `pending` zurück; `--timeout-minutes` legt die Zeitgrenze für alle Job-Typen fest (Standard: je Job-Typ). |
 
 Beispiele für alle Modi und die Strukturanalyse einer einzelnen Datei stehen in [docs/funktionen.md](docs/funktionen.md#modi-beispiele).
 

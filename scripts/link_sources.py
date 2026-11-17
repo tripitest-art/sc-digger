@@ -89,10 +89,15 @@ def run_link(
     5. report: UTF-8-CSV, Trennzeichen ";", Kopf record_id;path;url;title;ambiguous;quelle, eine Zeile je Vorschlag.
     6. apply=True: linksource.apply_proposals(db, proposals, include_ambiguous=include_ambiguous).
        Ohne apply wird die Datenbank nicht verändert.
-    Es werden nur Methoden von sc aufgerufen: likes_of_user, playlist_tracks, search_tracks."""
+    Es werden nur Methoden von sc aufgerufen: likes_of_user, playlist_tracks, search_tracks.
+    Handkorrekturen des Matchers (db.list_match_overrides()) gelten für beide Abgleiche: ein
+    Kandidat mit Handkorrektur wird weder aus Likes/Playlists noch aus der Suche vorgeschlagen."""
     records = [r for r in db.list_tracks(status="archive") if not (r.source_url or "").strip()]
 
     stats = LinkStats(records=len(records))
+    # Einmal laden: eine Handkorrektur („kein Duplikat“ / „schon in der Sammlung“) ist eine
+    # Entscheidung, die der Abgleich nicht bei jedem Lauf wieder überstimmen darf (Issue #566).
+    overrides = db.list_match_overrides()
 
     candidates: list[Track] = []
     for url in likes:
@@ -111,7 +116,7 @@ def run_link(
 
     stats.candidates = len(candidates)
 
-    base_proposals = linksource.propose_links(records, candidates)
+    base_proposals = linksource.propose_links(records, candidates, overrides=overrides)
     all_proposals: list[LinkProposal] = []
     sources: list[str] = []
 
@@ -131,7 +136,7 @@ def run_link(
             except SoundCloudError as e:
                 log.warning("Suche fehlgeschlagen für %r: %s", query, e)
                 continue
-            search_props = linksource.propose_links([record], hits)
+            search_props = linksource.propose_links([record], hits, overrides=overrides)
             if search_props:
                 prop = dataclasses.replace(search_props[0], ambiguous=True)
                 all_proposals.append(prop)
