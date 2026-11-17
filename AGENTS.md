@@ -57,7 +57,7 @@ die Version zählt nicht. Das Issue ist der Vertrag: Was dort nicht steht, wird 
 Alle Agenten arbeiten mit Stephans GitHub-Konto. Die Regeln unten setzt deshalb nicht die
 Rechteverwaltung durch, sondern der Check `acceptance-guard` (läuft immer mit dem Stand aus
 `main`) und das Review. Auf `main` gilt die GitHub-Regel `main-schutz`: nur per Pull Request,
-nur Squash-Merge, Pflicht-Checks `tests`, `acceptance-guard` und CodeQL (ab „High“). Auf
+nur Squash-Merge, Pflicht-Checks und CodeQL laut `docs/main-schutz.ruleset.json`. Auf
 Copilot-Review nie warten; ein roter `github-advanced-security` ist kein Mangel.
 
 ### Planer
