@@ -316,6 +316,8 @@
     color: #f87171;
     border-color: rgba(239, 68, 68, 0.32);
   }
+  #alarm-badge { text-decoration: none; }
+  #alarm-badge:hover { border-color: var(--accent-err); }
   .badge-info {
     background-color: var(--accent-primary-bg);
     color: #93c5fd;
@@ -977,6 +979,13 @@
       <h1 class="brand-title">sc-digger</h1>
       <span class="brand-sub">Curation &amp; DJ Pipeline</span>
     </div>
+    {# Aktive Health-Alarme auf jeder Seite (Issue #585); Details bleiben auf /status. #}
+    {% set alarm_count = alarm_count if alarm_count is defined else active_alarm_count() %}
+    {% if alarm_count > 0 %}
+    <a href="/status" id="alarm-badge" class="badge badge-err" title="Aktive Health-Alarme auf der Statusseite">
+      ⚠ {{ alarm_count }} Alarm{% if alarm_count != 1 %}e{% endif %}
+    </a>
+    {% endif %}
   </div>
   <nav class="nav-tabs">
     <a href="/" class="nav-tab {% block nav_status %}{% endblock %}">Status</a>
