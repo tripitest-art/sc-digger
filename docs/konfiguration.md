@@ -17,6 +17,10 @@ Fehlende optionale Schlüssel fallen auf die Defaults im Code zurück.
 | `search.followed_users` | Profil-URLs, deren Uploads zusätzlich durchsucht werden | `[]` |
 | `search.reference_accounts` | Profile, deren Reposts/Likes Treffer mit Bonus liefern | siehe Datei |
 | `search.reference_limit` | maximale Feed-Einträge pro Referenz-Account | `50` |
+| `profiles.<name>.bpm_min` / `.bpm_max` | BPM-Fenster eines Profils; ohne Angabe aus `search.bpm_min` / `search.bpm_max` | `150` / `165` |
+| `profiles.<name>.tags` | Genre-Tags dieses Profils; Vorgabe aus `search.tags` | siehe Datei |
+| `profiles.<name>.reference_accounts` | Referenz-Profile dieses Profils; Vorgabe aus `search.reference_accounts` | siehe Datei |
+| `profiles.<name>.default_genre` | Genre, das dieses Profil beim Taggen schreibt | `Schranz` |
 | `scoring.min_plays` | Mindest-Playzahl, damit ein Track bewertet wird | `300` |
 | `scoring.min_like_ratio` | harte Untergrenze für das Like-Verhältnis | `0.01` |
 | `scoring.min_percentile` | Mindest-Perzentil im Kandidatenpool | `40` |
@@ -97,6 +101,12 @@ Fehlende optionale Schlüssel fallen auf die Defaults im Code zurück.
 | `watch.max_age_days` | Maximales Alter von 👍-Kandidaten in Tagen (1..730, Standard 180) | `180` |
 | `scout.bandcamp.feeds` | URLs für Bandcamp-RSS-Feeds von Labels und Artists | `[]` |
 | `scout.beatport.charts` | URLs für Beatport-Charts | `[]` |
+
+### Profile
+
+Ohne `profiles:`-Block existiert genau ein Profil `schranz`, das alle Vorgaben aus `search.*` erbt — das ist der Zustand einer Konfiguration ohne diesen Block. Jedes weitere Profil erbt ebenfalls und überschreibt nur, was es selbst nennt. `load_profiles(cfg)` und `get_profile(cfg, name)` liegen in `sc_digger/profiles.py`; ein unbekannter Name führt zu `ProfileError`.
+
+Die Trennung wirkt derzeit in der Track-DB: `tracks`, `store_items`, `gate_items`, `exploration_tag_stats`, `taste_model` und `smartlists` sind je `profile_id` getrennt, `TrackDB(pfad, profile_id=…)` sieht nur sein Profil, ohne Angabe `schranz`. **Ein `--profile`-Schalter in der CLI gibt es noch nicht**, ebenso wenig genre-abhängige Schwellen in Qualitätsprüfung und BPM-Erkennung — beides sind eigene Schritte.
 
 ## Lokale Override-Datei
 
