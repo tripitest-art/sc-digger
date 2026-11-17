@@ -111,12 +111,41 @@ from .intake import MAX_UPLOAD_BYTES, process_uploaded_audio
 from .ops import collect_ops
 from .routes import tracks as tracks_routes
 from .routes.tracks import FILTER_LABELS, active_filter_chips, match_url
-from .status import change_badge, collect_status
+from .status import _read_active_alerts, change_badge, collect_status
 
 # Ob der Konfigeditor in der aktuellen Anfrage verfuegbar ist (die Umgebung _env ist modulweit,
 # die Apps sind es nicht); base.html zeigt das Zahnrad nur dann, sonst laege es auf einem 404.
 _config_enabled: ContextVar[bool] = ContextVar("sc_digger_config_enabled", default=False)
 _env.globals["config_enabled"] = lambda: _config_enabled.get()
+
+# State-DB der aktuellen Anfrage für den Alarm-Zähler im Kopf jeder Seite (Issue #585). Wie beim
+# Zahnrad: Die Middleware setzt den Pfad, base.html fragt die Zahl erst beim Rendern ab. So
+# bekommt jede Seite den Zähler, auch die aus den Bereichs-Routern, ohne dass eine Route ihn
+# vergessen kann, und JSON-Antworten lesen die DB gar nicht erst.
+_alarm_db_path: ContextVar[str | None] = ContextVar("sc_digger_alarm_db_path", default=None)
+
+
+def active_alarm_count() -> int:
+    """Anzahl aktiver Health-Alarme (health_state 'alert:<modus>' == '1'), rein lesend.
+
+    Zählt über dieselbe Liste wie die Statusseite, damit Badge und /status dieselbe Zahl zeigen.
+    Ohne Anfrage-Kontext oder ohne lesbare DB: 0 (der Badge entfällt, die Seite rendert normal).
+    """
+    path = _alarm_db_path.get()
+    if not path:
+        return 0
+    return len(_read_active_alerts(path))
+
+
+_env.globals["active_alarm_count"] = active_alarm_count
+
+
+def _state_db_path(cfg: Config) -> str | None:
+    """Pfad der State-DB aus der Config; ohne Abschnitt None statt KeyError."""
+    try:
+        return cfg["state"]["db_path"]
+    except (KeyError, TypeError):
+        return None
 
 log = logging.getLogger(__name__)
 
@@ -419,6 +448,7 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
     @app.middleware("http")
     async def mark_config_enabled(request: Request, call_next):
         _config_enabled.set(editor_available)
+        _alarm_db_path.set(_state_db_path(app.state.cfg))
         return await call_next(request)
 
     @app.middleware("http")
