@@ -129,3 +129,77 @@ def test_search_error_is_logged_and_continues(tmp_path):
         stats = run_link(BrokenSearchSC(), db, search=True)
         assert stats.records == 1
         assert stats.proposals == 0
+
+
+class FakeSCOverrides(FakeSC):
+    """Likes und Suche liefern feste Kandidaten; so lassen sich beide Abgleiche einzeln prüfen."""
+
+    def __init__(self, likes=(), hits=()):
+        super().__init__({})
+        self._likes = list(likes)
+        self._hits = list(hits)
+
+    def likes_of_user(self, url, limit=2000):
+        return "Likes", list(self._likes)
+
+    def playlist_tracks(self, url, limit=None):
+        return "Liste", []
+
+    def search_tracks(self, query, limit=5):
+        return list(self._hits)
+
+
+def _report_rows(path: Path) -> list[tuple[str, str]]:
+    """(url, quelle) je Vorschlag aus dem CSV-Report, ohne Kopfzeile."""
+    lines = path.read_text(encoding="utf-8").splitlines()[1:]
+    return [(line.split(";")[2], line.split(";")[5]) for line in lines]
+
+
+def test_run_link_reicht_overrides_an_den_basisabgleich_durch(tmp_path):
+    """Issue #566: ein Like mit Handkorrektur wird nicht mehr als Verknüpfung vorgeschlagen."""
+    sc = FakeSCOverrides(likes=[cand(10, "Artist A - Title A"), cand(11, "Artist A - Title A")])
+    with TrackDB(tmp_path / "tracks.sqlite") as db:
+        db.upsert_track(
+            TrackRecord(path="/sammlung/Artist A - Title A.wav", mtime=1.0, size=1, status="archive")
+        )
+        likes = ["https://soundcloud.com/test/likes"]
+
+        # Ohne Handkorrektur gewinnt Kandidat 10 (erster bei Gleichstand).
+        ohne = run_link(sc, db, likes=likes, report=tmp_path / "ohne.csv")
+        assert (ohne.proposals, ohne.ambiguous) == (1, 1)
+        assert _report_rows(tmp_path / "ohne.csv") == [
+            ("https://soundcloud.com/uploader/t10", "likes/playlist")
+        ]
+
+        db.set_match_override(10, "not_duplicate")
+        mit = run_link(sc, db, likes=likes, report=tmp_path / "mit.csv")
+        assert (mit.proposals, mit.ambiguous) == (1, 0)
+        assert _report_rows(tmp_path / "mit.csv") == [
+            ("https://soundcloud.com/uploader/t11", "likes/playlist")
+        ]
+
+        # Beide Kandidaten korrigiert: gar kein Vorschlag, auch --apply schreibt nichts.
+        db.set_match_override(11, "already_in_collection")
+        keiner = run_link(sc, db, likes=likes, apply=True, include_ambiguous=True)
+        assert (keiner.proposals, keiner.applied) == (0, 0)
+        assert [r.source_url for r in db.list_tracks(status="archive")] == [None]
+
+
+def test_run_link_reicht_overrides_an_den_such_nachlauf_durch(tmp_path):
+    """Issue #566: auch ein Suchtreffer mit Handkorrektur wird nicht vorgeschlagen."""
+    sc = FakeSCOverrides(hits=[cand(20, "Artist A - Title A")])
+    with TrackDB(tmp_path / "tracks.sqlite") as db:
+        db.upsert_track(
+            TrackRecord(path="/sammlung/Artist A - Title A.wav", mtime=1.0, size=1, status="archive")
+        )
+
+        ohne = run_link(sc, db, search=True, report=tmp_path / "ohne.csv")
+        assert ohne.proposals == 1
+        assert _report_rows(tmp_path / "ohne.csv") == [
+            ("https://soundcloud.com/uploader/t20", "suche")
+        ]
+
+        db.set_match_override(20, "not_duplicate")
+        mit = run_link(sc, db, search=True, report=tmp_path / "mit.csv")
+        assert mit.proposals == 0
+        assert _report_rows(tmp_path / "mit.csv") == []
