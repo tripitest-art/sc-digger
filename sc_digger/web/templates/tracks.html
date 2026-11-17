@@ -324,15 +324,15 @@
           <option value="0" {% if filters.adopted == "0" %}selected{% endif %}>nicht übernommen</option>
         </select>
       </div>
-      {# Max. Breakdown-Anteil als Dezimalwert 0–1 (Issue #334): 0.2 = 20 %. #}
+      {# Max. Breakdown-Anteil als Dezimalwert 0–1 (Issue #334, #584): 0.15 = 15 %. #}
       <div class="filter-field">
-        <label for="f-breakdown-max">Max. Breakdown %</label>
+        <label for="f-breakdown-max">Max. Breakdown-Anteil (0.15 = 15 %)</label>
         <input type="text" id="f-breakdown-max" name="breakdown_max" value="{{ filters.breakdown_max }}"
-               placeholder="z. B. 0.2">
+               placeholder="z. B. 0.15">
       </div>
-      {# Mindest-Taste-Score als Dezimalwert 0–1 (Issue #480), z. B. 0.7 = 70 %. #}
+      {# Mindest-Taste-Score als Dezimalwert 0–1 (Issue #480, #584), z. B. 0.7 = 70 %. #}
       <div class="filter-field">
-        <label for="f-taste-min">Min. Taste</label>
+        <label for="f-taste-min">Min. Taste-Anteil (0.7 = 70 %)</label>
         <input type="text" id="f-taste-min" name="taste_min" value="{{ filters.taste_min }}"
                placeholder="z. B. 0.7">
       </div>
