@@ -979,10 +979,10 @@
       <h1 class="brand-title">sc-digger</h1>
       <span class="brand-sub">Curation &amp; DJ Pipeline</span>
     </div>
-    {# Aktive Health-Alarme auf jeder Seite (Issue #585); Details bleiben auf /status. #}
+    {# Aktive Health-Alarme auf jeder Seite (Issue #585); Details stehen in der Alarmliste der Startseite. #}
     {% set alarm_count = alarm_count if alarm_count is defined else active_alarm_count() %}
     {% if alarm_count > 0 %}
-    <a href="/status" id="alarm-badge" class="badge badge-err" title="Aktive Health-Alarme auf der Statusseite">
+    <a href="/#health-alerts" id="alarm-badge" class="badge badge-err" title="Aktive Health-Alarme auf der Startseite">
       ⚠ {{ alarm_count }} Alarm{% if alarm_count != 1 %}e{% endif %}
     </a>
     {% endif %}

@@ -13,7 +13,7 @@ from sc_digger.web.status import collect_status
 ROOT = Path(__file__).resolve().parents[1]
 PASSWORD = "geheim-badge"
 AUTH = ("sc", PASSWORD)
-BADGE_RE = re.compile(r'<a href="/status" id="alarm-badge"[^>]*>\s*⚠ (\d+) (Alarme?)\s*</a>')
+BADGE_RE = re.compile(r'<a href="/#health-alerts" id="alarm-badge"[^>]*>\s*⚠ (\d+) (Alarme?)\s*</a>')
 
 
 def _cfg(tmp_path):
@@ -84,6 +84,16 @@ def test_badge_und_statusseite_zeigen_dieselbe_zahl(tmp_path):
     cfg = _cfg(tmp_path)
     html = TestClient(create_app(cfg, password=PASSWORD)).get("/", auth=AUTH).text
     assert _badge(html)[0] == len(collect_status(cfg).alerts) == 2
+
+
+def test_linkziel_existiert_auf_der_startseite(tmp_path):
+    # Regression: Der Badge verlinkte auf /status, das es nicht gibt (404). Er zeigt jetzt auf den
+    # Anker der Alarmliste; der muss auf der Zielseite / bei aktivem Alarm wirklich vorhanden sein.
+    _seed(tmp_path, "alert:discover", mode="discover")
+    html = _client(tmp_path).get("/", auth=AUTH).text
+    assert 'id="alarm-badge"' in html
+    assert 'href="/#health-alerts"' in html
+    assert 'id="health-alerts"' in html
 
 
 def test_json_antworten_ohne_badge(tmp_path):

@@ -128,7 +128,7 @@ _alarm_db_path: ContextVar[str | None] = ContextVar("sc_digger_alarm_db_path", d
 def active_alarm_count() -> int:
     """Anzahl aktiver Health-Alarme (health_state 'alert:<modus>' == '1'), rein lesend.
 
-    Zählt über dieselbe Liste wie die Statusseite, damit Badge und /status dieselbe Zahl zeigen.
+    Zählt über dieselbe Liste wie die Statusseite, damit Badge und Statusseite (/) dieselbe Zahl zeigen.
     Ohne Anfrage-Kontext oder ohne lesbare DB: 0 (der Badge entfällt, die Seite rendert normal).
     """
     path = _alarm_db_path.get()
