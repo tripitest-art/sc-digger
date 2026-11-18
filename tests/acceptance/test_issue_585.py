@@ -53,7 +53,7 @@ def test_startseite_zeigt_den_badge_mit_anzahl(tmp_path):
     _seed_alarm(tmp_path, "discover")
     html = _html(_client(tmp_path), "/")
     assert 'id="alarm-badge"' in html
-    assert 'href="/status"' in html
+    assert 'href="/#health-alerts"' in html
 
 
 def test_jede_seite_zeigt_den_badge(tmp_path):
