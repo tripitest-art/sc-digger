@@ -333,6 +333,9 @@ FIELDS: tuple[Field, ...] = (
        "RSS-Feed-URLs von Bandcamp-Labels/Artists (z. B. https://label.bandcamp.com/feed) als automatische Fundquelle."),
     _f("scout.beatport.charts", "list", "Beatport-Charts",
        "Chart-URLs von Beatport (z. B. https://www.beatport.com/genre/hard-techno/2/top-100) als Kauflisten-Quelle."),
+    # --- web ---
+    _f("web.timezone", "str", "Zeitzone",
+       "Zeitzone (IANA-Name, z. B. Europe/Berlin), in der das Web-Dashboard Zeiten anzeigt; gespeichert wird weiter UTC."),
 )
 
 # Die Felder, die man im Alltag wirklich anfasst; der Konfigeditor zeigt sie zuerst (#597).
@@ -374,6 +377,7 @@ USED_BY: dict[str, tuple[str, ...]] = {
     "digest": ("Digest", "Kaufliste"),
     "watch": ("Verfügbarkeits-Wächter",),
     "scout": ("Store-Scout",),
+    "web": ("Web-Dashboard",),
 }
 
 
@@ -411,6 +415,7 @@ SECTION_TITLES: dict[str, str] = {
     "digest": "Digest",
     "watch": "Verfügbarkeits-Wächter",
     "scout": "Multi-Platform-Scout",
+    "web": "Web-Dashboard",
     "scout.bandcamp": "Multi-Platform-Scout: Bandcamp",
     "scout.beatport": "Multi-Platform-Scout: Beatport",
 }

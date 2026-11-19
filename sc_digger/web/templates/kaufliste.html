@@ -190,7 +190,7 @@
           {% if w.is_available %}
           <span style="font-weight: 600; color: var(--color-success, #10b981);">Jetzt verfügbar</span>
           {% if w.available_at %}
-          <span class="meta mono" style="font-size: 0.78rem;">({{ w.available_at[:16] }})</span>
+          <span class="meta mono" style="font-size: 0.78rem;">({{ w.available_at | localtime }})</span>
           {% endif %}
           {% else %}
           <span class="meta">Warten</span>
@@ -198,7 +198,7 @@
         </td>
         <td class="mono meta" style="font-size: 0.78rem;">{{ w.last_kind or "—" }}</td>
         <td class="mono meta" style="font-size: 0.78rem; white-space: nowrap;">
-          {{ w.last_checked[:16] if w.last_checked else "—" }}
+          {{ w.last_checked | localtime }}
         </td>
       </tr>
       {% else %}

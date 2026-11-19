@@ -368,3 +368,8 @@ scout:
 #     reference_accounts:
 #       - https://soundcloud.com/<account>
 #     default_genre: House
+
+# Web-Dashboard (Issue #621). Die Datenbanken speichern UTC; das Dashboard rechnet Zeiten in
+# diese Zone um (IANA-Name). Die API (/api/*) liefert weiter UTC.
+web:
+  timezone: Europe/Berlin

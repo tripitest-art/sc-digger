@@ -499,7 +499,7 @@
         <td data-label="">
           {% if track.adopted_at %}
           <span class="badge badge-ok">übernommen</span>
-          <div class="mono meta-dim-xs">{{ track.adopted_at }}</div>
+          <div class="mono meta-dim-xs">{{ track.adopted_at | localtime }}</div>
           {% else %}
           <span class="badge badge-muted">offen</span>
           {% endif %}
