@@ -249,7 +249,7 @@
       {% for item in items %}
       <tr>
         <td data-label="Datum" data-column="date" class="mono meta" style="white-space: nowrap; font-size: 0.78rem;">
-          {{ item.reported_at[:16] if item.reported_at else "—" }}
+          {{ item.reported_at | localtime }}
         </td>
         <td data-label="Artist" data-column="artist" style="font-weight: 600;">{{ item.artist or "—" }}</td>
         <td data-label="Titel" data-column="title">

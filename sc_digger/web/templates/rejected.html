@@ -120,7 +120,7 @@
           {% endif %}
         </td>
         <td class="mono meta" style="white-space: nowrap; font-size: 0.78rem;">
-          {{ item.rejected_at[:16] if item.rejected_at else "—" }}
+          {{ item.rejected_at | localtime }}
         </td>
         <td>
           <button type="button" class="retry-btn" onclick="retryTrack(this)">

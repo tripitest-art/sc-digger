@@ -123,7 +123,7 @@ M = mehrere Templates oder kleine Route; L = neue Route oder neuer Zustand.
   Schrift auf `#f87171`.
 - Aufwand: S. Nutzen: alle Handgriffe; Farbe wird wieder zum Signal.
 
-**5. Alarm und Datenstand stehen nur auf der Statusseite**
+**5. Alarm und Datenstand stehen nur auf der Statusseite** (Ortszeit für Digest, Tracks, Kaufliste und Quarantäne umgesetzt in #621)
 - Beleg: `status.html:173-182`, `base.html:977-991`, `status.html:7`
 - Beobachtung: Wer morgens direkt den Digest öffnet, sieht nicht, dass der Lauf gescheitert ist und
   die Liste von gestern stammt. Alle Zeiten stehen in UTC (`status.html:138`, `405`).

@@ -101,6 +101,7 @@ Fehlende optionale Schlüssel fallen auf die Defaults im Code zurück.
 | `watch.max_age_days` | Maximales Alter von 👍-Kandidaten in Tagen (1..730, Standard 180) | `180` |
 | `scout.bandcamp.feeds` | URLs für Bandcamp-RSS-Feeds von Labels und Artists | `[]` |
 | `scout.beatport.charts` | URLs für Beatport-Charts | `[]` |
+| `web.timezone` | Zeitzone, in der das Web-Dashboard Zeiten anzeigt (IANA-Name; gespeichert wird weiter UTC, `/api/*` ebenso) | `Europe/Berlin` |
 
 ### Profile
 
