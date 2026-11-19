@@ -5,3 +5,6 @@
   <a class="btn-page" href="{{ reset_url }}">Filter zurücksetzen</a>
 </div>
 {% endmacro %}
+
+{# Feste Status-Plakette (Issue #595): Wort und Farbe aus sc_digger/web/glossary.py. #}
+{% macro status_badge(key) %}{% set b = badge_for(key) %}<span class="badge {{ b[1] }}">{{ b[0] }}</span>{% endmacro %}

@@ -27,6 +27,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 from ..models import Config
 from ..soundcloud import SoundCloudError
 from .audio import parse_range_header, resolve_playable_path
+from .glossary import badge_for
 from .status import change_badge
 
 _TEMPLATES = Path(__file__).parent / "templates"
@@ -36,6 +37,8 @@ _env = Environment(
 )
 # Vergleich mit der Vorperiode (Issue #488) steht der Statusseite als Template-Funktion bereit.
 _env.globals["change_badge"] = change_badge
+# Feste Status-Plaketten (Issue #595) für das Makro status_badge in _components.html.
+_env.globals["badge_for"] = badge_for
 
 
 def _render(template_name: str, *, status_code: int = 200, **context: Any) -> HTMLResponse:
