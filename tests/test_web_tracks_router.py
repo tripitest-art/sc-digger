@@ -140,6 +140,7 @@ def test_create_app_behaelt_alle_routen_und_reihenfolge(tmp_path: Path):
         ("GET", "/duplicates"),
         ("GET", "/api/inbox-duplicates"),
         ("POST", "/api/inbox-duplicates/move"),
+        ("GET", "/track/sc/{sc_id}"),
         ("GET", "/mix"),
         ("POST", "/api/set-builder"),
         ("GET", "/api/set-builder/m3u8"),
