@@ -47,6 +47,21 @@
     color: var(--text-muted);
     overflow-wrap: anywhere;
   }
+  /* Kopfzeile der Aktions-Karte ohne Inline-Stil (Review zu PR #637) */
+  .track-actions .card-title { margin: 0; }
+
+  .track-actions .action-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin: 0.5rem 0;
+  }
+  .track-actions .action-status {
+    min-height: 1.2rem;
+    margin: 0.5rem 0 0;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+  }
 </style>
 {% endblock %}
 
@@ -79,6 +94,78 @@
     {% endfor %}
   </ol>
 </div>
+
+<section class="card track-actions" id="track-actions">
+  <div class="card-header">
+    <h2 class="card-title">Aktionen</h2>
+  </div>
+  <div class="action-row" aria-label="Bewertung">
+    <button type="button" class="feedback-btn" id="track-rate-like" data-feedback="like">👍 gefällt</button>
+    <button type="button" class="feedback-btn" id="track-rate-dislike" data-feedback="dislike">👎 passt nicht</button>
+    <button type="button" class="feedback-btn" id="track-rate-later" data-feedback="later">🕒 später</button>
+  </div>
+  <div class="action-row" aria-label="Matcher-Korrektur">
+    <button type="button" class="feedback-btn" id="track-match-collection" data-match="already_in_collection">Bereits in der Sammlung</button>
+    <button type="button" class="feedback-btn" id="track-match-duplicate" data-match="not_duplicate">Kein Duplikat</button>
+    <button type="button" class="feedback-btn" id="track-match-clear" data-match="clear">Zurücksetzen</button>
+  </div>
+  {% if life.track_id is not none and life.steps | selectattr("key", "equalto", "rejected") | list %}
+  <div class="action-row" aria-label="Quarantäne">
+    <button type="button" class="feedback-btn" id="track-retry" data-track-id="{{ life.track_id }}">Erneut prüfen</button>
+  </div>
+  {% endif %}
+  <p class="action-status" id="track-action-status" role="status" aria-live="polite"></p>
+</section>
+<p><a href="/intake">Gate-Datei hochladen</a></p>
+<script>
+(function () {
+  var scId = {{ life.sc_id | tojson }};
+  var buttons = Array.prototype.slice.call(document.querySelectorAll("#track-actions button"));
+  var status = document.getElementById("track-action-status");
+
+  // Alle Knöpfe sperren, solange ein Request läuft: ein Doppelklick darf nicht zweimal schreiben.
+  function sperren(an) {
+    buttons.forEach(function (b) { if (an) { b.setAttribute("disabled", ""); } else { b.removeAttribute("disabled"); } });
+  }
+
+  function senden(url, payload) {
+    if (buttons.some(function (b) { return b.disabled; })) { return; }
+    sperren(true);
+    status.textContent = "speichere …";
+    fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify(payload)
+    }).then(function (r) {
+      return r.json().catch(function () { return {}; });
+    }).then(function (data) {
+      if (data && data.ok === true) {
+        status.textContent = "gespeichert";
+        location.reload();
+        return;
+      }
+      status.textContent = (data && data.error) || "Speichern fehlgeschlagen";
+      sperren(false);
+    }).catch(function () {
+      status.textContent = "Server nicht erreichbar";
+      sperren(false);
+    });
+  }
+
+  buttons.forEach(function (b) {
+    b.addEventListener("click", function () {
+      if (b.dataset.feedback) {
+        senden("/api/feedback", { value: b.dataset.feedback, sc_id: scId });
+      } else if (b.dataset.match) {
+        senden("/api/match-override", { sc_id: scId, override_type: b.dataset.match });
+      } else if (b.dataset.trackId) {
+        senden("/api/retry", { track_id: Number(b.dataset.trackId) });
+      }
+    });
+  });
+})();
+</script>
 {% else %}
 <div class="card">
   <h1 style="margin: 0;">Track unbekannt</h1>

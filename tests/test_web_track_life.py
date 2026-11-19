@@ -123,3 +123,34 @@ def test_liest_nur_und_wirft_nie(tmp_path):
     broken = Config.load(ROOT / "config.yaml")
     broken.raw["state"] = None
     assert collect_track_life(broken, 71) is None
+
+
+def test_track_id_aus_zeile_ueber_sc_id(tmp_path):
+    cfg = _cfg(tmp_path)
+    with TrackDB(tmp_path / "tracks.sqlite") as tdb:
+        tdb.upsert_track(TrackRecord(path="/inbox/A - T.wav", mtime=0.0, size=1,
+                                     sc_id=61, status="inbox", title="T"))
+    with sqlite3.connect(tmp_path / "tracks.sqlite") as db:
+        erwartet = db.execute("SELECT id FROM tracks WHERE sc_id = 61").fetchone()[0]
+    life = collect_track_life(cfg, 61)
+    assert life.track_id == erwartet
+
+
+def test_track_id_aus_zeile_ueber_dateinamen(tmp_path):
+    cfg = _cfg(tmp_path)
+    with TrackDB(tmp_path / "tracks.sqlite") as tdb:
+        tdb.upsert_track(TrackRecord(path="/music/Schranz/[62] X - Alt.wav", mtime=0.0, size=1,
+                                     status="archive", title="Alt"))
+    with sqlite3.connect(tmp_path / "tracks.sqlite") as db:
+        erwartet = db.execute("SELECT id FROM tracks WHERE path LIKE '%[62]%'").fetchone()[0]
+    assert collect_track_life(cfg, 62).track_id == erwartet
+
+
+def test_track_id_ohne_zeile_ist_none(tmp_path):
+    cfg = _cfg(tmp_path)
+    with TrackDB(tmp_path / "tracks.sqlite") as tdb:
+        pass
+    with sqlite3.connect(tmp_path / "tracks.sqlite") as db:
+        db.execute("INSERT INTO sc_feedback (sc_id, url, value, updated_at) VALUES (63, 'u', 'like', '2026-11-02')")
+    life = collect_track_life(cfg, 63)
+    assert life is not None and life.track_id is None
