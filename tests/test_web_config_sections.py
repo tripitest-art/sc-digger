@@ -164,8 +164,9 @@ def test_zahnrad_auf_allen_seiten_und_nicht_im_mehr_menue(tmp_path):
         html = c.get(path, auth=AUTH).text
         assert re.search(r'<a href="/config" class="gear-link[^"]*" title="Konfiguration" '
                          r'aria-label="Konfiguration">', html), path
-        mehr = html.split('<details class="nav-more">')[1].split("</details>")[0]
-        assert 'href="/config"' not in mehr, path
+        # Seit #600 gibt es kein Menü „Mehr“; die Konfiguration steht in keiner Navigationsleiste.
+        for leiste in re.findall(r'<nav class="nav-(?:tabs|sub)"[^>]*>(.*?)</nav>', html, re.S):
+            assert 'href="/config"' not in leiste, path
     assert "gear-link active" in c.get(sub, auth=AUTH).text
 
 

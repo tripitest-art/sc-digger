@@ -68,8 +68,9 @@ def test_kaufliste_web_routes_and_navigation(tmp_path: Path):
     client = TestClient(create_app(cfg, password=PASSWORD))
     auth = ("sc", PASSWORD)
 
-    # 1. Navigation enthält aktiven Link zu /kaufliste
-    root_resp = client.get("/", auth=auth)
+    # 1. Navigation enthält aktiven Link zu /kaufliste: seit #600 in der Unterleiste des
+    #    Bereichs „Entdecken“ (auf „/“ steht nur die Bereichsleiste)
+    root_resp = client.get("/digest", auth=auth)
     assert root_resp.status_code == 200
     assert 'href="/kaufliste"' in root_resp.text
     assert 'disabled">🛒 Kaufliste</span>' not in root_resp.text
