@@ -12,20 +12,6 @@ def _nav(html):
     return re.search(r'<nav class="nav-tabs">(.*?)</nav>', html, re.S).group(1)
 
 
-def test_haupteintraege_ausserhalb_von_mehr(tmp_path):
-    nav = _nav(_get(tmp_path, "/").text)
-    haupt = nav.split('<details class="nav-more">')[0]
-    for ziel in ("/", "/tracks", "/digest", "/mix", "/kaufliste"):
-        assert f'href="{ziel}"' in haupt
-
-
-def test_weitere_ziele_in_mehr(tmp_path):
-    nav = _nav(_get(tmp_path, "/").text)
-    mehr = nav.split('<details class="nav-more">')[1]
-    for ziel in ("/duplicates", "/rejected"):
-        assert f'href="{ziel}"' in mehr
-
-
 def test_aktive_seite_duplikate_markiert(tmp_path):
     assert 'href="/duplicates" class="nav-tab active"' in _get(tmp_path, "/duplicates").text
 

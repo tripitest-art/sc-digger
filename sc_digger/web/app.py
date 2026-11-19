@@ -109,7 +109,7 @@ from .database import (
 )
 from .intake import MAX_UPLOAD_BYTES, process_uploaded_audio
 from .ops import collect_ops
-from .routes import tracks as tracks_routes
+from .routes import register as register_routes
 from .routes.tracks import FILTER_LABELS, active_filter_chips, match_url
 from .status import _read_active_alerts, change_badge, collect_status
 
@@ -594,7 +594,7 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
     def api_database_overview(request: Request):
         return JSONResponse(get_collection_overview(app.state.cfg["state"]["track_db_path"]).to_dict())
 
-    tracks_routes.register(app)
+    register_routes(app)
 
     # Teilantworten fuer Tracks (Issue #554): Liefert nur den Bereich #table-region.
     for _r in app.router.routes:

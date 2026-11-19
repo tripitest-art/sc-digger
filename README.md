@@ -117,7 +117,7 @@ Beispiele für alle Modi und die Strukturanalyse einer einzelnen Datei stehen in
 
 ## Web-Dashboard
 
-Mit gesetztem `SC_DIGGER_WEB_PASSWORD` startet zusätzlich ein FastAPI-Dashboard auf Port `8080` (HTTP-Basic-Auth, ohne Passwort aus). Es zeigt auf der Statusseite Health-Alarme, Läufe, Wochenstatistik und die Betriebskarte, durchsucht Digest, Kaufliste, Quarantäne und Track-DB, spielt Tracks im Browser vor, berechnet harmonische Mixe und Sets, nimmt Uploads in den Eingangsordner an und schreibt Einstellungen in die lokale Override-Datei. Einzelheiten: [Web-Dashboard](docs/funktionen.md#web-dashboard).
+Mit gesetztem `SC_DIGGER_WEB_PASSWORD` startet zusätzlich ein FastAPI-Dashboard auf Port `8080` (HTTP-Basic-Auth, ohne Passwort aus). Es zeigt auf der Statusseite Health-Alarme, Läufe, Wochenstatistik und die Betriebskarte, durchsucht Digest, Kaufliste, Quarantäne und Track-DB, spielt Tracks im Browser vor, berechnet harmonische Mixe und Sets, nimmt Uploads in den Eingangsordner an und schreibt Einstellungen in die lokale Override-Datei. Die Navigation folgt dem Weg eines Tracks in fünf Bereichen: **Start** (Status), **Entdecken** (Digest, Kuratoren, Kaufliste), **Eingang** (Upload, Quarantäne), **Bibliothek** (Tracks, Duplikate) und **Auflegen** (Mix); die Seiten des aktuellen Bereichs stehen in einer Unterleiste, die Konfiguration hinter dem Zahnrad. Einzelheiten: [Web-Dashboard](docs/funktionen.md#web-dashboard).
 
 ## Architektur
 
