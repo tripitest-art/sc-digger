@@ -306,3 +306,21 @@ def test_tracks_ui_renders_match_buttons_and_coexists_with_source_url(tmp_path):
     assert "—" in r.text
 
 
+
+
+def test_ladezustand_regel_steht_im_ausgelieferten_html(tmp_path):
+    """Issue #603: Die Abdimm-Regel kommt mit der Seite, nicht nur im Quelltext."""
+    c = client_for(tmp_path)
+    for pfad in ("/tracks", "/digest"):
+        html = c.get(pfad, auth=("sc", PASSWORD)).text
+        assert '#table-region[aria-busy="true"]' in html, pfad
+        assert '<div id="table-region">' in html, pfad
+
+
+def test_teilantwort_traegt_keine_lademarkierung(tmp_path):
+    """Die Teilantwort ersetzt den markierten Bereich; sie selbst darf nicht als busy kommen."""
+    antwort = client_for(tmp_path).get(
+        "/tracks", auth=("sc", PASSWORD), headers={"X-Sc-Digger-Partial": "1"}
+    )
+    assert antwort.status_code == 200
+    assert "aria-busy" not in antwort.text
