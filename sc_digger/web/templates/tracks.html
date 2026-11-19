@@ -7,6 +7,7 @@
 
 {% block meta %}
 <style>
+  #table-region[aria-busy="true"] { opacity: 0.55; pointer-events: none; transition: opacity 0.15s ease; }
   .card-tracks {
     display: flex;
     flex-direction: column;
@@ -40,7 +41,7 @@
     margin-bottom: 0.5rem;
   }
   .similar-panel-error {
-    color: var(--err);
+    color: var(--accent-err);
   }
   .tracks-toolbar {
     display: flex;
@@ -52,11 +53,13 @@
   .card-header .quick-chips {
     margin-bottom: 0;
   }
-  .audio-preview {
-    width: 165px;
-    height: 32px;
-    border-radius: 6px;
-    accent-color: var(--accent-primary);
+  .play-btn {
+    min-width: 2.2rem;
+    font-variant-emoji: text;
+  }
+  tr.is-playing .play-btn {
+    border-color: var(--accent-primary);
+    color: var(--text-main);
   }
   .energy-mini-bar {
     display: inline-block;
@@ -414,6 +417,7 @@
       <!-- {{ ("<" ~ 'td class="sticky-col fw-600">') | safe }} {{ ("<" ~ 'td class="sticky-col">') | safe }} -->
       {% for track in tracks %}
       <tr data-track-row
+          data-track-id="{{ track.id }}"
           data-artist="{{ track.artist or '—' }}"
           data-title="{{ track.title or '—' }}"
           data-bpm="{{ track.bpm if track.bpm is not none else '' }}"
@@ -486,8 +490,8 @@
         <td data-label="">
           {# Vorhören nur, wenn die Datei lokal in Inbox oder Sammlung liegt (Issue #350). #}
           {% if track.playable %}
-          <audio class="audio-preview" controls preload="none"
-                 src="/api/audio/{{ track.id }}" title="Vorhören"></audio>
+          <button type="button" class="play-btn btn-page btn-xs" data-play-src="/api/audio/{{ track.id }}"
+                  aria-label="Vorhören: {{ track.artist or '—' }} – {{ track.title or '—' }}" aria-pressed="false">▶</button>
           {% else %}
           <span class="meta">—</span>
           {% endif %}
@@ -579,6 +583,8 @@
 
 <!-- Sticky Bottom DJ Deck Bar -->
 <div id="dj-deck-bar" class="dj-deck-bar" aria-label="DJ Deck Player">
+  {# Ein Player für die ganze Seite: liegt außerhalb von #table-region und spielt deshalb beim Nachladen weiter. #}
+  <audio id="deck-audio" preload="none"></audio>
   <div class="dj-deck-inner">
     <div class="dj-deck-info">
       <span class="brand-logo logo-deck">🎛️</span>
@@ -689,8 +695,11 @@
     }
   }
 
-  // Sticky DJ Deck Controller: synchronisiert die Zeilen-Player und verhindert Doppel-Wiedergabe.
-  let activeAudio = null;
+  // Ein gemeinsamer Player (#deck-audio) statt eines Audio-Elements je Zeile: Die Wiedergabe überlebt
+  // Sortieren und Blättern, weil nur #table-region ersetzt wird. Welcher Track läuft, merkt sich
+  // activeTrackId; die Zeile wird nach jedem Nachladen über data-track-id wiedergefunden.
+  const deckAudio = document.getElementById('deck-audio');
+  let activeTrackId = null;
   const deckBar = document.getElementById('dj-deck-bar');
   const deckTitle = document.getElementById('deck-track-title');
   const deckMeta = document.getElementById('deck-track-meta');
@@ -704,69 +713,107 @@
     return m + ':' + (s < 10 ? '0' : '') + s;
   }
 
-  function bindDeckPlayers() {
-    const players = Array.from(document.querySelectorAll('audio.audio-preview'));
-    players.forEach((audio) => {
-      audio.addEventListener('play', () => {
-        players.forEach((other) => {
-          if (other !== audio && !other.paused) {
-            other.pause();
-          }
-        });
-        document.querySelectorAll('tr[data-track-row]').forEach((r) => r.classList.remove('is-playing'));
-        activeAudio = audio;
-        const row = audio.closest('tr[data-track-row]');
-        if (row) {
-          row.classList.add('is-playing');
-          deckTitle.textContent = (row.dataset.artist || '—') + ' – ' + (row.dataset.title || '—');
-          const parts = [];
-          if (row.dataset.bpm) { parts.push(row.dataset.bpm + ' BPM'); }
-          if (row.dataset.key) { parts.push('Key ' + row.dataset.key); }
-          deckMeta.textContent = parts.join(' · ') || 'Lokales Audio';
-        }
-        if (deckBar) { deckBar.classList.add('visible'); }
-      });
+  function playableRows() {
+    return Array.from(document.querySelectorAll('tr[data-track-row]')).filter((r) => r.querySelector('.play-btn'));
+  }
 
-      audio.addEventListener('timeupdate', () => {
-        if (audio !== activeAudio) { return; }
-        const cur = audio.currentTime || 0;
-        const dur = audio.duration || 0;
-        if (dur > 0) {
-          deckScrubber.value = String((cur / dur) * 100);
-        }
-        deckTime.textContent = fmtSec(cur) + ' / ' + fmtSec(dur);
-      });
+  function activeRow() {
+    if (activeTrackId === null) { return null; }
+    return document.querySelector(`tr[data-track-row][data-track-id="${activeTrackId}"]`);
+  }
+
+  function markActiveRow() {
+    const playing = deckAudio && !deckAudio.paused;
+    document.querySelectorAll('tr[data-track-row]').forEach((r) => {
+      const isActive = r.dataset.trackId === activeTrackId;
+      r.classList.toggle('is-playing', isActive);
+      const btn = r.querySelector('.play-btn');
+      if (btn) {
+        btn.setAttribute('aria-pressed', isActive && playing ? 'true' : 'false');
+        btn.textContent = isActive && playing ? '⏸' : '▶';
+      }
     });
+  }
 
+  function playRow(row) {
+    if (!row || !deckAudio) { return; }
+    const btn = row.querySelector('.play-btn');
+    if (!btn) { return; }
+    const src = btn.dataset.playSrc;
+    if (deckAudio.getAttribute('src') !== src) {
+      deckAudio.setAttribute('src', src);
+    }
+    activeTrackId = row.dataset.trackId;
+    deckTitle.textContent = (row.dataset.artist || '—') + ' – ' + (row.dataset.title || '—');
+    const parts = [];
+    if (row.dataset.bpm) { parts.push(row.dataset.bpm + ' BPM'); }
+    if (row.dataset.key) { parts.push('Key ' + row.dataset.key); }
+    deckMeta.textContent = parts.join(' · ') || 'Lokales Audio';
+    if (deckBar) { deckBar.classList.add('visible'); }
+    deckAudio.play();
+    markActiveRow();
+  }
+
+  // Nach jedem Nachladen der Tabelle aufgerufen (fetchTableRegion): nur die Markierung erneuern,
+  // die Wiedergabe läuft im gemeinsamen Player weiter.
+  function bindDeckPlayers() {
+    markActiveRow();
+  }
+
+  function initDeckPlayer() {
+    if (!deckAudio) { return; }
+    // Klicks per Delegation: Die Knöpfe werden beim Nachladen ersetzt, der Handler bleibt.
+    document.addEventListener('click', (e) => {
+      const btn = e.target.closest ? e.target.closest('.play-btn') : null;
+      if (!btn) { return; }
+      const row = btn.closest('tr[data-track-row]');
+      if (row && row.dataset.trackId === activeTrackId && !deckAudio.paused) {
+        deckAudio.pause();
+      } else {
+        playRow(row);
+      }
+    });
+    deckAudio.addEventListener('play', markActiveRow);
+    deckAudio.addEventListener('pause', markActiveRow);
+    deckAudio.addEventListener('timeupdate', () => {
+      const cur = deckAudio.currentTime || 0;
+      const dur = deckAudio.duration || 0;
+      if (dur > 0) {
+        deckScrubber.value = String((cur / dur) * 100);
+      }
+      deckTime.textContent = fmtSec(cur) + ' / ' + fmtSec(dur);
+    });
     if (deckScrubber) {
       deckScrubber.addEventListener('input', () => {
-        if (activeAudio && isFinite(activeAudio.duration) && activeAudio.duration > 0) {
-          activeAudio.currentTime = (parseFloat(deckScrubber.value) / 100) * activeAudio.duration;
+        if (isFinite(deckAudio.duration) && deckAudio.duration > 0) {
+          deckAudio.currentTime = (parseFloat(deckScrubber.value) / 100) * deckAudio.duration;
         }
       });
     }
   }
 
   function deckTogglePlay() {
-    const players = Array.from(document.querySelectorAll('audio.audio-preview'));
-    const target = activeAudio || players[0];
-    if (!target) { return; }
-    if (target.paused) { target.play(); } else { target.pause(); }
+    if (!deckAudio) { return; }
+    if (activeTrackId === null) {
+      playRow(playableRows()[0]);
+      return;
+    }
+    if (deckAudio.paused) { deckAudio.play(); } else { deckAudio.pause(); }
   }
 
   function deckSeek(deltaSeconds) {
-    if (!activeAudio) { return; }
-    const next = Math.max(0, (activeAudio.currentTime || 0) + deltaSeconds);
-    activeAudio.currentTime = isFinite(activeAudio.duration) ? Math.min(activeAudio.duration, next) : next;
+    if (!deckAudio || activeTrackId === null) { return; }
+    const next = Math.max(0, (deckAudio.currentTime || 0) + deltaSeconds);
+    deckAudio.currentTime = isFinite(deckAudio.duration) ? Math.min(deckAudio.duration, next) : next;
   }
 
   function deckStepTrack(direction) {
-    const players = Array.from(document.querySelectorAll('audio.audio-preview'));
-    if (!players.length) { return; }
-    const idx = activeAudio ? players.indexOf(activeAudio) : -1;
-    const nextIdx = idx === -1 ? 0 : (idx + direction + players.length) % players.length;
-    players[nextIdx].play();
-    players[nextIdx].scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const rows = playableRows();
+    if (!rows.length) { return; }
+    const idx = rows.indexOf(activeRow());
+    const nextIdx = idx === -1 ? 0 : (idx + direction + rows.length) % rows.length;
+    playRow(rows[nextIdx]);
+    rows[nextIdx].scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 
   function initColumnToggle() {
@@ -822,6 +869,9 @@
   }
 
   async function fetchTableRegion(url, push = true) {
+    // Während des Abrufs sichtbar abdimmen und Klicks sperren, sonst wirkt die Tabelle eingefroren.
+    const region = document.getElementById('table-region');
+    if (region) region.setAttribute('aria-busy', 'true');
     try {
       const resp = await fetch(url, {
         headers: { 'X-Sc-Digger-Partial': '1' }
@@ -851,6 +901,9 @@
       }
     } catch (err) {
       window.location.href = url;
+    } finally {
+      const current = document.getElementById('table-region');
+      if (current) current.removeAttribute('aria-busy');
     }
   }
 
@@ -918,8 +971,7 @@
   let lastFeedbackAction = null;
 
   function rateActiveTrack(value) {
-    if (!activeAudio) { return; }
-    const row = activeAudio.closest('tr[data-track-row]');
+    const row = activeRow();
     if (!row) { return; }
     const cell = row.querySelector('[data-feedback-cell]');
     if (!cell) { return; }
@@ -927,18 +979,18 @@
     if (!btn) { return; }
     const prevActive = cell.querySelector('.feedback-btn.active');
     lastFeedbackAction = {
-      audio: activeAudio,
+      trackId: activeTrackId,
       row: row,
       cell: cell,
       previousButton: prevActive
     };
     sendFeedback(btn);
 
-    const players = Array.from(document.querySelectorAll('audio.audio-preview'));
-    const idx = players.indexOf(activeAudio);
-    if (idx !== -1 && idx + 1 < players.length) {
-      players[idx + 1].play();
-      players[idx + 1].scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const rows = playableRows();
+    const idx = rows.indexOf(row);
+    if (idx !== -1 && idx + 1 < rows.length) {
+      playRow(rows[idx + 1]);
+      rows[idx + 1].scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
   }
 
@@ -956,12 +1008,13 @@
         });
         showToast("Bewertung zurückgenommen", "ok");
       }
-      if (action.audio) {
-        action.audio.play();
-        action.audio.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      const back = document.querySelector(`tr[data-track-row][data-track-id="${action.trackId}"]`);
+      if (back) {
+        playRow(back);
+        back.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }
-    } else if (activeAudio) {
-      const row = activeAudio.closest('tr[data-track-row]');
+    } else if (activeTrackId !== null) {
+      const row = activeRow();
       const cell = row ? row.querySelector('[data-feedback-cell]') : null;
       if (cell) {
         const buttons = cell.querySelectorAll('button[data-value]');
@@ -976,19 +1029,20 @@
 
   document.addEventListener('DOMContentLoaded', () => {
     initColumnToggle();
+    initDeckPlayer();
     bindDeckPlayers();
     initPartialNavigation();
     document.addEventListener('keydown', (e) => {
       if (e.target && e.target.closest && e.target.closest('button, a, summary, input, select, textarea')) {
         return;
       }
-      if (e.code === 'Space' && document.querySelectorAll('audio.audio-preview').length > 0) {
+      if (e.code === 'Space' && playableRows().length > 0) {
         e.preventDefault();
         deckTogglePlay();
-      } else if (e.key === 'ArrowRight' && activeAudio) {
+      } else if (e.key === 'ArrowRight' && activeTrackId !== null) {
         e.preventDefault();
         deckSeek(30);
-      } else if (e.key === 'ArrowLeft' && activeAudio) {
+      } else if (e.key === 'ArrowLeft' && activeTrackId !== null) {
         e.preventDefault();
         deckSeek(-15);
       } else if (e.key === 'j' || e.key === 'J') {

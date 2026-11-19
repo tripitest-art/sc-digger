@@ -93,3 +93,24 @@ def test_send_text_reraises_non_html_errors(monkeypatch):
         bot._send_text(Config({"telegram": {}}), "42", "text")
 
     assert len(calls) == 1
+
+
+def test_hilfe_ueberschriften_sind_html_fett():
+    """Issue #610: Die Bereichsüberschriften nutzen <b>, das sendMessage mit parse_mode HTML versteht."""
+    for name, _ in bot.HELP_SECTIONS:
+        assert f"<b>{name}</b>" in bot.HELP_TEXT
+    # Außer <b> und den maskierten Platzhaltern keine spitzen Klammern, sonst bricht das HTML-Parsing.
+    rest = bot.HELP_TEXT.replace("<b>", "").replace("</b>", "")
+    assert "<" not in rest and ">" not in rest.replace("->", "")
+
+
+def test_jeder_befehl_aus_handle_message_steht_in_der_hilfe():
+    import inspect
+    quelle = inspect.getsource(bot.handle_message)
+    import re
+    befehle = set(re.findall(r'first_word == "(/[a-z_]+)"', quelle))
+    befehle |= {b for tupel in re.findall(r'first_word in \(([^)]*)\)', quelle)
+                for b in re.findall(r'"(/[a-z_-]+)"', tupel)}
+    befehle -= {"/start", "/help", "/curator-mining"}
+    zeilen = [z.split()[0] for _, gruppe in bot.HELP_SECTIONS for z in gruppe]
+    assert befehle <= set(zeilen), befehle - set(zeilen)

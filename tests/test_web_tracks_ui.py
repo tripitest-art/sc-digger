@@ -306,3 +306,38 @@ def test_tracks_ui_renders_match_buttons_and_coexists_with_source_url(tmp_path):
     assert "—" in r.text
 
 
+
+
+def test_ladezustand_regel_steht_im_ausgelieferten_html(tmp_path):
+    """Issue #603: Die Abdimm-Regel kommt mit der Seite, nicht nur im Quelltext."""
+    c = client_for(tmp_path)
+    for pfad in ("/tracks", "/digest"):
+        html = c.get(pfad, auth=("sc", PASSWORD)).text
+        assert '#table-region[aria-busy="true"]' in html, pfad
+        assert '<div id="table-region">' in html, pfad
+
+
+def test_teilantwort_traegt_keine_lademarkierung(tmp_path):
+    """Die Teilantwort ersetzt den markierten Bereich; sie selbst darf nicht als busy kommen."""
+    antwort = client_for(tmp_path).get(
+        "/tracks", auth=("sc", PASSWORD), headers={"X-Sc-Digger-Partial": "1"}
+    )
+    assert antwort.status_code == 200
+    assert "aria-busy" not in antwort.text
+
+
+def test_ein_player_klick_delegation_nur_einmal_gebunden():
+    """Issue #605: bindDeckPlayers hängt keine Listener mehr an (früher je Nachladen einer mehr)."""
+    from pathlib import Path
+    quelle = (Path(__file__).resolve().parents[1] / "sc_digger" / "web" / "templates" / "tracks.html").read_text(encoding="utf-8")
+    start = quelle.index("function bindDeckPlayers(")
+    teil = quelle[start:quelle.index("\n  }\n", start)]
+    assert "addEventListener" not in teil
+    assert quelle.count("initDeckPlayer();") == 1
+
+
+def test_lade_markierung_und_player_vertragen_sich(tmp_path):
+    """Der Player liegt außerhalb von #table-region; der Ladezustand aus #603 betrifft ihn nicht."""
+    html = client_for(tmp_path).get("/tracks", auth=("sc", PASSWORD)).text
+    region_ende = html.index('id="dj-deck-bar"')
+    assert html.index('<div id="table-region">') < region_ende

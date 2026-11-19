@@ -154,3 +154,24 @@ def test_cli_missing_config_returns_1_and_prints_error(capsys):
     code = schema_main(["--config", str(ROOT / "gibt-es-nicht.yaml")])
     out = capsys.readouterr().out
     assert code == 1 and out.startswith("FEHLER")
+
+
+def test_used_by_schluessel_sind_abschnitte_des_schemas():
+    """Issue #611: Jeder Präfix in USED_BY gehört zu mindestens einem Schemafeld."""
+    from sc_digger.schema import FIELDS, USED_BY
+    for prefix in USED_BY:
+        assert any(f.path == prefix or f.path.startswith(prefix + ".") for f in FIELDS), prefix
+
+
+def test_used_by_vertraegt_ungueltige_eingaben():
+    from sc_digger.schema import used_by
+    assert used_by(None) == ()  # type: ignore[arg-type]
+    assert used_by(".search") == ()
+
+
+def test_jeder_abschnitt_mit_feldern_hat_hoechstens_alle_als_wichtig():
+    """Ein Abschnitt, dessen Felder alle wichtig sind, braucht die Umschaltung nicht wirklich;
+    die Auswahl soll sparsam bleiben."""
+    from sc_digger.schema import FIELDS, IMPORTANT_FIELDS
+    bearbeitbar = [f for f in FIELDS if f.editable]
+    assert len(IMPORTANT_FIELDS) < len(bearbeitbar) / 3

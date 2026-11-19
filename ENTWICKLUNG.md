@@ -41,6 +41,7 @@ Modul anlegt, trägt es in die Tabelle ein.
 | `sc_digger/diskguard.py` | Speicherplatz-Wächter (Issue #459): `check_disk` misst den freien Speicherplatz unter `download.inbox_dir`, `DiskStatus`; pausiert Downloads bei knappem Speicherplatz vor dem Lauf |
 | `sc_digger/health.py` | Laufprotokoll, Alarm bei wiederholt leeren/fehlerhaften Läufen |
 | `sc_digger/canary.py` | Täglicher API-Kanarienvogel (07:15 Uhr): prüft Roh-Antworten der inoffiziellen SoundCloud-API (Suche und Track) auf Vollständigkeit der erwarteten Felder (`TRACK_FIELDS`) vor dem `discover`-Lauf |
+| `sc_digger/schedule.py` | Zeitplan der Cron-Jobs im Container als Liste (Issue #608, Teil 1 von #593): `ScheduledJob`, `JOBS` (Schlüssel, Beschriftung, Cron-Ausdruck, Marker), `describe_cron` ("täglich 07:30", "sonntags 19:00"), `jobs_by_time`; beschreibt nur, erzeugt keine Crontab; ein Test gleicht sie mit `Dockerfile` und `entrypoint.sh` ab |
 | `sc_digger/healthcheck.py` | Container-Healthcheck: Cron, letzter Lauf, DB-Integrität |
 | `sc_digger/autodeploy.py` | Auto-Deploy per systemd-Timer auf dem Host: neuen `main`-Stand von `update.sh` ausrollen, Healthcheck prüfen, bei Fehlschlag automatisch zurückrollen; Einrichtung in `BETRIEB.md` |
 | `sc_digger/redact.py` | Zugangsdaten aus Texten und Logs entfernen |
@@ -109,6 +110,7 @@ Modul anlegt, trägt es in die Tabelle ein.
 - **Zwei Code-Stände** (Server-Kopie und Repo) liefen schon einmal auseinander. Siehe Regel 1.
 - **Labels per MCP:** `issue_write` ersetzt die ganze Label-Liste. So gingen bei #62 Labels
   verloren. Siehe `MCP.md`.
+- **Neuer Cron-Job → auch in `schedule.JOBS`:** Wer in `entrypoint.sh` oder im `Dockerfile` einen Job hinzufügt oder verschiebt, trägt ihn in `sc_digger/schedule.py` ein; sonst wird `test_issue_608.py` rot.
 - **Neues Feld in `_to_track` → auch in `canary.TRACK_FIELDS`:** Liest `SoundCloudClient._to_track` ein neues API-Feld, muss es in `canary.TRACK_FIELDS` aufgenommen werden, damit der tägliche Kanarienvogel es überwacht.
 - **Nacharbeit ohne Commit:** Verlangt ein Review nur den PR-Text, gibt es keinen neuen
   Commit (#103). Ob der Text nach dem Review geändert wurde, zeigt `lastEditedAt`:

@@ -28,9 +28,9 @@ Zeile (`digest.html:281-285`). Die Statusseite nennt die Rohtreffer dreimal (`st
 
 **3. Zustände.** Gut: leere Listen mit Rücksetz-Link (`_components.html:2-7`), „Taste-Modell: noch
 nicht trainiert“ (`tracks.html:359`), Stand und Alter des Laufs (`status.html:138`, `204`). Lücken:
-Das Nachladen der Tabelle zeigt nichts an (`tracks.html:851-882`, `digest.html:475-503`) und ersetzt
+Das Nachladen der Tabelle zeigt nichts an (`tracks.html:851-882`, `digest.html:475-503`) (umgesetzt in #603) und ersetzt
 die `<audio>`-Elemente, die Wiedergabe endet still (`tracks.html:866`). Der Fehlertext im
-Ähnlich-Panel nutzt die nicht definierte Variable `--err` (`tracks.html:43`). Inbox-Dubletten laden
+Ähnlich-Panel nutzt die nicht definierte Variable `--err` (`tracks.html:43`) (umgesetzt in #603). Inbox-Dubletten laden
 ohne Hinweis, nach einem Fehler bleiben die Gruppen-Knöpfe gesperrt (`duplicates.html:275`,
 `293-295`). Der Link-Scanner zeigt leer nur einen Tabellenkopf (`mix.html:288-302`). Datenstand und
 Alarme sieht man nur auf der Statusseite; deren Auto-Refresh (`status.html:7`) löscht die Meldung
@@ -131,7 +131,7 @@ M = mehrere Templates oder kleine Route; L = neue Route oder neuer Zustand.
   Auf der Statusseite den Seiten-Refresh durch Nachladen der Kacheln ersetzen.
 - Aufwand: S bis M (der Zähler muss in den Kontext jeder Seite). Nutzen: Handgriff 1 und 2.
 
-**6. Vom Track zum Set: Sprungziel und Export**
+**6. Vom Track zum Set: Sprungziel und Export** (Sprungziel, Export und Scanner-Leerzustand umgesetzt in #604)
 - Beleg: `tracks.html:532`, `mix.html:97`, `mix.html:141`, `mix.html:133`, `mix.html:633-634`,
   `mix.html:650-660`
 - Beobachtung: „Match“ landet über dem Ergebnis. Die Trefferliste hat weder Vorhören noch Status
@@ -141,7 +141,7 @@ M = mehrere Templates oder kleine Route; L = neue Route oder neuer Zustand.
   aktiv und an deren Parameter gebunden; Abspielknopf in der Trefferliste.
 - Aufwand: S (Vorhören M). Nutzen: Handgriff 4.
 
-**7. Track-Tabelle: 13 Spalten, hohe Zeilen, ein Player je Zeile**
+**7. Track-Tabelle: 13 Spalten, hohe Zeilen, ein Player je Zeile** (ein Player statt `<audio>` je Zeile umgesetzt in #605)
 - Beleg: `tracks.html:382-408`, `tracks.html:420-442`, `tracks.html:487`, `base.html:414`,
   `tracks.html:866`, `base.html:907-911`
 - Beobachtung: Auf einen Bildschirm passen wenige Tracks. `.sticky-col` hat keinen Versatz und
@@ -161,7 +161,7 @@ M = mehrere Templates oder kleine Route; L = neue Route oder neuer Zustand.
   heute schon für den Bot.
 - Aufwand: L (neue Route, Zwischenspeicher). Nutzen: Handgriff 1, mit Befund 1 der größte Gewinn.
 
-**9. Kaufliste, Wächter und Duplikate enden in Sackgassen**
+**9. Kaufliste, Wächter und Duplikate enden in Sackgassen** (Key-Pille, gesperrte Knöpfe und Ladehinweis der Inbox-Dubletten umgesetzt in #602)
 - Beleg: `kaufliste.html:185-203`, `kaufliste.html:84-88`, `duplicates.html:53-56`,
   `duplicates.html:109`, `duplicates.html:275`, `duplicates.html:293-295`
 - Beobachtung: „Jetzt verfügbar“ hat keinen Link. Ein Kauf lässt sich nicht abhaken.

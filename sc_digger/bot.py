@@ -65,6 +65,34 @@ SIMILAR_FETCH_DURATION_S = 30.0
 SYNC_XML_DISABLED = "Rekordbox-XML ist abgeschaltet (rekordbox.xml_enabled)."
 SYNC_XML_FAILED = "Rekordbox-XML konnte nicht geschrieben werden, siehe Container-Log."
 
+# Befehle nach denselben Bereichen wie die Navigation des Dashboards (#600), damit Bot und Web
+# gleich heißen. Die Zeilen sind wortgleich zur früheren flachen Liste; Akzeptanztests prüfen sie.
+HELP_SECTIONS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("Start", (
+        "/stats [Tage] -> Statistiken über Scans, Inbox und Feedback",
+    )),
+    ("Entdecken", (
+        "/kaufliste -> zeigt die aktuelle Kaufliste offener Store-Tracks",
+        "/curator_mining -> Profile aus 👍-Tracks vorschlagen",
+        "/preview &lt;Suchtext oder id&gt; -> 20s-Snippet eines heruntergeladenen Tracks als Sprachnachricht",
+        "/preview sc:&lt;SoundCloud-ID&gt; -> 20s-Snippet direkt aus dem SoundCloud-Stream (nicht heruntergeladen)",
+        "/similar &lt;SoundCloud-Link | Track-ID&gt; -> Top-5 ähnliche Aufnahmen aus der Sammlung",
+    )),
+    ("Eingang", (
+        "/rejected [Anzahl] -> zuletzt abgelehnte Downloads aus der Quarantäne",
+        "/retry &lt;id&gt; -> abgelehnten Track zur erneuten Prüfung freigeben",
+        "/cleanup_inbox -> Dubletten in der Inbox auflisten (nur lesend)",
+    )),
+    ("Bibliothek", (
+        "/is_duplicate &lt;SoundCloud-ID&gt; [Notiz] -> Track als schon vorhanden markieren (Matcher-Fehler)",
+        "/not_duplicate &lt;SoundCloud-ID&gt; [Notiz] -> Track trotz Matcher-Treffer freigeben",
+    )),
+    ("Auflegen", (
+        "/mix 5A 155 -> harmonisch passende Tracks aus der Sammlung (±3 BPM)",
+        "/sync_xml -> Rekordbox-XML der Inbox sofort neu schreiben",
+    )),
+)
+
 HELP_TEXT = (
     "sc-digger Bot\n\n"
     "Schick mir einen SoundCloud-Link oder eine Audiodatei:\n"
@@ -72,21 +100,12 @@ HELP_TEXT = (
     "• einzelner Track-Link -> ich zeige dir die 'Station' dazu "
     "(das, was der SoundCloud-Algorithmus als Radio vorschlägt)\n"
     "• Audio-/Sprachnachricht -> die Top-5 ähnlichen Aufnahmen aus der Sammlung\n\n"
-    "Befehle:\n"
-    "• /kaufliste -> zeigt die aktuelle Kaufliste offener Store-Tracks\n"
-    "• /curator_mining -> Profile aus 👍-Tracks vorschlagen\n"
-    "• /mix 5A 155 -> harmonisch passende Tracks aus der Sammlung (±3 BPM)\n"
-    "• /preview &lt;Suchtext oder id&gt; -> 20s-Snippet eines heruntergeladenen Tracks als Sprachnachricht\n"
-    "• /preview sc:&lt;SoundCloud-ID&gt; -> 20s-Snippet direkt aus dem SoundCloud-Stream (nicht heruntergeladen)\n"
-    "• /similar &lt;SoundCloud-Link | Track-ID&gt; -> Top-5 ähnliche Aufnahmen aus der Sammlung\n"
-    "• /stats [Tage] -> Statistiken über Scans, Inbox und Feedback\n"
-    "• /rejected [Anzahl] -> zuletzt abgelehnte Downloads aus der Quarantäne\n"
-    "• /retry &lt;id&gt; -> abgelehnten Track zur erneuten Prüfung freigeben\n"
-    "• /is_duplicate &lt;SoundCloud-ID&gt; [Notiz] -> Track als schon vorhanden markieren (Matcher-Fehler)\n"
-    "• /not_duplicate &lt;SoundCloud-ID&gt; [Notiz] -> Track trotz Matcher-Treffer freigeben\n"
-    "• /cleanup_inbox -> Dubletten in der Inbox auflisten (nur lesend)\n"
-    "• /sync_xml -> Rekordbox-XML der Inbox sofort neu schreiben\n\n"
-    "Kein täglicher Filter, du bekommst die volle Liste mit Stats und Download-Einordnung."
+    "Befehle nach Bereich (wie im Dashboard):\n"
+    + "\n".join(
+        f"<b>{name}</b>\n" + "\n".join(f"• {zeile}" for zeile in zeilen) + "\n"
+        for name, zeilen in HELP_SECTIONS
+    )
+    + "\nKein täglicher Filter, du bekommst die volle Liste mit Stats und Download-Einordnung."
 )
 
 
