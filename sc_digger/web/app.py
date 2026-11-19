@@ -112,6 +112,7 @@ from .ops import collect_ops
 from .routes import register as register_routes
 from .routes.tracks import FILTER_LABELS, active_filter_chips, match_url
 from .status import _read_active_alerts, change_badge, collect_status
+from .workstation import read_state, start_run
 
 # Ob der Konfigeditor in der aktuellen Anfrage verfuegbar ist (die Umgebung _env ist modulweit,
 # die Apps sind es nicht); base.html zeigt das Zahnrad nur dann, sonst laege es auf einem 404.
@@ -502,6 +503,21 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
             return ct_err
         status, body = sync_rekordbox_xml(app.state.cfg)
         return JSONResponse(body, status_code=status)
+
+    # Workstation-Lauf von Hand (Knopf auf der Statusseite, Issue #628).
+    # Normale def-Route, damit der synchrone Weckruf im Threadpool läuft.
+    @app.post("/api/gpu-wake")
+    def api_gpu_wake(request: Request):
+        ct_err = _require_json_content_type(request, allow_empty_body=True)
+        if ct_err is not None:
+            return ct_err
+        status, body = start_run(app.state.cfg)
+        return JSONResponse(body, status_code=status)
+
+    @app.get("/api/gpu-wake/status")
+    def api_gpu_wake_status(request: Request):
+        state = read_state(app.state.cfg)
+        return JSONResponse(state.to_dict())
 
     # Job-Queue für externe GPU-Worker (Issue #330): claimen, Lebenszeichen und Ergebnis
     # melden über HTTP, damit die Workstation die Track-DB nicht per SMB/NFS einbinden muss.

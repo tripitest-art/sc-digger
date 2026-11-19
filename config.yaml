@@ -202,6 +202,7 @@ curator_mining:
 state:
   db_path: /data/seen.sqlite
   track_db_path: /data/tracks.sqlite  # Lokale SQLite-DB (nie auf NFS, da WAL-Modus)
+  gpu_wake_state: /data/gpu_wake.json
   # Schreibende Läufe (discover, audit, scout, …) laufen nie gleichzeitig. Ist die Lauf-Sperre
   # belegt, wartet ein Lauf höchstens so viele Sekunden und bricht dann mit Exit-Code 75 ab.
   lock_wait_s: 1800
@@ -262,6 +263,13 @@ embeddings:
   # Für jeden neuen Inbox-Track einen Embedding-Job in die Queue legen (GPU-Worker).
   # Erst einschalten, wenn der Worker ein Embedding-Modell hat; sonst bleiben die Jobs offen.
   auto_queue: false
+
+# Workstation-Lauf von Hand (Knopf auf der Statusseite, Issue #628)
+gpu_wake:
+  # Sperrzeit zwischen zwei Klicks; der Kaltstart der Workstation dauert 35 bis 50 s
+  cooldown_s: 300
+  # Wake-Proxy-URL (optional; bleibt im Repo leer, wird von SC_DIGGER_WAKE_URL übersteuert)
+  wake_url: ""
 
 rekordbox:
   # Rekordbox-XML-Export: schreibt eine XML mit Playlists pro Woche in die Inbox

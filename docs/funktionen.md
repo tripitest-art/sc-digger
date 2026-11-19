@@ -286,7 +286,7 @@ externen GPU-Workstation (Cues und Embeddings). Der Server bietet dafür
 Wiederholungs-Backoff und `--idle-exit`. `cue_infer.py` rechnet auf der Workstation Cues
 (all-in-one mit `beat_this`-Beats oder lokale `librosa`-Analyse als Rückfall), `embeddings.py`
 liefert den Vektorspeicher und die Embedding-Jobs. `gpu_wake.py` weckt die Workstation bei
-offenen Cue-Jobs per Wake-on-LAN-Proxy. Einrichtung und Betrieb stehen in
+offenen Cue-Jobs per Wake-on-LAN-Proxy. Im Web-Dashboard kann dieser Weckruf über den Knopf „Workstation-Lauf starten" auch von Hand angestoßen werden. Einrichtung und Betrieb stehen in
 [BETRIEB.md](../BETRIEB.md).
 
 ## Web-Dashboard

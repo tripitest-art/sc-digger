@@ -127,6 +127,8 @@ def test_create_app_behaelt_alle_routen_und_reihenfolge(tmp_path: Path):
         ("GET", "/"),
         ("GET", "/api/status"),
         ("POST", "/api/rekordbox/sync"),
+        ("POST", "/api/gpu-wake"),
+        ("GET", "/api/gpu-wake/status"),
         ("POST", "/api/jobs/claim"),
         ("POST", "/api/jobs/{job_id}/heartbeat"),
         ("POST", "/api/jobs/{job_id}/complete"),
