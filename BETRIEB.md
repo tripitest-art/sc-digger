@@ -26,6 +26,8 @@ statt in `AGENTS.md`, weil Antigravity Regeldateien bei 12.000 Zeichen abschneid
   - Exit 1: Format-Abweichung! Fehlende Felder werden ausgegeben und lösen Health-Alarm `api_schema` aus → `_to_track` in `sc_digger/soundcloud.py` prüfen.
   - Exit 3: Netzwerk- oder SoundCloud-Verbindungsfehler (kein Health-Eintrag).
 
+Welche Jobs im Container wann laufen, listet `sc_digger/schedule.py` (`python -c "from sc_digger.schedule import jobs_by_time, describe_cron; [print(describe_cron(j.cron), j.label) for j in jobs_by_time()]"`); die Liste wird per Test mit `Dockerfile` und `entrypoint.sh` abgeglichen.
+
 ## Zugangsdaten setzen
 
 Nie per Hand in die `.env` tippen, sondern auf dem Server:
