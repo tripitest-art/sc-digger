@@ -47,6 +47,9 @@
     color: var(--text-muted);
     overflow-wrap: anywhere;
   }
+  /* Kopfzeile der Aktions-Karte ohne Inline-Stil (Review zu PR #637) */
+  .track-actions .card-title { margin: 0; }
+
   .track-actions .action-row {
     display: flex;
     flex-wrap: wrap;
@@ -94,7 +97,7 @@
 
 <section class="card track-actions" id="track-actions">
   <div class="card-header">
-    <h2 class="card-title" style="margin: 0;">Aktionen</h2>
+    <h2 class="card-title">Aktionen</h2>
   </div>
   <div class="action-row" aria-label="Bewertung">
     <button type="button" class="feedback-btn" id="track-rate-like" data-feedback="like">👍 gefällt</button>
