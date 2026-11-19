@@ -28,6 +28,16 @@ class Field:
     editable: bool = True           # False für Betriebspfade
 
     @property
+    def important(self) -> bool:
+        """Gehört zur Ansicht „Wichtig“ im Konfigeditor (IMPORTANT_FIELDS)."""
+        return self.path in IMPORTANT_FIELDS
+
+    @property
+    def used_by(self) -> tuple[str, ...]:
+        """Welche Läufe oder Funktionen das Feld lesen (über den Abschnitt, siehe USED_BY)."""
+        return used_by(self.path)
+
+    @property
     def type(self) -> str:
         """Alias für `kind` (Feldtyp). `type` ist verbreiteter Name und wird u. a. von
         den Akzeptanztests aus Issue #268 (get_field(...).type) erwartet; der kanonische
@@ -324,6 +334,59 @@ FIELDS: tuple[Field, ...] = (
     _f("scout.beatport.charts", "list", "Beatport-Charts",
        "Chart-URLs von Beatport (z. B. https://www.beatport.com/genre/hard-techno/2/top-100) als Kauflisten-Quelle."),
 )
+
+# Die Felder, die man im Alltag wirklich anfasst; der Konfigeditor zeigt sie zuerst (#597).
+IMPORTANT_FIELDS: frozenset[str] = frozenset({
+    "search.tags", "search.bpm_min", "search.bpm_max", "search.max_age_days",
+    "search.followed_users", "search.reference_accounts",
+    "scoring.min_percentile", "scoring.spam_phrases", "scoring.blocked_accounts",
+    "download.auto_download_native_only",
+    "organize.enabled", "organize.write_tags",
+    "quality.min_cutoff_hz_for_320",
+    "loudness.normalize_inbox", "loudness.target_lufs",
+    "telegram.max_items_per_digest",
+    "rekordbox.xml_enabled", "rekordbox.cues_enabled", "rekordbox.hot_cue_layout",
+    "digest.sunday_summary",
+    "watch.enabled",
+    "backup.keep_daily",
+    "health.min_free_gb",
+})
+
+# Wer ein Feld liest, hängt am Abschnitt: so muss nicht jedes der Felder einzeln gepflegt werden.
+USED_BY: dict[str, tuple[str, ...]] = {
+    "search": ("Discover-Lauf", "Playlist- und Similar-Modus"),
+    "scoring": ("Discover-Lauf",),
+    "download": ("Discover-Lauf", "Bot-Links", "Upload"),
+    "organize": ("Downloads", "Upload"),
+    "quality": ("Downloads", "Upload"),
+    "loudness": ("Downloads", "Upload"),
+    "fingerprint": ("Downloads",),
+    "curator_mining": ("Bot /curator_mining",),
+    "backup": ("Datenbank-Sicherung",),
+    "preview": ("Bot /preview",),
+    "retry": ("Discover-Lauf",),
+    "health": ("Health-Alarm aller Läufe",),
+    "canary": ("API-Kanarienvogel",),
+    "telegram": ("Digest", "Bot"),
+    "cues": ("Downloads", "GPU-Worker"),
+    "embeddings": ("Downloads", "GPU-Worker"),
+    "rekordbox": ("Rekordbox-XML", "Bot /sync_xml"),
+    "digest": ("Digest", "Kaufliste"),
+    "watch": ("Verfügbarkeits-Wächter",),
+    "scout": ("Store-Scout",),
+}
+
+
+def used_by(path: str) -> tuple[str, ...]:
+    """Anzeigenamen des längsten passenden Präfixes aus USED_BY; ohne Treffer ()."""
+    if not isinstance(path, str) or not path:
+        return ()
+    best = ""
+    for prefix in USED_BY:
+        if (path == prefix or path.startswith(prefix + ".")) and len(prefix) > len(best):
+            best = prefix
+    return USED_BY.get(best, ()) if best else ()
+
 
 SECTION_TITLES: dict[str, str] = {
     "search": "Suche",

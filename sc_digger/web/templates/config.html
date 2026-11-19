@@ -22,6 +22,10 @@
   input.switch:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; }
   input.switch::after { content: "Aus"; position: absolute; left: 48px; top: 2px; font-size: 0.85rem; color: var(--text-dim); }
   input.switch:checked::after { content: "An"; color: var(--accent-primary); }
+  .field-used-by { display: block; font-size: 0.78rem; color: var(--text-dim); margin: 0.15rem 0 0.35rem; }
+  .config-view-toggle { display: inline-flex; gap: 0.35rem; margin: 0.25rem 0 0.75rem; }
+  .config-view-toggle button { font-size: 0.8rem; padding: 0.3rem 0.75rem; }
+  .config-view-toggle button[aria-pressed="true"] { border-color: var(--accent-primary); color: var(--text-main); }
 </style>
 <div class="card">
   <h1>sc-digger Konfiguration</h1>
@@ -62,8 +66,15 @@ nächsten Lauf. Der laufende Telegram-Bot liest die Datei erst nach einem Neusta
       <div class="section-desc">{{ section_description }}</div>
       {% endif %}
     </div>
+    {% set has_important = section.fields | selectattr("important") | list | length > 0 %}
+    {% if has_important %}
+    <div class="config-view-toggle" role="group" aria-label="Felder anzeigen">
+      <button type="button" data-view="important" aria-pressed="true">Wichtig</button>
+      <button type="button" data-view="all" aria-pressed="false">Alle</button>
+    </div>
+    {% endif %}
     {% for field in section.fields %}
-    <div class="field" {% if field.path in local_paths %}style="background: rgba(59, 130, 246, 0.04); padding: 0.85rem; border-radius: 6px; border: 1px solid rgba(59, 130, 246, 0.2); margin: 0.75rem 0;"{% endif %}>
+    <div class="field" data-important="{{ 'true' if field.important else 'false' }}" data-local="{{ 'true' if field.path in local_paths else 'false' }}" {% if field.path in local_paths %}style="background: rgba(59, 130, 246, 0.04); padding: 0.85rem; border-radius: 6px; border: 1px solid rgba(59, 130, 246, 0.2); margin: 0.75rem 0;"{% endif %}>
       <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.25rem;">
         <label for="f-{{ field.path }}" style="margin-bottom: 0;">{{ field.label }}</label>
         {% if field.path in local_paths %}
@@ -71,6 +82,9 @@ nächsten Lauf. Der laufende Telegram-Bot liest die Datei erst nach einem Neusta
         {% endif %}
       </div>
       <span class="help">{{ field.help }}</span>
+      {% if field.used_by %}
+      <span class="field-used-by">Wirkt auf: {{ field.used_by | join(", ") }}</span>
+      {% endif %}
       {% if field.kind == "bool" %}
       <input type="checkbox" class="switch" role="switch" id="f-{{ field.path }}" name="{{ field.path }}" value="true"{% if values[field.path] == "true" %} checked{% endif %}>
       {% elif field.kind == "choice" %}
@@ -102,4 +116,31 @@ nächsten Lauf. Der laufende Telegram-Bot liest die Datei erst nach einem Neusta
     </div>
   </div>
 </form>
+<script>
+  // Ansicht „Wichtig/Alle“: versteckt nur per Skript, ohne Skript bleibt alles sichtbar.
+  // Versteckte Felder werden weiter mitgeschickt, das Speichern ändert sich nicht.
+  (function () {
+    const toggle = document.querySelector('.config-view-toggle');
+    if (!toggle) { return; }
+    const storageKey = 'sc-digger.config.view';
+    function apply(view) {
+      document.querySelectorAll('.field[data-important]').forEach((el) => {
+        const hide = view === 'important' && el.dataset.important === 'false' && el.dataset.local === 'false';
+        if (hide) { el.setAttribute('hidden', ''); } else { el.removeAttribute('hidden'); }
+      });
+      toggle.querySelectorAll('button[data-view]').forEach((b) => {
+        b.setAttribute('aria-pressed', b.dataset.view === view ? 'true' : 'false');
+      });
+    }
+    let view = 'important';
+    try { view = localStorage.getItem(storageKey) || 'important'; } catch (e) { /* ohne Speicher */ }
+    apply(view === 'all' ? 'all' : 'important');
+    toggle.addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-view]');
+      if (!btn) { return; }
+      apply(btn.dataset.view);
+      try { localStorage.setItem(storageKey, btn.dataset.view); } catch (e2) { /* ohne Speicher */ }
+    });
+  })();
+</script>
 {% endblock %}
