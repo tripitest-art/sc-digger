@@ -27,6 +27,13 @@
   .card-tracks > .pager {
     order: 4;
   }
+  /* Fester Tabellenkopf (Issue #625): Der Scrollbereich braucht eine eigene Höhe,
+     sonst hat sticky nichts, woran es haften könnte. Auf schmalen Schirmen scrollt die Seite. */
+  .card-tracks .table-scroll { max-height: 78vh; overflow: auto; }
+  .card-tracks thead th { position: sticky; top: 0; z-index: 3; background: var(--bg-card); }
+  @media (max-width: 900px) { .card-tracks .table-scroll { max-height: none; } }
+  .track-details summary { cursor: pointer; font-size: 0.8em; color: var(--text-muted, inherit); }
+  .quality-ok { color: var(--text-muted, inherit); opacity: 0.6; }
   .similar-panel {
     background-color: var(--bg-card-subtle);
     border: 1px solid var(--border);
@@ -425,13 +432,17 @@
         <td class="sticky-col fw-600" data-label="Artist" data-column="artist">{{ track.artist or "—" }}</td>
         <td class="sticky-col" data-label="Titel" data-column="title">
           <strong>{{ track.title or "—" }}</strong>
-          <div class="mono meta-path">{{ track.path }}</div>
-          {# Kompakte Kennzahlen-Zeile (Issue #258): SoundCloud-Engagement aus track_snapshots. #}
-          {% if track.sc_plays is not none or track.sc_likes is not none %}
-          <div class="meta meta-xs mt-02">
-            ▶ {{ track.sc_plays or 0 }} · ♥ {{ track.sc_likes or 0 }} · 🔁 {{ track.sc_reposts or 0 }}
-          </div>
-          {% endif %}
+          {# Pfad und Engagement auf Abruf (Issue #625): Die Zeile bleibt einzeilig. #}
+          <details class="track-details">
+            <summary>Details</summary>
+            <div class="mono meta-path">{{ track.path }}</div>
+            {# Kompakte Kennzahlen-Zeile (Issue #258): SoundCloud-Engagement aus track_snapshots. #}
+            {% if track.sc_plays is not none or track.sc_likes is not none %}
+            <div class="meta meta-xs mt-02">
+              ▶ {{ track.sc_plays or 0 }} · ♥ {{ track.sc_likes or 0 }} · 🔁 {{ track.sc_reposts or 0 }}
+            </div>
+            {% endif %}
+          </details>
           {% if track.rb_play_count and track.rb_play_count > 0 %}
           <span class="badge badge-info mt-1">🎧 {{ track.rb_play_count }}x im Set</span>
           {% endif %}
@@ -464,7 +475,7 @@
         </td>
         <td data-label="Qualität" data-column="quality">
           {% if track.quality_status == "ok" %}
-          <span class="badge badge-ok">OK</span>
+          <span class="quality-ok" title="Qualität OK" aria-label="Qualität OK">✓</span>
           {% elif track.quality_status == "clipped" %}
           <span class="badge badge-warn">Clipped</span>
           {% elif track.quality_status == "fake_transcode" %}

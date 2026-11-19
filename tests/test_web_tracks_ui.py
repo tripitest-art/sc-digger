@@ -341,3 +341,12 @@ def test_lade_markierung_und_player_vertragen_sich(tmp_path):
     html = client_for(tmp_path).get("/tracks", auth=("sc", PASSWORD)).text
     region_ende = html.index('id="dj-deck-bar"')
     assert html.index('<div id="table-region">') < region_ende
+
+
+def test_details_sind_zugeklappt_und_qualitaet_ok_ist_haekchen(tmp_path):
+    """#625: Details standardmäßig zu (kein open-Attribut), OK-Qualität ohne Plakette."""
+    seed(tmp_path)
+    html = client_for(tmp_path).get("/tracks", auth=("sc", PASSWORD)).text
+    assert '<details class="track-details" open' not in html
+    assert 'class="track-details"' in html
+    assert 'badge badge-ok">OK<' not in html
