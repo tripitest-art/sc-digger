@@ -127,10 +127,34 @@
     color: var(--text-muted);
     border-color: var(--border);
   }
+  .today-card {
+    margin-bottom: 1.4rem;
+  }
+  .today-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+  }
 </style>
 {% endblock %}
 
 {% block content %}
+<section class="card today-card" id="heute">
+  <div class="card-header"><h2 class="card-title">Heute zu tun</h2></div>
+  {% if today %}
+  <ul class="today-list">
+    {% for item in today %}
+    <li><a href="{{ item.href }}" class="btn-page" data-today="{{ item.key }}">{{ item.label }}</a></li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="meta">Heute ist nichts offen.</p>
+  {% endif %}
+</section>
+
 <div class="status-hero">
   <div>
     <h1 class="hero-title">sc-digger Status</h1>
