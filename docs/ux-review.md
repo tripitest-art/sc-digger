@@ -161,7 +161,7 @@ M = mehrere Templates oder kleine Route; L = neue Route oder neuer Zustand.
   heute schon für den Bot.
 - Aufwand: L (neue Route, Zwischenspeicher). Nutzen: Handgriff 1, mit Befund 1 der größte Gewinn.
 
-**9. Kaufliste, Wächter und Duplikate enden in Sackgassen**
+**9. Kaufliste, Wächter und Duplikate enden in Sackgassen** (Key-Pille, gesperrte Knöpfe und Ladehinweis der Inbox-Dubletten umgesetzt in #602)
 - Beleg: `kaufliste.html:185-203`, `kaufliste.html:84-88`, `duplicates.html:53-56`,
   `duplicates.html:109`, `duplicates.html:275`, `duplicates.html:293-295`
 - Beobachtung: „Jetzt verfügbar“ hat keinen Link. Ein Kauf lässt sich nicht abhaken.

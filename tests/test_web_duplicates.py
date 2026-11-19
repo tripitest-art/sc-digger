@@ -141,3 +141,28 @@ def test_tracks_toolbar_contains_duplicates_link(tmp_path: Path):
     resp = client.get("/tracks", auth=AUTH)
     assert resp.status_code == 200
     assert 'href="/duplicates"' in resp.text
+
+
+def test_key_pillen_aller_gruppen_tragen_data_camelot(tmp_path: Path):
+    """Issue #602: Die Farbregeln lesen data-camelot; data-key ließ die Pillen grau."""
+    cfg = _make_cfg(tmp_path)
+    fp1 = encode_fingerprint([0xAAAAAAAA] * 80)
+    fp2 = encode_fingerprint([0x55555555] * 80)
+    with TrackDB(tmp_path / "tracks.sqlite") as db:
+        for pfad, fp, key in (("a1.wav", fp1, "5A"), ("a2.mp3", fp1, "5A"),
+                              ("b1.wav", fp2, "11B"), ("b2.mp3", fp2, "11B")):
+            db.upsert_track(TrackRecord(
+                path=pfad, mtime=1.0, size=100, artist="A", title="T", key_camelot=key,
+                status=TrackStatus.ARCHIVE, fingerprint=fp, fingerprint_duration=300.0,
+            ))
+    html = TestClient(create_app(cfg, password=PASSWORD)).get("/duplicates", auth=AUTH).text
+    assert html.count('class="camelot-pill" data-camelot="5A"') == 2
+    assert html.count('class="camelot-pill" data-camelot="11B"') == 2
+
+
+def test_inbox_statuszeile_ist_live_region(tmp_path: Path):
+    """Der Ladehinweis aus Issue #602 landet in einer Statuszeile, die Screenreader ansagen."""
+    cfg = _make_cfg(tmp_path)
+    html = TestClient(create_app(cfg, password=PASSWORD)).get("/duplicates", auth=AUTH).text
+    assert '<div id="inbox-dup-status" role="status"' in html
+    assert "Lade Inbox-Dubletten…" in html

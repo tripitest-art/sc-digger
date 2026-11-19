@@ -106,7 +106,7 @@
             <td>{% if track.bpm %}{{ track.bpm | round(1) }}{% else %}-{% endif %}</td>
             <td>
               {% if track.key_camelot %}
-                <span class="camelot-pill" data-key="{{ track.key_camelot }}">{{ track.key_camelot }}</span>
+                <span class="camelot-pill" data-camelot="{{ track.key_camelot }}">{{ track.key_camelot }}</span>
               {% else %}
                 <span class="meta">-</span>
               {% endif %}
@@ -147,6 +147,7 @@
   const container = document.getElementById('inbox-dup-container');
 
   async function loadInboxDuplicates() {
+    statusEl.textContent = 'Lade Inbox-Dubletten…';
     try {
       const resp = await fetch('/api/inbox-duplicates');
       if (!resp.ok) {
@@ -154,6 +155,7 @@
         return;
       }
       const data = await resp.json();
+      statusEl.textContent = '';
       container.textContent = '';
 
       if (!data.ok || !data.groups || data.groups.length === 0) {
@@ -291,7 +293,9 @@
     } catch (err) {
       statusEl.textContent = 'Netzwerkfehler beim Verschieben.';
     } finally {
+      // Auch nach einem Fehler wieder freigeben, sonst bleibt jede Gruppe bis zum Neuladen gesperrt.
       moveAllBtn.disabled = false;
+      allBtns.forEach(function(b) { b.disabled = false; });
     }
   }
 
