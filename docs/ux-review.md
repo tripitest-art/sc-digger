@@ -131,7 +131,7 @@ M = mehrere Templates oder kleine Route; L = neue Route oder neuer Zustand.
   Auf der Statusseite den Seiten-Refresh durch Nachladen der Kacheln ersetzen.
 - Aufwand: S bis M (der Zähler muss in den Kontext jeder Seite). Nutzen: Handgriff 1 und 2.
 
-**6. Vom Track zum Set: Sprungziel und Export**
+**6. Vom Track zum Set: Sprungziel und Export** (Sprungziel, Export und Scanner-Leerzustand umgesetzt in #604)
 - Beleg: `tracks.html:532`, `mix.html:97`, `mix.html:141`, `mix.html:133`, `mix.html:633-634`,
   `mix.html:650-660`
 - Beobachtung: „Match“ landet über dem Ergebnis. Die Trefferliste hat weder Vorhören noch Status

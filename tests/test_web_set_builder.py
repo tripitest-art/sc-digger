@@ -396,3 +396,25 @@ def test_api_mix_export_xml_full_workflow(tmp_path: Path):
     assert empty_resp.status_code == 200
     empty_root = ET.fromstring(empty_resp.text)
     assert empty_root.find("./COLLECTION").attrib["Entries"] == "0"
+
+
+MIX_TEMPLATE = (Path(__file__).resolve().parents[1] / "sc_digger" / "web" / "templates" / "mix.html").read_text(encoding="utf-8")
+
+
+def test_mix_export_wird_bei_fehler_wieder_gesperrt():
+    """Issue #604: Ein fehlgeschlagener Lauf darf kein altes Set exportierbar lassen."""
+    start = MIX_TEMPLATE.index("async function buildSet(")
+    teil = MIX_TEMPLATE[start:MIX_TEMPLATE.index("\n  }\n", start)]
+    assert teil.count("setExportEnabled(null)") == 2  # Fehlerantwort und Ausnahme
+    assert "setExportEnabled(params)" in teil
+
+
+def test_mix_xml_knopf_bleibt_nach_export_nur_mit_set_frei():
+    start = MIX_TEMPLATE.index("async function exportSetXml(")
+    teil = MIX_TEMPLATE[start:MIX_TEMPLATE.index("\n  }\n", start)]
+    assert "button.disabled = !lastSetParams" in teil[teil.index("finally"):]
+
+
+def test_mix_finder_karte_gibt_es_genau_einmal():
+    assert MIX_TEMPLATE.count('id="mix-finder"') == 1
+    assert MIX_TEMPLATE.count("🧭 Harmonic Mix Finder") == 1
