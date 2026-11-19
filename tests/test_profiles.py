@@ -201,8 +201,9 @@ def test_gates_und_explorations_tags_tragen_das_profil(tmp_path):
 
 def test_migration_ist_die_juengste_und_die_liste_bleibt_gueltig():
     assert check_migrations() == []
-    version, name, _ = max(MIGRATIONS)
-    assert (version, name) == (23, "0023_smartlists_profile")
+    # Nicht „die jüngste“ festschreiben (wie test_issue_563): jede spätere Migration, z. B.
+    # 0024_activity_log aus #619, machte den Test sonst ohne Grund rot.
+    assert (23, "0023_smartlists_profile") in {(v, n) for v, n, _ in MIGRATIONS}
 
 
 def test_migration_uebernimmt_bestandsdaten_ins_standardprofil(tmp_path, monkeypatch):
