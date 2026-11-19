@@ -198,7 +198,7 @@ Der Bot läuft dauerhaft (Hauptprozess des Containers) und antwortet nur im Chat
 
 | Nachricht / Befehl | Antwort |
 |---|---|
-| `/start`, `/help` | Hilfe mit Befehlsübersicht |
+| `/start`, `/help` | Hilfe mit Befehlsübersicht, gegliedert nach den Bereichen des Dashboards (Start, Entdecken, Eingang, Bibliothek, Auflegen) |
 | Playlist- oder Set-Link | Alle Tracks der Playlist, mit Sammlungsabgleich, Download-Weg und Export-Datei |
 | Track-Link | Der verlinkte Track selbst (Download falls freigegeben) plus seine Track-Station (SoundCloud-Radio), ebenso aufbereitet |
 | `/kaufliste` | Offene Store-Tracks aus `store_items` mit Kauflink |
