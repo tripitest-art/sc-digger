@@ -141,7 +141,7 @@ M = mehrere Templates oder kleine Route; L = neue Route oder neuer Zustand.
   aktiv und an deren Parameter gebunden; Abspielknopf in der Trefferliste.
 - Aufwand: S (Vorhören M). Nutzen: Handgriff 4.
 
-**7. Track-Tabelle: 13 Spalten, hohe Zeilen, ein Player je Zeile**
+**7. Track-Tabelle: 13 Spalten, hohe Zeilen, ein Player je Zeile** (ein Player statt `<audio>` je Zeile umgesetzt in #605)
 - Beleg: `tracks.html:382-408`, `tracks.html:420-442`, `tracks.html:487`, `base.html:414`,
   `tracks.html:866`, `base.html:907-911`
 - Beobachtung: Auf einen Bildschirm passen wenige Tracks. `.sticky-col` hat keinen Versatz und

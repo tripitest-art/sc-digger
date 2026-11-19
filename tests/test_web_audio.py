@@ -164,7 +164,7 @@ def test_abspiel_knopf_nur_bei_vorhandener_datei(tmp_path: Path):
     r = client_for(cfg).get("/tracks", auth=AUTH)
 
     assert r.status_code == 200
-    assert f'class="audio-preview"' in r.text
+    assert 'class="play-btn' in r.text
     assert f"/api/audio/{da_id}" in r.text
     assert f"/api/audio/{fehlt_id}" not in r.text
-    assert r.text.count('class="audio-preview"') == 1
+    assert r.text.count('class="play-btn') == 1
