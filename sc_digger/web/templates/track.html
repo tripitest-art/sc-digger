@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+
+{% block title %}{% if life %}{% if life.artist %}{{ life.artist }} – {% endif %}{{ life.title }}{% else %}Track unbekannt{% endif %} – sc-digger{% endblock %}
+
+{% block meta %}
+<style>
+  .life {
+    list-style: none;
+    margin: 0;
+    padding: 0 0 0 1.1rem;
+    border-left: 2px solid var(--border);
+  }
+  .life li {
+    position: relative;
+    padding: 0.55rem 0 0.55rem 0.9rem;
+  }
+  /* Punkt auf der Zeitleiste; die aktuelle Station hebt sich farbig ab. */
+  .life li::before {
+    content: "";
+    position: absolute;
+    left: -1.55rem;
+    top: 0.85rem;
+    width: 0.7rem;
+    height: 0.7rem;
+    border-radius: 50%;
+    background: var(--border);
+    border: 2px solid var(--bg-card);
+  }
+  .life li.is-current::before {
+    background: var(--accent-ok);
+  }
+  .life .step-label {
+    font-weight: 600;
+  }
+  .life li.is-current .step-label {
+    color: var(--accent-ok);
+  }
+  .life .step-at {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    margin-left: 0.5rem;
+  }
+  .life .step-detail {
+    display: block;
+    margin-top: 0.15rem;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    overflow-wrap: anywhere;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+{% if life %}
+<div class="card">
+  <h1 style="margin: 0;">{% if life.artist %}{{ life.artist }} – {% endif %}{{ life.title }}</h1>
+  <p style="margin: 0.4rem 0 0; color: var(--text-muted);">
+    SoundCloud-ID {{ life.sc_id }}
+    {% set sc_link = safe_link(life.url) %}
+    {% if sc_link %} · <a href="{{ sc_link }}" target="_blank" rel="noopener">Auf SoundCloud öffnen</a>{% endif %}
+  </p>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h2 class="card-title" style="margin: 0;">Lebenslauf</h2>
+  </div>
+  <ol class="life" aria-label="Lebenslauf des Tracks">
+    {% for step in life.steps %}
+    {% set is_current = loop.last %}
+    <li data-step="{{ step.key }}"{% if is_current %} class="is-current" aria-current="step"{% endif %}>
+      <span class="step-label">{{ step.label }}</span>
+      {% if step.at %}<span class="step-at">{{ step.at }}</span>{% endif %}
+      {% if step.detail %}
+      {% set link = safe_link(step.detail) %}
+      <span class="step-detail">{% if link %}<a href="{{ link }}" target="_blank" rel="noopener">{{ step.detail }}</a>{% else %}{{ step.detail }}{% endif %}</span>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ol>
+</div>
+{% else %}
+<div class="card">
+  <h1 style="margin: 0;">Track unbekannt</h1>
+  <p>Zur SoundCloud-ID {{ sc_id }} gibt es keinen Eintrag – weder im Digest noch in Quarantäne,
+    Kaufliste oder Track-DB.</p>
+  <p><a href="/digest">Zum Digest</a></p>
+</div>
+{% endif %}
+{% endblock %}
