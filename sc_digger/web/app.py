@@ -112,6 +112,7 @@ from .ops import collect_ops
 from .routes import register as register_routes
 from .routes.tracks import FILTER_LABELS, active_filter_chips, match_url
 from .status import _read_active_alerts, change_badge, collect_status
+from .today import collect_today
 from .workstation import read_state, start_run
 
 # Ob der Konfigeditor in der aktuellen Anfrage verfuegbar ist (die Umgebung _env ist modulweit,
@@ -484,9 +485,10 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
         snap = collect_status(app.state.cfg)
         overview = get_collection_overview(app.state.cfg["state"]["track_db_path"])
         ops = collect_ops(app.state.cfg, usage=app.state.disk_usage)
+        today = collect_today(app.state.cfg)
         template = _env.get_template("status.html")
         return HTMLResponse(template.render(
-            snap=snap, overview=overview, editor_available=editor_available, ops=ops
+            snap=snap, overview=overview, editor_available=editor_available, ops=ops, today=today
         ))
 
     @app.get("/api/status")
