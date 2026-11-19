@@ -381,3 +381,8 @@ scout:
 # diese Zone um (IANA-Name). Die API (/api/*) liefert weiter UTC.
 web:
   timezone: Europe/Berlin
+  # Hörproben (Befund 8): 30-s-Schnipsel aus dem SoundCloud-Stream, erst beim Abspielen erzeugt und
+  # unter <State-Ordner>/preview_cache abgelegt. Eigener Schalter, getrennt vom Bot (preview.stream_enabled).
+  # preview_cache_mb: Obergrenze des Zwischenspeichers, die ältesten Schnipsel werden zuerst gelöscht.
+  stream_preview: false
+  preview_cache_mb: 500

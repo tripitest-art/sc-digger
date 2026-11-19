@@ -102,6 +102,8 @@ Fehlende optionale Schlüssel fallen auf die Defaults im Code zurück.
 | `scout.bandcamp.feeds` | URLs für Bandcamp-RSS-Feeds von Labels und Artists | `[]` |
 | `scout.beatport.charts` | URLs für Beatport-Charts | `[]` |
 | `web.timezone` | Zeitzone, in der das Web-Dashboard Zeiten anzeigt (IANA-Name; gespeichert wird weiter UTC, `/api/*` ebenso) | `Europe/Berlin` |
+| `web.stream_preview` | Hörproben im Web-Dashboard: 30-s-Schnipsel aus dem SoundCloud-Stream, erst beim Abspielen erzeugt (`GET /api/preview/sc/<sc_id>`); getrennt vom Bot-Schalter `preview.stream_enabled` | `false` |
+| `web.preview_cache_mb` | Obergrenze des Hörproben-Zwischenspeichers `preview_cache` neben der State-DB in MB (0..10000); die ältesten Schnipsel werden zuerst gelöscht | `500` |
 
 ### Profile
 

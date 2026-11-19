@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from .. import navigation, timefmt
-from . import track_detail, tracks
+from . import preview, track_detail, tracks
 
 BEREICHE = ("status", "tracks", "mix", "digest", "intake", "config")
 
@@ -12,5 +12,7 @@ def register(app) -> None:
     tracks.register(app)
     # Die Detailseite ist kein eigener Bereich (steht nicht in BEREICHE), nur eine Route.
     track_detail.register(app)
+    # Hörproben aus dem Stream (eigener Schalter web.stream_preview, Standard aus).
+    preview.register(app)
     navigation.register(app)
     timefmt.register(app)
