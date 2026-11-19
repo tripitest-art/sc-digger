@@ -7,6 +7,7 @@
 
 {% block meta %}
 <style>
+  #table-region[aria-busy="true"] { opacity: 0.55; pointer-events: none; transition: opacity 0.15s ease; }
   .card-tracks {
     display: flex;
     flex-direction: column;
@@ -40,7 +41,7 @@
     margin-bottom: 0.5rem;
   }
   .similar-panel-error {
-    color: var(--err);
+    color: var(--accent-err);
   }
   .tracks-toolbar {
     display: flex;
@@ -822,6 +823,9 @@
   }
 
   async function fetchTableRegion(url, push = true) {
+    // Während des Abrufs sichtbar abdimmen und Klicks sperren, sonst wirkt die Tabelle eingefroren.
+    const region = document.getElementById('table-region');
+    if (region) region.setAttribute('aria-busy', 'true');
     try {
       const resp = await fetch(url, {
         headers: { 'X-Sc-Digger-Partial': '1' }
@@ -851,6 +855,9 @@
       }
     } catch (err) {
       window.location.href = url;
+    } finally {
+      const current = document.getElementById('table-region');
+      if (current) current.removeAttribute('aria-busy');
     }
   }
 

@@ -28,9 +28,9 @@ Zeile (`digest.html:281-285`). Die Statusseite nennt die Rohtreffer dreimal (`st
 
 **3. Zustände.** Gut: leere Listen mit Rücksetz-Link (`_components.html:2-7`), „Taste-Modell: noch
 nicht trainiert“ (`tracks.html:359`), Stand und Alter des Laufs (`status.html:138`, `204`). Lücken:
-Das Nachladen der Tabelle zeigt nichts an (`tracks.html:851-882`, `digest.html:475-503`) und ersetzt
+Das Nachladen der Tabelle zeigt nichts an (`tracks.html:851-882`, `digest.html:475-503`) (umgesetzt in #603) und ersetzt
 die `<audio>`-Elemente, die Wiedergabe endet still (`tracks.html:866`). Der Fehlertext im
-Ähnlich-Panel nutzt die nicht definierte Variable `--err` (`tracks.html:43`). Inbox-Dubletten laden
+Ähnlich-Panel nutzt die nicht definierte Variable `--err` (`tracks.html:43`) (umgesetzt in #603). Inbox-Dubletten laden
 ohne Hinweis, nach einem Fehler bleiben die Gruppen-Knöpfe gesperrt (`duplicates.html:275`,
 `293-295`). Der Link-Scanner zeigt leer nur einen Tabellenkopf (`mix.html:288-302`). Datenstand und
 Alarme sieht man nur auf der Statusseite; deren Auto-Refresh (`status.html:7`) löscht die Meldung
