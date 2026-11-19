@@ -329,3 +329,37 @@ docker compose run --rm sc-digger python -m sc_digger.backup restore /backup/202
 # 3. Container wieder starten
 docker compose start sc-digger
 ```
+
+## Entwicklungs-Ablauf ansehen
+
+Das Hilfsskript `scripts/ablauf.py` wertet offene Issues und Pull Requests direkt über die GitHub-CLI (`gh`) oder lokale JSON-Dateien aus und liefert eine Übersicht nach Status (`idee`, `bereit`, `blockiert`, `in-arbeit`, `fertig`) sowie über hängende Fälle.
+
+### Aufruf
+
+Auf der Entwicklungsbox (mit installiertem `gh`):
+
+```bash
+python scripts/ablauf.py
+```
+
+Als JSON ausgeben (z. B. für automatisierte Weiterverarbeitung):
+
+```bash
+python scripts/ablauf.py --format json
+```
+
+Ohne Netzwerk / mit Fixtures testen:
+
+```bash
+python scripts/ablauf.py --issues issues.json --prs prs.json [--geschlossen closed.json]
+```
+
+### Bedeutung der Befundarten
+
+Das Skript erkennt vier Arten von hängenden Fällen:
+
+- `pr-ohne-review` (Gewicht 2, Handlung nötig): Ein offener PR (kein Draft) wartet seit mehr als 2 Tagen auf ein Review-Urteil (`reviewDecision` ist leer oder `REVIEW_REQUIRED`).
+- `blockiert-frei` (Gewicht 2, Handlung nötig): Ein Issue trägt das Label `blockiert`, alle in der Zeile `Wartet auf: #...` genannten Abhängigkeiten sind jedoch bereits geschlossen. Das Issue kann freigegeben werden (`blockiert` entfernen, `bereit` setzen).
+- `in-arbeit-ohne-pr` (Gewicht 2, Handlung nötig): Ein Issue steht auf `in-arbeit`, aber es existiert kein offener PR auf einem passenden Feature-Branch (`feature/issue-<n>`).
+- `regel-8` (Gewicht 1, Hinweis): Mindestens zwei Issues mit `in-arbeit` tragen gleichzeitig das Label `berührt-main.py`. Laut Regel 8 darf immer nur ein Worker an `sc_digger/main.py` arbeiten.
+
