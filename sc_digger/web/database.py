@@ -24,7 +24,7 @@ from typing import Any
 
 from ..collection import NameIndex, NameKey, name_key, normalize, remixer_tokens
 from ..cues import apply_cue_result
-from ..db import FEEDBACK_VALUES, JobRecord, TrackDB, TrackRecord
+from ..db import FEEDBACK_VALUES, JobRecord, TrackDB, TrackRecord, log_activity
 from ..dj_export import Entry
 from ..embeddings import unpack_vector
 from ..fingerprint import decode_fingerprint, duplicate_groups
@@ -1287,6 +1287,8 @@ def save_track_feedback(
                 """,
                 (sc_id_int, value),
             )
+            # Verlauf (#596): scheitert der Eintrag, bleibt die Bewertung trotzdem gespeichert.
+            log_activity(db, "web", "feedback", sc_id=sc_id_int, detail=value)
             db.commit()
     except sqlite3.Error:
         return False
@@ -1318,6 +1320,8 @@ def save_match_override(
                 db.remove_match_override(sc_id)
             else:
                 db.set_match_override(sc_id, override_type, "Dashboard")
+            if log_activity(db.db, "web", "match_override", sc_id=sc_id, detail=override_type):
+                db.db.commit()
         return True
     except Exception as exc:
         log.debug("save_match_override fehlgeschlagen: %s", exc)

@@ -649,7 +649,63 @@ MIGRATIONS: list[tuple[int, str, str]] = [
         ALTER TABLE smartlists_neu RENAME TO smartlists;
         """,
     ),
+    (
+        24,
+        "0024_activity_log",
+        """
+        -- Issue #596: Verlauf „Zuletzt geändert“. Wer was wann geändert hat (Bewertung,
+        -- Matcher-Korrektur, …), damit Fehlgriffe nachträglich sichtbar und rücknehmbar sind.
+        -- Einträge älter als ACTIVITY_KEEP_DAYS löscht log_activity beim Schreiben.
+        CREATE TABLE IF NOT EXISTS activity_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            source TEXT NOT NULL,
+            action TEXT NOT NULL,
+            sc_id INTEGER,
+            detail TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_activity_log_at ON activity_log(at);
+        """,
+    ),
 ]
+
+# Verlauf (Issue #596): Herkunft eines Eintrags und wie lange er aufgehoben wird.
+ACTIVITY_SOURCES = ("web", "bot", "lauf")
+ACTIVITY_KEEP_DAYS = 90
+
+
+@dataclass(frozen=True)
+class ActivityEntry:
+    id: int
+    at: str
+    source: str
+    action: str
+    sc_id: int | None
+    detail: str | None
+
+
+def log_activity(conn: sqlite3.Connection, source: str, action: str, *,
+                 sc_id: int | None = None, detail: str | None = None) -> bool:
+    """Schreibt einen Verlaufseintrag über eine offene Verbindung, ohne zu committen.
+
+    Löscht dabei Einträge, die älter als ACTIVITY_KEEP_DAYS sind. False bei unbekannter
+    Herkunft, leerer Aktion, fehlender Tabelle (Datenbank noch nicht migriert) oder
+    SQLite-Fehler. Wirft nie: Der Verlauf darf das eigentliche Speichern nicht verhindern.
+    """
+    if source not in ACTIVITY_SOURCES or not isinstance(action, str) or not action:
+        return False
+    try:
+        conn.execute(
+            "INSERT INTO activity_log (source, action, sc_id, detail) VALUES (?, ?, ?, ?)",
+            (source, action, None if sc_id is None else int(sc_id), detail),
+        )
+        conn.execute(
+            "DELETE FROM activity_log WHERE at < datetime('now', ?)",
+            (f"-{ACTIVITY_KEEP_DAYS} days",),
+        )
+    except (sqlite3.Error, TypeError, ValueError):
+        return False
+    return True
 
 # Erlaubte Werte in ``match_overrides.override_type``: die Handkorrektur ersetzt den
 # Namens-Abgleich, deshalb bleiben es genau diese zwei Richtungen.
@@ -1248,6 +1304,18 @@ class TrackDB:
         """Alle Korrekturen als ``{sc_id: override_type}`` (leer, wenn keine gesetzt sind)."""
         rows = self.db.execute("SELECT sc_id, override_type FROM match_overrides").fetchall()
         return {int(r["sc_id"]): str(r["override_type"]) for r in rows if r["sc_id"] is not None}
+
+    def list_activity(self, limit: int = 50) -> list[ActivityEntry]:
+        """Jüngste Verlaufseinträge zuerst (at, dann id absteigend); limit 1..500."""
+        limit = max(1, min(int(limit), 500))
+        rows = self.db.execute(
+            "SELECT id, at, source, action, sc_id, detail FROM activity_log "
+            "ORDER BY at DESC, id DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+        return [ActivityEntry(int(r["id"]), str(r["at"]), str(r["source"]), str(r["action"]),
+                              None if r["sc_id"] is None else int(r["sc_id"]), r["detail"])
+                for r in rows]
 
     def remove_match_override(self, sc_id: int) -> bool:
         """Löscht die Korrektur zu ``sc_id``; ``True``, wenn ein Eintrag vorhanden war."""
