@@ -506,6 +506,39 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
         status, body = sync_rekordbox_xml(app.state.cfg)
         return JSONResponse(body, status_code=status)
 
+    # „erledigt“-Marke für Gates und Käufe (Issue #638, Teil 1 von #591).
+    @app.post("/api/item-done")
+    async def api_item_done(request: Request):
+        ct_err = _require_json_content_type(request)
+        if ct_err is not None:
+            return ct_err
+        try:
+            payload = await request.json()
+        except Exception:
+            return JSONResponse({"ok": False, "error": "Ungültiges JSON"}, status_code=400)
+        if not isinstance(payload, dict):
+            return JSONResponse({"ok": False, "error": "Ungültiger Payload"}, status_code=400)
+        kind = payload.get("kind")
+        if kind not in ("gate", "store"):
+            return JSONResponse({"ok": False, "error": "unbekannte Art"}, status_code=400)
+        sc_id = payload.get("sc_id")
+        # bool ist in Python eine int-Unterklasse, gilt hier aber nicht als ID.
+        if not isinstance(sc_id, int) or isinstance(sc_id, bool):
+            return JSONResponse({"ok": False, "error": "sc_id fehlt"}, status_code=400)
+        done = payload.get("done", True)
+        if not isinstance(done, bool):
+            return JSONResponse({"ok": False, "error": "done muss true oder false sein"}, status_code=400)
+        tabelle = "gate_items" if kind == "gate" else "store_items"
+        with TrackDB(app.state.cfg["state"]["track_db_path"]) as db:
+            mark = db.mark_gate_item_done if kind == "gate" else db.mark_store_item_done
+            if not mark(sc_id, done):
+                return JSONResponse({"ok": False, "error": "kein Eintrag"}, status_code=404)
+            zeile = db.db.execute(
+                f"SELECT done_at FROM {tabelle} WHERE profile_id = ? AND sc_id = ?",
+                (db.profile_id, sc_id),
+            ).fetchone()
+        return JSONResponse({"ok": True, "done_at": zeile[0] if zeile else None})
+
     # Workstation-Lauf von Hand (Knopf auf der Statusseite, Issue #628).
     # Normale def-Route, damit der synchrone Weckruf im Threadpool läuft.
     @app.post("/api/gpu-wake")

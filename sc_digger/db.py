@@ -667,6 +667,16 @@ MIGRATIONS: list[tuple[int, str, str]] = [
         CREATE INDEX IF NOT EXISTS idx_activity_log_at ON activity_log(at);
         """,
     ),
+    (
+        25,
+        "0025_done_at",
+        """
+        -- Issue #638 (Teil 1 von #591): „erledigt“-Marke für Gates und Käufe. Die Zeile
+        -- bleibt stehen, done_at trägt den Zeitpunkt; ein neuer Fund setzt sie auf NULL.
+        ALTER TABLE gate_items ADD COLUMN done_at TEXT;
+        ALTER TABLE store_items ADD COLUMN done_at TEXT;
+        """,
+    ),
 ]
 
 # Verlauf (Issue #596): Herkunft eines Eintrags und wie lange er aufgehoben wird.
@@ -1476,7 +1486,8 @@ class TrackDB:
                 artist = excluded.artist,
                 purchase_url = excluded.purchase_url,
                 purchase_title = COALESCE(excluded.purchase_title, store_items.purchase_title),
-                last_seen = CURRENT_TIMESTAMP
+                last_seen = CURRENT_TIMESTAMP,
+                done_at = NULL
             """,
             (self.profile_id, sc_id, title, artist, purchase_url, purchase_title),
         )
@@ -1528,11 +1539,32 @@ class TrackDB:
                 artist = excluded.artist,
                 gate_url = excluded.gate_url,
                 gate_type = COALESCE(excluded.gate_type, gate_items.gate_type),
-                last_seen = CURRENT_TIMESTAMP
+                last_seen = CURRENT_TIMESTAMP,
+                done_at = NULL
             """,
             (self.profile_id, sc_id, title, artist, gate_url, gate_type),
         )
         self.db.commit()
+
+    def _mark_item_done(self, tabelle: str, sc_id: int, done: bool) -> bool:
+        # Tabellenname kommt nur von den beiden festen Aufrufern unten, nie von außen.
+        wert = "CURRENT_TIMESTAMP" if done else "NULL"
+        cur = self.db.execute(
+            f"UPDATE {tabelle} SET done_at = {wert} WHERE profile_id = ? AND sc_id = ?",
+            (self.profile_id, sc_id),
+        )
+        self.db.commit()
+        return cur.rowcount > 0
+
+    def mark_gate_item_done(self, sc_id: int, done: bool = True) -> bool:
+        """Setzt gate_items.done_at auf CURRENT_TIMESTAMP bzw. NULL.
+
+        True, wenn eine Zeile des eigenen Profils getroffen wurde, sonst False (nichts geschrieben)."""
+        return self._mark_item_done("gate_items", sc_id, done)
+
+    def mark_store_item_done(self, sc_id: int, done: bool = True) -> bool:
+        """Dasselbe für store_items."""
+        return self._mark_item_done("store_items", sc_id, done)
 
     def get_gate_items(self) -> list[dict[str, Any]]:
         """Gibt die gate_items des eigenen Profils sortiert nach last_seen DESC zurück."""
