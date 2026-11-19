@@ -217,6 +217,8 @@ FIELDS: tuple[Field, ...] = (
     _f("state.lock_wait_s", "int", "Wartezeit Lauf-Sperre",
        "So viele Sekunden wartet ein Lauf höchstens, wenn ein anderer schreibender Lauf die Sperre hält; "
        "danach Abbruch mit Exit-Code 75 (Standard 1800).", min=0, editable=False),
+    _f("state.gpu_wake_state", "str", "GPU-Wake-Zustand",
+       "Pfad zur JSON-Datei mit Zeit und Ergebnis des letzten Workstation-Starts.", editable=False),
     # --- backup ---
     _f("backup.target_dir", "str", "Backup-Zielverzeichnis",
        "Zielverzeichnis für tägliche SQLite-Sicherungen (seen.sqlite, tracks.sqlite, config.local.yaml); leer = Sicherung deaktiviert.",
@@ -264,6 +266,12 @@ FIELDS: tuple[Field, ...] = (
     _f("embeddings.auto_queue", "bool", "Embedding-Jobs automatisch einreihen",
        "Für jeden neuen Inbox-Track einen Embedding-Job (JobType.EMBEDDING) für den GPU-Worker einreihen; "
        "ohne Worker mit Embedding-Modell bleiben die Jobs offen (Standard: aus)."),
+    # --- gpu_wake ---
+    _f("gpu_wake.cooldown_s", "int", "Cooldown Workstation-Start",
+       "Sperrzeit zwischen zwei Klicks auf den Weck-Knopf in Sekunden (Standard 300s).", min=1),
+    _f("gpu_wake.wake_url", "str", "Wake-Proxy-URL",
+       "Optionale URL des Wake-Proxys; wird von der Umgebungsvariable SC_DIGGER_WAKE_URL übersteuert.",
+       editable=False),
     # --- rekordbox ---
     _f("rekordbox.xml_enabled", "bool", "XML-Export aktiv",
        "Rekordbox-XML mit Playlists pro Kalenderwoche automatisch in die Inbox schreiben."),
@@ -373,6 +381,7 @@ USED_BY: dict[str, tuple[str, ...]] = {
     "telegram": ("Digest", "Bot"),
     "cues": ("Downloads", "GPU-Worker"),
     "embeddings": ("Downloads", "GPU-Worker"),
+    "gpu_wake": ("Web-Dashboard",),
     "rekordbox": ("Rekordbox-XML", "Bot /sync_xml"),
     "digest": ("Digest", "Kaufliste"),
     "watch": ("Verfügbarkeits-Wächter",),
@@ -411,6 +420,7 @@ SECTION_TITLES: dict[str, str] = {
     "canary": "API-Kanarienvogel",
     "telegram": "Telegram",
     "cues": "Cues & Struktur",
+    "gpu_wake": "KI-Workstation",
     "rekordbox": "Rekordbox",
     "digest": "Digest",
     "watch": "Verfügbarkeits-Wächter",
@@ -439,6 +449,7 @@ SECTION_DESCRIPTIONS: dict[str, str] = {
     "canary": "Täglicher Vorab-Check der inoffiziellen SoundCloud-API auf fehlende oder geänderte Antwort-Felder vor dem discover-Lauf.",
     "telegram": "Einstellungen für den täglichen Digest und interaktive Feedback-Schaltflächen.",
     "cues": "Reiht Cue- und Strukturanalyse-Jobs für neue Inbox-Tracks in die Job-Queue ein, die ein GPU-Worker über die Job-API abarbeitet.",
+    "gpu_wake": "Steuert den manuellen Weckruf der KI-Workstation über das Web-Dashboard.",
     "rekordbox": "Export von Wochen-, BPM-, Key- und Stil-Playlists sowie Rekordbox-Cues (Hot Cues A–H, First Kick, Drops).",
     "digest": "Konfiguration der wöchentlichen Kaufliste, Sonntags-Reports und des Wachstums-/Trend-Radars.",
     "watch": "Wöchentlicher Wächter (Sonntag 19:00), der gelikte Stream-Tracks auf nachträglich freigegebene Downloads, Gates oder Store-Links prüft.",

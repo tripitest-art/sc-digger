@@ -285,6 +285,22 @@
     {% else %}
     <p class="meta meta-sm mt-3 mb-0">Noch kein Lebenszeichen eines Workers.</p>
     {% endif %}
+    <div class="mt-3">
+      <button type="button" id="gpu-wake" class="btn-page">Workstation-Lauf starten</button>
+      <div id="gpu-wake-status" class="meta meta-sm mt-2" role="status" aria-live="polite">
+        {% if snap.workstation and snap.workstation.status != 'unbekannt' %}
+          {% if snap.workstation.status == 'gestartet' %}
+            Letzter Klick: {{ snap.workstation.started_at }} &middot; Status: gestartet &middot; {{ snap.workstation.pending }} offene(r) Job(s)
+          {% elif snap.workstation.status == 'keine-jobs' %}
+            Letzter Klick: Status: keine-jobs &middot; 0 offene Jobs
+          {% elif snap.workstation.status == 'fehler' %}
+            Fehler: {{ snap.workstation.error or 'Workstation konnte nicht geweckt werden' }}{% if snap.workstation.started_at %} &middot; {{ snap.workstation.started_at }}{% endif %}{% if snap.workstation.pending is not none %} &middot; {{ snap.workstation.pending }} offene(r) Job(s){% endif %}
+          {% else %}
+            Status: {{ snap.workstation.status }}
+          {% endif %}
+        {% endif %}
+      </div>
+    </div>
   </div>
 
   <!-- Sammlung & Track-DB -->
@@ -477,6 +493,38 @@
         statusEl.textContent = 'XML neu geschrieben: ' + data.entries + ' Tracks';
       } else {
         statusEl.textContent = data.error || ('HTTP ' + resp.status);
+      }
+    } catch (e) {
+      statusEl.textContent = 'Netzwerkfehler';
+    } finally {
+      button.disabled = false;
+    }
+  });
+})();
+(function () {
+  const button = document.getElementById('gpu-wake');
+  const statusEl = document.getElementById('gpu-wake-status');
+  if (!button || !statusEl) return;
+  button.addEventListener('click', async function () {
+    button.disabled = true;
+    statusEl.textContent = 'Starte Workstation-Lauf …';
+    try {
+      const resp = await fetch('/api/gpu-wake', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'}
+      });
+      let data = {};
+      try { data = await resp.json(); } catch (e) { data = {}; }
+      if (resp.status === 202) {
+        statusEl.textContent = (data.started_at || '') + ' · Status: gestartet · ' + (data.pending !== undefined ? data.pending : '') + ' offene(r) Job(s)';
+      } else if (resp.status === 200) {
+        statusEl.textContent = 'Status: keine-jobs · 0 offene Jobs';
+      } else if (resp.status === 409) {
+        statusEl.textContent = 'Lauf aktiv seit ' + (data.started_at || '') + ' (Cooldown)';
+      } else {
+        const err = data.error || ('HTTP ' + resp.status);
+        const pend = (data.pending !== undefined && data.pending !== null) ? ' · ' + data.pending + ' offene(r) Job(s)' : '';
+        statusEl.textContent = 'Fehler: ' + err + pend;
       }
     } catch (e) {
       statusEl.textContent = 'Netzwerkfehler';

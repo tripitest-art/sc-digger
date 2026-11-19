@@ -197,6 +197,10 @@ systemctl status sc-digger-gpu-worker                    # Workstation: Runner
 journalctl -u sc-digger-gpu-worker -n 50                 # Workstation: abgearbeitete Jobs
 ```
 
+**Von Hand starten**
+
+Statt auf den täglichen Timer (08:30) zu warten oder `systemctl start sc-digger-gpu-wake.service` auf dem Server auszuführen, kann der Weckruf auch direkt aus dem Web-Dashboard gestartet werden: In der Karte „⚡ KI-Workstation & Job-Queue" stößt der Knopf „Workstation-Lauf starten" dieselbe Logik an. Gibt es keine offenen Cue-Jobs, bleibt die Workstation aus. Die Sperrzeit von 300 Sekunden (`gpu_wake.cooldown_s`) schützt vor Mehrfachklicks während des Kaltstarts.
+
 ## Inbox auf den Laptop syncen (Syncthing)
 
 Die Inbox (`/music/inbox`) wird per Syncthing auf den Laptop gespiegelt, damit Rekordbox die

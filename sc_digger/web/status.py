@@ -11,6 +11,7 @@ from typing import Any
 from ..models import Config
 from ..redact import redact
 from ..stats import DigestStats, calculate_stats
+from .workstation import WorkstationRun, read_state
 
 DEFAULT_MAX_HOURS_SINCE_RUN = 36
 HEARTBEAT_ACTIVE_SECONDS = 300
@@ -98,6 +99,7 @@ class StatusSnapshot:
     stats: DigestStats | None = None
     job_summary: JobQueueSummary | None = None              # Job-Queue der KI-Workstation (jobs-Tabelle)
     version: VersionInfo = field(default_factory=VersionInfo)  # zuletzt von update.sh deployter Stand
+    workstation: WorkstationRun | None = None               # letzter Start-Versuch der KI-Workstation (Issue #628)
 
     def to_dict(self) -> dict[str, Any]:
         """JSON-fähig (asdict); enthält alle Felder oben."""
@@ -369,4 +371,5 @@ def collect_status(cfg: Config, *, days: int = 7, now: datetime | None = None) -
         stats=stats,
         job_summary=job_summary,
         version=_read_version(state_db_path),
+        workstation=read_state(cfg, now=now),
     )
