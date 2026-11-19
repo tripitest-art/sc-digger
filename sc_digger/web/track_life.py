@@ -50,6 +50,8 @@ class TrackLife:
     title: str
     url: str | None
     steps: tuple[LifeStep, ...]
+    # id der gewählten tracks-Zeile; die Detailseite braucht sie für den Retry-Knopf (#631).
+    track_id: int | None = None
 
     @property
     def current(self) -> str:
@@ -166,6 +168,14 @@ def _pick_track_row(by_id: list[dict[str, Any]], by_path: list[dict[str, Any]]) 
     return min(candidates, key=rank)[1]
 
 
+def _row_id(row: dict[str, Any] | None) -> int | None:
+    """`id` der gewählten tracks-Zeile; None ohne Zeile oder bei unbrauchbarer id."""
+    if row is None:
+        return None
+    value = row.get("id")
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
 def _collect(cfg: Config, sc_id: int) -> TrackLife | None:
     state_cfg = cfg["state"] or {}
     state = _open_ro(state_cfg.get("db_path"))
@@ -242,6 +252,7 @@ def _collect(cfg: Config, sc_id: int) -> TrackLife | None:
         title=title or f"Track {sc_id}",
         url=url,
         steps=steps,
+        track_id=_row_id(row),
     )
 
 
