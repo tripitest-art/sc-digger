@@ -94,51 +94,7 @@
 {% endblock %}
 
 {% block content %}
-<div class="card" id="set-builder">
-  <div class="card-header">
-    <h2 class="card-title" style="margin: 0;">🎛️ Harmonischer Set-Builder</h2>
-    <span class="badge badge-purple">Auto-Routing &middot; M3U8</span>
-  </div>
-  <p class="meta" style="margin-top: 0;">
-    Tracks aus Sammlung oder Inbox zu einer harmonisch laufenden Kette sortieren: gleicher
-    oder benachbarter Camelot-Key, kleine BPM-Schritte. Wo kein direkter Übergang passt,
-    setzt der Builder eine sichtbare Segmentgrenze statt eines unharmonischen Sprungs.
-    Die fertige Playlist lässt sich als <span class="mono">.m3u8</span> für Rekordbox
-    herunterladen; die Sammlung bleibt unverändert.
-  </p>
-  <form class="filter-form" id="set-builder-form"
-        onsubmit="event.preventDefault(); buildSet();">
-    <div class="filter-grid">
-      <div class="filter-field">
-        <label for="sb-bpm-min">BPM von</label>
-        <input type="text" id="sb-bpm-min" name="bpm_min" placeholder="154"
-               inputmode="decimal" autocomplete="off" spellcheck="false">
-      </div>
-      <div class="filter-field">
-        <label for="sb-bpm-max">BPM bis</label>
-        <input type="text" id="sb-bpm-max" name="bpm_max" placeholder="160"
-               inputmode="decimal" autocomplete="off" spellcheck="false">
-      </div>
-      <div class="filter-field">
-        <label for="sb-status">Status</label>
-        <select id="sb-status" name="status">
-          <option value="archive">Sammlung</option>
-          <option value="inbox">Inbox</option>
-          <option value="">Sammlung + Inbox</option>
-        </select>
-      </div>
-    </div>
-    <div class="filter-actions">
-      <button type="submit" id="sb-run">Set berechnen &amp; optimieren</button>
-      <a id="sb-download" class="btn-page" href="/api/set-builder/m3u8?name=set">💾 M3U8 herunterladen</a>
-      <button type="button" id="sb-export-xml" class="btn-page" onclick="exportSetXml()">🎛️ Rekordbox XML</button>
-    </div>
-  </form>
-  <p id="sb-message" class="scan-status" role="status" aria-live="polite"></p>
-  <div id="sb-result" class="table-scroll"></div>
-</div>
-
-<div class="card">
+<div class="card" id="mix-finder">
   <div class="card-header">
     <h2 class="card-title" style="margin: 0;">🧭 Harmonic Mix Finder</h2>
     <span class="badge badge-info">Camelot-Wheel</span>
@@ -270,6 +226,50 @@
   {% endif %}
 </div>
 
+<div class="card" id="set-builder">
+  <div class="card-header">
+    <h2 class="card-title" style="margin: 0;">🎛️ Harmonischer Set-Builder</h2>
+    <span class="badge badge-purple">Auto-Routing &middot; M3U8</span>
+  </div>
+  <p class="meta" style="margin-top: 0;">
+    Tracks aus Sammlung oder Inbox zu einer harmonisch laufenden Kette sortieren: gleicher
+    oder benachbarter Camelot-Key, kleine BPM-Schritte. Wo kein direkter Übergang passt,
+    setzt der Builder eine sichtbare Segmentgrenze statt eines unharmonischen Sprungs.
+    Die fertige Playlist lässt sich als <span class="mono">.m3u8</span> für Rekordbox
+    herunterladen; die Sammlung bleibt unverändert.
+  </p>
+  <form class="filter-form" id="set-builder-form"
+        onsubmit="event.preventDefault(); buildSet();">
+    <div class="filter-grid">
+      <div class="filter-field">
+        <label for="sb-bpm-min">BPM von</label>
+        <input type="text" id="sb-bpm-min" name="bpm_min" placeholder="154"
+               inputmode="decimal" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="filter-field">
+        <label for="sb-bpm-max">BPM bis</label>
+        <input type="text" id="sb-bpm-max" name="bpm_max" placeholder="160"
+               inputmode="decimal" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="filter-field">
+        <label for="sb-status">Status</label>
+        <select id="sb-status" name="status">
+          <option value="archive">Sammlung</option>
+          <option value="inbox">Inbox</option>
+          <option value="">Sammlung + Inbox</option>
+        </select>
+      </div>
+    </div>
+    <div class="filter-actions">
+      <button type="submit" id="sb-run">Set berechnen &amp; optimieren</button>
+      <a id="sb-download" class="btn-page disabled" aria-disabled="true">💾 M3U8 herunterladen</a>
+      <button type="button" id="sb-export-xml" class="btn-page" onclick="exportSetXml()" disabled>🎛️ Rekordbox XML</button>
+    </div>
+  </form>
+  <p id="sb-message" class="scan-status" role="status" aria-live="polite"></p>
+  <div id="sb-result" class="table-scroll"></div>
+</div>
+
 <div class="card">
   <div class="card-header">
     <h2 class="card-title" style="margin: 0;">🔗 SoundCloud-Link prüfen</h2>
@@ -297,7 +297,7 @@
         <th>Link</th>
       </tr>
     </thead>
-    <tbody id="scan-rows"></tbody>
+    <tbody id="scan-rows"><tr class="scan-empty"><td colspan="6" class="meta">Noch kein Link geprüft.</td></tr></tbody>
   </table>
   </div>
 </div>
@@ -606,6 +606,26 @@
     container.appendChild(table);
   }
 
+  // Parameter der zuletzt berechneten Kette: Der Export soll genau das angezeigte Set liefern,
+  // nicht das, was gerade (vielleicht geändert) im Formular steht.
+  let lastSetParams = null;
+
+  function setExportEnabled(params) {
+    const download = document.getElementById('sb-download');
+    const xml = document.getElementById('sb-export-xml');
+    if (params) {
+      download.href = '/api/set-builder/m3u8?' + params.toString();
+      download.classList.remove('disabled');
+      download.removeAttribute('aria-disabled');
+      xml.disabled = false;
+    } else {
+      download.removeAttribute('href');
+      download.classList.add('disabled');
+      download.setAttribute('aria-disabled', 'true');
+      xml.disabled = true;
+    }
+  }
+
   async function buildSet() {
     const button = document.getElementById('sb-run');
     const params = setBuilderParams();
@@ -625,18 +645,22 @@
       let data = {};
       try { data = await response.json(); } catch (ignored) { data = {}; }
       if (!response.ok || !data.ok) {
+        lastSetParams = null;
+        setExportEnabled(null);
         renderSet({ playlist: [] });
         showSetStatus(data.error || ('HTTP ' + response.status), 'err');
         return;
       }
       renderSet(data);
-      document.getElementById('sb-download').href =
-        '/api/set-builder/m3u8?' + params.toString();
+      lastSetParams = params;
+      setExportEnabled(params);
       showSetStatus(
         data.total_tracks + ' Track(s), ' + data.segments + ' Segment(e) berechnet.',
         'ok'
       );
     } catch (error) {
+      lastSetParams = null;
+      setExportEnabled(null);
       showSetStatus('Berechnung fehlgeschlagen: ' + error, 'err');
     } finally {
       button.disabled = false;
@@ -644,11 +668,13 @@
   }
 
   async function exportSetXml() {
-    const form = document.getElementById('set-builder-form');
     const button = document.getElementById('sb-export-xml');
-    if (!form || !button) { return; }
-    const formData = new FormData(form);
-    const params = new URLSearchParams(formData);
+    if (!button) { return; }
+    if (!lastSetParams) {
+      showSetStatus('Erst ein Set berechnen.', 'err');
+      return;
+    }
+    const params = lastSetParams;
     showSetStatus('Erzeuge Rekordbox-XML …', '');
     button.disabled = true;
     try {
@@ -691,7 +717,7 @@
     } catch (error) {
       showSetStatus('XML-Export fehlgeschlagen: ' + error, 'err');
     } finally {
-      button.disabled = false;
+      button.disabled = !lastSetParams;
     }
   }
 
