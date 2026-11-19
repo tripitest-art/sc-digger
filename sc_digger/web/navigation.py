@@ -49,6 +49,26 @@ NAV_GROUPS: tuple[NavGroup, ...] = (
 
 
 @dataclass(frozen=True)
+class QuickEntry:
+    """Treffer der Schnellsuche (Issue #624): Anzeigename, Ziel und Bereich."""
+    label: str
+    href: str
+    group: str
+
+
+def quick_search_entries(include_config: bool = False) -> tuple[QuickEntry, ...]:
+    """Alle Seiten aus NAV_GROUPS für die Schnellsuche, in Navigationsreihenfolge.
+
+    Die Konfiguration kommt nur mit ``include_config``: Ohne Editor gibt es ``/config`` nicht,
+    ein Treffer führte auf einen 404 (siehe Zahnrad in base.html).
+    """
+    entries = [QuickEntry(e.label, e.href, g.label) for g in NAV_GROUPS for e in g.entries]
+    if include_config:
+        entries.append(QuickEntry("Konfiguration", "/config", "System"))
+    return tuple(entries)
+
+
+@dataclass(frozen=True)
 class NavState:
     groups: tuple[NavGroup, ...]
     active_group: NavGroup | None
@@ -91,6 +111,7 @@ def register(app) -> None:
     from .common import _env
 
     _env.globals["nav_state"] = nav_state
+    _env.globals["quick_search_entries"] = quick_search_entries
 
     @app.middleware("http")
     async def remember_nav_path(request, call_next):
