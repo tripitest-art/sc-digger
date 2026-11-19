@@ -906,6 +906,48 @@
   .deck-time { font-size: 0.76rem; min-width: 5.5rem; }
   .logo-deck { width: 2rem; height: 2rem; font-size: 1rem; }
 
+  /* Schnellsuche mit der Taste / (Issue #624) */
+  .quick-search {
+    position: fixed;
+    top: 12vh;
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(36rem, calc(100vw - 2rem));
+    z-index: 1100;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-card);
+    padding: 0.75rem;
+  }
+  /* display aus der Klasse würde das hidden-Attribut sonst überstimmen. */
+  .quick-search[hidden] { display: none; }
+  .quick-search input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0.6rem 0.8rem;
+    background: var(--bg-input);
+    color: var(--text-main);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    font: inherit;
+  }
+  .quick-search input:focus { border-color: var(--border-focus); }
+  .quick-search-results { list-style: none; margin: 0.5rem 0 0; padding: 0; max-height: 50vh; overflow-y: auto; }
+  .quick-search-results li a {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.5rem 0.7rem;
+    border-radius: var(--radius-sm);
+    color: var(--text-main);
+    text-decoration: none;
+  }
+  .quick-search-results li[aria-selected="true"] a,
+  .quick-search-results li a:hover { background: var(--accent-primary-bg); }
+  .quick-search-group { color: var(--text-muted); font-size: 0.8rem; }
+  .quick-search-hint { margin: 0.5rem 0 0; color: var(--text-dim); font-size: 0.75rem; }
+
   /* Toast-Meldungen (Issue #490) */
   #toast-region {
     position: fixed;
@@ -1015,6 +1057,14 @@
   sc-digger &middot; Schranz &amp; Hard Techno Crate Digging Pipeline
 </footer>
 <div id="toast-region" role="status" aria-live="polite"></div>
+<div id="quick-search" class="quick-search" role="dialog" aria-modal="true" aria-label="Schnellsuche" hidden>
+  <input id="quick-search-input" type="search" placeholder="Seite suchen …" autocomplete="off" aria-controls="quick-search-results" aria-label="Schnellsuche">
+  <ul id="quick-search-results" class="quick-search-results" role="listbox"></ul>
+  <p class="quick-search-hint">↑ ↓ wählen · Enter öffnen · Esc schließen</p>
+</div>
+{# Ohne Editor steht /config nirgends (gleiche Bedingung wie das Zahnrad, test_issue_172). #}
+{% set quick_entries = quick_search_entries(config_enabled() or editor_available or save_action or config_action) %}
+<script type="application/json" id="quick-search-data">[{% for q in quick_entries %}{"label": {{ q.label|tojson }}, "href": {{ q.href|tojson }}, "group": {{ q.group|tojson }}}{% if not loop.last %}, {% endif %}{% endfor %}]</script>
 <script>
   function showToast(message, kind) {
     kind = kind || "ok";
@@ -1062,6 +1112,82 @@
       buttons.forEach((b) => { b.disabled = false; });
     }
   }
+
+  // Schnellsuche (Issue #624): Taste / öffnet, Esc schließt; rein clientseitig über die Seiten der Navigation.
+  (function() {
+    var box = document.getElementById('quick-search');
+    var input = document.getElementById('quick-search-input');
+    var list = document.getElementById('quick-search-results');
+    var dataEl = document.getElementById('quick-search-data');
+    if (!box || !input || !list || !dataEl) { return; }
+    var pages = [];
+    try { pages = JSON.parse(dataEl.textContent) || []; } catch (err) { pages = []; }
+    var hits = [];
+    var selected = 0;
+
+    function render() {
+      list.textContent = '';
+      hits.forEach(function(hit, i) {
+        var li = document.createElement('li');
+        li.setAttribute('role', 'option');
+        li.setAttribute('aria-selected', i === selected ? 'true' : 'false');
+        var a = document.createElement('a');
+        a.href = hit.href;
+        var name = document.createElement('span');
+        name.textContent = hit.label;
+        var group = document.createElement('span');
+        group.className = 'quick-search-group';
+        group.textContent = hit.group;
+        a.appendChild(name);
+        a.appendChild(group);
+        li.appendChild(a);
+        list.appendChild(li);
+      });
+    }
+
+    function update() {
+      var text = input.value.trim();
+      var needle = text.toLowerCase();
+      hits = pages.filter(function(p) {
+        return !needle || p.label.toLowerCase().indexOf(needle) !== -1 || p.group.toLowerCase().indexOf(needle) !== -1;
+      });
+      if (text) {
+        var enc = encodeURIComponent(text);
+        hits = hits.concat([
+          { label: 'Tracks durchsuchen: ' + text, href: '/tracks?q=' + enc, group: 'Suche' },
+          { label: 'Digest durchsuchen: ' + text, href: '/digest?q=' + enc, group: 'Suche' },
+        ]);
+      }
+      selected = 0;
+      render();
+    }
+
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape' && !box.hidden) { box.hidden = true; return; }
+      if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey) { return; }
+      // In Eingabefeldern bleibt / ein normales Zeichen.
+      if (e.target && e.target.closest && e.target.closest('input, select, textarea, [contenteditable="true"]')) { return; }
+      e.preventDefault();
+      box.hidden = false;
+      input.value = '';
+      update();
+      input.focus();
+    });
+
+    input.addEventListener('input', update);
+    input.addEventListener('keydown', function(e) {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (!hits.length) { return; }
+        selected = (selected + (e.key === 'ArrowDown' ? 1 : hits.length - 1)) % hits.length;
+        render();
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (hits[selected]) { window.location.href = hits[selected].href; }
+      }
+    });
+    list.addEventListener('click', function() { box.hidden = true; });
+  })();
 </script>
 </body>
 </html>
