@@ -1,4 +1,4 @@
-"""Akzeptanztests: Doku-Nachzug für Arbeitsbereiche, Heute-Karte und Abhaken (Issue #665)."""
+"""Akzeptanztests: Doku-Nachzug für Arbeitsbereiche, Heute-Karte und Abhaken (Issue #<N>)."""
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
