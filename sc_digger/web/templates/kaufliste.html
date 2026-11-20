@@ -14,6 +14,16 @@
     align-items: center;
     gap: 0.75rem;
   }
+  /* Erledigte Käufe bleiben in der Liste, treten aber optisch zurück. */
+  tr.is-done td { opacity: 0.55; }
+  tr.is-done td.done-cell { opacity: 1; }
+  .done-toggle {
+    padding: 0.22rem 0.6rem;
+    font-size: 0.76rem;
+    white-space: nowrap;
+  }
+  .done-toggle:disabled { opacity: 0.5; cursor: wait; }
+  #done-status { min-height: 1.2em; margin: 0.5rem 0 0; }
 </style>
 {% endblock %}
 
@@ -86,11 +96,12 @@
         <th>Kaufen</th>
         <th>Zuletzt gesehen</th>
         <th>Feedback</th>
+        <th>Gekauft</th>
       </tr>
     </thead>
     <tbody>
       {% for item in items %}
-      <tr>
+      <tr class="{% if item.done_at %}is-done{% endif %}" data-sc-id="{{ item.sc_id }}">
         <td style="font-weight: 600;">{{ item.artist or "—" }}</td>
         <td><strong>{{ item.title }}</strong></td>
         <td style="white-space: nowrap;">
@@ -128,10 +139,17 @@
             <span class="feedback-error meta"></span>
           </div>
         </td>
+        <td class="done-cell">
+          <button type="button" class="done-toggle" id="done-{{ item.sc_id }}"
+                  data-done-kind="store" data-sc-id="{{ item.sc_id }}"
+                  data-done="{% if item.done_at %}1{% else %}0{% endif %}">
+            {% if item.done_at %}wieder öffnen{% else %}erledigt{% endif %}
+          </button>
+        </td>
       </tr>
       {% else %}
       <tr>
-        <td colspan="5">
+        <td colspan="6">
           {{ empty_state("Keine Store-Tracks für diese Filtereinstellungen gefunden.", "/kaufliste") }}
         </td>
       </tr>
@@ -139,6 +157,7 @@
     </tbody>
   </table>
   </div>
+  <p id="done-status" class="meta" role="status" aria-live="polite"></p>
 
   {% if total > 0 %}
   <div class="pager">
@@ -212,6 +231,40 @@
   </table>
   </div>
 </div>
+<script>
+  // Häkchen für Käufe: schaltet die Marke über POST /api/item-done um und lädt neu,
+  // damit die Zeile den Zustand des Servers zeigt. Der Knopf bleibt während des
+  // Requests gesperrt, sonst würde ein Doppelklick die Marke gleich wieder kippen.
+  document.querySelectorAll("button.done-toggle[data-done-kind]").forEach(function (btn) {
+    btn.addEventListener("click", async function () {
+      var status = document.getElementById("done-status");
+      var wasDone = btn.dataset.done === "1";
+      btn.disabled = true;
+      status.textContent = "";
+      try {
+        var resp = await fetch("/api/item-done", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "same-origin",
+          body: JSON.stringify({
+            kind: btn.dataset.doneKind,
+            sc_id: Number(btn.dataset.scId),
+            done: !wasDone
+          })
+        });
+        var data = await resp.json().catch(function () { return {}; });
+        if (resp.ok && data.ok) {
+          location.reload();
+          return;
+        }
+        status.textContent = data.error || ("Speichern fehlgeschlagen (HTTP " + resp.status + ")");
+      } catch (err) {
+        status.textContent = "Speichern fehlgeschlagen: Server nicht erreichbar.";
+      }
+      btn.disabled = false;
+    });
+  });
+</script>
 {# Feedback-Rückmeldungen laufen zentral über sendFeedback in base.html:
    showToast("Bewertung gespeichert", "ok")
    showToast("Speichern fehlgeschlagen", "err") #}

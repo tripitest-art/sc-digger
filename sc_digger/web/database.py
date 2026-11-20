@@ -661,6 +661,7 @@ class StoreItemResult:
     first_seen: str
     last_seen: str
     feedback: str | None = None
+    done_at: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -709,6 +710,13 @@ def query_store_items(
                 "sc_feedback.value AS feedback" if has_feedback else "NULL AS feedback"
             )
 
+            # done_at kam erst mit Migration 25; eine ältere DB soll die Seite nicht
+            # kippen (rein lesend, es wird nichts nachgerüstet).
+            has_done = any(
+                r[1] == "done_at" for r in db.execute("PRAGMA table_info(store_items)")
+            )
+            done_column = "store_items.done_at AS done_at" if has_done else "NULL AS done_at"
+
             where: list[str] = []
             params: list[Any] = []
             if search:
@@ -736,7 +744,7 @@ def query_store_items(
             rows = db.execute(
                 "SELECT store_items.sc_id, store_items.title, store_items.artist, "
                 "store_items.purchase_url, store_items.purchase_title, "
-                f"store_items.first_seen, store_items.last_seen, {feedback_column} "
+                f"store_items.first_seen, store_items.last_seen, {feedback_column}, {done_column} "
                 f"FROM store_items{join}{clause_sql} "
                 "ORDER BY store_items.last_seen DESC, store_items.id DESC LIMIT ? OFFSET ?",
                 [*params, limit, offset],
@@ -754,6 +762,7 @@ def query_store_items(
             first_seen=str(row["first_seen"] or ""),
             last_seen=str(row["last_seen"] or ""),
             feedback=row["feedback"],
+            done_at=row["done_at"],
         ).to_dict()
         for row in rows
     ]
