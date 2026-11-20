@@ -894,6 +894,7 @@ class DigestItem:
     likes: int = 0
     reposts: int = 0
     comments: int = 0
+    gate_done_at: str | None = None  # Abhak-Marke aus gate_items.done_at (#648)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -975,6 +976,7 @@ def query_digest(
     feedback_map: dict[int, str] = {}
     store_map: dict[int, str] = {}
     gate_map: dict[int, str] = {}
+    gate_done_map: dict[int, str] = {}
     snapshot_map: dict[int, dict[str, int]] = {}
     inbox_ids: set[int] = set()
     archive_ids: set[int] = set()
@@ -1034,9 +1036,15 @@ def query_digest(
                         if row["sc_id"] is not None and row["purchase_url"]:
                             store_map[int(row["sc_id"])] = str(row["purchase_url"])
                 if _table_exists(tdb, "gate_items"):
-                    for row in tdb.execute("SELECT sc_id, gate_url FROM gate_items"):
+                    # done_at kam erst mit Migration 25; eine ältere DB soll den Digest
+                    # nicht kippen, dort gilt jedes Gate als offen.
+                    gate_cols = {r[1] for r in tdb.execute("PRAGMA table_info(gate_items)")}
+                    done_sql = "done_at" if "done_at" in gate_cols else "NULL AS done_at"
+                    for row in tdb.execute(f"SELECT sc_id, gate_url, {done_sql} FROM gate_items"):
                         if row["sc_id"] is not None and row["gate_url"]:
                             gate_map[int(row["sc_id"])] = str(row["gate_url"])
+                            if row["done_at"]:
+                                gate_done_map[int(row["sc_id"])] = str(row["done_at"])
                 if _table_exists(tdb, "tracks"):
                     cols = {col["name"] for col in tdb.execute("PRAGMA table_info(tracks)").fetchall()}
                     has_artist_title = "artist" in cols and "title" in cols
@@ -1182,6 +1190,7 @@ def query_digest(
             download_kind=kind,
             purchase_url=purchase_url,
             gate_url=gate_url if kind == "gate" else None,
+            gate_done_at=gate_done_map.get(sc_id) if kind == "gate" else None,
             feedback=feedback_map.get(sc_id),
             in_collection=in_coll,
             in_inbox=in_inbox,

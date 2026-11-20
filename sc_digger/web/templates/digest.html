@@ -60,6 +60,16 @@
   table[data-hidden-columns*="feedback"] [data-column="feedback"] {
     display: none;
   }
+  /* Erledigte Gates bleiben im Digest, treten aber optisch zurück (#648). */
+  tr.is-done td { opacity: 0.55; }
+  tr.is-done td.done-cell { opacity: 1; }
+  .done-toggle {
+    padding: 0.22rem 0.6rem;
+    font-size: 0.76rem;
+    white-space: nowrap;
+  }
+  .done-toggle:disabled { opacity: 0.5; cursor: wait; }
+  #done-status { min-height: 1.2em; margin: 0.5rem 0 0; }
 </style>
 {% endblock %}
 
@@ -249,7 +259,7 @@
     </thead>
     <tbody>
       {% for item in items %}
-      <tr>
+      <tr class="{% if item.gate_done_at %}is-done{% endif %}">
         <td data-label="Datum" data-column="date" class="mono meta" style="white-space: nowrap; font-size: 0.78rem;">
           {{ item.reported_at | localtime }}
         </td>
@@ -330,6 +340,15 @@
             🌐 Gate öffnen ↗
           </a>
           {% endif %}
+          {% if item.download_kind == "gate" %}
+          <span class="done-cell">
+            <button type="button" class="done-toggle" id="done-{{ item.sc_id }}"
+                    data-done-kind="gate" data-sc-id="{{ item.sc_id }}"
+                    data-done="{% if item.gate_done_at %}1{% else %}0{% endif %}">
+              {% if item.gate_done_at %}wieder öffnen{% else %}erledigt{% endif %}
+            </button>
+          </span>
+          {% endif %}
         </td>
       </tr>
       {% else %}
@@ -342,6 +361,8 @@
     </tbody>
   </table>
   </div>
+
+  <p id="done-status" class="meta" role="status" aria-live="polite"></p>
 
   <div class="pager">
     <div class="meta">
@@ -366,6 +387,39 @@
 </div>
 </div>
 <script>
+  // Häkchen für Gates: schaltet die Marke über POST /api/item-done um und lädt neu,
+  // damit die Zeile den Zustand des Servers zeigt. Der Knopf bleibt während des
+  // Requests gesperrt, sonst würde ein Doppelklick die Marke gleich wieder kippen.
+  document.querySelectorAll("button.done-toggle[data-done-kind]").forEach(function (btn) {
+    btn.addEventListener("click", async function () {
+      var status = document.getElementById("done-status");
+      var wasDone = btn.dataset.done === "1";
+      btn.disabled = true;
+      status.textContent = "";
+      try {
+        var resp = await fetch("/api/item-done", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "same-origin",
+          body: JSON.stringify({
+            kind: btn.dataset.doneKind,
+            sc_id: Number(btn.dataset.scId),
+            done: !wasDone
+          })
+        });
+        var data = await resp.json().catch(function () { return {}; });
+        if (resp.ok && data.ok) {
+          location.reload();
+          return;
+        }
+        status.textContent = data.error || ("Speichern fehlgeschlagen (HTTP " + resp.status + ")");
+      } catch (err) {
+        status.textContent = "Speichern fehlgeschlagen: Server nicht erreichbar.";
+      }
+      btn.disabled = false;
+    });
+  });
+
   // Matcher-Korrektur ohne Seiten-Reload an POST /api/match-override (Issue #498).
   async function sendMatchOverride(button) {
     const container = button.closest('.match-fix') || button.closest('[data-sc-id]');
