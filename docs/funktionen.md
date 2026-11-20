@@ -338,6 +338,12 @@ In allen Tabellenansichten (Track-Explorer, Digest, Kaufliste, Quarantäne) erle
 
 Für den Zugriff aus dem LAN ist in `docker-compose.yml` eine Port-Freigabe vorbereitet. Die Kopfzeile gliedert sich in fünf Haupteinträge (Status, Tracks, Digest, Mix, Kaufliste) sowie ein aufklappbares „Mehr“-Menü (`<details>`) für Upload, Duplikate, Quarantäne und Konfiguration. Auf schmalen Bildschirmen und Laptops passen sich Navigation und Filterformulare responsive an; breite Tabellen erhalten einen horizontalen Scrollbereich.
 
+Die Navigation gliedert sich seit #607 in fünf Arbeitsbereiche, denen jede Seite zugeordnet ist: **Start** zeigt die Statusübersicht mit Wochenstatistik und Betriebskarte, **Entdecken** bündelt Digest, Kuratoren und Kaufliste, **Eingang** fasst Upload und Quarantäne zusammen, **Bibliothek** enthält Track-Explorer und Duplikat-Kandidaten, **Auflegen** führt zum Mix-Finder. Die Reiter folgen in dieser Reihenfolge der Kopfzeile, die Seiten des aktiven Bereichs stehen darunter in einer Unterleiste, und die Konfiguration erreicht man über das Zahnrad.
+
+Oben auf der Startseite fasst eine Karte „Heute zu tun“ zusammen, was aktuell zu erledigen ist (#640): unbewertete Vorschläge im Digest, offene Gates und Tracks, die der Verfügbarkeits-Wächter als neu verfügbar meldet. Es erscheinen nur Einträge mit einem Zähler größer null, jeder Eintrag ist ein Direktlink auf die passende Ansicht. Die Zahlen ermittelt `collect_today` nur lesend aus denselben Datenbanken, die auch der Bot nutzt; einen eigenen Bot-Befehl wie `/heute` gibt es nicht.
+
+Gates und Käufe lassen sich im Digest und in der Kaufliste abhaken (#642, #645, #649): Ein Umschalter „erledigt“ / „wieder öffnen“ setzt oder entfernt die Marke `done_at` über `POST /api/item-done`. Die Zeile bleibt stehen und ist nur markiert, nichts wird gelöscht; findet ein Lauf den Track neu, öffnet sich der Eintrag wieder und erscheint erneut als offen.
+
 **Login-Sperre:** Fünf Fehlversuche (falsche oder fehlende Zugangsdaten) innerhalb von fünf
 Minuten sperren die Client-IP für 15 Minuten; die Antwort ist `429` mit `Retry-After`. Die Sperre
 gilt auch für das richtige Passwort, ein erfolgreicher Login setzt den Zähler zurück, `/healthz`
