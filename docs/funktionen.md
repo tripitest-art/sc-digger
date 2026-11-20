@@ -191,6 +191,11 @@ Die Ergebnisse steuern Rekordbox-Playlists, Farbmarkierungen und DJ-Kommentare.
 - **Einträge:** Position im Set, Artist, Titel, Label und Katalognummer; offene Stellen (`?`) bleiben als solche markiert. Damit lassen sich Promos und Edits benennen, die keine Audio-Erkennung findet.
 - **Abgleich:** über `collection.name_key`/`NameIndex`; ein Remix in der Sammlung deckt den Original-Eintrag nicht ab.
 
+Im Dashboard liegt die Seite unter `/mixesdb` (Einstieg über die Karte auf der Mix-Seite `/mix`):
+Suchfeld für Set-Seiten, Trefferliste und die Tracklist als Tabelle mit Position, Marke
+(✓ vorhanden, ✗ fehlt, ? im Wiki nicht benannt), Label und Katalog. Anmeldung wie das übrige
+Dashboard, rein lesend, keine Zwischenspeicherung der MixesDB-Antworten.
+
 ```bash
 # Seiten zu einem Set suchen:
 python scripts/mixesdb_set.py --suche "Robert Natus Schranz Total"
