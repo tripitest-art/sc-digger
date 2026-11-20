@@ -47,6 +47,11 @@
     color: var(--text-muted);
     overflow-wrap: anywhere;
   }
+  /* Player im Kopfbereich ohne Inline-Stil */
+  .track-audio { margin: 0.8rem 0 0; }
+  .track-audio audio { width: 100%; max-width: 32rem; }
+  .track-audio figcaption { margin-top: 0.2rem; }
+
   /* Kopfzeile der Aktions-Karte ohne Inline-Stil (Review zu PR #637) */
   .track-actions .card-title { margin: 0; }
 
@@ -74,6 +79,13 @@
     {% set sc_link = safe_link(life.url) %}
     {% if sc_link %} · <a href="{{ sc_link }}" target="_blank" rel="noopener">Auf SoundCloud öffnen</a>{% endif %}
   </p>
+  {% if preview_ok %}
+  <figure class="track-audio">
+    <audio id="track-audio" controls preload="none"
+           src="/api/preview/sc/{{ life.sc_id }}"></audio>
+    <figcaption class="meta">Hörprobe vom eigenen Server</figcaption>
+  </figure>
+  {% endif %}
 </div>
 
 <div class="card">
