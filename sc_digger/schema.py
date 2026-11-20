@@ -344,6 +344,11 @@ FIELDS: tuple[Field, ...] = (
     # --- web ---
     _f("web.timezone", "str", "Zeitzone",
        "Zeitzone (IANA-Name, z. B. Europe/Berlin), in der das Web-Dashboard Zeiten anzeigt; gespeichert wird weiter UTC."),
+    _f("web.stream_preview", "bool", "Hörproben im Dashboard",
+       "Erlaubt dem Web-Dashboard, 30-Sekunden-Hörproben aus dem SoundCloud-Stream zu erzeugen (bei Bedarf, im Zwischenspeicher neben der State-DB). Getrennt vom Bot-Schalter preview.stream_enabled."),
+    _f("web.preview_cache_mb", "int", "Hörproben-Speicher (MB)",
+       "Obergrenze des Hörproben-Zwischenspeichers in MB (Standard 500); die ältesten Schnipsel werden zuerst gelöscht.",
+       min=0, max=10000),
 )
 
 # Die Felder, die man im Alltag wirklich anfasst; der Konfigeditor zeigt sie zuerst (#597).
