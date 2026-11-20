@@ -184,6 +184,24 @@ python scripts/sync_rekordbox_mytags.py -v
 
 Die Ergebnisse steuern Rekordbox-Playlists, Farbmarkierungen und DJ-Kommentare.
 
+## MixesDB-Abgleich
+
+`sc_digger/mixesdb.py` liest Set-Tracklisten aus dem Szene-Wiki MixesDB (Schranz und Hard Techno sind dort vollständig erfasst, bei 1001tracklists praktisch nicht) und vergleicht sie mit der Sammlung:
+- **Quelle:** MediaWiki-API (`action=parse`, `prop=wikitext`) — stabiler als HTML, keine Anmeldung nötig.
+- **Einträge:** Position im Set, Artist, Titel, Label und Katalognummer; offene Stellen (`?`) bleiben als solche markiert. Damit lassen sich Promos und Edits benennen, die keine Audio-Erkennung findet.
+- **Abgleich:** über `collection.name_key`/`NameIndex`; ein Remix in der Sammlung deckt den Original-Eintrag nicht ab.
+
+```bash
+# Seiten zu einem Set suchen:
+python scripts/mixesdb_set.py --suche "Robert Natus Schranz Total"
+
+# Tracklist mit Sammlungsabgleich (✓ vorhanden, ✗ fehlt, ? offen):
+python scripts/mixesdb_set.py --seite "2006-03-03 - Robert Natus @ Schranz Total, PPC, Graz"
+
+# Nur die fehlenden Tracks als kopierbare Liste:
+python scripts/mixesdb_set.py --seite "..." --nur-fehlen
+```
+
 ## Multi-Platform-Scout
 
 `sc_digger/scout/` erweitert die Recherche über SoundCloud hinaus auf externe Musikplattformen:

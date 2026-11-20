@@ -13,6 +13,8 @@ Wörter (`sc_digger/web/glossary.py`).
 - **Store**: Track nur zum Kauf (Bandcamp, Beatport); steht auf der Kaufliste.
 - **übernommen**: Inbox-Track, der inzwischen in der Sammlung liegt. Nicht: adoptiert.
 - **Artist**: Urheber eines Tracks. Nicht: Künstler.
+- **Set-Tracklist**: Einträge eines fremden DJ-Sets aus MixesDB, mit Position, Label und Katalog. Nicht: Playlist, Trackliste.
+- **Offene Stelle**: Eintrag `?` in einer Set-Tracklist — auch das Wiki kennt den Track nicht. Nicht: Lücke, Unknown.
 - **Lauf**: Ein Durchgang eines geplanten Jobs, z. B. der tägliche Discover-Lauf. Nicht: Run.
 
 Die Bereiche der Navigation (Start, Entdecken, Eingang, Bibliothek, Auflegen) sind Arbeitsschritte, keine
