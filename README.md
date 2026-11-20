@@ -38,6 +38,7 @@
 | Analyse | Tagging (ID3/FLAC/Vorbis) und Inbox-Sortierung nach BPM/Key | vorhanden | [BPM und Tonart](docs/funktionen.md#bpm-und-tonart) |
 | Analyse | Strukturanalyse: erster Kick, Drop, Breakdown-Anteil | vorhanden | [Rekordbox](docs/funktionen.md#rekordbox) |
 | Analyse | Schranz-Matrix: Cluster, Subgenres, Achsen, Versionstyp, Energie | vorhanden | [Schranz-Matrix](docs/funktionen.md#schranz-matrix) |
+| Analyse | MixesDB-Abgleich: fremde Set-Tracklisten lesen (Position, Label, Katalog) und Sammlungslücken zeigen | vorhanden | [MixesDB](docs/funktionen.md#mixesdb-abgleich) |
 | Rekordbox | Wochen-, BPM-, Key- und Stil-Playlists, Beatgrid-Anker, Hot/Memory Cues | vorhanden | [Rekordbox](docs/funktionen.md#rekordbox) |
 | Rekordbox | Rückkanal aus Rekordbox-XML (Rating, PlayCount, BPM, Key, Cues) | vorhanden | [Rekordbox](docs/funktionen.md#rekordbox) |
 | Rekordbox | Cue-Jobs auf GPU-Workstation inkl. Wake-on-LAN | vorhanden | [GPU-Worker](docs/funktionen.md#gpu-worker-und-job-queue) |
