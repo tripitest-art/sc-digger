@@ -291,6 +291,8 @@ offenen Cue-Jobs per Wake-on-LAN-Proxy. Im Web-Dashboard kann dieser Weckruf üb
 
 ## Web-Dashboard
 
+Jede Zeile in Digest, Track-Explorer, Quarantäne und Kaufliste verlinkt mit Künstler und Titel auf die Detailseite `/track/sc/<sc_id>` (Lebenslauf des Tracks); ohne SoundCloud-ID bleibt die Zelle Text.
+
 Setzt man in `.env` ein Passwort (`SC_DIGGER_WEB_PASSWORD`, siehe `.env.example`), startet der
 Container zusätzlich einen FastAPI-Webserver (`python -m sc_digger.web`) auf Port `8080`. Ohne
 Passwort startet er nicht (Standard aus), es wird kein zusätzlicher Port geöffnet. Die Seiten sind

@@ -7,6 +7,8 @@
 
 {% block meta %}
 <style>
+  .track-link { color: inherit; text-decoration: none; }
+  .track-link:hover, .track-link:focus-visible { color: var(--accent-primary); text-decoration: underline; }
   #table-region[aria-busy="true"] { opacity: 0.55; pointer-events: none; transition: opacity 0.15s ease; }
   .card-tracks {
     display: flex;
@@ -429,9 +431,9 @@
           data-title="{{ track.title or '—' }}"
           data-bpm="{{ track.bpm if track.bpm is not none else '' }}"
           data-key="{{ track.key_camelot or '' }}">
-        <td class="sticky-col fw-600" data-label="Artist" data-column="artist">{{ track.artist or "—" }}</td>
+        <td class="sticky-col fw-600" data-label="Artist" data-column="artist">{% if track.sc_id %}<a class="track-link" href="/track/sc/{{ track.sc_id }}">{{ track.artist or "—" }}</a>{% else %}{{ track.artist or "—" }}{% endif %}</td>
         <td class="sticky-col" data-label="Titel" data-column="title">
-          <strong>{{ track.title or "—" }}</strong>
+          <strong>{% if track.sc_id %}<a class="track-link" href="/track/sc/{{ track.sc_id }}">{{ track.title or "—" }}</a>{% else %}{{ track.title or "—" }}{% endif %}</strong>
           {# Pfad und Engagement auf Abruf (Issue #625): Die Zeile bleibt einzeilig. #}
           <details class="track-details">
             <summary>Details</summary>
