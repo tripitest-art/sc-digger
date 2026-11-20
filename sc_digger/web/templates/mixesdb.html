@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+
+{% block title %}MixesDB – sc-digger{% endblock %}
+
+{% block meta %}
+<style>
+  .mixesdb-hits { list-style: none; padding: 0; margin: 0.5rem 0 0; }
+  .mixesdb-hits li { padding: 0.45rem 0; border-bottom: 1px solid var(--border-subtle, rgba(255,255,255,0.08)); }
+  .mixesdb-hits li:last-child { border-bottom: none; }
+  .mixesdb-hits a { color: var(--accent-primary); text-decoration: none; font-weight: 500; }
+  .mixesdb-hits a:hover { text-decoration: underline; }
+  .mixesdb-mark { font-weight: 700; text-align: center; width: 2.2rem; }
+  .mixesdb-mark.is-here { color: var(--success, #4ade80); }
+  .mixesdb-mark.is-missing { color: var(--danger, #f87171); }
+  .mixesdb-mark.is-open { color: var(--warning, #fbbf24); }
+  .mixesdb-counts { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 0.35rem; }
+  .mixesdb-count { font-size: 0.82rem; color: var(--text-muted, #9ca3af); }
+  .mixesdb-count { font-weight: 500; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <h1 style="margin: 0;">🎚️ MixesDB-Setlisten</h1>
+  <p class="meta" style="margin: 0.3rem 0 0.9rem;">
+    Tracklisten fremder DJ-Sets aus dem Szene-Wiki (Schranz, Hard Techno) — mit Label und
+    Katalognummer, also genau das, was Audio-Erkennung bei Promos nicht liefert.
+    Marken: <strong style="color: #4ade80;">✓</strong> in der Sammlung,
+    <strong style="color: #f87171;">✗</strong> fehlt,
+    <strong style="color: #fbbf24;">?</strong> im Wiki nicht benannt.
+  </p>
+  <form class="filter-form" method="get" action="/mixesdb">
+    <div class="filter-grid">
+      <div class="filter-field">
+        <label for="m-q">Seite suchen (DJ, Event, Jahr)</label>
+        <input type="text" id="m-q" name="q" value="{{ q }}"
+               placeholder="Robert Natus Schranz Total"
+               autocomplete="off" spellcheck="false">
+      </div>
+    </div>
+    <div style="margin-top: 0.75rem;">
+      <button type="submit" class="btn-page">Suchen</button>
+      {% if setlist or treffer %}
+      <a href="/mixesdb" class="btn-page" style="margin-left: 0.5rem;">Zurücksetzen</a>
+      {% endif %}
+    </div>
+  </form>
+</div>
+
+{% if hinweis %}
+<div class="card" style="margin-top: 1rem;">
+  <p class="meta" style="margin: 0;">{{ hinweis }}</p>
+</div>
+{% endif %}
+
+{% if treffer %}
+<div class="card" style="margin-top: 1rem;">
+  <p class="meta" style="margin: 0;">
+    <strong>{{ treffer | length }}</strong>
+    {% if treffer | length == 1 %}Treffer{% else %}Treffer{% endif %} für „{{ q }}"
+    (höchstens {{ max_treffer }}) — Seite wählen:
+  </p>
+  <ul class="mixesdb-hits">
+    {% for hit in treffer %}
+    <li><a href="{{ hit.url }}">{{ hit.titel }}</a></li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+{% if check %}
+<div class="card" style="margin-top: 1rem;">
+  <div style="display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0.6rem; align-items: baseline;">
+    <div>
+      <h2 style="margin: 0; font-size: 1rem;">{{ check.setlist.page }}</h2>
+      <div class="mixesdb-counts">
+        <span class="mixesdb-count">{{ zaehler.eintraege }} Einträge</span>
+        <span class="mixesdb-count">{{ zaehler.fehlen }} fehlen</span>
+        <span class="mixesdb-count">{{ zaehler.vorhanden }} vorhanden</span>
+        <span class="mixesdb-count">{{ zaehler.offen }} offen</span>
+      </div>
+    </div>
+    <a href="{{ check.setlist.url }}" class="btn-page" style="font-size: 0.82rem;"
+       target="_blank" rel="noopener">Auf MixesDB ansehen ↗</a>
+  </div>
+
+  {% if check.setlist.entries %}
+  <div class="table-scroll" style="margin-top: 0.9rem;">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Position</th>
+          <th>Marke</th>
+          <th>Track</th>
+          <th>Label</th>
+          <th>Katalog</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for entry in check.setlist.entries %}
+        {% set owned = check.owned[loop.index0] %}
+        <tr>
+          <td data-label="Position">{{ entry.position_label or "–" }}</td>
+          <td data-label="Marke">
+            {% if owned is none %}
+            <span class="mixesdb-mark is-open">?</span>
+            {% elif owned %}
+            <span class="mixesdb-mark is-here">✓</span>
+            {% else %}
+            <span class="mixesdb-mark is-missing">✗</span>
+            {% endif %}
+          </td>
+          <td data-label="Track">
+            {% if entry.unknown %}
+            <span class="meta">offene Stelle — auch das Wiki kennt den Track nicht</span>
+            {% elif entry.artist %}
+            <strong>{{ entry.artist }}</strong> – {{ entry.title }}
+            {% else %}
+            {{ entry.title }}
+            {% endif %}
+          </td>
+          <td data-label="Label">{{ entry.label or "–" }}</td>
+          <td data-label="Katalog">{{ entry.catalog or "–" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}

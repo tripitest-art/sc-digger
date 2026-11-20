@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from .. import navigation, timefmt
-from . import preview, track_detail, tracks
+from . import mixesdb, preview, track_detail, tracks
 
 BEREICHE = ("status", "tracks", "mix", "digest", "intake", "config")
 
@@ -14,5 +14,7 @@ def register(app) -> None:
     track_detail.register(app)
     # Hörproben aus dem Stream (eigener Schalter web.stream_preview, Standard aus).
     preview.register(app)
+    # MixesDB-Abgleich (Set-Tracklisten aus dem Szene-Wiki, rein lesend).
+    mixesdb.register(app)
     navigation.register(app)
     timefmt.register(app)
