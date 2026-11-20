@@ -72,13 +72,11 @@
 <div class="card" style="margin-top: 1rem;">
   <div style="display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0.6rem; align-items: baseline;">
     <div>
-      <h2 style="margin: 0; font-size: 1rem;">{{ check.setlist.page }}</h2>
-      <div class="mixesdb-counts">
-        <span class="mixesdb-count">{{ zaehler.eintraege }} Einträge</span>
-        <span class="mixesdb-count">{{ zaehler.fehlen }} fehlen</span>
-        <span class="mixesdb-count">{{ zaehler.vorhanden }} vorhanden</span>
-        <span class="mixesdb-count">{{ zaehler.offen }} offen</span>
-      </div>
+      <h2 style="margin: 0; font-size: 1rem;">
+        {{ check.setlist.page }}: {{ zaehler.eintraege }} Einträge,
+        {{ zaehler.fehlen }} fehlen, {{ zaehler.vorhanden }} vorhanden,
+        {{ zaehler.offen }} offen
+      </h2>
     </div>
     <a href="{{ check.setlist.url }}" class="btn-page" style="font-size: 0.82rem;"
        target="_blank" rel="noopener">Auf MixesDB ansehen ↗</a>
