@@ -9,6 +9,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 
 from ..common import _render
+from ..stream_preview import preview_enabled
 from ..track_life import collect_track_life
 
 router = APIRouter()
@@ -31,10 +32,16 @@ def track_life_page(request: Request, sc_id: str):
         parsed = int(sc_id)
     except ValueError:
         parsed = None
-    life = collect_track_life(request.app.state.cfg, parsed) if parsed is not None else None
+    cfg = request.app.state.cfg
+    life = collect_track_life(cfg, parsed) if parsed is not None else None
     if life is None:
-        return _render("track.html", status_code=404, life=None, sc_id=sc_id, safe_link=safe_link)
-    return _render("track.html", life=life, sc_id=sc_id, safe_link=safe_link)
+        # Auf der 404-Seite nie ein Player: es gibt keinen Track, den man vorhören könnte.
+        return _render("track.html", status_code=404, life=None, sc_id=sc_id,
+                       safe_link=safe_link, preview_ok=False)
+    # Ohne den Schalter liefert /api/preview/sc/ ohnehin 404; dann gar nicht erst einen
+    # Player anbieten, der ins Leere läuft.
+    return _render("track.html", life=life, sc_id=sc_id, safe_link=safe_link,
+                   preview_ok=preview_enabled(cfg))
 
 
 def register(app) -> None:
