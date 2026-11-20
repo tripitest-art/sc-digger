@@ -14,7 +14,8 @@ def register(app) -> None:
     track_detail.register(app)
     # Hörproben aus dem Stream (eigener Schalter web.stream_preview, Standard aus).
     preview.register(app)
-    # MixesDB-Abgleich (Set-Tracklisten aus dem Szene-Wiki, rein lesend).
-    mixesdb.register(app)
     navigation.register(app)
     timefmt.register(app)
+    # MixesDB-Abgleich (Set-Tracklisten aus dem Szene-Wiki, rein lesend) — zuletzt, damit
+    # keine bestehende Route ihre Position verliert.
+    mixesdb.register(app)
