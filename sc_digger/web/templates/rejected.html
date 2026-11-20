@@ -6,6 +6,8 @@
 
 {% block meta %}
 <style>
+  .track-link { color: inherit; text-decoration: none; }
+  .track-link:hover, .track-link:focus-visible { color: var(--accent-primary); text-decoration: underline; }
   .rejected-toolbar {
     display: flex;
     flex-wrap: wrap;
@@ -108,8 +110,10 @@
           {% endif %}
         </td>
         <td>
-          <strong>{{ item.title or "—" }}</strong>
-          <div class="meta" style="font-size: 0.78rem; margin-top: 0.1rem;">{{ item.artist or "Uploader unbekannt" }}</div>
+          {# rejected.id ist die SoundCloud-ID; query_rejected_tracks liefert kein sc_id-Feld. #}
+          {% set _ = item.update({"sc_id": item.id}) if not item.sc_id else None %}
+          <strong>{% if item.sc_id %}<a class="track-link" href="/track/sc/{{ item.sc_id }}">{{ item.title or "—" }}</a>{% else %}{{ item.title or "—" }}{% endif %}</strong>
+          <div class="meta" style="font-size: 0.78rem; margin-top: 0.1rem;">{% if item.sc_id %}<a class="track-link" href="/track/sc/{{ item.sc_id }}">{{ item.artist or "Uploader unbekannt" }}</a>{% else %}{{ item.artist or "Uploader unbekannt" }}{% endif %}</div>
         </td>
         <td>
           <span class="badge badge-err">{{ item.reason or "—" }}</span>

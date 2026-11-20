@@ -7,6 +7,8 @@
 
 {% block meta %}
 <style>
+  .track-link { color: inherit; text-decoration: none; }
+  .track-link:hover, .track-link:focus-visible { color: var(--accent-primary); text-decoration: underline; }
   .kaufliste-toolbar {
     display: flex;
     flex-wrap: wrap;
@@ -102,8 +104,8 @@
     <tbody>
       {% for item in items %}
       <tr class="{% if item.done_at %}is-done{% endif %}" data-sc-id="{{ item.sc_id }}">
-        <td style="font-weight: 600;">{{ item.artist or "—" }}</td>
-        <td><strong>{{ item.title }}</strong></td>
+        <td style="font-weight: 600;">{% if item.sc_id %}<a class="track-link" href="/track/sc/{{ item.sc_id }}">{{ item.artist or "—" }}</a>{% else %}{{ item.artist or "—" }}{% endif %}</td>
+        <td><strong>{% if item.sc_id %}<a class="track-link" href="/track/sc/{{ item.sc_id }}">{{ item.title }}</a>{% else %}{{ item.title }}{% endif %}</strong></td>
         <td style="white-space: nowrap;">
           {# Nur http/https verlinken: purchase_url stammt aus fremden Feeds. #}
           {% set purchase_href = item.purchase_url if item.purchase_url and (item.purchase_url.startswith("http://") or item.purchase_url.startswith("https://")) else "" %}

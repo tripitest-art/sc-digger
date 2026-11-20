@@ -7,6 +7,8 @@
 
 {% block meta %}
 <style>
+  .track-link { color: inherit; text-decoration: none; }
+  .track-link:hover, .track-link:focus-visible { color: var(--accent-primary); text-decoration: underline; }
   #table-region[aria-busy="true"] { opacity: 0.55; pointer-events: none; transition: opacity 0.15s ease; }
   .digest-toolbar {
     display: flex;
@@ -251,9 +253,9 @@
         <td data-label="Datum" data-column="date" class="mono meta" style="white-space: nowrap; font-size: 0.78rem;">
           {{ item.reported_at | localtime }}
         </td>
-        <td data-label="Artist" data-column="artist" style="font-weight: 600;">{{ item.artist or "—" }}</td>
+        <td data-label="Artist" data-column="artist" style="font-weight: 600;">{% if item.sc_id %}<a class="track-link" href="/track/sc/{{ item.sc_id }}">{{ item.artist or "—" }}</a>{% else %}{{ item.artist or "—" }}{% endif %}</td>
         <td data-label="Titel" data-column="title">
-          <strong>{{ item.title }}</strong>
+          <strong>{% if item.sc_id %}<a class="track-link" href="/track/sc/{{ item.sc_id }}">{{ item.title }}</a>{% else %}{{ item.title }}{% endif %}</strong>
           {% set engagement = engagement_line(item.plays, item.likes, item.reposts) %}
           {% if engagement %}
           <div class="meta" style="font-size: 0.72rem; margin-top: 0.15rem;">{{ engagement }}</div>
