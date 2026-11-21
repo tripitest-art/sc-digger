@@ -52,6 +52,7 @@ from ..health import Health
 from ..models import Config
 from ..pipeline import classify_download, dedupe, estimate_bpm
 from ..redact import redact
+from ..schedule import JOBS
 from ..schema import FIELDS, SECTION_DESCRIPTIONS, SECTION_TITLES, Problem, deep_merge, get_field
 from ..soundcloud import SoundCloudClient, SoundCloudError
 from .common import (
@@ -115,11 +116,10 @@ from .routes import register as register_routes
 from .routes.tracks import FILTER_LABELS, active_filter_chips, match_url
 from .smartlist_page import collect_smartlists, smartlist_m3u8, tracks_for_smartlist
 from .statistik import collect_statistics
-from .tasks import action_labels, default_runners, read_task_state, start_task
 from .status import _read_active_alerts, change_badge, collect_status
+from .tasks import action_labels, default_runners, read_task_state, start_task
 from .today import collect_today
 from .workstation import read_state, start_run
-from ..schedule import JOBS
 
 # Ob der Konfigeditor in der aktuellen Anfrage verfuegbar ist (die Umgebung _env ist modulweit,
 # die Apps sind es nicht); base.html zeigt das Zahnrad nur dann, sonst laege es auf einem 404.
@@ -510,6 +510,7 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
 
         state_db = (app.state.cfg.raw.get("state") or {}).get("health_db_path") or _state_db_path(app.state.cfg)
         tagesablauf = []
+        tagesablauf_error: str | None = None
         if state_db and Path(state_db).exists():
             try:
                 with Health(state_db) as health:
@@ -529,7 +530,9 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
                             "job": job,
                             "last_run": last_run,
                         })
-            except Exception:
+            except Exception as exc:
+                log.exception("Tagesablauf: Fehler beim Lesen der Health-DB (%s): %s", state_db, exc)
+                tagesablauf_error = f"Laufhistorie konnte nicht geladen werden: {exc}"
                 tagesablauf = [{"job": job, "last_run": None} for job in JOBS]
         else:
             tagesablauf = [{"job": job, "last_run": None} for job in JOBS]
@@ -537,7 +540,7 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
         template = _env.get_template("status.html")
         return HTMLResponse(template.render(
             snap=snap, overview=overview, editor_available=editor_available, ops=ops, today=today,
-            maintenance=maintenance, tagesablauf=tagesablauf,
+            maintenance=maintenance, tagesablauf=tagesablauf, tagesablauf_error=tagesablauf_error,
         ))
 
     @app.get("/api/status")

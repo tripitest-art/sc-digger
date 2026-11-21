@@ -32,6 +32,14 @@ class Job:
     def marker(self) -> str:
         return self.kennung
 
+    @property
+    def wochentag(self) -> str | None:
+        """Name des Wochentags (z. B. 'sonntags'), falls der Job nur an bestimmten Wochentagen läuft."""
+        zerlegt = _parse(self.cron)
+        if zerlegt is not None and zerlegt[2] is not None:
+            return _WOCHENTAGE[zerlegt[2]]
+        return None
+
 
 # Alias für bestehende Verwendungen
 ScheduledJob = Job

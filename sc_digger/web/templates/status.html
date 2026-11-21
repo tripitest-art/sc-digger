@@ -443,6 +443,11 @@
     <h2 class="card-title">⏰ Tagesablauf</h2>
     <span class="meta">Geplante Jobs und letztes Ergebnis</span>
   </div>
+  {% if tagesablauf_error %}
+  <div class="alert-box warn alert-compact mt-2 mb-2">
+    <span class="warn fs-84">Laufhistorie nicht lesbar: {{ tagesablauf_error }}</span>
+  </div>
+  {% endif %}
   {% if tagesablauf %}
   <div class="table-scroll">
     <table>
@@ -459,8 +464,8 @@
         <tr>
           <td class="mono">
             {{ item.job.uhrzeit }}
-            {% if " 0" in item.job.cron or " 7" in item.job.cron %}
-            <span class="meta-dim">(sonntags)</span>
+            {% if item.job.wochentag %}
+            <span class="meta-dim">({{ item.job.wochentag }})</span>
             {% endif %}
           </td>
           <td><span class="badge badge-purple mono">{{ item.job.name }}</span></td>
@@ -472,6 +477,8 @@
               {% else %}
               <span class="warn fw-600">Fehler: {{ item.last_run.error or 'unbekannt' }}</span>
               {% endif %}
+            {% elif tagesablauf_error %}
+            <span class="warn">nicht lesbar</span>
             {% else %}
             <span class="meta">noch kein Lauf</span>
             {% endif %}
