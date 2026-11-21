@@ -135,6 +135,8 @@ Mit `--check-adopted` gleicht der Audit die Inbox per Audio-Fingerprint mit der 
 markiert übernommene Tracks mit Datum (`adopted_at`, Feedback `like`; ein 👎 bleibt stehen). Der
 Container führt das täglich per Cron aus (`45 6 * * *`, vor dem `discover`-Lauf).
 
+Im Web-Dashboard bietet die Seite `/audit` eine Übersicht über den Sammlungs-Audit: Sie erklärt die Prüfschritte und Optionen (`check-adopted`, `analyze-structure`, `write-tags`, `export-xml`), startet den Audit mit `--check-adopted` über das Wartungsgerüst und verlinkt auf den zuletzt geschriebenen HTML-Bericht (`/api/audit/report`). Die schreibenden Optionen (`--write-tags`, `--export-xml`) bleiben aus Sicherheitsgründen der CLI vorbehalten.
+
 ## Rekordbox
 
 `rekordbox.write_rekordbox_xml` läuft nach jedem `discover`-Lauf. `scan_inbox` liest die Inbox und überspringt alles, dessen Pfadteil mit `_rejected`, `.`, `_dl_` oder `.cloud-tmp` beginnt, sowie `_eingang`. `build_xml` erzeugt `PRODUCT`, `COLLECTION` und eine Playlist pro ISO-Kalenderwoche im Ordner `sc-digger` (neueste Woche zuerst, z. B. `KW 40/2026`). Pfade werden über `rekordbox.path_map` vom Server- auf den Laptop-Pfad umgeschrieben; Tracks ohne Mapping werden weggelassen. Die XML wird atomar geschrieben; liegt `xml_path` innerhalb `download.collection_dir`, wird der Lauf abgebrochen. Auf der Statusseite des Dashboards schreibt der Button „Rekordbox-XML neu schreiben“ die Inbox-XML per `POST /api/rekordbox/sync` neu (Anmeldung wie alle Dashboard-Routen, `Content-Type: application/json`) und nennt die Zahl der Tracks; die XML-Erzeugung ist dieselbe wie beim täglichen Lauf und beim Bot-Befehl `/sync_xml`.
