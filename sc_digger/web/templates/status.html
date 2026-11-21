@@ -437,6 +437,55 @@
   </div>
 </div>
 
+<!-- Tagesablauf -->
+<div class="card mt-2">
+  <div class="card-header">
+    <h2 class="card-title">⏰ Tagesablauf</h2>
+    <span class="meta">Geplante Jobs und letztes Ergebnis</span>
+  </div>
+  {% if tagesablauf %}
+  <div class="table-scroll">
+    <table>
+      <thead>
+        <tr>
+          <th>Uhrzeit</th>
+          <th>Name</th>
+          <th>Beschreibung</th>
+          <th>Ergebnis</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in tagesablauf %}
+        <tr>
+          <td class="mono">
+            {{ item.job.uhrzeit }}
+            {% if " 0" in item.job.cron or " 7" in item.job.cron %}
+            <span class="meta-dim">(sonntags)</span>
+            {% endif %}
+          </td>
+          <td><span class="badge badge-purple mono">{{ item.job.name }}</span></td>
+          <td>{{ item.job.beschreibung }}</td>
+          <td>
+            {% if item.last_run %}
+              {% if item.last_run.ok %}
+              <span class="ok fw-600">ok</span> &middot; {{ item.last_run.found }} gefunden &middot; <span class="mono">{{ item.last_run.finished_at }}</span>
+              {% else %}
+              <span class="warn fw-600">Fehler: {{ item.last_run.error or 'unbekannt' }}</span>
+              {% endif %}
+            {% else %}
+            <span class="meta">noch kein Lauf</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="meta">Keine Jobs konfiguriert.</p>
+  {% endif %}
+</div>
+
 <!-- Letzte Läufe -->
 <div class="card">
   <div class="card-header">
