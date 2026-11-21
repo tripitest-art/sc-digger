@@ -6,7 +6,7 @@ from sc_digger import bot
 from sc_digger.models import Config
 from sc_digger.web.today import GATES_HREF, UNRATED_HREF, WATCH_HREF, TodayItem
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 
 
 def _cfg() -> Config:
