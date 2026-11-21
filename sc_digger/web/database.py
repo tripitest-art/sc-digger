@@ -36,6 +36,7 @@ from ..similarity import (
     find_similar,
     find_similar_embeddings,
 )
+from ..tags import normalize_tag
 
 log = logging.getLogger(__name__)
 
@@ -308,6 +309,7 @@ def query_tracks(
     *,
     status: str | None = None,
     search: str | None = None,
+    tag: str | None = None,
     bpm_min: float | None = None,
     bpm_max: float | None = None,
     key_camelot: str | None = None,
@@ -323,7 +325,8 @@ def query_tracks(
     """Filtert Tracks aus der Datenbank, sortiert nach ``id`` aufsteigend.
 
     ``status``/``key_camelot``/``quality_status`` sind exakte Vergleiche, ``search`` ist eine
-    Wortsuche über artist/title, ``bpm_min``/``bpm_max`` bilden einen Bereich,
+    Wortsuche über artist/title, ``tag`` filtert über ``track_tags`` mit genau diesem
+    normalisierten Tag (Issue #675), ``bpm_min``/``bpm_max`` bilden einen Bereich,
     ``adopted`` filtert auf (nicht) in die Sammlung übernommene Tracks. ``limit`` wird auf
     ``MAX_LIMIT`` begrenzt, ``total`` ist die Zahl aller Treffer unabhängig von ``limit``.
     ``breakdown_ratio_max`` (Issue #334) behält nur Tracks mit bekanntem Breakdown-Anteil bis
@@ -340,6 +343,13 @@ def query_tracks(
     """
     where: list[str] = []
     params: list[Any] = []
+
+    norm_tag: str | None = None
+    if tag is not None and str(tag).strip():
+        try:
+            norm_tag = normalize_tag(str(tag))
+        except ValueError:
+            return TrackSearchResult()
 
     if status:
         where.append("status = ?")
@@ -371,7 +381,11 @@ def query_tracks(
         if clause:
             where.append(f"({clause})")
             params.extend(extra)
+    if norm_tag:
+        where.append("track_tags.tag = ?")
+        params.append(norm_tag)
 
+    from_clause = "tracks JOIN track_tags ON track_tags.track_id = tracks.id" if norm_tag else "tracks"
     clause_sql = f" WHERE {' AND '.join(where)}" if where else ""
     limit = max(0, min(int(limit), MAX_LIMIT))
     offset = max(0, int(offset))
@@ -379,6 +393,8 @@ def query_tracks(
     try:
         with closing(_connect_readonly(db_path)) as db:
             if not _table_exists(db, "tracks"):
+                return TrackSearchResult()
+            if norm_tag and not _table_exists(db, "track_tags"):
                 return TrackSearchResult()
             # Ältere Track-DBs (vor Migration 7) kennen breakdown_ratio nicht; die rein
             # lesende Abfrage migriert nicht und wählt deshalb nur vorhandene Spalten.
@@ -390,21 +406,21 @@ def query_tracks(
             if taste_min is not None and "taste_score" not in available:
                 return TrackSearchResult()
             total = int(db.execute(
-                f"SELECT COUNT(*) FROM tracks{clause_sql}", params
+                f"SELECT COUNT(*) FROM {from_clause}{clause_sql}", params
             ).fetchone()[0])
-            columns = ", ".join(col for col in _TRACK_COLUMNS if col in available)
+            columns = ", ".join(f"tracks.{col}" for col in _TRACK_COLUMNS if col in available)
             if sort and sort in _TRACK_SORT_MAP and _TRACK_SORT_MAP[sort] in available:
-                col = _TRACK_SORT_MAP[sort]
+                col = f"tracks.{_TRACK_SORT_MAP[sort]}"
                 direction = "DESC" if descending else "ASC"
                 if sort in ("artist", "title", "key_camelot", "quality", "status"):
-                    order_by = f"{col} COLLATE NOCASE {direction} NULLS LAST, id ASC"
+                    order_by = f"{col} COLLATE NOCASE {direction} NULLS LAST, tracks.id ASC"
                 else:
-                    order_by = f"{col} {direction} NULLS LAST, id ASC"
+                    order_by = f"{col} {direction} NULLS LAST, tracks.id ASC"
             else:
-                order_by = "id ASC"
+                order_by = "tracks.id ASC"
 
             rows = db.execute(
-                f"SELECT {columns} FROM tracks{clause_sql} "
+                f"SELECT {columns} FROM {from_clause}{clause_sql} "
                 f"ORDER BY {order_by} LIMIT ? OFFSET ?",
                 [*params, limit, offset],
             ).fetchall()
@@ -414,6 +430,15 @@ def query_tracks(
                 db,
                 [sc for sc in (_sc_id_from_path(p) for p in paths) if sc is not None],
             )
+            track_ids = [int(row["id"]) for row in rows if "id" in row.keys() and row["id"] is not None]
+            tags_map: dict[int, list[str]] = {tid: [] for tid in track_ids}
+            if _table_exists(db, "track_tags") and track_ids:
+                placeholders = ",".join("?" for _ in track_ids)
+                for trow in db.execute(
+                    f"SELECT track_id, tag FROM track_tags WHERE track_id IN ({placeholders}) ORDER BY tag ASC",
+                    track_ids,
+                ).fetchall():
+                    tags_map[int(trow["track_id"])].append(str(trow["tag"]))
     except sqlite3.Error:
         return TrackSearchResult()
 
@@ -431,6 +456,7 @@ def query_tracks(
         item["sc_likes"] = snapshot["likes"] if snapshot else None
         item["sc_reposts"] = snapshot["reposts"] if snapshot else None
         item["sc_comments"] = snapshot["comments"] if snapshot else None
+        item["tags"] = tags_map.get(item.get("id"), [])
         items.append(item)
     return TrackSearchResult(total=total, items=items)
 
