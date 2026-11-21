@@ -112,6 +112,7 @@ from .ops import collect_ops
 from .routes import register as register_routes
 from .routes.tracks import FILTER_LABELS, active_filter_chips, match_url
 from .smartlist_page import collect_smartlists, smartlist_m3u8, tracks_for_smartlist
+from .statistik import collect_statistics
 from .tasks import action_labels, default_runners, read_task_state, start_task
 from .status import _read_active_alerts, change_badge, collect_status
 from .today import collect_today
@@ -1434,6 +1435,49 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
             return PlainTextResponse("Smartlist nicht gefunden", status_code=404)
         content = smartlist_m3u8(tracks)
         return Response(content=content, media_type="audio/x-mpegurl")
+
+    @app.get("/statistik", response_class=HTMLResponse)
+    def statistik_page(request: Request):
+        raw_days = request.query_params.get("days")
+        if raw_days is None or raw_days == "":
+            days = 7
+        else:
+            try:
+                days = int(raw_days)
+            except (ValueError, TypeError):
+                days = -1
+        try:
+            track_db_path = app.state.cfg["state"]["track_db_path"]
+            state_db_path = app.state.cfg["state"]["db_path"]
+            daten = collect_statistics(track_db_path, state_db_path, days=days)
+        except ValueError:
+            return PlainTextResponse(
+                "Zeitfenster muss zwischen 1 und 365 Tagen liegen.",
+                status_code=400,
+            )
+        template = _env.get_template("statistik.html")
+        return HTMLResponse(template.render(daten=daten))
+
+    @app.get("/api/statistik")
+    def api_statistik(request: Request):
+        raw_days = request.query_params.get("days")
+        if raw_days is None or raw_days == "":
+            days = 7
+        else:
+            try:
+                days = int(raw_days)
+            except (ValueError, TypeError):
+                days = -1
+        try:
+            track_db_path = app.state.cfg["state"]["track_db_path"]
+            state_db_path = app.state.cfg["state"]["db_path"]
+            daten = collect_statistics(track_db_path, state_db_path, days=days)
+        except ValueError:
+            return JSONResponse(
+                {"error": "Zeitfenster muss zwischen 1 und 365 Tagen liegen."},
+                status_code=400,
+            )
+        return JSONResponse(daten)
 
     if base_path is None or local_path is None:
         return app

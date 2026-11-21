@@ -171,6 +171,8 @@ def test_create_app_behaelt_alle_routen_und_reihenfolge(tmp_path: Path):
         ("GET", "/smartlists"),
         ("GET", "/api/smartlists"),
         ("GET", "/smartlists/{name}.m3u8"),
+        ("GET", "/statistik"),
+        ("GET", "/api/statistik"),
         ("GET", "/config"),
         ("GET", "/config/{section_id}"),
         ("POST", "/config/preview"),
