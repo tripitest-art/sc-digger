@@ -107,10 +107,10 @@ def start_task(action: str, runner: Callable[[], str], *, state_path: str | Path
 
 
 def default_runners(cfg: Config) -> dict[str, Callable[[], str]]:
-    """Aktionen dieser Ausbaustufe: {"scout": ..., "watch": ..., "taste": ...}.
-    `run_scout` lokal aus `sc_digger.main` importieren (kein Import auf Modulebene, main.py zieht
-    argparse), `run_watch` aus `sc_digger.watch`, Taste über `TrackDB` + `run_taste`.
-    Rückgabe: kurze deutsche Ergebniszeile für die Statusanzeige."""
+    """Enthält zusätzlich: "backfill-energy", "backfill-artist", "backfill-embeddings",
+    "requeue", "backup". Jeder Runner: TrackDB über cfg["state"]["track_db_path"] öffnen und
+    schließen, Aufruf mit dry_run=False, Rückgabe einer deutschen Zeile mit den Zahlen aus dem
+    Ergebnis (z. B. "Energie: 12 gesetzt, 3 übersprungen"), maximal 300 Zeichen."""
 
     def scout() -> str:
         from ..main import run_scout
@@ -137,7 +137,88 @@ def default_runners(cfg: Config) -> dict[str, Callable[[], str]]:
             return f"Taste-Score trainiert, {result.scored} Tracks bewertet"
         return f"Taste-Score nicht trainiert: {result.reason}"
 
-    return {"scout": scout, "watch": watch, "taste": taste}
+    def backfill_energy_runner() -> str:
+        from ..backfill import backfill_energy
+        from ..db import TrackDB
+
+        with TrackDB(cfg["state"]["track_db_path"]) as db:
+            res = backfill_energy(db, dry_run=False)
+        return f"Energie: {res.get('set', 0)} gesetzt, {res.get('skipped', 0)} übersprungen"[:MESSAGE_MAX]
+
+    def backfill_artist_runner() -> str:
+        from ..backfill_artist import backfill_artists
+        from ..db import TrackDB
+
+        state_path = Path(cfg["state"]["db_path"])
+        ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+        backup_path = state_path.with_name(f"{state_path.name}.bak-{ts}")
+        counter = 1
+        while backup_path.exists():
+            backup_path = state_path.with_name(f"{state_path.name}.bak-{ts}-{counter}")
+            counter += 1
+
+        with TrackDB(cfg["state"]["track_db_path"]) as db:
+            res = backfill_artists(
+                cfg["state"]["db_path"],
+                cfg["state"]["track_db_path"],
+                apply=True,
+                backup_path=backup_path,
+            )
+        seen_up = getattr(res, "seen_updated", None)
+        if seen_up is None and isinstance(res, dict):
+            seen_up = res.get("seen_updated", 0)
+            rej_up = res.get("rejected_updated", 0)
+            unmatched = res.get("unmatched", 0)
+        else:
+            seen_up = getattr(res, "seen_updated", 0)
+            rej_up = getattr(res, "rejected_updated", 0)
+            unmatched = getattr(res, "unmatched", 0)
+        return (
+            f"Künstler: {seen_up} seen, {rej_up} rejected aktualisiert, "
+            f"{unmatched} ohne Treffer"
+        )[:MESSAGE_MAX]
+
+    def backfill_embeddings_runner() -> str:
+        from ..db import TrackDB
+        from ..embeddings import backfill_embedding_jobs
+
+        with TrackDB(cfg["state"]["track_db_path"]) as db:
+            summary = backfill_embedding_jobs(db, dry_run=False)
+        queued = getattr(summary, "queued", None)
+        if queued is None and isinstance(summary, dict):
+            queued = summary.get("queued", 0)
+            already = summary.get("already_queued", 0)
+        else:
+            queued = getattr(summary, "queued", 0)
+            already = getattr(summary, "already_queued", 0)
+        return f"Embeddings: {queued} eingereiht, {already} bereits aktiv"[:MESSAGE_MAX]
+
+    def requeue_runner() -> str:
+        from ..main import run_requeue_cmd
+
+        return run_requeue_cmd(cfg)[:MESSAGE_MAX]
+
+    def backup_runner() -> str:
+        from ..backup import run_backup
+        from ..db import TrackDB
+
+        with TrackDB(cfg["state"]["track_db_path"]):
+            today = datetime.now(timezone.utc).date()
+            code = run_backup(cfg, today=today)
+        if code != 0:
+            raise RuntimeError(f"Sicherung fehlgeschlagen (Code {code})")
+        return f"Sicherung erfolgreich erstellt ({today.isoformat()})"[:MESSAGE_MAX]
+
+    return {
+        "scout": scout,
+        "watch": watch,
+        "taste": taste,
+        "backfill-energy": backfill_energy_runner,
+        "backfill-artist": backfill_artist_runner,
+        "backfill-embeddings": backfill_embeddings_runner,
+        "requeue": requeue_runner,
+        "backup": backup_runner,
+    }
 
 
 def action_labels() -> dict[str, str]:
@@ -146,4 +227,9 @@ def action_labels() -> dict[str, str]:
         "scout": "Scout starten",
         "watch": "Wächter prüfen",
         "taste": "Taste-Score trainieren",
+        "backfill-energy": "Energie nachberechnen",
+        "backfill-artist": "Künstler nachpflegen",
+        "backfill-embeddings": "Audio-Embeddings einreihen",
+        "requeue": "Hängende Jobs zurücksetzen",
+        "backup": "Sicherung erstellen",
     }
