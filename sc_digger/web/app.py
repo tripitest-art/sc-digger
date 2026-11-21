@@ -28,7 +28,7 @@ from contextlib import closing
 from contextvars import ContextVar
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Mapping
 from urllib.parse import urlencode
 
 from fastapi import FastAPI, Request
@@ -112,6 +112,7 @@ from .ops import collect_ops
 from .routes import register as register_routes
 from .routes.tracks import FILTER_LABELS, active_filter_chips, match_url
 from .smartlist_page import collect_smartlists, smartlist_m3u8, tracks_for_smartlist
+from .tasks import action_labels, default_runners, read_task_state, start_task
 from .status import _read_active_alerts, change_badge, collect_status
 from .today import collect_today
 from .workstation import read_state, start_run
@@ -426,7 +427,8 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
                base_path: Path | None = None, local_path: Path | None = None,
                login_limit: FailureTracker | None = None,
                trust_proxy: bool = False,
-               disk_usage: Callable[[str], Any] = shutil.disk_usage) -> FastAPI:
+               disk_usage: Callable[[str], Any] = shutil.disk_usage,
+               maintenance_runners: Mapping[str, Callable[[], str]] | None = None) -> FastAPI:
     """Erzeugt die Status-App.
 
     password leer/None und allow_anonymous False: ValueError (nie versehentlich offen starten).
@@ -443,6 +445,13 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
 
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
     app.state.cfg = cfg
+    app.state.maintenance_runners = (
+        dict(maintenance_runners) if maintenance_runners is not None else default_runners(cfg)
+    )
+
+    def _tasks_path() -> Path:
+        return Path(app.state.cfg["state"]["db_path"]).parent / "web-tasks.json"
+
     app.state.password = password
     app.state.allow_anonymous = allow_anonymous
     app.state.login_limit = login_limit
@@ -484,12 +493,17 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
     @app.get("/", response_class=HTMLResponse)
     def index(request: Request):
         snap = collect_status(app.state.cfg)
+        maintenance = {
+            action: {"label": label, "state": read_task_state(_tasks_path(), action)}
+            for action, label in action_labels().items() if action in app.state.maintenance_runners
+        }
         overview = get_collection_overview(app.state.cfg["state"]["track_db_path"])
         ops = collect_ops(app.state.cfg, usage=app.state.disk_usage)
         today = collect_today(app.state.cfg)
         template = _env.get_template("status.html")
         return HTMLResponse(template.render(
-            snap=snap, overview=overview, editor_available=editor_available, ops=ops, today=today
+            snap=snap, overview=overview, editor_available=editor_available, ops=ops, today=today,
+            maintenance=maintenance,
         ))
 
     @app.get("/api/status")
@@ -554,6 +568,28 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
     def api_gpu_wake_status(request: Request):
         state = read_state(app.state.cfg)
         return JSONResponse(state.to_dict())
+
+    # Wartungsgerüst (Issue #655): Scout, Wächter und Taste-Training per Knopf im Hintergrund.
+    # Content-Type- und Origin-Prüfung wie /api/gpu-wake; die Sperre je Aktion liegt in der Datei.
+    @app.post("/api/maintenance/{action}")
+    def api_maintenance_start(action: str, request: Request):
+        ct_err = _require_json_content_type(request, allow_empty_body=True)
+        if ct_err is not None:
+            return ct_err
+        runner = app.state.maintenance_runners.get(action)
+        if runner is None:
+            return JSONResponse({"ok": False, "error": "unbekannte Aktion"}, status_code=404)
+        if not start_task(action, runner, state_path=_tasks_path()):
+            return JSONResponse({"ok": False, "error": "läuft bereits", "action": action},
+                                status_code=409)
+        return JSONResponse({"ok": True, "action": action}, status_code=202)
+
+    @app.get("/api/maintenance")
+    def api_maintenance(request: Request):
+        return JSONResponse({
+            action: read_task_state(_tasks_path(), action)
+            for action in app.state.maintenance_runners
+        })
 
     # Job-Queue für externe GPU-Worker (Issue #330): claimen, Lebenszeichen und Ergebnis
     # melden über HTTP, damit die Workstation die Track-DB nicht per SMB/NFS einbinden muss.

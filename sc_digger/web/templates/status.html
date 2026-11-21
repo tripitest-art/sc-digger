@@ -496,6 +496,19 @@
     {% endfor %}
   </div>
   {% endif %}
+  {% if maintenance %}
+  <div class="card" id="maintenance-card">
+    <div class="card-header"><h2 class="card-title">🛠️ Wartung</h2></div>
+    {% for action, item in maintenance.items() %}
+    <div class="mt-2">
+      <button type="button" class="btn-page" data-action="{{ action }}">{{ item.label }}</button>
+      <span class="meta meta-sm" id="maintenance-{{ action }}" role="status" aria-live="polite">
+        {% if item.state %}{{ item.state.state }}{% if item.state.finished_at %} &middot; {{ item.state.finished_at }}{% elif item.state.started_at %} &middot; seit {{ item.state.started_at }}{% endif %}{% if item.state.message %} &middot; {{ item.state.message }}{% endif %}{% endif %}
+      </span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
 </div>
 
 <script>
@@ -555,6 +568,36 @@
     } finally {
       button.disabled = false;
     }
+  });
+})();
+(function () {
+  document.querySelectorAll("button[data-action]").forEach(function (button) {
+    const action = button.dataset.action;
+    const statusEl = document.getElementById('maintenance-' + action);
+    if (!statusEl) return;
+    button.addEventListener('click', async function () {
+      button.disabled = true;
+      statusEl.textContent = 'Starte …';
+      try {
+        const resp = await fetch('/api/maintenance/' + encodeURIComponent(action), {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'}
+        });
+        let data = {};
+        try { data = await resp.json(); } catch (e) { data = {}; }
+        if (resp.status === 202) {
+          statusEl.textContent = 'läuft …';
+        } else if (resp.status === 409) {
+          statusEl.textContent = 'läuft bereits';
+        } else {
+          statusEl.textContent = data.error || ('HTTP ' + resp.status);
+        }
+      } catch (e) {
+        statusEl.textContent = 'Netzwerkfehler';
+      } finally {
+        button.disabled = false;
+      }
+    });
   });
 })();
 </script>
