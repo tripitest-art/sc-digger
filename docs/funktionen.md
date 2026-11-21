@@ -382,7 +382,7 @@ Eigene Markierungen jenseits der Schranz-Matrix: „Opener", „Peak Time", „W
 
 `sc_digger.tags.normalize_tag` ist der einzige Weg in die Tabelle: Kleinschreibung, Leerraum zusammengefasst und am Rand entfernt, erlaubt sind `a-z 0-9 ä ö ü ß`, Leerzeichen, `-` und `_`, höchstens 40 Zeichen. Alles andere („Opener!", leer, zu lang) wirft `ValueError` — auch beim Entfernen und Suchen, damit ein Tippfehler nicht als „nichts gefunden" durchgeht.
 
-`TrackDB` bietet `add_track_tag` (idempotent, gibt den normalisierten Tag zurück), `remove_track_tag`, `get_track_tags`, `list_tags` (absteigend nach Anzahl) und `list_track_ids_by_tag`. Im Track-Explorer (`/tracks`) können Tags direkt über die Tag-Spalte per Eingabefeld und Knopf gesetzt und über den Filter oder Tag-Chips gefiltert werden (`POST /api/tracks/{id}/tags`, `GET /tracks?tag=...`). Die Nutzung als Smartlist-Regel (`tags_all`, `tags_any`) ist der nächste Schritt; die Regel-Engine liest die Tabelle bereits.
+`TrackDB` bietet `add_track_tag` (idempotent, gibt den normalisierten Tag zurück), `remove_track_tag`, `get_track_tags`, `list_tags` (absteigend nach Anzahl) und `list_track_ids_by_tag`. Im Track-Explorer (`/tracks`) können Tags direkt in der Zeile gesetzt werden (Chips und Eingabefeld unter Artist/Titel), gefiltert wird über das Feld `tag` oder einen Klick auf einen Chip (`POST /api/tracks/{id}/tags`, `GET /tracks?tag=...`). Die Nutzung als Smartlist-Regel (`tags_all`, `tags_any`) ist der nächste Schritt; die Regel-Engine liest die Tabelle bereits.
 
 ## Wartung: Gate-Backfill
 
