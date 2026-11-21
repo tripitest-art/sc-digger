@@ -501,7 +501,7 @@
     <div class="card-header"><h2 class="card-title">🛠️ Wartung</h2></div>
     {% for action, item in maintenance.items() %}
     <div class="mt-2">
-      <button type="button" class="btn-page maintenance-btn" data-action="{{ action }}">{{ item.label }}</button>
+      <button type="button" class="btn-page" data-action="{{ action }}">{{ item.label }}</button>
       <span class="meta meta-sm" id="maintenance-{{ action }}" role="status" aria-live="polite">
         {% if item.state %}{{ item.state.state }}{% if item.state.finished_at %} &middot; {{ item.state.finished_at }}{% elif item.state.started_at %} &middot; seit {{ item.state.started_at }}{% endif %}{% if item.state.message %} &middot; {{ item.state.message }}{% endif %}{% endif %}
       </span>
@@ -571,7 +571,7 @@
   });
 })();
 (function () {
-  document.querySelectorAll('.maintenance-btn').forEach(function (button) {
+  document.querySelectorAll("button[data-action]").forEach(function (button) {
     const action = button.dataset.action;
     const statusEl = document.getElementById('maintenance-' + action);
     if (!statusEl) return;
