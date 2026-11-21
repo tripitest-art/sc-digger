@@ -111,6 +111,7 @@ from .intake import MAX_UPLOAD_BYTES, process_uploaded_audio
 from .ops import collect_ops
 from .routes import register as register_routes
 from .routes.tracks import FILTER_LABELS, active_filter_chips, match_url
+from .smartlist_page import collect_smartlists, smartlist_m3u8, tracks_for_smartlist
 from .status import _read_active_alerts, change_badge, collect_status
 from .today import collect_today
 from .workstation import read_state, start_run
@@ -1349,6 +1350,35 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
             response_data["key_camelot"] = first.get("key_camelot")
 
         return JSONResponse(response_data, status_code=status_code)
+
+    @app.get("/smartlists", response_class=HTMLResponse)
+    def smartlists_page(request: Request):
+        track_db_path = app.state.cfg["state"]["track_db_path"]
+        rows = collect_smartlists(track_db_path)
+        template = _env.get_template("smartlists.html")
+        return HTMLResponse(template.render(rows=rows))
+
+    @app.get("/api/smartlists")
+    def api_smartlists(request: Request):
+        track_db_path = app.state.cfg["state"]["track_db_path"]
+        rows = collect_smartlists(track_db_path)
+        return JSONResponse([
+            {
+                "name": r.name,
+                "rule_count": r.rule_count,
+                "match_count": r.match_count,
+            }
+            for r in rows
+        ])
+
+    @app.get("/smartlists/{name}.m3u8")
+    def smartlist_m3u8_export(name: str):
+        track_db_path = app.state.cfg["state"]["track_db_path"]
+        tracks = tracks_for_smartlist(track_db_path, name)
+        if tracks is None:
+            return PlainTextResponse("Smartlist nicht gefunden", status_code=404)
+        content = smartlist_m3u8(tracks)
+        return Response(content=content, media_type="audio/x-mpegurl")
 
     if base_path is None or local_path is None:
         return app
