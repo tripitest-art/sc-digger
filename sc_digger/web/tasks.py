@@ -194,9 +194,11 @@ def default_runners(cfg: Config) -> dict[str, Callable[[], str]]:
         return f"Embeddings: {queued} eingereiht, {already} bereits aktiv"[:MESSAGE_MAX]
 
     def requeue_runner() -> str:
+        from ..db import TrackDB
         from ..main import run_requeue_cmd
 
-        return run_requeue_cmd(cfg)[:MESSAGE_MAX]
+        with TrackDB(cfg["state"]["track_db_path"]):
+            return run_requeue_cmd(cfg)[:MESSAGE_MAX]
 
     def backup_runner() -> str:
         from ..backup import run_backup
