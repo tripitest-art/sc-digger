@@ -2,9 +2,13 @@
 from __future__ import annotations
 
 import json
+import logging
 import math
 from pathlib import Path
 from urllib.parse import urlencode
+
+
+log = logging.getLogger(__name__)
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
@@ -183,8 +187,13 @@ async def api_track_add_tag(request: Request, track_id: int):
     raw_tag = payload["tag"]
     try:
         norm_tag = normalize_tag(raw_tag)
-    except ValueError as exc:
-        return JSONResponse({"error": str(exc)}, status_code=400)
+    except ValueError:
+        # Feste Meldung statt str(exc): kein Ausnahmetext nach außen (CodeQL: Information exposure).
+        log.warning("Tag abgelehnt (track_id=%s)", track_id)
+        return JSONResponse(
+            {"error": "Tag unbrauchbar: er ist leer, länger als 40 Zeichen oder enthält unerlaubte Zeichen"},
+            status_code=400,
+        )
 
     cfg = request.app.state.cfg
     with TrackDB(cfg["state"]["track_db_path"]) as db:
