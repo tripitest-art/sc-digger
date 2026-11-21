@@ -56,7 +56,7 @@
 | Web | Harmonic Mix Finder, Set-Builder (M3U8/Rekordbox-XML), URL-Scanner | vorhanden | [Web-Dashboard](docs/funktionen.md#web-dashboard) |
 | Web | Upload & Intake, Duplikat- und Inbox-Cleanup | vorhanden | [Web-Dashboard](docs/funktionen.md#web-dashboard) |
 | Web | Kuratoren-Übersicht: welche Artists die Sammlung tragen, mit Rating-Anteil und Ø BPM | vorhanden | [Kuratoren](docs/funktionen.md#kuratoren) |
-| Daten | Freie Tags je Track (`track_tags`) und Smartlists mit Regel-Engine (noch ohne Oberfläche) | vorhanden | [Smartlists](docs/funktionen.md#smartlists) |
+| Daten | Freie Tags je Track (`track_tags`) und Smartlists mit Regel-Engine und Web-Export (`/smartlists`) | vorhanden | [Smartlists](docs/funktionen.md#smartlists) |
 | KI | Taste-Score aus Audio-Embeddings und Feedback | vorhanden | [Taste-Score](docs/funktionen.md#taste-score) |
 | KI | GPU-Worker-Job-Queue für Cues und Embeddings | vorhanden | [GPU-Worker](docs/funktionen.md#gpu-worker-und-job-queue) |
 | Geplant | Next-Track-Recommender per Embedding-Ähnlichkeit | geplant | [ROADMAP Phase 5.5](ROADMAP.md) |

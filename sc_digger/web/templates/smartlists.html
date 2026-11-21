@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+
+{% block title %}Smartlists – sc-digger{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 0.75rem;">
+    <div>
+      <h1 style="margin: 0;">📋 Smartlists</h1>
+      <p class="meta" style="margin: 0.25rem 0 0;">
+        Gespeicherte Regellisten &middot; <strong>{{ rows | length }}</strong> {% if rows | length == 1 %}Liste{% else %}Listen{% endif %}
+      </p>
+    </div>
+    <div style="display: flex; gap: 0.6rem;">
+      <a href="/mix" class="btn-page" style="font-size: 0.82rem;">&larr; Zum Mix-Bereich</a>
+    </div>
+  </div>
+  <p class="meta" style="margin-top: 0.6rem; margin-bottom: 0;">
+    Dynamische Filter über die Sammlung (BPM, Tonart, Energie, Rating, Tags). Jede Liste kann direkt als M3U8-Playlist heruntergeladen werden.
+  </p>
+</div>
+
+{% if not rows %}
+<div class="card" style="margin-top: 1rem; text-align: center; padding: 2.5rem 1rem;">
+  <p class="meta" style="margin: 0; font-size: 0.95rem;">
+    Keine Smartlists im Profil vorhanden.
+  </p>
+</div>
+{% else %}
+<div class="card" style="margin-top: 1.25rem;">
+  <div class="table-scroll">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Regeln</th>
+          <th>Treffer</th>
+          <th>Aktion</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>
+          <td data-label="Name">
+            <strong>{{ row.name }}</strong>
+          </td>
+          <td data-label="Regeln">
+            {{ row.rule_count }}
+          </td>
+          <td data-label="Treffer">
+            {{ row.match_count }}
+          </td>
+          <td data-label="Aktion">
+            <a href="/smartlists/{{ row.name }}.m3u8" class="btn-page" style="font-size: 0.82rem;" download>M3U8-Export</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

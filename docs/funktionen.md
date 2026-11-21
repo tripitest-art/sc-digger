@@ -370,7 +370,9 @@ Regeln über die Bibliothek, ohne sie in `config.yaml` zu schreiben: „BPM 150�
 
 `matches(row, rules, tags)` ist reine Auswertung ohne Datenbank: fehlt ein Wert, den eine gesetzte Regel braucht (`NULL`), gilt der Track als nicht passend; leere Regeln passen immer. `select_tracks(db, rules, limit=None)` liefert die Treffer nach BPM aufsteigend (`NULL` zuletzt), dann Key, dann ID — Tracks mit `status = 'rejected'` sind immer ausgeschlossen.
 
-Gespeichert wird in `smartlists` je Profil (`profile_id` plus `name` als zusammengesetzter Schlüssel), derselbe Name darf also in zwei Genres existieren. `save_smartlist`, `get_smartlist` und `list_smartlists` arbeiten auf dem Profil der `TrackDB`. Eine Weboberfläche und ein Export (M3U8, Rekordbox-XML) fehlen noch.
+Gespeichert wird in `smartlists` je Profil (`profile_id` plus `name` als zusammengesetzter Schlüssel), derselbe Name darf also in zwei Genres existieren. `save_smartlist`, `get_smartlist` und `list_smartlists` arbeiten auf dem Profil der `TrackDB`.
+
+Im Dashboard liegt die Seite unter `/smartlists` (Einstieg über die Karte auf der Mix-Seite `/mix`): gespeicherte Listen mit Regel- und Trefferzahl und direktem M3U8-Export (`/smartlists/{name}.m3u8`), rein lesend. Ein Rekordbox-XML-Export und das Anlegen/Bearbeiten von Regeln über die Oberfläche sind noch nicht enthalten.
 
 ## Freie Tags
 
