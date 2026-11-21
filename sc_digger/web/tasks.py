@@ -211,6 +211,16 @@ def default_runners(cfg: Config) -> dict[str, Callable[[], str]]:
             raise RuntimeError(f"Sicherung fehlgeschlagen (Code {code})")
         return f"Sicherung erfolgreich erstellt ({today.isoformat()})"[:MESSAGE_MAX]
 
+    def audit() -> str:
+        from ..audit import run_audit
+
+        report_file = Path(cfg["state"]["db_path"]).parent / "audit-report.html"
+        summary = run_audit(cfg, report_path=report_file, check_adopted=True, no_telegram=True)
+        return (
+            f"Audit fertig: {summary.scanned} gescannt, {summary.ok} ok, "
+            f"{len(summary.adopted_tracks)} übernommen"
+        )
+
     return {
         "scout": scout,
         "watch": watch,
@@ -220,6 +230,7 @@ def default_runners(cfg: Config) -> dict[str, Callable[[], str]]:
         "backfill-embeddings": backfill_embeddings_runner,
         "requeue": requeue_runner,
         "backup": backup_runner,
+        "audit": audit,
     }
 
 
@@ -234,4 +245,5 @@ def action_labels() -> dict[str, str]:
         "backfill-embeddings": "Audio-Embeddings einreihen",
         "requeue": "Hängende Jobs zurücksetzen",
         "backup": "Sicherung erstellen",
+        "audit": "Sammlungs-Audit starten",
     }

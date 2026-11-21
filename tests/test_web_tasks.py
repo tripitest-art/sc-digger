@@ -105,6 +105,7 @@ def test_standard_aktionen_und_labels(tmp_path: Path):
         "backfill-embeddings",
         "requeue",
         "backup",
+        "audit",
     }
     assert set(runners) == erwartet == set(action_labels())
 

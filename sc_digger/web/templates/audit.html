@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+
+{% block title %}Sammlungs-Audit – sc-digger{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 0.75rem;">
+    <div>
+      <h1 style="margin: 0;">🏛️ Sammlungs-Audit</h1>
+      <p class="meta" style="margin: 0.25rem 0 0;">
+        Sammlungsprüfung, Fake-Erkennung, BPM/Key-Analyse und Übernahme-Abgleich
+      </p>
+    </div>
+    <div style="display: flex; gap: 0.6rem;">
+      <a href="/" class="btn-page" style="font-size: 0.82rem;">&larr; Zurück zum Status</a>
+    </div>
+  </div>
+</div>
+
+<div class="grid-cards" style="margin-top: 1.25rem;">
+  <!-- Wartung & Start -->
+  <div class="card">
+    <div class="card-header">
+      <h2 class="card-title">🛠️ Audit starten</h2>
+    </div>
+    <p class="meta mt-0 mb-3">
+      Startet den Sammlungs-Audit im Hintergrund über das Wartungsgerüst mit <code>check-adopted</code> (Übernahme-Abgleich).
+    </p>
+    <div>
+      <button type="button" class="btn-page" data-action="audit">{{ action_label }}</button>
+      <span class="meta meta-sm" id="maintenance-audit" role="status" aria-live="polite" style="margin-left: 0.5rem;">
+        {% if task_state %}
+          {{ task_state.state }}
+          {% if task_state.finished_at %} &middot; {{ task_state.finished_at }}
+          {% elif task_state.started_at %} &middot; seit {{ task_state.started_at }}
+          {% endif %}
+          {% if task_state.message %} &middot; {{ task_state.message }}{% endif %}
+        {% endif %}
+      </span>
+    </div>
+  </div>
+
+  <!-- Letzter Bericht -->
+  <div class="card">
+    <div class="card-header">
+      <h2 class="card-title">📄 Letzter Audit-Bericht</h2>
+    </div>
+    {% if report %}
+    <p class="meta mt-0 mb-2">
+      Zuletzt erstellter HTML-Bericht der Sammlungsprüfung:
+    </p>
+    <ul class="meta" style="list-style: none; padding: 0; margin: 0 0 1rem; line-height: 1.8;">
+      <li>Pfad: <code class="mono">{{ report.path }}</code></li>
+      <li>Erstellt: <span class="mono">{{ report.written_at }}</span></li>
+      <li>Größe: <span class="mono">{{ report.size }}</span> Bytes</li>
+    </ul>
+    <div>
+      <a href="/api/audit/report" class="btn-page" target="_blank" rel="noopener">Bericht anzeigen &rarr;</a>
+    </div>
+    {% else %}
+    <p class="meta mt-0 mb-0">Noch kein Audit-Bericht vorhanden. Starte einen Audit, um einen Bericht zu erzeugen.</p>
+    {% endif %}
+  </div>
+
+  <!-- Optionen & Erklärung -->
+  <div class="card" style="grid-column: 1 / -1;">
+    <div class="card-header">
+      <h2 class="card-title">ℹ️ Audit-Optionen &amp; Funktionsweise</h2>
+    </div>
+    <p>
+      Der Sammlungs-Audit prüft das Musikarchiv vollständig read-only: Transcode- und Fake-Cutoff-Erkennung,
+      Lautheits- und Dynamikmessung (LUFS, True Peak, LRA), BPM- und Key-Analyse sowie die Berechnung
+      von Chromaprint-Audio-Fingerprints.
+    </p>
+    <p class="meta">
+      Über den Startknopf im Web-Dashboard wird der Audit mit <code>check-adopted</code> gestartet.
+      Schreibende Optionen wie <code>write-tags</code> und <code>export-xml</code> verändern Dateien bzw.
+      erzeugen DJ-Dateien und bleiben aus Sicherheitsgründen der CLI vorbehalten (<code>python -m sc_digger.main audit</code>).
+    </p>
+    <div class="stat-grid grid-2col" style="margin-top: 1rem;">
+      <div class="stat-box">
+        <div class="val" style="font-size: 1rem; font-family: var(--font-mono);">check-adopted</div>
+        <div class="lbl" style="margin-top: 0.35rem;">
+          Gleicht die Inbox per Audio-Fingerprint mit der Sammlung ab und markiert übernommene Tracks.
+          Wird beim Start über die Wartung automatisch ausgeführt.
+        </div>
+      </div>
+      <div class="stat-box">
+        <div class="val" style="font-size: 1rem; font-family: var(--font-mono);">analyze-structure</div>
+        <div class="lbl" style="margin-top: 0.35rem;">
+          Führt eine Tiefenanalyse der Track-Struktur durch (Intro, Drops, Breakdowns) und ermittelt Breakdown-Verhältnisse.
+          Reine Lese-Option der CLI.
+        </div>
+      </div>
+      <div class="stat-box">
+        <div class="val" style="font-size: 1rem; font-family: var(--font-mono);">write-tags</div>
+        <div class="lbl" style="margin-top: 0.35rem;">
+          Schreibende Option: Schreibt ermittelte Metadaten (BPM, Camelot-Key) direkt in die Audio-Tags.
+          Bleibt der CLI vorbehalten.
+        </div>
+      </div>
+      <div class="stat-box">
+        <div class="val" style="font-size: 1rem; font-family: var(--font-mono);">export-xml</div>
+        <div class="lbl" style="margin-top: 0.35rem;">
+          Schreibende Option: Exportiert die geprüfte Sammlung als Rekordbox-kompatible XML-Bibliothek.
+          Bleibt der CLI vorbehalten.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  document.querySelectorAll("button[data-action]").forEach(function (button) {
+    const action = button.dataset.action;
+    const statusEl = document.getElementById('maintenance-' + action);
+    if (!statusEl) return;
+    button.addEventListener('click', async function () {
+      button.disabled = true;
+      statusEl.textContent = 'Starte …';
+      try {
+        const resp = await fetch('/api/maintenance/' + encodeURIComponent(action), {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'}
+        });
+        let data = {};
+        try { data = await resp.json(); } catch (e) { data = {}; }
+        if (resp.status === 202) {
+          statusEl.textContent = 'läuft …';
+        } else if (resp.status === 409) {
+          statusEl.textContent = 'läuft bereits';
+        } else {
+          statusEl.textContent = 'Fehler: ' + (data.error || resp.status);
+        }
+      } catch (e) {
+        statusEl.textContent = 'Netzwerkfehler';
+      } finally {
+        button.disabled = false;
+      }
+    });
+  });
+})();
+</script>
+{% endblock %}

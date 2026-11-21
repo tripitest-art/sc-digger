@@ -86,6 +86,7 @@ from .common import (
     _xml_filename,
     client_key,
 )
+from .audit_page import read_last_report
 from .configedit import apply_form, diff_config, format_form_value, get_path, remove_key, save_local
 from .database import (
     DEFAULT_LIMIT,
@@ -452,6 +453,9 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
 
     def _tasks_path() -> Path:
         return Path(app.state.cfg["state"]["db_path"]).parent / "web-tasks.json"
+
+    def _audit_report_path() -> Path:
+        return Path(app.state.cfg["state"]["db_path"]).parent / "audit-report.html"
 
     app.state.password = password
     app.state.allow_anonymous = allow_anonymous
@@ -1478,6 +1482,25 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
                 status_code=400,
             )
         return JSONResponse(daten)
+
+    @app.get("/audit", response_class=HTMLResponse)
+    def audit_page(request: Request):
+        report = read_last_report(_audit_report_path())
+        task_state = read_task_state(_tasks_path(), "audit")
+        action_label = action_labels().get("audit", "Sammlungs-Audit starten")
+        template = _env.get_template("audit.html")
+        return HTMLResponse(template.render(
+            report=report,
+            task_state=task_state,
+            action_label=action_label,
+        ))
+
+    @app.get("/api/audit/report")
+    def api_audit_report(request: Request):
+        report_path = _audit_report_path()
+        if not report_path.is_file():
+            return PlainTextResponse("Kein Audit-Bericht vorhanden", status_code=404)
+        return RedirectResponse(url="/audit-report.html", status_code=307)
 
     if base_path is None or local_path is None:
         return app
