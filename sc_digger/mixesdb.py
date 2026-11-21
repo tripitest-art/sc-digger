@@ -15,7 +15,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import json
 import logging
+from pathlib import Path
 import re
+import sqlite3
 from typing import Callable, Iterable, Sequence
 from urllib.parse import urlencode
 
@@ -438,6 +440,34 @@ def _entry_line(entry: SetlistEntry) -> str:
             line += f" - {entry.catalog}"
         line += "]"
     return line
+
+
+def collection_names(db_path: Path | str) -> list[tuple[str | None, str]]:
+    """Artist/Titel aller Tracks mit status in ('archive', 'adopted').
+
+    Rein lesend (mode=ro), Zeilen als (artist, title); fehlende Datei, fehlende Tabelle,
+    leere Datei und sqlite3.Error ergeben [].
+    """
+    path_obj = Path(db_path)
+    if not path_obj.is_file():
+        return []
+    try:
+        uri = f"file:{path_obj.as_posix()}?mode=ro"
+        with sqlite3.connect(uri, uri=True) as db:
+            db.row_factory = sqlite3.Row
+            table_row = db.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='tracks'"
+            ).fetchone()
+            if not table_row:
+                return []
+            rows = db.execute(
+                "SELECT artist, title FROM tracks "
+                "WHERE status IN ('archive', 'adopted') AND title IS NOT NULL "
+                "ORDER BY id ASC"
+            ).fetchall()
+            return [(row["artist"] or None, row["title"]) for row in rows]
+    except (sqlite3.Error, OSError):
+        return []
 
 
 def entries_from_lines(lines: Sequence[str], *, page: str = "") -> Setlist:

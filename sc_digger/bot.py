@@ -33,7 +33,7 @@ from .main import run_link
 from .models import Config
 from .output import TelegramError, parse_feedback_callback, telegram_call, telegram_download
 from .output import State, send_telegram_voice
-from . import output, preview, rekordbox
+from . import mixesdb, output, preview, rekordbox
 from .cleanup import audit_inbox_duplicates, format_duplicate_report
 from .fingerprint import compute_fingerprint, decode_fingerprint, encode_fingerprint
 from .preview import extract_preview_from_url
@@ -49,6 +49,13 @@ log = logging.getLogger("sc_digger.bot")
 URL_RE = re.compile(r"https?://(?:on\.)?(?:www\.|m\.)?soundcloud\.com/\S+", re.I)
 
 MIX_USAGE = "Aufruf: /mix <Camelot-Key> <BPM> [Toleranz], z. B. /mix 5A 155 oder /mix 8B 160 2"
+SET_USAGE = (
+    "Nutzung: /set <Suchtext> — z. B. /set Robert Natus Schranz Total.\n"
+    "Danach /set 2 für den zweiten Treffer der Liste."
+)
+SET_MAX_TREFFER = 5      # Treffer der Suche in der Antwort
+SET_MAX_ZEILEN = 25      # Zeilen der Tracklist in der Antwort
+SET_STATE: dict[str, list[str]] = {}   # chat_id -> letzte Treffertitel
 STATS_USAGE = "Aufruf: /stats [Tage (1–365, Standard: 7)]"
 PREVIEW_USAGE = "Aufruf: /preview <Suchtext oder id oder sc:<SoundCloud-ID>>"
 SIMILAR_USAGE = "Aufruf: /similar <SoundCloud-Link | Track-ID>"
@@ -79,6 +86,7 @@ HELP_SECTIONS: tuple[tuple[str, tuple[str, ...]], ...] = (
         "/preview &lt;Suchtext oder id&gt; -> 20s-Snippet eines heruntergeladenen Tracks als Sprachnachricht",
         "/preview sc:&lt;SoundCloud-ID&gt; -> 20s-Snippet direkt aus dem SoundCloud-Stream (nicht heruntergeladen)",
         "/similar &lt;SoundCloud-Link | Track-ID&gt; -> Top-5 ähnliche Aufnahmen aus der Sammlung",
+        "/set &lt;Suchtext&gt; -> MixesDB-Setlist suchen und fehlende Tracks anzeigen",
     )),
     ("Eingang", (
         "/rejected [Anzahl] -> zuletzt abgelehnte Downloads aus der Quarantäne",
@@ -951,6 +959,14 @@ def handle_message(cfg: Config, sc: SoundCloudClient, chat_id: str, text: str) -
             _send_text(cfg, chat_id, "Mix-Suche fehlgeschlagen, siehe Container-Log.")
         return
 
+    if first_word == "/set":
+        try:
+            _send_text(cfg, chat_id, set_reply(cfg, text, chat_id=chat_id))
+        except Exception:
+            log.exception("Fehler bei /set-Befehl")
+            _send_text(cfg, chat_id, "Set-Abfrage fehlgeschlagen, siehe Container-Log.")
+        return
+
     if first_word == "/is_duplicate":
         try:
             _send_text(cfg, chat_id, duplicate_override_reply(cfg, text))
@@ -1360,6 +1376,90 @@ def heute_reply(cfg: Config, text: str) -> str:
     except Exception:
         log.exception("Heute-Liste nicht lesbar")
         return "Heute-Liste nicht lesbar, siehe Container-Log."
+
+
+def set_reply(cfg: Config, text: str, *, chat_id: str = "") -> str:
+    """Bearbeitet den /set-Befehl (Suche oder Tracklist-Anzeige)."""
+    # 1. Argumente parsen
+    m = re.match(r"^/set(?:@\w+)?(?:\s+(.*))?$", text.strip(), re.DOTALL | re.IGNORECASE)
+    arg = (m.group(1) or "").strip() if m else ""
+
+    if not arg:
+        return SET_USAGE
+
+    # 2. Argument ist Zahl n
+    if arg.isdigit():
+        n = int(arg)
+        gemerkt = SET_STATE.get(chat_id)
+        if not gemerkt:
+            return "Keine Suche offen. Erst /set <Suchtext>."
+        k = len(gemerkt)
+        if not (1 <= n <= k):
+            return f"Nur {k} Treffer gemerkt. Erst neu suchen: /set <Suchtext>."
+        
+        titel = gemerkt[n - 1]
+        setlist = mixesdb.fetch_setlist(titel)
+        if setlist is None:
+            return f"Seite „{html.escape(titel, quote=False)}“ nicht auf MixesDB gefunden."
+
+        state_cfg = cfg.raw.get("state", {}) if isinstance(cfg.raw, dict) else {}
+        track_db_path = state_cfg.get("track_db_path") or ""
+        coll_names = mixesdb.collection_names(track_db_path)
+        check = mixesdb.check_setlist(setlist, coll_names)
+
+        total = len(setlist.entries)
+        m_count = len(check.missing)
+        k_count = len(check.present)
+        o_count = len(setlist.open_entries)
+
+        header = (
+            f"🎚 {html.escape(setlist.page, quote=False)}: "
+            f"{total} Einträge, {m_count} fehlen, {k_count} vorhanden, {o_count} offen"
+        )
+        lines = [header]
+
+        if m_count == 0 and total > 0 and o_count == 0 and k_count == total:
+            lines.append(f"Alle {total} Einträge liegen in der Sammlung.")
+        elif m_count == 0 and total > 0 and k_count == total:
+            lines.append(f"Alle {total} Einträge liegen in der Sammlung.")
+        elif total > 0 and m_count == 0:
+            lines.append(f"Alle {total} Einträge liegen in der Sammlung.")
+        else:
+            missing_entries = check.missing
+            for entry in missing_entries[:SET_MAX_ZEILEN]:
+                track_line = entry.track()
+                if entry.label:
+                    track_line += f" [{entry.label}"
+                    if entry.catalog:
+                        track_line += f" - {entry.catalog}"
+                    track_line += "]"
+                lines.append(html.escape(track_line, quote=False))
+            
+            if m_count > SET_MAX_ZEILEN:
+                rest = m_count - SET_MAX_ZEILEN
+                lines.append(f"… {rest} weitere fehlen (Liste gekürzt).")
+
+        if o_count == 1:
+            lines.append("1 Stelle ist im Wiki nicht benannt.")
+        elif o_count > 1:
+            lines.append(f"{o_count} Stellen sind im Wiki nicht benannt.")
+
+        res = "\n".join(lines)
+        if len(res) > 3900:
+            res = res[:3900]
+        return res
+
+    # 3. Sonst Suche über mixesdb.search_sets
+    treffer = mixesdb.search_sets(arg, limit=SET_MAX_TREFFER)
+    if not treffer:
+        return f"Keine MixesDB-Seite zu „{html.escape(arg, quote=False)}“ gefunden."
+
+    SET_STATE[chat_id] = list(treffer[:SET_MAX_TREFFER])
+    lines = [f"🔎 {len(treffer)} Treffer für „{html.escape(arg, quote=False)}“:"]
+    for i, t in enumerate(treffer, start=1):
+        lines.append(f"{i}. {html.escape(t, quote=False)}")
+    lines.append("Antwort mit /set 1 für die Tracklist.")
+    return "\n".join(lines)
 
 
 def cli() -> None:

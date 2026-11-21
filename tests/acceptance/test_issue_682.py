@@ -66,7 +66,8 @@ def test_akz_maskiert_html(tmp_path: Path, monkeypatch):
     setlist = mixesdb.parse_setlist(WIKITEXT, page="Natus")
     monkeypatch.setattr(mixesdb, "search_sets", lambda q, limit=5: ["Natus"])
     monkeypatch.setattr(mixesdb, "fetch_setlist", lambda seite: setlist)
-    cfg = _cfg(tmp_path)
+    # without_track: der Track mit "&" muss FEHLEN, sonst erscheint er nicht in der Antwort
+    cfg = _cfg(tmp_path, with_track=False)
     b.set_reply(cfg, "/set Natus", chat_id="akz-3")
     antwort = b.set_reply(cfg, "/set 1", chat_id="akz-3")
     assert "&amp;" in antwort and " & " not in antwort
