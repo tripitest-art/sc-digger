@@ -51,7 +51,7 @@
 | Betrieb | Lauf-Sperre gegen parallele schreibende Modi | vorhanden | [Health](docs/funktionen.md#health-alarm-und-container-healthcheck) |
 | Betrieb | Tägliche WAL-konsistente Sicherung und Restore | vorhanden | [Sicherung](docs/funktionen.md#sicherung) |
 | Betrieb | Übernommen-Erkennung per Fingerprint (`audit --check-adopted`) | vorhanden | [Sammlungs-Audit](docs/funktionen.md#sammlungs-audit) |
-| Web | Statusseite, Statistik & Trend-Radar, Digest-Explorer, Kaufliste, Quarantäne, Konfigeditor | vorhanden | [Web-Dashboard](docs/funktionen.md#web-dashboard) |
+| Web | Statusseite mit Tagesablauf, Statistik & Trend-Radar, Digest-Explorer, Kaufliste, Quarantäne, Konfigeditor | vorhanden | [Web-Dashboard](docs/funktionen.md#web-dashboard) |
 | Web | Track-Explorer mit Vorhören, Ähnlichkeitssuche und Taste-Filter | vorhanden | [Web-Dashboard](docs/funktionen.md#web-dashboard) |
 | Web | Freie Tags im Track-Explorer setzen und filtern | vorhanden | [Freie Tags](docs/funktionen.md#freie-tags) |
 | Web | Harmonic Mix Finder, Set-Builder (M3U8/Rekordbox-XML), URL-Scanner | vorhanden | [Web-Dashboard](docs/funktionen.md#web-dashboard) |
