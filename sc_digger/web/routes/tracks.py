@@ -11,6 +11,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 from starlette.concurrency import run_in_threadpool
 
 from ...db import TrackDB
+from ...tags import normalize_tag
 from ..audio import resolve_playable_path
 from ..common import (
     _audio_response,
@@ -20,6 +21,7 @@ from ..common import (
     _query_int,
     _render,
     _require_json_content_type,
+    _same_origin,
 )
 from ..database import (
     DEFAULT_LIMIT,
@@ -43,6 +45,7 @@ FILTER_LABELS: dict[str, str] = {
     "adopted": "Übernahme",
     "breakdown_max": "Max. Breakdown %",
     "taste_min": "Min. Geschmack",
+    "tag": "Tag",
 }
 
 
@@ -118,6 +121,7 @@ def api_tracks(request: Request):
         cfg["state"]["track_db_path"],
         status=params.get("status") or None,
         search=params.get("q") or None,
+        tag=params.get("tag") or None,
         bpm_min=_query_float(params.get("bpm_min")),
         bpm_max=_query_float(params.get("bpm_max")),
         key_camelot=params.get("key_camelot") or None,
@@ -159,6 +163,39 @@ def api_audio(request: Request, track_id: int):
     return _audio_response(request, track.path, cfg)
 
 
+# Freie Tags im Track-Explorer setzen (Issue #675)
+@router.post("/api/tracks/{track_id}/tags")
+async def api_track_add_tag(request: Request, track_id: int):
+    """Fügt dem Track einen freien Tag hinzu (Issue #675).
+
+    Idempotent. 403 bei falscher Herkunft (_same_origin), 400 bei ungültigem JSON oder
+    ungültigem Tag (normalize_tag), 404 wenn Track nicht existiert.
+    Gibt 200 {"tag": <norm>, "tags": [...]} zurück.
+    """
+    if not _same_origin(request):
+        return JSONResponse({"error": "Ungültige Herkunft"}, status_code=403)
+    try:
+        payload = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Ungültiges JSON"}, status_code=400)
+    if not isinstance(payload, dict) or "tag" not in payload:
+        return JSONResponse({"error": "Tag fehlt"}, status_code=400)
+    raw_tag = payload["tag"]
+    try:
+        norm_tag = normalize_tag(raw_tag)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+
+    cfg = request.app.state.cfg
+    with TrackDB(cfg["state"]["track_db_path"]) as db:
+        track = db.get_track_by_id(track_id)
+        if track is None:
+            return JSONResponse({"error": "Track nicht gefunden"}, status_code=404)
+        db.add_track_tag(track_id, norm_tag)
+        tags = db.get_track_tags(track_id)
+    return JSONResponse({"tag": norm_tag, "tags": tags})
+
+
 # DJ-Ansicht auf dieselben rein lesenden Abfragen (Teil 2 des Dashboards): Filter-Formular
 # und Treffertabelle serverseitig gerendert, Paginierung über offset.
 @router.get("/tracks", response_class=HTMLResponse)
@@ -175,6 +212,7 @@ def tracks_page(request: Request):
         "adopted": params.get("adopted") or "",
         "breakdown_max": params.get("breakdown_max") or "",
         "taste_min": params.get("taste_min") or "",
+        "tag": params.get("tag") or "",
     }
     raw_limit = params.get("limit")
     limit_val = DEFAULT_LIMIT if raw_limit == "" else _query_int(raw_limit, DEFAULT_LIMIT)
@@ -188,6 +226,7 @@ def tracks_page(request: Request):
         cfg["state"]["track_db_path"],
         status=filters["status"] or None,
         search=filters["q"] or None,
+        tag=filters["tag"] or None,
         bpm_min=_query_float(filters["bpm_min"]),
         bpm_max=_query_float(filters["bpm_max"]),
         key_camelot=filters["key_camelot"] or None,

@@ -49,6 +49,7 @@ def test_active_filter_chips_alle_standard_labels():
         "adopted": "Übernahme",
         "breakdown_max": "Max. Breakdown %",
         "taste_min": "Min. Geschmack",
+        "tag": "Tag",
     }
     assert FILTER_LABELS == expected_labels
 

@@ -52,6 +52,33 @@
   .similar-panel-error {
     color: var(--accent-err);
   }
+  .tag-chip {
+    display: inline-block;
+    padding: 0.15rem 0.5rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    line-height: 1.2;
+    border-radius: 9999px;
+    background-color: var(--bg-card-subtle);
+    border: 1px solid var(--border);
+    color: var(--text-main);
+  }
+  .tag-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    margin-bottom: 0.35rem;
+  }
+  .tag-form {
+    display: flex;
+    gap: 0.25rem;
+    align-items: center;
+  }
+  .tag-input {
+    width: 90px;
+    font-size: 0.75rem;
+    padding: 0.2rem 0.4rem;
+  }
   .tracks-toolbar {
     display: flex;
     flex-wrap: wrap;
@@ -299,6 +326,10 @@
                placeholder="Wortsuche über Artist und Titel">
       </div>
       <div class="filter-field">
+        <label for="f-tag">Tag</label>
+        <input type="text" id="f-tag" name="tag" value="{{ filters.tag }}" placeholder="z. B. opener">
+      </div>
+      <div class="filter-field">
         <label for="f-status">Status</label>
         <select id="f-status" name="status">
           <option value="" {% if not filters.status %}selected{% endif %}>alle</option>
@@ -459,6 +490,16 @@
             <span class="energy-mini-bar" aria-hidden="true"><span class="energy-mini-fill" style="width: {{ drive_pct }}%;"></span></span>
           </span>
           {% endif %}
+          {# Freie Tags (Issue #675) #}
+          <div class="tag-list mt-1">
+            {% for tag in track.tags %}
+            <a href="/tracks?tag={{ tag | urlencode }}" class="track-link"><span class="tag-chip">{{ tag }}</span></a>
+            {% endfor %}
+            <div class="tag-form">
+              <input class="tag-input" data-track-id="{{ track.id }}" placeholder="Tag..." onkeydown="if(event.key==='Enter'){event.preventDefault();this.nextElementSibling.click();}">
+              <button type="button" class="btn-page btn-xs" onclick="addTrackTag(this, {{ track.id }})">Tag setzen</button>
+            </div>
+          </div>
         </td>
         <td class="mono" data-label="Format" data-column="format">
           {{ track.format or "?" }}
@@ -1037,6 +1078,47 @@
         });
         showToast("Bewertung zurückgenommen", "ok");
       }
+    }
+  }
+
+  async function addTrackTag(btn, trackId) {
+    const row = btn.closest('tr[data-track-row]');
+    const tid = trackId || (row ? row.dataset.trackId : null);
+    if (!tid) return;
+    const input = row ? row.querySelector(`.tag-input[data-track-id="${tid}"]`) : document.querySelector(`.tag-input[data-track-id="${tid}"]`);
+    if (!input || !input.value.trim()) return;
+    const tagVal = input.value.trim();
+    try {
+      const resp = await fetch(`/api/tracks/${tid}/tags`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ tag: tagVal })
+      });
+      if (resp.ok) {
+        try {
+          const pageResp = await fetch(window.location.href);
+          if (pageResp.ok) {
+            const html = await pageResp.text();
+            const doc = new DOMParser().parseFromString(html, 'text/html');
+            const newRow = doc.querySelector(`tr[data-track-row][data-track-id="${tid}"]`);
+            if (newRow && row) {
+              row.replaceWith(newRow);
+              if (typeof initColumnToggle === 'function') initColumnToggle();
+              return;
+            }
+          }
+        } catch (_) {}
+        if (typeof fetchTableRegion === 'function') {
+          fetchTableRegion(window.location.href, false);
+        }
+      } else {
+        const errData = await resp.json().catch(() => ({}));
+        alert(errData.error || 'Fehler beim Speichern des Tags');
+      }
+    } catch (e) {
+      alert('Netzwerkfehler beim Speichern des Tags');
     }
   }
 
