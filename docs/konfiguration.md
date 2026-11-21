@@ -111,6 +111,8 @@ Ohne `profiles:`-Block existiert genau ein Profil `schranz`, das alle Vorgaben a
 
 Die Trennung wirkt derzeit in der Track-DB: `tracks`, `store_items`, `gate_items`, `exploration_tag_stats`, `taste_model` und `smartlists` sind je `profile_id` getrennt, `TrackDB(pfad, profile_id=…)` sieht nur sein Profil, ohne Angabe `schranz`. **Ein `--profile`-Schalter in der CLI gibt es noch nicht**, ebenso wenig genre-abhängige Schwellen in Qualitätsprüfung und BPM-Erkennung — beides sind eigene Schritte.
 
+**Betrieben wird genau ein Profil: `schranz`.** Die Mehrprofilfähigkeit ist damit Vorsorge, keine Funktion — es gibt weder einen Umschalter im Dashboard noch im Bot noch in der Config (Entscheidung in #661: erst wieder aufnehmen, wenn ein zweites Genre wirklich laufen soll).
+
 ## Lokale Override-Datei
 
 Die versionierte `config.yaml` bleibt die einzige Wahrheit. Änderungen ohne Git – später aus der
