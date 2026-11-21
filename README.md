@@ -44,7 +44,7 @@
 | Rekordbox | Cue-Jobs auf GPU-Workstation inkl. Wake-on-LAN | vorhanden | [GPU-Worker](docs/funktionen.md#gpu-worker-und-job-queue) |
 | Rekordbox | My-Tags direkt in Rekordbox synchronisieren | vorhanden | [My-Tags](docs/funktionen.md#my-tags-direkt-in-rekordbox-synchronisieren) |
 | Ausgabe | Telegram-Digest mit Feedback-Buttons und Export-Datei | vorhanden | [Telegram-Bot](docs/funktionen.md#telegram-bot) |
-| Ausgabe | Telegram-Bot für Links, `/mix`, `/stats`, `/preview`, `/similar`, `/curator_mining` | vorhanden | [Telegram-Bot](docs/funktionen.md#telegram-bot) |
+| Ausgabe | Telegram-Bot für Links, `/mix`, `/heute`, `/stats`, `/preview`, `/similar`, `/curator_mining` | vorhanden | [Telegram-Bot](docs/funktionen.md#telegram-bot) |
 | Ausgabe | Wochenstatistik, Sonntags-Digest und Trend-Abschnitt im Wochen-Digest | vorhanden | [Statistik](docs/funktionen.md#statistik-und-trend-radar) |
 | Ausgabe | Verfügbarkeits-Wächter für gelikte Stream-Tracks | vorhanden | [Wächter](docs/funktionen.md#verfügbarkeits-wächter) |
 | Betrieb | Health-Alarm, Container-Healthcheck, API-Kanarienvogel, Speicherplatz-Wächter | vorhanden | [Health](docs/funktionen.md#health-alarm-und-container-healthcheck) |
