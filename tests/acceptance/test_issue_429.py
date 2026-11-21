@@ -47,12 +47,22 @@ def _fake_process():
 # --- Der Upload wandert aus dem Digest -------------------------------------------
 
 
-def test_digest_hat_keinen_uploadbereich_mehr(tmp_path, monkeypatch):
+def test_digest_hat_keinen_sammel_upload(tmp_path, monkeypatch):
+    """#429 bleibt wahr: kein Sammel-Upload im Digest. Zeilen-Upload aus #664 ist erlaubt."""
     monkeypatch.setattr(webapp, "process_uploaded_audio", _fake_process())
     html = client_for(tmp_path, monkeypatch).get("/digest", auth=AUTH).text
     assert "upload-zone" not in html
-    assert 'type="file"' not in html
-    assert "/api/upload-intake" not in html
+    assert not re.search(r'<input[^>]*type="file"[^>]*multiple', html), "Sammel-Upload gehört auf /intake"
+    assert "accept-multiple" not in html
+
+
+def test_jeder_upload_im_digest_ist_an_eine_sc_id_gebunden(tmp_path, monkeypatch):
+    """#664: Der Zeilen-Upload kennt immer seinen Vorschlag — kein anonymer Upload im Digest."""
+    monkeypatch.setattr(webapp, "process_uploaded_audio", _fake_process())
+    html = client_for(tmp_path, monkeypatch).get("/digest", auth=AUTH).text
+    formulare_mit_datei = [f for f in re.findall(r"<form\b.*?</form>", html, re.S) if 'type="file"' in f]
+    for feld in formulare_mit_datei:
+        assert 'name="sc_id"' in feld, "Upload im Digest ohne sc_id-Bindung"
 
 
 def test_eigene_seite_fuer_den_upload(tmp_path, monkeypatch):
