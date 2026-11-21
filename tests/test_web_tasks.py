@@ -8,6 +8,8 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+import pytest
+
 from sc_digger.models import Config
 from sc_digger.web.app import create_app
 from sc_digger.web.tasks import (
@@ -94,7 +96,108 @@ def test_running_aus_datei_sperrt_nach_neustart(tmp_path: Path):
 
 def test_standard_aktionen_und_labels(tmp_path: Path):
     runners = default_runners(_cfg(tmp_path))
-    assert set(runners) == {"scout", "watch", "taste"} == set(action_labels())
+    erwartet = {
+        "scout",
+        "watch",
+        "taste",
+        "backfill-energy",
+        "backfill-artist",
+        "backfill-embeddings",
+        "requeue",
+        "backup",
+    }
+    assert set(runners) == erwartet == set(action_labels())
+
+
+def test_runner_backfill_energy(tmp_path: Path, monkeypatch):
+    cfg = _cfg(tmp_path)
+    aufgerufen = {}
+
+    def fake_backfill(db, *, dry_run=False):
+        aufgerufen["dry_run"] = dry_run
+        aufgerufen["db_path"] = str(db.path)
+        return {"set": 12, "skipped": 3, "failed": 0}
+
+    monkeypatch.setattr("sc_digger.backfill.backfill_energy", fake_backfill)
+    runners = default_runners(cfg)
+    msg = runners["backfill-energy"]()
+    assert aufgerufen["dry_run"] is False
+    assert aufgerufen["db_path"] == cfg["state"]["track_db_path"]
+    assert msg == "Energie: 12 gesetzt, 3 übersprungen"
+
+
+def test_runner_backfill_artist(tmp_path: Path, monkeypatch):
+    from sc_digger.backfill_artist import BackfillResult
+
+    cfg = _cfg(tmp_path)
+    aufgerufen = {}
+
+    def fake_artists(state_p, track_p, *, apply=False, backup_path=None):
+        aufgerufen["state_p"] = str(state_p)
+        aufgerufen["track_p"] = str(track_p)
+        aufgerufen["apply"] = apply
+        aufgerufen["backup_path"] = backup_path
+        return BackfillResult(seen_updated=5, rejected_updated=2, unmatched=1)
+
+    monkeypatch.setattr("sc_digger.backfill_artist.backfill_artists", fake_artists)
+    runners = default_runners(cfg)
+    msg = runners["backfill-artist"]()
+    assert aufgerufen["apply"] is True
+    assert aufgerufen["state_p"] == cfg["state"]["db_path"]
+    assert aufgerufen["track_p"] == cfg["state"]["track_db_path"]
+    assert aufgerufen["backup_path"] is not None
+    assert msg == "Künstler: 5 seen, 2 rejected aktualisiert, 1 ohne Treffer"
+
+
+def test_runner_backfill_embeddings(tmp_path: Path, monkeypatch):
+    from sc_digger.embeddings import BackfillSummary
+
+    cfg = _cfg(tmp_path)
+    aufgerufen = {}
+
+    def fake_embeddings(db, *, dry_run=False):
+        aufgerufen["dry_run"] = dry_run
+        aufgerufen["db_path"] = str(db.path)
+        return BackfillSummary(queued=7, already_queued=4)
+
+    monkeypatch.setattr("sc_digger.embeddings.backfill_embedding_jobs", fake_embeddings)
+    runners = default_runners(cfg)
+    msg = runners["backfill-embeddings"]()
+    assert aufgerufen["dry_run"] is False
+    assert aufgerufen["db_path"] == cfg["state"]["track_db_path"]
+    assert msg == "Embeddings: 7 eingereiht, 4 bereits aktiv"
+
+
+def test_runner_requeue(tmp_path: Path, monkeypatch):
+    cfg = _cfg(tmp_path)
+    monkeypatch.setattr(
+        "sc_digger.main.run_requeue_cmd",
+        lambda c: "Job-Warteschlange: 3 hängende Jobs zurückgesetzt",
+    )
+    runners = default_runners(cfg)
+    msg = runners["requeue"]()
+    assert msg == "Job-Warteschlange: 3 hängende Jobs zurückgesetzt"
+
+
+def test_runner_backup(tmp_path: Path, monkeypatch):
+    cfg = _cfg(tmp_path)
+    aufgerufen = {}
+
+    def fake_backup(c, *, today, notify=None):
+        aufgerufen["cfg"] = c
+        aufgerufen["today"] = today
+        return 0
+
+    monkeypatch.setattr("sc_digger.backup.run_backup", fake_backup)
+    runners = default_runners(cfg)
+    msg = runners["backup"]()
+    assert aufgerufen["cfg"] is cfg
+    assert aufgerufen["today"] is not None
+    assert "Sicherung erfolgreich" in msg
+
+    monkeypatch.setattr("sc_digger.backup.run_backup", lambda c, today=None, notify=None: 1)
+    with pytest.raises(RuntimeError, match="Sicherung fehlgeschlagen"):
+        runners["backup"]()
 
 
 def test_api_409_bei_laufender_aktion_und_fremder_origin(tmp_path: Path):
