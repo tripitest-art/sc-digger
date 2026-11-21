@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+
+{% block title %}Statistik – sc-digger{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 0.75rem;">
+    <div>
+      <h1 style="margin: 0;">📊 Statistik &amp; Trend-Radar ({{ daten.days }} Tage)</h1>
+      <p class="meta" style="margin: 0.25rem 0 0;">
+        Pipeline-Funnel und Engagement-Trends über {{ daten.days }} Tage
+      </p>
+    </div>
+    <div style="display: flex; gap: 0.6rem;">
+      <a href="/" class="btn-page" style="font-size: 0.82rem;">&larr; Zurück zum Status</a>
+    </div>
+  </div>
+
+  <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 1rem;">
+    <span class="meta" style="margin-right: 0.25rem;">Zeitfenster:</span>
+    <a href="/statistik?days=7" class="btn-page {% if daten.days == 7 %}active{% endif %}">7 Tage</a>
+    <a href="/statistik?days=14" class="btn-page {% if daten.days == 14 %}active{% endif %}">14 Tage</a>
+    <a href="/statistik?days=30" class="btn-page {% if daten.days == 30 %}active{% endif %}">30 Tage</a>
+    <a href="/statistik?days=90" class="btn-page {% if daten.days == 90 %}active{% endif %}">90 Tage</a>
+    <a href="/statistik?days=365" class="btn-page {% if daten.days == 365 %}active{% endif %}">365 Tage</a>
+    <form method="get" action="/statistik" style="display: inline-flex; align-items: center; gap: 0.35rem; margin-left: 0.5rem;">
+      <label for="custom-days" class="meta" style="font-size: 0.82rem;">Eigene Tage:</label>
+      <input type="number" id="custom-days" name="days" min="1" max="365" value="{{ daten.days }}" style="width: 70px; padding: 0.25rem 0.4rem; background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-main); font-family: var(--font-mono); font-size: 0.84rem;">
+      <button type="submit" class="btn-page" style="font-size: 0.82rem;">Anwenden</button>
+    </form>
+  </div>
+</div>
+
+<div class="grid-cards" style="margin-top: 1.25rem;">
+  <!-- Pipeline Funnel -->
+  <div class="card">
+    <div class="card-header">
+      <h2 class="card-title">🌪️ Pipeline-Funnel ({{ daten.days }} Tage)</h2>
+      <span class="badge badge-info">Aktivität</span>
+    </div>
+    <ul class="stat-kv-list">
+      <li class="stat-kv-row">
+        <span class="meta">Erfolgreiche Runs</span>
+        <span class="mono"><strong>{{ daten.funnel.runs_ok }}</strong> / {{ daten.funnel.runs_total }}</span>
+      </li>
+      <li class="stat-kv-row">
+        <span class="meta">Gescannte Tracks</span>
+        <span class="mono"><strong>{{ daten.funnel.tracks_scanned }}</strong></span>
+      </li>
+      <li class="stat-kv-row">
+        <span class="meta">Neue Inbox-Downloads</span>
+        <span class="mono ok"><strong>{{ daten.funnel.tracks_inbox }}</strong></span>
+      </li>
+      <li class="stat-kv-row">
+        <span class="meta">Abgelehnte Tracks</span>
+        <span class="mono warn"><strong>{{ daten.funnel.tracks_rejected }}</strong></span>
+      </li>
+      <li class="stat-kv-row">
+        <span class="meta">Kurations-Feedback</span>
+        <span class="mono">👍 {{ daten.funnel.likes }} &middot; 👎 {{ daten.funnel.dislikes }} &middot; ⏳ {{ daten.funnel.later }}</span>
+      </li>
+    </ul>
+
+    {% if daten.funnel.top_artists %}
+    <h3 style="font-size: 0.95rem; margin: 1.25rem 0 0.5rem;">Top Artists in Inbox</h3>
+    <ul class="stat-kv-list">
+      {% for artist, count in daten.funnel.top_artists %}
+      <li class="stat-kv-row">
+        <span>{{ artist }}</span>
+        <span class="mono"><strong>{{ count }}</strong> Track{% if count != 1 %}s{% endif %}</span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </div>
+
+  <!-- Trending Artists -->
+  <div class="card">
+    <div class="card-header">
+      <h2 class="card-title">📈 Trending Artists</h2>
+      <span class="badge badge-ok">Engagement</span>
+    </div>
+    {% if not daten.trends.artists %}
+    <p class="meta" style="margin: 0.5rem 0 0;">Keine Artist-Trends im Zeitraum erkannt.</p>
+    {% else %}
+    <div class="table-scroll">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Artist</th>
+            <th>Wachstum</th>
+            <th>Zuwachs</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for a in daten.trends.artists %}
+          <tr>
+            <td data-label="Artist"><strong>{{ a.name }}</strong></td>
+            <td data-label="Wachstum" class="mono ok">+{{ (a.growth_rate * 100) | round(1) }} %</td>
+            <td data-label="Zuwachs" class="mono">+{{ a.delta }} Likes</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Top Tracks -->
+  <div class="card">
+    <div class="card-header">
+      <h2 class="card-title">🔥 Top-Tracks nach Wachstum</h2>
+      <span class="badge badge-primary">Tracks</span>
+    </div>
+    {% if not daten.trends.tracks %}
+    <p class="meta" style="margin: 0.5rem 0 0;">Keine Track-Trends im Zeitraum erkannt.</p>
+    {% else %}
+    <div class="table-scroll">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Track</th>
+            <th>Wachstum</th>
+            <th>Zuwachs</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for t in daten.trends.tracks %}
+          <tr>
+            <td data-label="Track">
+              <strong>{{ t.artist }}</strong> &ndash; {{ t.title }}
+            </td>
+            <td data-label="Wachstum" class="mono ok">+{{ (t.growth_rate * 100) | round(1) }} %</td>
+            <td data-label="Zuwachs" class="mono">+{{ t.delta_likes }} Likes</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Trending Tags -->
+  <div class="card">
+    <div class="card-header">
+      <h2 class="card-title">🏷️ Trending Tags</h2>
+      <span class="badge badge-info">Tags</span>
+    </div>
+    {% if not daten.trends.tags %}
+    <p class="meta" style="margin: 0.5rem 0 0;">Keine Tag-Trends im Zeitraum erkannt.</p>
+    {% else %}
+    <div class="table-scroll">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Tag</th>
+            <th>Wachstum</th>
+            <th>Zuwachs</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for tag in daten.trends.tags %}
+          <tr>
+            <td data-label="Tag"><code>{{ tag.tag }}</code></td>
+            <td data-label="Wachstum" class="mono ok">+{{ (tag.growth_rate * 100) | round(1) }} %</td>
+            <td data-label="Zuwachs" class="mono">+{{ tag.delta }} Engagement</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
