@@ -69,6 +69,9 @@
     white-space: nowrap;
   }
   .done-toggle:disabled { opacity: 0.5; cursor: wait; }
+  /* Datei direkt in der Gate-Zeile ablegen (#664). */
+  .gate-upload-label { display: block; font-size: 0.74rem; margin-top: 0.4rem; }
+  .gate-upload { max-width: 14rem; font-size: 0.74rem; }
   #done-status { min-height: 1.2em; margin: 0.5rem 0 0; }
 </style>
 {% endblock %}
@@ -348,6 +351,11 @@
               {% if item.gate_done_at %}wieder öffnen{% else %}erledigt{% endif %}
             </button>
           </span>
+          <div class="gate-upload-cell">
+            <label class="gate-upload-label" for="gate-upload-{{ item.sc_id }}">Datei ablegen</label>
+            <input type="file" class="gate-upload" id="gate-upload-{{ item.sc_id }}"
+                   data-sc-id="{{ item.sc_id }}" accept="audio/*">
+          </div>
           {% endif %}
         </td>
       </tr>
@@ -417,6 +425,41 @@
         status.textContent = "Speichern fehlgeschlagen: Server nicht erreichbar.";
       }
       btn.disabled = false;
+    });
+  });
+
+  // Gate-Datei direkt hochladen (#664): gesendet wird erst bei Dateiauswahl, nie beim
+  // Rendern. Das Gate selbst wird nicht angefasst, die Marke setzt der Server nur nach
+  // erfolgreichem Einordnen; bei einem Fehler bleibt das Gate offen.
+  document.querySelectorAll("input.gate-upload").forEach(function (input) {
+    input.addEventListener("change", async function () {
+      var status = document.getElementById("done-status");
+      if (!input.files || !input.files.length) { return; }
+      var form = new FormData();
+      form.append("files", input.files[0]);
+      form.append("sc_id", input.dataset.scId);
+      input.disabled = true;
+      status.textContent = "Lade hoch …";
+      try {
+        var resp = await fetch("/api/upload-intake", {
+          method: "POST",
+          credentials: "same-origin",
+          body: form
+        });
+        var data = await resp.json().catch(function () { return {}; });
+        if (resp.ok && data.ok) {
+          status.textContent = "hochgeladen, Gate erledigt";
+          location.reload();
+          return;
+        }
+        var first = (data.results && data.results[0]) || {};
+        status.textContent = data.error || first.message
+          || ("Upload fehlgeschlagen (HTTP " + resp.status + ")");
+      } catch (err) {
+        status.textContent = "Upload fehlgeschlagen: Server nicht erreichbar.";
+      }
+      input.value = "";
+      input.disabled = false;
     });
   });
 

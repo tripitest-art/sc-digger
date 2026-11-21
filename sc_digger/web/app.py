@@ -1349,6 +1349,23 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
         all_ok = (ok_count == len(results)) and len(results) > 0
         summary = {"ok": ok_count, "rejected": rej_count, "error": err_count}
 
+        # Gate-Upload aus der Digest-Zeile (#664): Die Marke „erledigt" gibt es nur, wenn
+        # wirklich alles eingeordnet wurde; sonst bleibt das Gate offen und der Nutzer sieht
+        # den Fehler. Ein Fehler beim Markieren darf den bereits eingeordneten Upload nicht
+        # kippen, die Datei liegt dann schon in der Inbox.
+        sc_id_raw = form.get("sc_id")
+        sc_id_text = sc_id_raw.strip() if isinstance(sc_id_raw, str) else ""
+        gate_done = False
+        if all_ok and sc_id_text.isdigit():
+            try:
+                with TrackDB(app.state.cfg["state"]["track_db_path"]) as db:
+                    db.mark_gate_item_done(int(sc_id_text), True)
+                gate_done = True
+            except Exception as exc:  # noqa: BLE001
+                logging.getLogger(__name__).warning(
+                    "Gate %s nach Upload nicht als erledigt markiert: %s", sc_id_text, redact(str(exc))
+                )
+
         if all_ok:
             status_code = 200
         elif ok_count > 0:
@@ -1375,6 +1392,8 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
             "results": results_dicts,
             "summary": summary,
         }
+        if gate_done:
+            response_data["gate_done"] = True
         # Abwärtskompatibilität für alte Tests und Einzelaufrufe
         if results_dicts:
             first = results_dicts[0]
