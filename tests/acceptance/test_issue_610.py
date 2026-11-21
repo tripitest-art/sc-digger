@@ -2,7 +2,7 @@
 from sc_digger import bot
 
 ERWARTET = {
-    "Start": ["/stats"],
+    "Start": ["/heute", "/stats"],
     "Entdecken": ["/kaufliste", "/curator_mining", "/preview", "/preview", "/similar"],
     "Eingang": ["/rejected", "/retry", "/cleanup_inbox"],
     "Bibliothek": ["/is_duplicate", "/not_duplicate"],

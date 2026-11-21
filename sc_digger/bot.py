@@ -42,6 +42,7 @@ from .similarity import SIMILAR_FAILED, build_similar_by_track, build_similar_re
 from .soundcloud import SoundCloudClient, SoundCloudError
 from .stats import calculate_stats, format_stats
 from .web.configedit import save_local
+from .web.today import collect_today
 
 log = logging.getLogger("sc_digger.bot")
 
@@ -69,6 +70,7 @@ SYNC_XML_FAILED = "Rekordbox-XML konnte nicht geschrieben werden, siehe Containe
 # gleich heißen. Die Zeilen sind wortgleich zur früheren flachen Liste; Akzeptanztests prüfen sie.
 HELP_SECTIONS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("Start", (
+        "/heute -> offene Aufgaben: unbewertete Vorschläge, Gates, neu verfügbare Tracks",
         "/stats [Tage] -> Statistiken über Scans, Inbox und Feedback",
     )),
     ("Entdecken", (
@@ -965,6 +967,14 @@ def handle_message(cfg: Config, sc: SoundCloudClient, chat_id: str, text: str) -
             _send_text(cfg, chat_id, "Korrektur fehlgeschlagen, siehe Container-Log.")
         return
 
+    if first_word == "/heute":
+        try:
+            _send_text(cfg, chat_id, heute_reply(cfg, text))
+        except Exception:
+            log.exception("Fehler bei /heute-Befehl")
+            _send_text(cfg, chat_id, "Heute-Liste fehlgeschlagen, siehe Container-Log.")
+        return
+
     if first_word == "/stats":
         try:
             _send_text(cfg, chat_id, stats_reply(cfg, text))
@@ -1324,6 +1334,32 @@ def stats_reply(cfg: Config, text: str) -> str:
 
     stats = calculate_stats(track_db_path, state_db_path, days=days)
     return format_stats(stats)
+
+
+# Einzahl je Eintragsart; die Mehrzahl liefert collect_today im Label.
+HEUTE_SINGULAR = {
+    "unrated": "unbewerteter Vorschlag",
+    "gates": "offenes Gate",
+    "watch": "neu verfügbar",
+}
+
+
+def heute_reply(cfg: Config, text: str) -> str:
+    """Antwort auf '/heute' (Argumente werden ignoriert). Nutzt dieselbe Quelle wie die
+    Heute-Karte des Dashboards (collect_today), damit Telefon und Rechner nie auseinanderlaufen.
+    Wirft nie: ein Fehler wird zu Klartext (Regel 7, nicht still scheitern)."""
+    try:
+        items = collect_today(cfg)
+        zeilen = ["📋 Heute zu tun"]
+        for item in items:
+            label = HEUTE_SINGULAR.get(item.key, item.label) if item.count == 1 else item.label
+            zeilen.append(f"• {item.count} {label} → {item.href}")
+        if not items:
+            zeilen.append("• nichts offen — gute Arbeit.")
+        return "\n".join(zeilen)
+    except Exception:
+        log.exception("Heute-Liste nicht lesbar")
+        return "Heute-Liste nicht lesbar, siehe Container-Log."
 
 
 def cli() -> None:
