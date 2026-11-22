@@ -367,6 +367,10 @@ Gezählt werden Tracks mit Status `archive` oder `adopted`, Gruppen unter `min_t
 
 Im Dashboard liegt die Seite unter „Mehr" → „Kuratoren".
 
+### Kuratoren-Mining im Dashboard
+
+Unter der Übersicht steht ein Block „Kandidaten aus dem Mining“: Profile, die die 👍-Tracks auffällig oft liken oder reposten (dieselbe Auswertung wie `/curator_mining`, Logik in `sc_digger/curator.py`: `candidates_from_counts`, höchstens `MAX_CANDIDATES` = 30, absteigend nach Treffern, bei Gleichstand alphabetisch). Der Knopf „Kuratoren-Mining starten“ löst `POST /api/maintenance/curator-mining` über das Wartungsgerüst aus (Sperre je Aktion). Die letzte Auswertung liegt in `curator-candidates.json` neben der State-DB, geschrieben vom Wartungsauftrag und vom Bot nach `/curator_mining`; `GET /api/kuratoren/kandidaten` liefert sie als `{"candidates": [{"profile", "appearances"}], "checked_at"}` und startet nie eine Netz-Abfrage. Ein Kandidat wird nicht automatisch in `search.followed_users` eingetragen.
+
 ## Smartlists
 
 Regeln über die Bibliothek, ohne sie in `config.yaml` zu schreiben: „BPM 150–160, Camelot 8A/9A, Energie 4–5, Taste ≥ 70 %, Rating ≥ 4, Tag `peak time`". `sc_digger/smartlists.py` trennt Auswertung und Ablage.

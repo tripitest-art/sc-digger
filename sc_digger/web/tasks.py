@@ -221,6 +221,15 @@ def default_runners(cfg: Config) -> dict[str, Callable[[], str]]:
             f"{len(summary.adopted_tracks)} übernommen"
         )
 
+    def curator_mining() -> str:
+        from ..bot import run_curator_mining
+        from ..curator import candidates_file, read_candidates
+        from ..soundcloud import SoundCloudClient
+
+        run_curator_mining(SoundCloudClient(), cfg)
+        count = len(read_candidates(candidates_file(cfg.raw))["candidates"])
+        return f"Kuratoren-Mining fertig: {count} Kandidat(en)"
+
     return {
         "scout": scout,
         "watch": watch,
@@ -231,6 +240,7 @@ def default_runners(cfg: Config) -> dict[str, Callable[[], str]]:
         "requeue": requeue_runner,
         "backup": backup_runner,
         "audit": audit,
+        "curator-mining": curator_mining,
     }
 
 
@@ -246,4 +256,5 @@ def action_labels() -> dict[str, str]:
         "requeue": "Hängende Jobs zurücksetzen",
         "backup": "Sicherung erstellen",
         "audit": "Sammlungs-Audit starten",
+        "curator-mining": "Kuratoren-Mining starten",
     }

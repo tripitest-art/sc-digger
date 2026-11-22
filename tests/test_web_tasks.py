@@ -106,6 +106,7 @@ def test_standard_aktionen_und_labels(tmp_path: Path):
         "requeue",
         "backup",
         "audit",
+        "curator-mining",
     }
     assert set(runners) == erwartet == set(action_labels())
 

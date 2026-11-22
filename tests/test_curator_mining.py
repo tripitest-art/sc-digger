@@ -1,4 +1,5 @@
 """Tests für Curator-Mining: Liker/Reposter-Abfrage, DB-Abfragen und Bot-Befehl."""
+import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -6,9 +7,16 @@ import pytest
 import requests
 
 from sc_digger import bot
+from sc_digger.curator import (
+    MAX_CANDIDATES,
+    candidates_from_counts,
+    read_candidates,
+    write_candidates,
+)
 from sc_digger.db import TrackDB
 from sc_digger.models import Config
 from sc_digger.soundcloud import SoundCloudClient, SoundCloudError
+from sc_digger.web.tasks import action_labels, default_runners
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -16,7 +24,9 @@ ROOT = Path(__file__).resolve().parents[1]
 @pytest.fixture
 def cfg(tmp_path):
     c = Config.load(ROOT / "config.yaml")
-    c.raw["state"] = {**c["state"], "track_db_path": str(tmp_path / "tracks.sqlite")}
+    # db_path ebenfalls in tmp_path: run_curator_mining legt dort curator-candidates.json ab (#659).
+    c.raw["state"] = {**c["state"], "track_db_path": str(tmp_path / "tracks.sqlite"),
+                      "db_path": str(tmp_path / "seen.sqlite")}
     c.raw["curator_mining"] = {"min_appearances": 2, "max_likers_per_track": 50}
     c.raw["search"] = {
         **c["search"],
@@ -275,3 +285,54 @@ def test_handle_message_curator_mining_error(cfg, monkeypatch):
     assert calls[0][1]["chat_id"] == "12345"
     assert "Curator-Mining fehlgeschlagen, siehe Container-Log." in calls[0][1]["text"]
 
+
+# ================================================================= Kernlogik und Ablage (#659)
+
+
+def test_leeres_mapping():
+    assert candidates_from_counts({}) == []
+
+
+def test_gleichstand_alphabetisch():
+    assert candidates_from_counts({"zeta": 3, "alpha": 3, "mitte": 4}) == [
+        ("mitte", 4), ("alpha", 3), ("zeta", 3)]
+
+
+def test_limit_und_standard():
+    counts = {f"p{i:02d}": 5 for i in range(40)}
+    assert len(candidates_from_counts(counts)) == MAX_CANDIDATES == 30
+    assert candidates_from_counts(counts, limit=2) == [("p00", 5), ("p01", 5)]
+
+
+def test_min_appearances_grenze():
+    assert candidates_from_counts({"a": 2, "b": 1}, min_appearances=2) == [("a", 2)]
+
+
+def test_read_candidates_fehlende_und_kaputte_datei(tmp_path: Path):
+    leer = {"candidates": [], "checked_at": None}
+    assert read_candidates(tmp_path / "gibt-es-nicht.json") == leer
+    kaputt = tmp_path / "kaputt.json"
+    kaputt.write_text("{nicht json", encoding="utf-8")
+    assert read_candidates(kaputt) == leer
+    falsch = tmp_path / "falsch.json"
+    falsch.write_text(json.dumps([1, 2]), encoding="utf-8")
+    assert read_candidates(falsch) == leer
+
+
+def test_write_und_read_roundtrip(tmp_path: Path):
+    path = tmp_path / "sub" / "curator-candidates.json"
+    write_candidates(path, [("a", 3), ("b", 2)])
+
+    result = read_candidates(path)
+
+    assert result["candidates"] == [
+        {"profile": "a", "appearances": 3}, {"profile": "b", "appearances": 2}]
+    assert isinstance(result["checked_at"], str)
+
+
+def test_wartungsaktion_registriert(tmp_path: Path):
+    cfg = Config(raw={"state": {"db_path": str(tmp_path / "seen.sqlite"),
+                                "track_db_path": str(tmp_path / "tracks.sqlite")}})
+
+    assert "curator-mining" in default_runners(cfg)
+    assert "curator-mining" in action_labels()

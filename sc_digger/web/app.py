@@ -43,7 +43,7 @@ from starlette.concurrency import run_in_threadpool
 from starlette.routing import request_response
 
 from .. import rekordbox
-from ..curator import curator_overview
+from ..curator import candidates_file, curator_overview, read_candidates
 from ..db import FEEDBACK_VALUES, JobType, TrackDB
 from ..dj_export import Playlist, order_harmonic
 from ..embeddings import apply_embedding_result
@@ -1194,6 +1194,11 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
             for e in entries
         ])
 
+    @app.get("/api/kuratoren/kandidaten")
+    def api_kuratoren_kandidaten(request: Request):
+        # Nur die gespeicherte Auswertung lesen; das Mining selbst läuft über das Wartungsgerüst.
+        return JSONResponse(read_candidates(candidates_file(app.state.cfg)))
+
     @app.get("/kuratoren", response_class=HTMLResponse)
     def kuratoren_page(request: Request):
         params = request.query_params
@@ -1213,6 +1218,9 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
             entries=entries,
             min_tracks=min_tracks,
             limit=limit,
+            mining=read_candidates(candidates_file(app.state.cfg)),
+            mining_state=read_task_state(_tasks_path(), "curator-mining"),
+            mining_label=action_labels().get("curator-mining", "Kuratoren-Mining starten"),
         ))
 
     @app.post("/api/retry")
