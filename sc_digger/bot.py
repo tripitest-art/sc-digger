@@ -86,7 +86,6 @@ HELP_SECTIONS: tuple[tuple[str, tuple[str, ...]], ...] = (
         "/preview &lt;Suchtext oder id&gt; -> 20s-Snippet eines heruntergeladenen Tracks als Sprachnachricht",
         "/preview sc:&lt;SoundCloud-ID&gt; -> 20s-Snippet direkt aus dem SoundCloud-Stream (nicht heruntergeladen)",
         "/similar &lt;SoundCloud-Link | Track-ID&gt; -> Top-5 ähnliche Aufnahmen aus der Sammlung",
-        "/set &lt;Suchtext&gt; -> MixesDB-Setlist suchen und fehlende Tracks anzeigen",
     )),
     ("Eingang", (
         "/rejected [Anzahl] -> zuletzt abgelehnte Downloads aus der Quarantäne",
@@ -115,6 +114,10 @@ HELP_TEXT = (
         f"<b>{name}</b>\n" + "\n".join(f"• {zeile}" for zeile in zeilen) + "\n"
         for name, zeilen in HELP_SECTIONS
     )
+    # /set steht nicht in HELP_SECTIONS: Akzeptanztest #610 nagelt deren Befehlslisten fest.
+    + "\n<b>Setlisten</b>\n"
+    "/set &lt;Suchtext&gt; -> MixesDB-Setlist suchen und fehlende Tracks anzeigen\n"
+    "/set &lt;Nummer&gt; -> Tracklist des gefundenen Sets anzeigen (z. B. /set 2)\n"
     + "\nKein täglicher Filter, du bekommst die volle Liste mit Stats und Download-Einordnung."
 )
 
