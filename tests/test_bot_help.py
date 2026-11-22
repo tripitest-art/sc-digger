@@ -112,5 +112,8 @@ def test_jeder_befehl_aus_handle_message_steht_in_der_hilfe():
     befehle |= {b for tupel in re.findall(r'first_word in \(([^)]*)\)', quelle)
                 for b in re.findall(r'"(/[a-z_-]+)"', tupel)}
     befehle -= {"/start", "/help", "/curator-mining"}
-    zeilen = [z.split()[0] for _, gruppe in bot.HELP_SECTIONS for z in gruppe]
+    # Befehle dürfen auch außerhalb von HELP_SECTIONS stehen (z. B. /set, Akzeptanztest #610
+    # nagelt die Bereichslisten fest), deshalb wird der Hilfetext selbst durchsucht.
+    zeilen = [m.group(1) for m in (re.match(r"^(?:•\s*)?(/\S+)", z.strip())
+                                  for z in bot.HELP_TEXT.splitlines()) if m]
     assert befehle <= set(zeilen), befehle - set(zeilen)

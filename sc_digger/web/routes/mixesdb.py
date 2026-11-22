@@ -14,31 +14,13 @@ from fastapi import APIRouter, Request
 from starlette.concurrency import run_in_threadpool
 
 from ... import mixesdb
+from ...mixesdb import collection_names
 from ..common import _render
 from ..database import _connect_readonly, _table_exists
 
 router = APIRouter()
 
 MAX_TREFFER = 10
-
-
-def collection_names(db_path: Path | str) -> list[tuple[str | None, str]]:
-    """Artist/Titel aller Tracks mit Status ``archive`` oder ``adopted``.
-
-    Rein lesend: fehlende Datei, fehlende Tabelle und ``sqlite3.Error`` ergeben ``[]``.
-    """
-    try:
-        with closing(_connect_readonly(db_path)) as db:
-            if not _table_exists(db, "tracks"):
-                return []
-            rows = db.execute(
-                "SELECT artist, title FROM tracks "
-                "WHERE status IN ('archive', 'adopted') AND title IS NOT NULL "
-                "ORDER BY id ASC"
-            ).fetchall()
-    except (sqlite3.Error, OSError):
-        return []
-    return [(row["artist"] or None, row["title"]) for row in rows]
 
 
 def _seite_from_query(seite: str) -> str:

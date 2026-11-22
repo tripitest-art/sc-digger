@@ -197,6 +197,7 @@ Im Dashboard liegt die Seite unter `/mixesdb` (Einstieg über die Karte auf der 
 Suchfeld für Set-Seiten, Trefferliste und die Tracklist als Tabelle mit Position, Marke
 (✓ vorhanden, ✗ fehlt, ? im Wiki nicht benannt), Label und Katalog. Anmeldung wie das übrige
 Dashboard, rein lesend, keine Zwischenspeicherung der MixesDB-Antworten.
+Im Telegram-Bot steht dieselbe Abfrage über `/set <Suchtext>` (Suche) und `/set <Nummer>` (fehlende Tracks des gewählten Treffers mit Label und Katalognummer) bereit.
 
 ```bash
 # Seiten zu einem Set suchen:
