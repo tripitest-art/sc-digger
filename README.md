@@ -53,6 +53,7 @@
 | Betrieb | Übernommen-Erkennung per Fingerprint (`audit --check-adopted`) | vorhanden | [Sammlungs-Audit](docs/funktionen.md#sammlungs-audit) |
 | Web | Statusseite mit Tagesablauf, Statistik & Trend-Radar, Digest-Explorer, Kaufliste, Quarantäne, Konfigeditor | vorhanden | [Web-Dashboard](docs/funktionen.md#web-dashboard) |
 | Web | Track-Explorer mit Vorhören, Ähnlichkeitssuche und Taste-Filter | vorhanden | [Web-Dashboard](docs/funktionen.md#web-dashboard) |
+| Web | Schnellsuche über Navigation und direkte Track-Treffer (Taste /) | vorhanden | [Web-Dashboard](docs/funktionen.md#web-dashboard) |
 | Web | Freie Tags im Track-Explorer setzen und filtern | vorhanden | [Freie Tags](docs/funktionen.md#freie-tags) |
 | Web | Harmonic Mix Finder, Set-Builder (M3U8/Rekordbox-XML), URL-Scanner | vorhanden | [Web-Dashboard](docs/funktionen.md#web-dashboard) |
 | Web | Upload & Intake, Duplikat- und Inbox-Cleanup | vorhanden | [Web-Dashboard](docs/funktionen.md#web-dashboard) |

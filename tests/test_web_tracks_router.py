@@ -139,6 +139,7 @@ def test_create_app_behaelt_alle_routen_und_reihenfolge(tmp_path: Path):
         ("GET", "/api/jobs/{job_id}/audio"),
         ("GET", "/api/database/overview"),
         ("GET", "/api/tracks"),
+        ("GET", "/api/search"),
         ("GET", "/api/tracks/{track_id}/similar"),
         ("GET", "/api/audio/{track_id}"),
         ("POST", "/api/tracks/{track_id}/tags"),

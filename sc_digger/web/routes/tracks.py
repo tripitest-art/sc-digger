@@ -141,6 +141,45 @@ def api_tracks(request: Request):
     return JSONResponse(result.to_dict())
 
 
+# Schnellsuche mit direkten Track-Treffern (Issue #678)
+@router.get("/api/search")
+def api_search(request: Request) -> JSONResponse:
+    """Schnellsuche nach Tracks über artist/title (Issue #678).
+
+    Liefert höchstens 5 Treffer als {"tracks": [{"label": "<Artist> – <Titel>", "href": "<Ziel>"}]}.
+    Bei weniger als zwei Zeichen oder keinem Treffer: {"tracks": []}.
+    """
+    raw_q = request.query_params.get("q") or ""
+    q = raw_q.strip()
+    if len(q) < 2:
+        return JSONResponse({"tracks": []})
+
+    cfg = request.app.state.cfg
+    result = query_tracks(
+        cfg["state"]["track_db_path"],
+        search=q,
+        limit=5,
+    )
+
+    tracks: list[dict[str, str]] = []
+    for item in result.items[:5]:
+        artist = str(item.get("artist") or "").strip()
+        title = str(item.get("title") or "").strip()
+        if artist and title:
+            label = f"{artist} \u2013 {title}"
+        else:
+            label = artist or title
+        sc_id = item.get("sc_id")
+        if sc_id is not None:
+            href = f"/track/sc/{sc_id}"
+        else:
+            search_text = f"{artist} {title}".strip() if (artist and title) else (artist or title)
+            href = f"/tracks?{urlencode({'q': search_text})}"
+        tracks.append({"label": label, "href": href})
+
+    return JSONResponse({"tracks": tracks})
+
+
 # Klangliche Ähnlichkeitssuche im Track-Explorer (Issue #493)
 @router.get("/api/tracks/{track_id}/similar")
 def api_track_similar(request: Request, track_id: int):
