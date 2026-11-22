@@ -34,6 +34,11 @@ STEP_LABELS: dict[str, str] = {
 
 FEEDBACK_LABELS = {"like": "gefällt", "dislike": "passt nicht", "later": "später"}
 
+OVERRIDE_LABELS = {
+    "already_in_collection": "bereits in Sammlung",
+    "not_duplicate": "kein Duplikat",
+}
+
 
 @dataclass(frozen=True)
 class LifeStep:
@@ -52,6 +57,7 @@ class TrackLife:
     steps: tuple[LifeStep, ...]
     # id der gewählten tracks-Zeile; die Detailseite braucht sie für den Retry-Knopf (#631).
     track_id: int | None = None
+    override: str | None = None      # "already_in_collection" | "not_duplicate" | None
 
     @property
     def current(self) -> str:
@@ -192,6 +198,18 @@ def _collect(cfg: Config, sc_id: int) -> TrackLife | None:
             _rows(tracks, "SELECT * FROM tracks WHERE sc_id = ?", (sc_id,)),
             _rows(tracks, "SELECT * FROM tracks WHERE instr(path, ?) > 0", (f"[{sc_id}]",)),
         )
+        override_rows = _rows(
+            tracks,
+            "SELECT sc_id, override_type, updated_at FROM match_overrides WHERE sc_id = ?",
+            (sc_id,),
+        )
+        if not override_rows:
+            override_rows = _rows(
+                tracks,
+                "SELECT sc_id, override_type FROM match_overrides WHERE sc_id = ?",
+                (sc_id,),
+            )
+        override_row = next(iter(override_rows), None)
     finally:
         for conn in (state, tracks):
             if conn is not None:
@@ -223,12 +241,29 @@ def _collect(cfg: Config, sc_id: int) -> TrackLife | None:
         if adopted_at:
             reached["adopted"] = (adopted_at, None)
 
-    steps = tuple(
+    override_val: str | None = None
+    if override_row is not None:
+        override_val = _text(override_row.get("override_type"))
+        if override_val:
+            label = OVERRIDE_LABELS.get(override_val, override_val)
+            reached["override"] = (_text(override_row.get("updated_at")), label)
+
+    steps = [
         LifeStep(key=key, label=label, at=reached[key][0], detail=reached[key][1])
         for key, label in STEP_LABELS.items()
         if key in reached
-    )
-    if not steps:
+    ]
+    if "override" in reached:
+        steps.append(
+            LifeStep(
+                key="override",
+                label="Handkorrektur",
+                at=reached["override"][0],
+                detail=reached["override"][1],
+            )
+        )
+    steps_tuple = tuple(steps)
+    if not steps_tuple:
         return None
 
     artist, title = None, None
@@ -251,8 +286,9 @@ def _collect(cfg: Config, sc_id: int) -> TrackLife | None:
         artist=artist,
         title=title or f"Track {sc_id}",
         url=url,
-        steps=steps,
+        steps=steps_tuple,
         track_id=_row_id(row),
+        override=override_val,
     )
 
 

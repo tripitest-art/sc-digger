@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_components.html" import status_badge %}
 
 {% block title %}{% if life %}{% if life.artist %}{{ life.artist }} – {% endif %}{{ life.title }}{% else %}Track unbekannt{% endif %} – sc-digger{% endblock %}
 
@@ -98,7 +99,9 @@
     <li data-step="{{ step.key }}"{% if is_current %} class="is-current" aria-current="step"{% endif %}>
       <span class="step-label">{{ step.label }}</span>
       {% if step.at %}<span class="step-at">{{ step.at }}</span>{% endif %}
-      {% if step.detail %}
+      {% if step.key == "override" and life.override %}
+      <span class="step-detail">{{ status_badge(step.detail) }}</span>
+      {% elif step.detail %}
       {% set link = safe_link(step.detail) %}
       <span class="step-detail">{% if link %}<a href="{{ link }}" target="_blank" rel="noopener">{{ step.detail }}</a>{% else %}{{ step.detail }}{% endif %}</span>
       {% endif %}
