@@ -59,7 +59,7 @@
 | Web | Upload & Intake, Duplikat- und Inbox-Cleanup | vorhanden | [Web-Dashboard](docs/funktionen.md#web-dashboard) |
 | Web | Wartung per Knopf auf der Statusseite: Scout, Verfügbarkeits-Wächter, Taste-Training, Backfills (Energie, Artist, Embeddings), Requeue und Sicherung | vorhanden | [Web-Dashboard](docs/funktionen.md#web-dashboard) |
 | Web | Sammlungs-Audit als Seite `/audit`: Status, Optionen, Wartungs-Knopf und letzter Bericht | vorhanden | [Sammlungs-Audit](docs/funktionen.md#sammlungs-audit) |
-| Web | Kuratoren-Übersicht: welche Artists die Sammlung tragen, mit Rating-Anteil und Ø BPM | vorhanden | [Kuratoren](docs/funktionen.md#kuratoren) |
+| Web | Kuratoren-Übersicht: welche Artists die Sammlung tragen, mit Rating-Anteil und Ø BPM; Kandidaten-Block mit Startknopf für das Kuratoren-Mining (Profile, die 👍-Tracks liken) | vorhanden | [Kuratoren](docs/funktionen.md#kuratoren) |
 | Daten | Freie Tags je Track (`track_tags`) und Smartlists mit Regel-Engine und Web-Export (`/smartlists`) | vorhanden | [Smartlists](docs/funktionen.md#smartlists) |
 | KI | Taste-Score aus Audio-Embeddings und Feedback | vorhanden | [Taste-Score](docs/funktionen.md#taste-score) |
 | KI | GPU-Worker-Job-Queue für Cues und Embeddings | vorhanden | [GPU-Worker](docs/funktionen.md#gpu-worker-und-job-queue) |

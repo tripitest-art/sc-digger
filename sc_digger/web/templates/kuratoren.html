@@ -48,6 +48,74 @@
   </p>
 </div>
 
+<div class="card" style="margin-top: 1.25rem;" id="mining-card">
+  <h2 class="card-title">🔍 Kandidaten aus dem Mining</h2>
+  <p class="meta" style="margin-top: 0;">
+    Profile, die deine 👍-Tracks auffällig oft liken oder reposten. Eintragen in
+    <code>search.followed_users</code> per Telegram-Knopf oder im Konfigeditor.
+    {% if mining.checked_at %}Letzte Auswertung: {{ mining.checked_at }}.{% else %}Noch keine Auswertung.{% endif %}
+  </p>
+  <div>
+    <button type="button" class="btn-page" data-action="curator-mining">{{ mining_label }}</button>
+    <span class="meta meta-sm" id="maintenance-curator-mining" role="status" aria-live="polite" style="margin-left: 0.5rem;">
+      {% if mining_state %}
+        {{ mining_state.state }}
+        {% if mining_state.finished_at %} &middot; {{ mining_state.finished_at }}
+        {% elif mining_state.started_at %} &middot; seit {{ mining_state.started_at }}
+        {% endif %}
+        {% if mining_state.message %} &middot; {{ mining_state.message }}{% endif %}
+      {% endif %}
+    </span>
+  </div>
+  {% if mining.candidates %}
+  <div class="table-scroll" style="margin-top: 0.75rem;">
+    <table class="data-table">
+      <thead><tr><th>Profil</th><th>Treffer</th></tr></thead>
+      <tbody>
+        {% for c in mining.candidates %}
+        <tr>
+          <td data-label="Profil"><a href="https://soundcloud.com/{{ c.profile | urlencode }}" target="_blank" rel="noopener noreferrer">{{ c.profile }}</a></td>
+          <td data-label="Treffer">{{ c.appearances }}×</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+<script>
+(function () {
+  document.querySelectorAll("button[data-action]").forEach(function (button) {
+    const action = button.dataset.action;
+    const statusEl = document.getElementById('maintenance-' + action);
+    if (!statusEl) return;
+    button.addEventListener('click', async function () {
+      button.disabled = true;
+      statusEl.textContent = 'Starte …';
+      try {
+        const resp = await fetch('/api/maintenance/' + encodeURIComponent(action), {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'}
+        });
+        let data = {};
+        try { data = await resp.json(); } catch (e) { data = {}; }
+        if (resp.status === 202) {
+          statusEl.textContent = 'läuft … (Seite später neu laden)';
+        } else if (resp.status === 409) {
+          statusEl.textContent = 'läuft bereits';
+        } else {
+          statusEl.textContent = 'Fehler: ' + (data.error || resp.status);
+        }
+      } catch (e) {
+        statusEl.textContent = 'Netzwerkfehler';
+      } finally {
+        button.disabled = false;
+      }
+    });
+  });
+})();
+</script>
+
 {% if not entries %}
 <div class="card" style="margin-top: 1rem; text-align: center; padding: 2.5rem 1rem;">
   <p class="meta" style="margin: 0; font-size: 0.95rem;">

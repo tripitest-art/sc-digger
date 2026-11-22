@@ -6,13 +6,69 @@ mittleres Tempo und sortiert Tracks nach BPM aufsteigend.
 """
 from __future__ import annotations
 
+import json
+import os
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 from .db import TrackRecord
 
 if TYPE_CHECKING:
     from .db import TrackDB
+
+# Höchstzahl der Mining-Kandidaten in Bot-Text, Datei und Dashboard.
+MAX_CANDIDATES = 30
+
+
+def candidates_from_counts(counts: Mapping[str, int], *, min_appearances: int = 2,
+                           limit: int = MAX_CANDIDATES) -> list[tuple[str, int]]:
+    """[(profil, anzahl)] ab min_appearances Treffern, absteigend nach Anzahl, bei Gleichstand
+    alphabetisch nach Profil; höchstens `limit` Einträge. [] bei leerem Mapping."""
+    picked = [(profile, count) for profile, count in counts.items() if count >= min_appearances]
+    picked.sort(key=lambda item: (-item[1], item[0]))
+    return picked[:max(0, limit)]
+
+
+def read_candidates(candidates_path: str | Path) -> dict[str, Any]:
+    """{"candidates": [{"profile": str, "appearances": int}], "checked_at": str|None}.
+    Fehlende oder unlesbare Datei -> {"candidates": [], "checked_at": None}."""
+    empty: dict[str, Any] = {"candidates": [], "checked_at": None}
+    try:
+        data = json.loads(Path(candidates_path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return empty
+    if not isinstance(data, dict) or not isinstance(data.get("candidates"), list):
+        return empty
+    candidates = [
+        {"profile": str(item["profile"]), "appearances": int(item["appearances"])}
+        for item in data["candidates"]
+        if isinstance(item, dict) and isinstance(item.get("profile"), str)
+        and isinstance(item.get("appearances"), int) and not isinstance(item.get("appearances"), bool)
+    ]
+    checked_at = data.get("checked_at")
+    return {"candidates": candidates,
+            "checked_at": checked_at if isinstance(checked_at, str) else None}
+
+
+def write_candidates(candidates_path: str | Path, candidates: list[tuple[str, int]]) -> None:
+    """Schreibt die letzte Auswertung atomar (gleiche Form, die `read_candidates` liest)."""
+    path = Path(candidates_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    doc = {
+        "candidates": [{"profile": p, "appearances": n} for p, n in candidates],
+        "checked_at": datetime.now(timezone.utc).replace(tzinfo=None).isoformat(timespec="seconds"),
+    }
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(json.dumps(doc, ensure_ascii=False, indent=2), encoding="utf-8")
+    os.replace(tmp, path)
+
+
+def candidates_file(cfg: Any) -> Path:
+    """Ablage der letzten Auswertung: neben der State-DB."""
+    return Path(cfg["state"]["db_path"]).parent / "curator-candidates.json"
 
 
 @dataclass(frozen=True)

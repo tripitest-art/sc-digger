@@ -27,6 +27,7 @@ from urllib.parse import urlsplit
 
 import yaml
 
+from .curator import MAX_CANDIDATES, candidates_file, candidates_from_counts, write_candidates
 from .db import TrackDB
 from .harmonic import compatible_keys, find_mix_candidates, format_mix_list
 from .main import run_link
@@ -329,13 +330,14 @@ def run_curator_mining(sc, cfg: Config) -> str:
             if p_lower not in usernames:
                 usernames[p_lower] = u.get("username") or p_clean
 
-    candidates = [
-        (p_lower, count)
-        for p_lower, count in counter.most_common()
-        if count >= min_appearances
-    ]
+    candidates = candidates_from_counts(counter, min_appearances=min_appearances,
+                                        limit=len(counter))
+    try:
+        write_candidates(candidates_file(cfg.raw), candidates[:MAX_CANDIDATES])
+    except (OSError, KeyError, TypeError):
+        log.warning("Curator-Kandidaten konnten nicht gespeichert werden")
 
-    max_display = 30
+    max_display = MAX_CANDIDATES
     sections: list[str] = []
     button_candidates: list[tuple[str, str, int]] = []
 

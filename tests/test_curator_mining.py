@@ -1,277 +1,64 @@
-"""Tests für Curator-Mining: Liker/Reposter-Abfrage, DB-Abfragen und Bot-Befehl."""
+"""Kuratoren-Mining: Kernlogik, Ablage der Auswertung und Wartungsaktion (Issue #659)."""
+from __future__ import annotations
+
+import json
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
-import pytest
-import requests
+from sc_digger.curator import (
+    MAX_CANDIDATES,
+    candidates_from_counts,
+    read_candidates,
+    write_candidates,
+)
+from sc_digger.web.tasks import action_labels, default_runners
 
-from sc_digger import bot
-from sc_digger.db import TrackDB
-from sc_digger.models import Config
-from sc_digger.soundcloud import SoundCloudClient, SoundCloudError
 
-ROOT = Path(__file__).resolve().parents[1]
+def test_leeres_mapping():
+    assert candidates_from_counts({}) == []
 
 
-@pytest.fixture
-def cfg(tmp_path):
-    c = Config.load(ROOT / "config.yaml")
-    c.raw["state"] = {**c["state"], "track_db_path": str(tmp_path / "tracks.sqlite")}
-    c.raw["curator_mining"] = {"min_appearances": 2, "max_likers_per_track": 50}
-    c.raw["search"] = {
-        **c["search"],
-        "reference_accounts": ["https://soundcloud.com/ref_dj_url", "bare_ref_dj"],
-        "followed_users": ["followed_producer"],
-    }
-    return c
+def test_gleichstand_alphabetisch():
+    assert candidates_from_counts({"zeta": 3, "alpha": 3, "mitte": 4}) == [
+        ("mitte", 4), ("alpha", 3), ("zeta", 3)]
 
 
-# ================================================================= SoundCloudClient tests
+def test_limit_und_standard():
+    counts = {f"p{i:02d}": 5 for i in range(40)}
+    assert len(candidates_from_counts(counts)) == MAX_CANDIDATES == 30
+    assert candidates_from_counts(counts, limit=2) == [("p00", 5), ("p01", 5)]
 
-def test_get_likers_and_reposters_success():
-    sc = SoundCloudClient()
-    fake_collection = [
-        {"id": 1, "permalink": "dj_alpha", "username": "DJ Alpha"},
-        {"user": {"id": 2, "permalink": "dj_beta", "username": "DJ Beta"}},
-    ]
-    with patch.object(sc, "_paginate", return_value=iter(fake_collection)):
-        likers = sc.get_likers(12345, max_results=10)
-        assert len(likers) == 2
-        assert likers[0] == {"id": 1, "permalink": "dj_alpha", "username": "DJ Alpha"}
-        assert likers[1] == {"id": 2, "permalink": "dj_beta", "username": "DJ Beta"}
-
-    with patch.object(sc, "_paginate", return_value=iter(fake_collection)):
-        reposters = sc.get_reposters(12345, max_results=10)
-        assert len(reposters) == 2
-        assert reposters[0] == {"id": 1, "permalink": "dj_alpha", "username": "DJ Alpha"}
-        assert reposters[1] == {"id": 2, "permalink": "dj_beta", "username": "DJ Beta"}
-
-
-def test_get_likers_and_reposters_api_error_returns_empty_list():
-    sc = SoundCloudClient()
-
-    def boom(*args, **kwargs):
-        raise SoundCloudError("API down")
-
-    with patch.object(sc, "_paginate", side_effect=boom):
-        assert sc.get_likers(12345) == []
-        assert sc.get_reposters(12345) == []
-
-    def request_boom(*args, **kwargs):
-        raise requests.RequestException("Network failed")
-
-    with patch.object(sc, "_paginate", side_effect=request_boom):
-        assert sc.get_likers(12345) == []
-        assert sc.get_reposters(12345) == []
-
-
-def test_get_likers_max_results_zero_or_negative():
-    sc = SoundCloudClient()
-    assert sc.get_likers(12345, max_results=0) == []
-    assert sc.get_likers(12345, max_results=-5) == []
-    assert sc.get_reposters(12345, max_results=0) == []
-    assert sc.get_reposters(12345, max_results=-5) == []
-
-
-# ================================================================= DB tests
-
-def test_get_liked_sc_ids_empty(tmp_path):
-    with TrackDB(str(tmp_path / "t.sqlite")) as db:
-        assert db.get_liked_sc_ids() == []
-
-
-def test_get_liked_sc_ids_status_change(tmp_path):
-    with TrackDB(str(tmp_path / "t.sqlite")) as db:
-        db.set_sc_feedback(100, "like", "https://soundcloud.com/t/100")
-        db.set_sc_feedback(200, "later", "https://soundcloud.com/t/200")
-        assert db.get_liked_sc_ids() == [100]
-
-        # Status auf dislike ändern -> nicht mehr in liked
-        db.set_sc_feedback(100, "dislike")
-        assert db.get_liked_sc_ids() == []
-
-
-# ================================================================= run_curator_mining tests
-
-def test_curator_mining_combines_likers_and_reposters(cfg):
-    with TrackDB(cfg["state"]["track_db_path"]) as db:
-        db.set_sc_feedback(101, "like")
-        db.set_sc_feedback(102, "like")
-
-    class FakeSC:
-        def get_likers(self, track_id, max_results=50):
-            if track_id == 101:
-                return [{"id": 1, "permalink": "dj_repost_and_like", "username": "Combo DJ"}]
-            return []
-
-        def get_reposters(self, track_id, max_results=50):
-            if track_id == 102:
-                return [{"id": 1, "permalink": "dj_repost_and_like", "username": "Combo DJ"}]
-            return []
-
-    text = bot.run_curator_mining(FakeSC(), cfg)
-    assert "Combo DJ" in text
-    assert "soundcloud.com/dj_repost_and_like" in text
-    assert "2× gesehen" in text
-
-
-def test_curator_mining_sorts_by_appearances_descending(cfg):
-    with TrackDB(cfg["state"]["track_db_path"]) as db:
-        for tid in [1, 2, 3]:
-            db.set_sc_feedback(tid, "like")
-
-    class FakeSC:
-        def get_likers(self, track_id, max_results=50):
-            # top_curator: 3x, regular_curator: 2x
-            if track_id == 1:
-                return [
-                    {"id": 1, "permalink": "top_curator", "username": "Top Curator"},
-                    {"id": 2, "permalink": "regular_curator", "username": "Regular Curator"},
-                ]
-            elif track_id == 2:
-                return [
-                    {"id": 1, "permalink": "top_curator", "username": "Top Curator"},
-                    {"id": 2, "permalink": "regular_curator", "username": "Regular Curator"},
-                ]
-            else:
-                return [
-                    {"id": 1, "permalink": "top_curator", "username": "Top Curator"},
-                ]
-
-        def get_reposters(self, track_id, max_results=50):
-            return []
-
-    text = bot.run_curator_mining(FakeSC(), cfg)
-    lines = text.strip().split("\n")
-    top_pos = next(i for i, l in enumerate(lines) if "Top Curator" in l)
-    reg_pos = next(i for i, l in enumerate(lines) if "Regular Curator" in l)
-    assert top_pos < reg_pos
-    assert "3× gesehen" in lines[top_pos]
-    assert "2× gesehen" in lines[reg_pos]
-
-
-def test_curator_mining_missing_username_falls_back_to_permalink(cfg):
-    with TrackDB(cfg["state"]["track_db_path"]) as db:
-        db.set_sc_feedback(1, "like")
-        db.set_sc_feedback(2, "like")
-
-    class FakeSC:
-        def get_likers(self, track_id, max_results=50):
-            return [{"id": 5, "permalink": "noname_dj", "username": None}]
-
-        def get_reposters(self, track_id, max_results=50):
-            return []
-
-    text = bot.run_curator_mining(FakeSC(), cfg)
-    assert "noname_dj (soundcloud.com/noname_dj) – 2× gesehen" in text
-
-
-def test_curator_mining_no_track_db_path():
-    empty_cfg = Config({"state": {}})
-    sc = MagicMock()
-    text = bot.run_curator_mining(sc, empty_cfg)
-    assert text == "Keine neuen Curator-Vorschläge."
-
-
-def test_curator_mining_all_filtered_returns_empty_notice(cfg):
-    with TrackDB(cfg["state"]["track_db_path"]) as db:
-        db.set_sc_feedback(1, "like")
-        db.set_sc_feedback(2, "like")
-
-    class FakeSC:
-        def get_likers(self, track_id, max_results=50):
-            # ref_dj_url and followed_producer are in search configuration
-            return [
-                {"id": 1, "permalink": "ref_dj_url", "username": "Ref DJ"},
-                {"id": 2, "permalink": "followed_producer", "username": "Followed"},
-            ]
-
-        def get_reposters(self, track_id, max_results=50):
-            return []
-
-    text = bot.run_curator_mining(FakeSC(), cfg)
-    assert text == "Keine neuen Curator-Vorschläge."
-
-
-# ================================================================= Bot handler tests
-
-def test_handle_message_curator_mining_command(cfg, monkeypatch):
-    calls = []
-
-    def fake_telegram_call(token, method, **kw):
-        calls.append((method, kw.get("json")))
-        return {"ok": True, "result": True}
-
-    monkeypatch.setattr(bot, "telegram_call", fake_telegram_call)
-    monkeypatch.setattr(bot, "run_curator_mining", lambda sc, c: "🔍 Curator-Vorschläge\n\n• Test")
-
-    sc = MagicMock()
-
-    # /curator-mining
-    bot.handle_message(cfg, sc, "12345", "/curator-mining")
-    assert len(calls) == 1
-    assert calls[0][0] == "sendMessage"
-    assert calls[0][1]["chat_id"] == "12345"
-    assert "🔍 Curator-Vorschläge" in calls[0][1]["text"]
-
-    # /curator-mining@botname
-    calls.clear()
-    bot.handle_message(cfg, sc, "12345", "/curator-mining@sc_digger_bot")
-    assert len(calls) == 1
-    assert "🔍 Curator-Vorschläge" in calls[0][1]["text"]
-
-    # /curator_mining (Underscore-Variante)
-    calls.clear()
-    bot.handle_message(cfg, sc, "12345", "/curator_mining")
-    assert len(calls) == 1
-    assert "🔍 Curator-Vorschläge" in calls[0][1]["text"]
-
-
-def test_curator_mining_limits_output_and_caps_telegram_length(cfg):
-    with TrackDB(cfg["state"]["track_db_path"]) as db:
-        db.set_sc_feedback(1, "like")
-        db.set_sc_feedback(2, "like")
-
-    # 200 Kandidaten erstellen
-    fake_users = [
-        {"id": i, "permalink": f"curator_candidate_{i:03d}", "username": f"Curator Candidate {i:03d}"}
-        for i in range(1, 201)
-    ]
-
-    class FakeSC:
-        def get_likers(self, track_id, max_results=50):
-            return fake_users
-
-        def get_reposters(self, track_id, max_results=50):
-            return []
-
-    text = bot.run_curator_mining(FakeSC(), cfg)
-    assert len(text) <= 4096
-    assert "… und 170 weitere" in text
-    assert "curator_candidate_001" in text
-    assert "curator_candidate_030" in text
-    assert "curator_candidate_031" not in text
-
-
-def test_handle_message_curator_mining_error(cfg, monkeypatch):
-    calls = []
-
-    def fake_telegram_call(token, method, **kw):
-        calls.append((method, kw.get("json")))
-        return {"ok": True, "result": True}
-
-    monkeypatch.setattr(bot, "telegram_call", fake_telegram_call)
-
-    def boom(sc, c):
-        raise RuntimeError("DB connection failed")
-
-    monkeypatch.setattr(bot, "run_curator_mining", boom)
-
-    sc = MagicMock()
-    bot.handle_message(cfg, sc, "12345", "/curator-mining")
-
-    assert len(calls) == 1
-    assert calls[0][0] == "sendMessage"
-    assert calls[0][1]["chat_id"] == "12345"
-    assert "Curator-Mining fehlgeschlagen, siehe Container-Log." in calls[0][1]["text"]
 
+def test_min_appearances_grenze():
+    assert candidates_from_counts({"a": 2, "b": 1}, min_appearances=2) == [("a", 2)]
+
+
+def test_read_candidates_fehlende_und_kaputte_datei(tmp_path: Path):
+    leer = {"candidates": [], "checked_at": None}
+    assert read_candidates(tmp_path / "gibt-es-nicht.json") == leer
+    kaputt = tmp_path / "kaputt.json"
+    kaputt.write_text("{nicht json", encoding="utf-8")
+    assert read_candidates(kaputt) == leer
+    falsch = tmp_path / "falsch.json"
+    falsch.write_text(json.dumps([1, 2]), encoding="utf-8")
+    assert read_candidates(falsch) == leer
+
+
+def test_write_und_read_roundtrip(tmp_path: Path):
+    path = tmp_path / "sub" / "curator-candidates.json"
+    write_candidates(path, [("a", 3), ("b", 2)])
+
+    result = read_candidates(path)
+
+    assert result["candidates"] == [
+        {"profile": "a", "appearances": 3}, {"profile": "b", "appearances": 2}]
+    assert isinstance(result["checked_at"], str)
+
+
+def test_wartungsaktion_registriert(tmp_path: Path):
+    from sc_digger.models import Config
+
+    cfg = Config(raw={"state": {"db_path": str(tmp_path / "seen.sqlite"),
+                                "track_db_path": str(tmp_path / "tracks.sqlite")}})
+
+    assert "curator-mining" in default_runners(cfg)
+    assert "curator-mining" in action_labels()
