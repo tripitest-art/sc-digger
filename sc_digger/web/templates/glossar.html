@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% from "_components.html" import status_badge %}
+
+{% block title %}Glossar – sc-digger{% endblock %}
+
+{% block content %}
+<div class="card" id="glossar">
+  <h1>Glossar</h1>
+  <p class="meta">Ein Wort je Sache: Diese Begriffe gelten im ganzen Dashboard.</p>
+  <dl>
+    {% for begriff, eintrag in glossar.items() %}
+    <dt><strong>{{ begriff }}</strong></dt>
+    <dd>{{ eintrag[0] }}{% if eintrag[1] %} <span class="meta">(nicht: {{ eintrag[1] | join(", ") }})</span>{% endif %}</dd>
+    {% endfor %}
+  </dl>
+</div>
+
+<div class="card" id="glossar-legende">
+  <h2>Legende der Status-Plaketten</h2>
+  <ul>
+    {% for key in status_badges %}
+    <li>{{ status_badge(key) }}</li>
+    {% endfor %}
+  </ul>
+</div>
+{% endblock %}
