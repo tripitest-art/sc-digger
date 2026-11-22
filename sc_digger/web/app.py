@@ -1052,6 +1052,50 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
             return HTMLResponse(_extract_table_region(content))
         return HTMLResponse(content)
 
+    @app.get("/digest/durchhoeren", response_class=HTMLResponse)
+    def digest_durchhoeren(request: Request):
+        result = query_digest(
+            app.state.cfg["state"]["db_path"],
+            app.state.cfg["state"]["track_db_path"],
+            inbox_dir=(app.state.cfg.raw.get("download") or {}).get("inbox_dir"),
+            limit=MAX_LIMIT,
+        )
+        open_items = []
+        for it in result.items:
+            fb = it.get("feedback") if isinstance(it, dict) else getattr(it, "feedback", None)
+            if fb:
+                continue
+            open_items.append(it)
+
+        items_data = []
+        for it in open_items:
+            sc_id = it.get("sc_id") if isinstance(it, dict) else getattr(it, "sc_id", None)
+            artist = it.get("artist") if isinstance(it, dict) else getattr(it, "artist", None)
+            title = it.get("title") if isinstance(it, dict) else getattr(it, "title", "")
+            dauer = (
+                (it.get("duration") if isinstance(it, dict) else getattr(it, "duration", None))
+                or (it.get("dauer") if isinstance(it, dict) else getattr(it, "dauer", None))
+                or ""
+            )
+            items_data.append({
+                "sc_id": sc_id,
+                "artist": artist,
+                "title": title,
+                "duration": dauer,
+                "feedback_url": "/api/feedback",
+                "bewertungs_ziel": "/api/feedback",
+            })
+
+        items_json = json.dumps(items_data)
+        template = _env.get_template("durchhoeren.html")
+        content = template.render(
+            items=open_items,
+            items_data=items_data,
+            items_json=items_json,
+            total=len(open_items),
+        )
+        return HTMLResponse(content)
+
     # Kaufempfehlungen aus store_items (Issue #338): dieselbe rein lesende Abfrage für
     # JSON-API und Seite, Bewertungen laufen über das bestehende POST /api/feedback.
     @app.get("/api/kaufliste")

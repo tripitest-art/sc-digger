@@ -159,6 +159,7 @@ def test_create_app_behaelt_alle_routen_und_reihenfolge(tmp_path: Path):
         ("POST", "/api/check-url"),
         ("GET", "/api/digest"),
         ("GET", "/digest"),
+        ("GET", "/digest/durchhoeren"),
         ("GET", "/api/kaufliste"),
         ("GET", "/api/watch"),
         ("GET", "/kaufliste"),

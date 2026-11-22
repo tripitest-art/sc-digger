@@ -1,0 +1,192 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+
+{% block title %}Durchhören – sc-digger{% endblock %}
+
+{% block content %}
+<div class="card" id="durchhoeren">
+  {% if items %}
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; border-bottom: 1px solid var(--border-subtle); padding-bottom: 0.75rem;">
+    <div>
+      <h1 style="margin: 0; font-size: 1.3rem;">Durchhör-Modus</h1>
+      <p class="meta" style="margin: 0.25rem 0 0;">
+        Vorschlag <span id="fortschritt">1 von {{ items|length }}</span>
+      </p>
+    </div>
+    <div>
+      <a href="/digest" class="btn-page">&larr; Zurück zum Digest</a>
+    </div>
+  </div>
+
+  <div id="durchhoeren-cards">
+    {% for item in items %}
+    <div class="durchhoeren-card"
+         id="card-{{ loop.index0 }}"
+         data-sc-id="{{ item.sc_id }}"
+         data-artist="{{ item.artist or '' }}"
+         data-title="{{ item.title }}"
+         data-duration="{{ item.duration or '—' }}"
+         data-feedback-target="/api/feedback"
+         data-index="{{ loop.index0 }}"
+         {% if not loop.first %}style="display: none;"{% endif %}>
+      <div style="background-color: var(--bg-card-subtle); border: 1px solid var(--border); border-radius: 8px; padding: 2rem; margin-bottom: 1.5rem; text-align: center;">
+        <div class="meta" style="font-size: 1.1rem; margin-bottom: 0.5rem; font-weight: 500;">
+          {{ item.artist or "—" }}
+        </div>
+        <h2 style="margin: 0.5rem 0 1rem; font-size: 2rem; font-weight: 700; word-break: break-word;">
+          {{ item.title }}
+        </h2>
+        <div class="meta" style="display: flex; gap: 1rem; justify-content: center; align-items: center; font-size: 0.9rem; margin-top: 1rem;">
+          <span>Dauer: {{ item.duration or "—" }}</span>
+          {% if item.download_kind %}
+          <span class="badge">{{ item.download_kind|upper }}</span>
+          {% endif %}
+          <span style="font-size: 0.78rem;">Bewertungs-Ziel: <code>/api/feedback</code></span>
+        </div>
+      </div>
+
+      <div class="durchhoeren-actions" data-feedback-cell data-sc-id="{{ item.sc_id }}" style="display: flex; justify-content: center; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem;">
+        <button type="button" class="btn-page feedback-btn" data-value="like" onclick="rateTrack('like')" style="font-size: 1rem; padding: 0.6rem 1.2rem;">
+          {{ icon("like", 18) }} [1] Gefällt mir
+        </button>
+        <button type="button" class="btn-page feedback-btn" data-value="dislike" onclick="rateTrack('dislike')" style="font-size: 1rem; padding: 0.6rem 1.2rem;">
+          {{ icon("dislike", 18) }} [2] Passt nicht
+        </button>
+        <button type="button" class="btn-page feedback-btn" data-value="later" onclick="rateTrack('later')" style="font-size: 1rem; padding: 0.6rem 1.2rem;">
+          {{ icon("later", 18) }} [3] Später
+        </button>
+        <a href="/track/sc/{{ item.sc_id }}" class="btn-page" id="detail-link-{{ loop.index0 }}" style="font-size: 1rem; padding: 0.6rem 1.2rem;">
+          Details [Enter] &rarr;
+        </a>
+      </div>
+
+      <div style="display: flex; justify-content: center; gap: 1rem; margin-top: 0.75rem;">
+        <button type="button" class="btn-page btn-xs" onclick="prevTrack()" title="Vorheriger (k / &uarr;)">&uarr; Zurück (k)</button>
+        <button type="button" class="btn-page btn-xs" onclick="nextTrack()" title="Nächster (j / &darr;)">&darr; Weiter (j)</button>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div id="durchhoeren-finished" style="display: none; text-align: center; padding: 3rem 1rem;">
+    <p style="font-size: 1.5rem; font-weight: 600; margin-bottom: 0.5rem;">durchgehört — danke</p>
+    <p class="meta" style="margin-bottom: 1.5rem;">Alle offenen Vorschläge dieser Runde wurden durchgehört.</p>
+    <a href="/digest" class="btn-page">&larr; Zurück zum Digest</a>
+  </div>
+
+  <div class="meta" style="margin-top: 2rem; border-top: 1px solid var(--border-subtle); padding-top: 0.75rem; text-align: center; font-size: 0.8rem;">
+    Tastatursteuerung: <code>1</code> Like &middot; <code>2</code> Dislike &middot; <code>3</code> Später &middot; <code>&darr;</code> / <code>j</code> Weiter &middot; <code>&uarr;</code> / <code>k</code> Zurück &middot; <code>Enter</code> Details
+  </div>
+  {% else %}
+  <div class="empty-state" style="text-align: center; padding: 3rem 1rem;">
+    <p style="font-size: 1.4rem; font-weight: 600; margin-bottom: 0.5rem;">nichts durchzuhören</p>
+    <p class="meta" style="margin-bottom: 1.5rem;">Aktuell gibt es keine offenen, unbewerteten Vorschläge im Digest.</p>
+    <a href="/digest" class="btn-page">&larr; Zurück zum Digest</a>
+  </div>
+  {% endif %}
+</div>
+
+<script id="durchhoeren-json" type="application/json">{{ items_json|safe }}</script>
+<script>
+  (function() {
+    const dataEl = document.getElementById('durchhoeren-json');
+    if (!dataEl) return;
+    let items = [];
+    try {
+      items = JSON.parse(dataEl.textContent) || [];
+    } catch (e) {
+      items = [];
+    }
+    const total = items.length;
+    let currentIdx = 0;
+
+    const cards = document.querySelectorAll('.durchhoeren-card');
+    const finishedBox = document.getElementById('durchhoeren-finished');
+    const progressEl = document.getElementById('fortschritt');
+
+    function showIndex(newIdx) {
+      if (newIdx >= total) {
+        cards.forEach(c => c.style.display = 'none');
+        if (finishedBox) finishedBox.style.display = 'block';
+        if (progressEl) progressEl.textContent = total + ' von ' + total;
+        currentIdx = newIdx;
+        return;
+      }
+      if (newIdx < 0) newIdx = 0;
+      currentIdx = newIdx;
+      cards.forEach((c, idx) => {
+        c.style.display = (idx === currentIdx) ? 'block' : 'none';
+      });
+      if (finishedBox) finishedBox.style.display = 'none';
+      if (progressEl) progressEl.textContent = (currentIdx + 1) + ' von ' + total;
+    }
+
+    async function rateCurrent(val) {
+      if (currentIdx >= total) return;
+      const cur = items[currentIdx];
+      try {
+        fetch('/api/feedback', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({ sc_id: cur.sc_id, value: val })
+        });
+        if (typeof showToast === 'function') {
+          showToast('Bewertung gespeichert', 'ok');
+        }
+      } catch (err) {
+        if (typeof showToast === 'function') {
+          showToast('Speichern fehlgeschlagen', 'err');
+        }
+      }
+      showIndex(currentIdx + 1);
+    }
+
+    function openDetail() {
+      if (currentIdx < total) {
+        window.location.href = '/track/sc/' + items[currentIdx].sc_id;
+      }
+    }
+
+    window.rateTrack = function(val) {
+      rateCurrent(val);
+    };
+    window.nextTrack = function() {
+      if (currentIdx + 1 < total) {
+        showIndex(currentIdx + 1);
+      }
+    };
+    window.prevTrack = function() {
+      if (currentIdx > 0) {
+        showIndex(currentIdx - 1);
+      }
+    };
+
+    document.addEventListener('keydown', function(e) {
+      if (total === 0) return;
+      if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable)) {
+        return;
+      }
+      if (e.key === 'ArrowDown' || e.key === 'j') {
+        e.preventDefault();
+        window.nextTrack();
+      } else if (e.key === 'ArrowUp' || e.key === 'k') {
+        e.preventDefault();
+        window.prevTrack();
+      } else if (e.key === '1') {
+        e.preventDefault();
+        rateCurrent('like');
+      } else if (e.key === '2') {
+        e.preventDefault();
+        rateCurrent('dislike');
+      } else if (e.key === '3') {
+        e.preventDefault();
+        rateCurrent('later');
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        openDetail();
+      }
+    });
+  })();
+</script>
+{% endblock %}
