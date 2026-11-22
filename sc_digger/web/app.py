@@ -89,6 +89,7 @@ from .common import (
     client_key,
 )
 from .audit_page import read_last_report
+from .glossary import GLOSSAR, STATUS_BADGES
 from .configedit import apply_form, diff_config, format_form_value, get_path, remove_key, save_local
 from .database import (
     DEFAULT_LIMIT,
@@ -1585,6 +1586,12 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
         if not report_path.is_file():
             return PlainTextResponse("Kein Audit-Bericht vorhanden", status_code=404)
         return RedirectResponse(url="/audit-report.html", status_code=307)
+
+    @app.get("/glossar", response_class=HTMLResponse)
+    def glossar_page(request: Request):
+        # Rendert direkt aus glossary.py: keine zweite Pflege neben docs/glossar.md.
+        template = _env.get_template("glossar.html")
+        return HTMLResponse(template.render(glossar=GLOSSAR, status_badges=STATUS_BADGES))
 
     if base_path is None or local_path is None:
         return app

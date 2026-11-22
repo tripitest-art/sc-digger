@@ -419,3 +419,7 @@ Der Code dazu steht in `sc_digger/analysis.py` (BPM/Key), die harmonisch sortier
 (M3U8, CSV, Report) baut `sc_digger/dj_export.py`; abgesichert ist die Kette durch
 `tests/test_dj_workflow.py`. Das frühere Auswertungswerkzeug samt Prüfbericht ist entfernt und
 nur noch über die Git-Historie erreichbar.
+
+## Glossar
+
+Die Seite `/glossar` im Dashboard (Link „Glossar“ in der Kopfzeile) erklärt alle Begriffe mit ihren verworfenen Alternativen und zeigt die Legende der Status-Plaketten. Sie rendert direkt aus `sc_digger/web/glossary.py` (`GLOSSAR`, `STATUS_BADGES`); `docs/glossar.md` bleibt per Test gleich.
