@@ -356,7 +356,7 @@ schaltet die Sperre ab. Hinter einem Proxy (z. B. Caddy) sähe der Server sonst 
 dieselbe Adresse: `SC_DIGGER_WEB_TRUST_PROXY=1` zählt stattdessen die letzte Station aus
 `X-Forwarded-For`. Nur setzen, wenn der Webserver ausschließlich über den Proxy erreichbar ist,
 sonst kann ein Client den Header selbst setzen.
-Die Taste `/` öffnet auf jeder Seite eine Schnellsuche über alle Seiten der Navigation (bei aktivem Konfigeditor auch die Konfiguration); Freitext führt zusätzlich zur Suche in `/tracks` und `/digest`, `↑`/`↓` wählen, `Enter` öffnet, `Esc` schließt.
+Die Taste `/` öffnet auf jeder Seite eine Schnellsuche über alle Seiten der Navigation (bei aktivem Konfigeditor auch die Konfiguration) und liefert ab zwei Zeichen direkte Treffer aus der Track-Datenbank (Gruppe „Tracks", verlinkt auf die Detailseite oder Explorer-Suche); Freitext führt zusätzlich zur Suche in `/tracks` und `/digest`, `↑`/`↓` wählen, `Enter` öffnet, `Esc` schließt.
 
 ## Kuratoren
 

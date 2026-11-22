@@ -945,7 +945,12 @@
   }
   .quick-search-results li[aria-selected="true"] a,
   .quick-search-results li a:hover { background: var(--accent-primary-bg); }
-  .quick-search-group { color: var(--text-muted); font-size: 0.8rem; }
+  .quick-search-results li a span:first-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .quick-search-group { color: var(--text-muted); font-size: 0.8rem; flex-shrink: 0; }
   .quick-search-hint { margin: 0.5rem 0 0; color: var(--text-dim); font-size: 0.75rem; }
 
   /* Toast-Meldungen (Issue #490) */
@@ -1113,7 +1118,7 @@
     }
   }
 
-  // Schnellsuche (Issue #624): Taste / öffnet, Esc schließt; rein clientseitig über die Seiten der Navigation.
+  // Schnellsuche (Issue #624, #678): Taste / öffnet, Esc schließt; Navigation plus direkte Track-Treffer aus /api/search.
   (function() {
     var box = document.getElementById('quick-search');
     var input = document.getElementById('quick-search-input');
@@ -1123,7 +1128,10 @@
     var pages = [];
     try { pages = JSON.parse(dataEl.textContent) || []; } catch (err) { pages = []; }
     var hits = [];
+    var trackHits = [];
     var selected = 0;
+    var debounceTimer = null;
+    var reqSeq = 0;
 
     function render() {
       list.textContent = '';
@@ -1145,25 +1153,67 @@
       });
     }
 
-    function update() {
-      var text = input.value.trim();
-      var needle = text.toLowerCase();
-      hits = pages.filter(function(p) {
+    function buildHits(text, needle) {
+      var filtered = pages.filter(function(p) {
         return !needle || p.label.toLowerCase().indexOf(needle) !== -1 || p.group.toLowerCase().indexOf(needle) !== -1;
       });
+      var res = filtered.slice();
+      if (trackHits && trackHits.length) {
+        res = res.concat(trackHits);
+      }
       if (text) {
         var enc = encodeURIComponent(text);
-        hits = hits.concat([
+        res = res.concat([
           { label: 'Tracks durchsuchen: ' + text, href: '/tracks?q=' + enc, group: 'Suche' },
           { label: 'Digest durchsuchen: ' + text, href: '/digest?q=' + enc, group: 'Suche' },
         ]);
       }
+      return res;
+    }
+
+    function update() {
+      var text = input.value.trim();
+      var needle = text.toLowerCase();
+      clearTimeout(debounceTimer);
+      reqSeq++;
+      var thisSeq = reqSeq;
+      trackHits = [];
+      hits = buildHits(text, needle);
       selected = 0;
       render();
+
+      if (text.length >= 2) {
+        debounceTimer = setTimeout(function() {
+          fetch('/api/search?q=' + encodeURIComponent(text))
+            .then(function(res) {
+              if (!res.ok) { return null; }
+              return res.json();
+            })
+            .then(function(data) {
+              if (thisSeq !== reqSeq) { return; }
+              if (data && Array.isArray(data.tracks)) {
+                trackHits = data.tracks.map(function(t) {
+                  return { label: t.label, href: t.href, group: 'Tracks' };
+                });
+                hits = buildHits(text, needle);
+                if (selected >= hits.length) { selected = 0; }
+                render();
+              }
+            })
+            .catch(function() {
+              // 401 oder Netzwerkfehler: keine Treffer, kein Konsolenfehler
+            });
+        }, 150);
+      }
     }
 
     document.addEventListener('keydown', function(e) {
-      if (e.key === 'Escape' && !box.hidden) { box.hidden = true; return; }
+      if (e.key === 'Escape' && !box.hidden) {
+        clearTimeout(debounceTimer);
+        reqSeq++;
+        box.hidden = true;
+        return;
+      }
       if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey) { return; }
       // In Eingabefeldern bleibt / ein normales Zeichen.
       if (e.target && e.target.closest && e.target.closest('input, select, textarea, [contenteditable="true"]')) { return; }
@@ -1186,7 +1236,11 @@
         if (hits[selected]) { window.location.href = hits[selected].href; }
       }
     });
-    list.addEventListener('click', function() { box.hidden = true; });
+    list.addEventListener('click', function() {
+      clearTimeout(debounceTimer);
+      reqSeq++;
+      box.hidden = true;
+    });
   })();
 </script>
 </body>
