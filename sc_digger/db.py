@@ -1708,38 +1708,6 @@ class TrackDB:
             )
         self.db.commit()
 
-    def record_track_snapshots(
-        self,
-        tracks: Sequence[Any],
-        recorded_at: str | None = None,
-    ) -> int:
-        """Speichert Snapshots für eine Liste von Track-Objekten.
-
-        Liefert die Anzahl der gespeicherten Datensätze. Ignoriert Tracks ohne sc_id / id.
-        """
-        stored = 0
-        for t in tracks:
-            sc_id = getattr(t, "sc_id", None)
-            if sc_id is None:
-                sc_id = getattr(t, "id", None)
-            if sc_id is None:
-                continue
-            artist = getattr(t, "artist", None) or ""
-            title = getattr(t, "title", None)
-            self.record_track_snapshot(
-                sc_id=int(sc_id),
-                artist=str(artist),
-                title=title,
-                plays=int(getattr(t, "plays", 0) or 0),
-                likes=int(getattr(t, "likes", 0) or 0),
-                reposts=int(getattr(t, "reposts", 0) or 0),
-                comments=int(getattr(t, "comments", 0) or 0),
-                recorded_at=recorded_at,
-                tags=list(getattr(t, "tags", None) or []),
-            )
-            stored += 1
-        return stored
-
     def record_track_snapshots_daily(
         self,
         tracks: Sequence[Any],

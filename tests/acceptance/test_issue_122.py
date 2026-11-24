@@ -31,7 +31,7 @@ def test_track_snapshots_migration_and_recording(tmp_path):
         t2 = mk(102, title="Track 2", likes_count=100, playback_count=2000, reposts_count=20, comment_count=5,
                 user={"username": "O.B.I.", "permalink_url": ""})
 
-        count = db.record_track_snapshots([t1, t2])
+        count = db.record_track_snapshots_daily([t1, t2])
         assert count == 2
 
         rows = db.db.execute("SELECT sc_id, artist, likes FROM track_snapshots ORDER BY sc_id").fetchall()
