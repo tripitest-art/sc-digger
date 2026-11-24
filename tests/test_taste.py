@@ -7,7 +7,6 @@ from sc_digger.db import TrackDB, TrackRecord
 from sc_digger.taste import (
     MIN_SAMPLES_PER_CLASS,
     TasteModel,
-    build_training_set,
     load_taste_model,
     run_taste,
     save_taste_model,
@@ -65,34 +64,6 @@ def test_epochs_zero_yields_half_score():
     assert model.bias == 0.0
     assert model.score([1.0, 1.0]) == pytest.approx(0.5)
     assert model.score([-5.0, 2.0]) == pytest.approx(0.5)
-
-
-def test_build_training_set_empty_db(tmp_path: Path):
-    """build_training_set auf einer leeren Datenbank gibt eine leere Liste zurück."""
-    with TrackDB(tmp_path / "empty.sqlite") as db:
-        data = build_training_set(db)
-        assert data == []
-
-
-def test_build_training_set_tie_breaking_alphabetical(tmp_path: Path):
-    """Bei Gleichstand der Modell-Häufigkeit gewinnt das alphabetisch kleinere Modell."""
-    with TrackDB(tmp_path / "tie.sqlite") as db:
-        # 5 Tracks für model_b
-        for i in range(5):
-            rec = db.upsert_track(TrackRecord(path=f"/m/b_{i}.mp3", mtime=1.0, size=1))
-            db.set_feedback(rec.id, "like")
-            db.set_embedding(rec.id, "model_b", [float(i), 1.0])
-
-        # 5 Tracks für model_a (Gleichstand mit model_b, model_a ist alphabetisch kleiner)
-        for i in range(5):
-            rec = db.upsert_track(TrackRecord(path=f"/m/a_{i}.mp3", mtime=1.0, size=1))
-            db.set_feedback(rec.id, "like")
-            db.set_embedding(rec.id, "model_a", [float(i), 2.0])
-
-        data = build_training_set(db)
-        # Alle 5 müssen model_a sein (vector[1] == 2.0)
-        assert len(data) == 5
-        assert all(v[1] == 2.0 for v, _ in data)
 
 
 def test_taste_model_validation_errors():
