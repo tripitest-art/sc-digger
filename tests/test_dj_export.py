@@ -18,8 +18,8 @@ from sc_digger.dj_export import (
     CSV_COLUMNS,
     Entry,
     TRANSITION_COST,
+    _segment_entries,
     build_dj_set,
-    build_segments,
     camelot_relation,
     export_csv,
     export_m3u8,
@@ -143,7 +143,7 @@ def test_unknown_key_is_expensive_but_computable():
 # ------------------------------------------------------------------ Segmente
 def test_segments_keep_every_track_exactly_once():
     entries = [_entry(f"t{i}", 152.0 + i, ["5A", "6A", "7A"][i % 3]) for i in range(9)]
-    segments = build_segments(entries)
+    segments = _segment_entries(entries)
     flat = [e for seg in segments for e in seg]
     assert len(flat) == len(entries)
     assert {id(e) for e in flat} == {id(e) for e in entries}
@@ -152,7 +152,7 @@ def test_segments_keep_every_track_exactly_once():
 def test_segments_split_bpm_worlds_instead_of_jumping():
     nah = [_entry(f"s{i}", 150.0 + i * 0.5, "5A") for i in range(4)]
     fern = [_entry(f"f{i}", 170.0 + i * 0.5, "5A") for i in range(4)]
-    segments = build_segments(nah + fern, max_cost=3.0)
+    segments = _segment_entries(nah + fern, max_cost=3.0)
     assert len(segments) == 2
     assert all(len(seg) == 4 for seg in segments)
     for seg in segments:
@@ -162,7 +162,7 @@ def test_segments_split_bpm_worlds_instead_of_jumping():
 
 def test_segments_stay_one_chain_when_everything_fits():
     entries = [_entry(f"t{i}", 152.0 + i, "5A") for i in range(6)]
-    segments = build_segments(entries)
+    segments = _segment_entries(entries)
     assert len(segments) == 1
     assert len(segments[0]) == 6
 
@@ -171,7 +171,7 @@ def test_segments_start_with_the_fastest_block():
     """Ein Set startet druckvoll: erstes Segment hat das hoechste Durchschnitts-BPM."""
     entries = ([_entry(f"s{i}", 150.0 + i, "5A") for i in range(3)]
                + [_entry(f"f{i}", 168.0 + i, "5A") for i in range(3)])
-    segments = build_segments(entries)
+    segments = _segment_entries(entries)
     assert len(segments) == 2
     assert min(e.bpm for e in segments[0]) >= 168.0
 
@@ -179,21 +179,21 @@ def test_segments_start_with_the_fastest_block():
 def test_harmonic_neighbours_are_preferred_over_far_keys():
     entries = [_entry(f"k{i}", 155.0, key)
                for i, key in enumerate(["5A", "5B", "6A", "7A", "11A"])]
-    segments = build_segments(entries)
+    segments = _segment_entries(entries)
     assert len(segments[0]) > 1
     for a, b in zip(segments[0], segments[0][1:]):
         assert camelot_relation(a.camelot, b.camelot) in ("gleich", "rad_pm1", "relativ")
 
 
 def test_segments_handle_empty_and_single_input():
-    assert build_segments([]) == []
+    assert _segment_entries([]) == []
     one = [_entry("only", 155.0, "5A")]
-    assert build_segments(one) == [one]
+    assert _segment_entries(one) == [one]
 
 
 def test_segments_without_bpm_still_terminate():
     entries = [_entry(f"x{i}", None, "5A") for i in range(3)]
-    segments = build_segments(entries)
+    segments = _segment_entries(entries)
     assert len([e for seg in segments for e in seg]) == 3
 
 

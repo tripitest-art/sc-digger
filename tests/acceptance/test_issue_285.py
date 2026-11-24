@@ -4,10 +4,10 @@ import pytest
 from sc_digger.dj_export import (
     Entry,
     build_dj_set,
-    build_segments,
     camelot_relation,
     export_csv,
     export_m3u8,
+    order_harmonic,
     parse_camelot,
     transition_cost,
 )
@@ -39,8 +39,8 @@ def test_transition_cost_and_segments():
     cost23, _ = transition_cost(t2, t3_unharmonisch)
     assert cost23 > 3.0
 
-    segments = build_segments([t1, t2, t3_unharmonisch], max_cost=3.0)
-    assert len(segments) >= 2
+    pl = order_harmonic([t1, t2, t3_unharmonisch], max_cost=3.0)
+    assert pl.segments >= 2
 
 
 def test_export_m3u8_and_csv(tmp_path):

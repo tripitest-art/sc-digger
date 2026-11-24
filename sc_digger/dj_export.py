@@ -339,16 +339,6 @@ def _segment_entries(entries: list[Entry], *, start: Entry | None = None,
     return segments
 
 
-def build_segments(entries: list[Entry],
-                   max_cost: float = MAX_TRANSITION_COST) -> list[list[Entry]]:
-    """Unterteilt Tracks in harmonisch zusammenhängende Ketten/Segmente.
-
-    Überschreitet ein Übergang die Kostengrenze `max_cost`, wird geschnitten statt
-    ein unharmonischer Sprung versteckt. Gibt die Segmente in Set-Reihenfolge zurück.
-    """
-    return _segment_entries(entries, max_cost=max_cost)
-
-
 def order_harmonic(entries: list[Entry], *, start: Entry | None = None,
                    bpm_tolerance: float = BPM_TOLERANCE,
                    max_cost: float = MAX_TRANSITION_COST) -> Playlist:
