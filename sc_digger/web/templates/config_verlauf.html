@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% block title %}Konfigurationsverlauf – sc-digger{% endblock %}
+{% block nav_config %}active{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+    <div>
+      <h1 style="margin: 0; font-size: 1.5rem;">Verlauf der Konfigurationsänderungen</h1>
+      <p class="help" style="margin: 0.25rem 0 0 0;">Frühere Sicherungen der lokalen Override-Datei (<code>config.local.yaml</code>) wiederherstellen.</p>
+    </div>
+    <a href="/config" style="font-size: 0.9rem;">&larr; Zurück zum Editor</a>
+  </div>
+</div>
+
+<div class="card" id="config-verlauf">
+  {% if backups %}
+  <div class="table-scroll">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Sicherungsdatei</th>
+          <th>Zeitpunkt</th>
+          <th>Größe</th>
+          <th style="text-align: right;">Aktion</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for b in backups %}
+        <tr>
+          <td class="mono" style="font-weight: 600;">{{ b.name }}</td>
+          <td>{{ b.formatted_time }}</td>
+          <td class="mono">{{ b.size }} Bytes</td>
+          <td style="text-align: right;">
+            <button type="button" class="btn-restore" data-backup="{{ b.name }}" style="padding: 0.3rem 0.75rem; font-size: 0.85rem; cursor: pointer;">Wiederherstellen</button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="meta">keine Sicherungen vorhanden</p>
+  {% endif %}
+</div>
+
+<script>
+  (function() {
+    document.querySelectorAll('.btn-restore').forEach(function(btn) {
+      btn.addEventListener('click', async function() {
+        const name = btn.dataset.backup;
+        if (!confirm('Sicherung "' + name + '" wirklich wiederherstellen?')) {
+          return;
+        }
+        try {
+          const resp = await fetch('/api/config/restore', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ backup: name })
+          });
+          if (resp.ok) {
+            window.location.href = '/config?saved=1';
+          } else {
+            const data = await resp.json().catch(function() { return {}; });
+            alert(data.error || 'Fehler beim Wiederherstellen');
+          }
+        } catch (e) {
+          alert('Netzwerkfehler beim Wiederherstellen: ' + e);
+        }
+      });
+    });
+  })();
+</script>
+{% endblock %}

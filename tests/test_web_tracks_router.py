@@ -182,10 +182,12 @@ def test_create_app_behaelt_alle_routen_und_reihenfolge(tmp_path: Path):
         ("GET", "/api/audit/report"),
         ("GET", "/glossar"),
         ("GET", "/config"),
+        ("GET", "/config/verlauf"),
         ("GET", "/config/{section_id}"),
         ("POST", "/config/preview"),
         ("POST", "/config/save"),
         ("POST", "/config/reset"),
+        ("POST", "/api/config/restore"),
     ]
     assert routes == expected
 
