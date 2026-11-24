@@ -20,6 +20,9 @@ def _pfad(tmp_path):
 
 def test_sicherungen_werden_neueste_zuerst_gelistet(tmp_path):
     pfad = _pfad(tmp_path)
+    # save_local sichert nur die Vorfassung einer bereits vorhandenen Datei; ohne Startstand
+    # gaebe es nach zwei Speicherungen nur eine Sicherung.
+    pfad.write_text("web:\n  a: 0\n", encoding="utf-8")
     save_local(pfad, {"web": {"a": 1}}, now=datetime(2026, 1, 1, 12, 0, 0))
     save_local(pfad, {"web": {"a": 2}}, now=datetime(2026, 1, 1, 12, 0, 1))
     eintraege = list_backups(pfad)
@@ -30,10 +33,12 @@ def test_sicherungen_werden_neueste_zuerst_gelistet(tmp_path):
 
 def test_wiederherstellen_holt_den_alten_stand_zurueck(tmp_path):
     pfad = _pfad(tmp_path)
+    pfad.write_text("web:\n  a: 0\n", encoding="utf-8")
     save_local(pfad, {"web": {"a": 1}}, now=datetime(2026, 1, 1, 12, 0, 0))
     save_local(pfad, {"web": {"a": 2}}, now=datetime(2026, 1, 1, 12, 0, 1))
-    aeltere = list_backups(pfad)[1]["name"]
-    neu = restore_backup(pfad, aeltere)
+    # Neueste Sicherung = Stand vor der letzten Speicherung (a: 1).
+    vorher = list_backups(pfad)[0]["name"]
+    neu = restore_backup(pfad, vorher)
     assert neu is not None and Path(neu).exists()
     assert "a: 1" in pfad.read_text(encoding="utf-8")
 
