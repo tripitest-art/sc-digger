@@ -62,6 +62,7 @@
 | Web | Sammlungs-Audit als Seite `/audit`: Status, Optionen, Wartungs-Knopf und letzter Bericht | vorhanden | [Sammlungs-Audit](docs/funktionen.md#sammlungs-audit) |
 | Web | Glossar als Seite `/glossar`: alle Begriffe und Status-Plaketten, gerendert aus `sc_digger/web/glossary.py` | vorhanden | [Glossar](docs/funktionen.md#glossar) |
 | Web | Kuratoren-Übersicht: welche Artists die Sammlung tragen, mit Rating-Anteil und Ø BPM; Kandidaten-Block mit Startknopf für das Kuratoren-Mining (Profile, die 👍-Tracks liken) | vorhanden | [Kuratoren](docs/funktionen.md#kuratoren) |
+| Web | Konfigurationsverlauf mit Wiederherstellen früherer Stände der Override-Datei (`/config/verlauf`) | vorhanden | [Web-Dashboard](docs/funktionen.md#web-dashboard) |
 | Daten | Freie Tags je Track (`track_tags`) und Smartlists mit Regel-Engine und Web-Export (`/smartlists`) | vorhanden | [Smartlists](docs/funktionen.md#smartlists) |
 | KI | Taste-Score aus Audio-Embeddings und Feedback | vorhanden | [Taste-Score](docs/funktionen.md#taste-score) |
 | KI | GPU-Worker-Job-Queue für Cues und Embeddings | vorhanden | [GPU-Worker](docs/funktionen.md#gpu-worker-und-job-queue) |

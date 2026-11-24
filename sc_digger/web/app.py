@@ -90,7 +90,16 @@ from .common import (
 )
 from .audit_page import read_last_report
 from .glossary import GLOSSAR, STATUS_BADGES
-from .configedit import apply_form, diff_config, format_form_value, get_path, remove_key, save_local
+from .configedit import (
+    apply_form,
+    diff_config,
+    format_form_value,
+    get_path,
+    list_backups,
+    remove_key,
+    restore_backup,
+    save_local,
+)
 from .database import (
     DEFAULT_LIMIT,
     MAX_LIMIT,
@@ -1707,6 +1716,43 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
         section = config_section_of_field(path)
         target = f"/config/{section.slug}" if section else "/config"
         return RedirectResponse(f"{target}?saved=1", status_code=303)
+
+    @app.get("/config/verlauf", response_class=HTMLResponse)
+    def config_verlauf():
+        template = _env.get_template("config_verlauf.html")
+        raw_backups = list_backups(_local_path)
+        backups = [
+            {
+                "name": b["name"],
+                "mtime": b["mtime"],
+                "size": b["size"],
+                "formatted_time": datetime.fromtimestamp(float(b["mtime"])).strftime("%Y-%m-%d %H:%M:%S"),
+            }
+            for b in raw_backups
+        ]
+        return HTMLResponse(template.render(backups=backups))
+
+    @app.post("/api/config/restore")
+    async def api_config_restore(request: Request):
+        if not _same_origin(request):
+            return JSONResponse({"ok": False, "error": "Ungültige Herkunft"}, status_code=403)
+        try:
+            payload = await request.json()
+        except Exception:
+            return JSONResponse({"ok": False, "error": "Ungültiges JSON"}, status_code=400)
+        if not isinstance(payload, dict):
+            return JSONResponse({"ok": False, "error": "Ungültiger Payload"}, status_code=400)
+
+        name = payload.get("backup")
+        if not isinstance(name, str) or "/" in name or "\\" in name or not name.strip():
+            return JSONResponse({"ok": False, "error": "Ungültiger Sicherungsname"}, status_code=400)
+
+        restored = restore_backup(_local_path, name.strip())
+        if restored is None:
+            return JSONResponse({"ok": False, "error": "Ungültiger Sicherungsname"}, status_code=400)
+
+        app.state.cfg = Config.load(_base_path, local=_local_path)
+        return JSONResponse({"ok": True, "backup": name.strip()})
 
     return app
 

@@ -1,4 +1,4 @@
-"""Akzeptanztests: Verlauf der Konfigänderungen mit Rückgängig (Issue #689)."""
+"""Akzeptanztests: Verlauf der Konfigänderungen mit Rückgängig (Issue #697)."""
 from datetime import datetime
 from pathlib import Path
 
@@ -53,7 +53,12 @@ def test_route_lehnt_pfadanteile_ab(tmp_path):
         "track_db_path": str(tmp_path / "tracks.sqlite"),
         "health_db_path": str(tmp_path / "seen.sqlite"),
     }
-    client = TestClient(web_app.create_app(cfg, password=PASSWORD))
+    # Die Editor-Routen existieren nur mit base_path UND local_path (wie im Betrieb über /config).
+    client = TestClient(web_app.create_app(
+        cfg, password=PASSWORD,
+        base_path=ROOT / "config.yaml",
+        local_path=tmp_path / "config.local.yaml",
+    ))
     antwort = client.post(
         "/api/config/restore",
         json={"backup": "../../etc/passwd"},

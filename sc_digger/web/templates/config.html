@@ -28,10 +28,15 @@
   .config-view-toggle button[aria-pressed="true"] { border-color: var(--accent-primary); color: var(--text-main); }
 </style>
 <div class="card">
-  <h1>sc-digger Konfiguration</h1>
-  <p class="help" style="margin-bottom: 0;">Änderungen werden nur in die lokale Override-Datei geschrieben und gelten ab dem
+  <div class="card-header" style="display: flex; justify-content: space-between; align-items: flex-start;">
+    <div>
+      <h1 style="margin: 0 0 0.5rem 0;">sc-digger Konfiguration</h1>
+      <p class="help" style="margin-bottom: 0;">Änderungen werden nur in die lokale Override-Datei geschrieben und gelten ab dem
 nächsten Lauf. Der laufende Telegram-Bot liest die Datei erst nach einem Neustart. Die versionierte
 <code>config.yaml</code> wird nie verändert; Betriebspfade und Zugangsdaten sind hier nicht änderbar.</p>
+    </div>
+    <a href="/config/verlauf" class="btn-page" style="white-space: nowrap; font-size: 0.9rem; margin-left: 1rem;">Verlauf</a>
+  </div>
 </div>
 
 {% if saved %}
