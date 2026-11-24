@@ -27,6 +27,7 @@ import xml.etree.ElementTree as ET
 from contextlib import closing
 from contextvars import ContextVar
 from dataclasses import asdict, dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Mapping
 from urllib.parse import urlencode
@@ -1652,6 +1653,21 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
         query = "?" + request.url.query if request.url.query else ""
         return RedirectResponse(f"/config/{config_sections()[0].slug}{query}", status_code=302)
 
+    @app.get("/config/verlauf", response_class=HTMLResponse)
+    def config_verlauf():
+        template = _env.get_template("config_verlauf.html")
+        raw_backups = list_backups(_local_path)
+        backups = [
+            {
+                "name": b["name"],
+                "mtime": b["mtime"],
+                "size": b["size"],
+                "formatted_time": datetime.fromtimestamp(float(b["mtime"])).strftime("%Y-%m-%d %H:%M:%S"),
+            }
+            for b in raw_backups
+        ]
+        return HTMLResponse(template.render(backups=backups))
+
     @app.get("/config/{section_id}", response_class=HTMLResponse)
     def config_page(section_id: str, request: Request):
         section = config_section(section_id)
@@ -1716,21 +1732,6 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
         section = config_section_of_field(path)
         target = f"/config/{section.slug}" if section else "/config"
         return RedirectResponse(f"{target}?saved=1", status_code=303)
-
-    @app.get("/config/verlauf", response_class=HTMLResponse)
-    def config_verlauf():
-        template = _env.get_template("config_verlauf.html")
-        raw_backups = list_backups(_local_path)
-        backups = [
-            {
-                "name": b["name"],
-                "mtime": b["mtime"],
-                "size": b["size"],
-                "formatted_time": datetime.fromtimestamp(float(b["mtime"])).strftime("%Y-%m-%d %H:%M:%S"),
-            }
-            for b in raw_backups
-        ]
-        return HTMLResponse(template.render(backups=backups))
 
     @app.post("/api/config/restore")
     async def api_config_restore(request: Request):
