@@ -6,7 +6,6 @@ from sc_digger.dj_export import (
     build_dj_set,
     camelot_relation,
     export_csv,
-    export_m3u8,
     order_harmonic,
     parse_camelot,
     transition_cost,
@@ -43,15 +42,9 @@ def test_transition_cost_and_segments():
     assert pl.segments >= 2
 
 
-def test_export_m3u8_and_csv(tmp_path):
+def test_export_csv(tmp_path):
     t1 = Entry(path=tmp_path / "t1.wav", artist="Artist A", title="Track 1", bpm=155.0, camelot="5A", duration_s=180.0)
     t2 = Entry(path=tmp_path / "t2.wav", artist="Artist B", title="Track 2", bpm=156.0, camelot="6A", duration_s=210.0)
-
-    m3u8_file = export_m3u8([t1, t2], tmp_path / "set.m3u8", title="Test Set")
-    assert m3u8_file.exists()
-    content = m3u8_file.read_text(encoding="utf-8")
-    assert "#EXTM3U" in content
-    assert "Track 1" in content
 
     csv_file = export_csv([t1, t2], tmp_path / "set.csv")
     assert csv_file.exists()

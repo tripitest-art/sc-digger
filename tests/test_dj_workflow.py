@@ -247,7 +247,7 @@ def test_write_outputs_and_reload(tmp_path):
         e.duration_s = 300.0
     pl = D.order_harmonic(entries)
 
-    m3u = D.export_m3u8(entries, tmp_path / "set.m3u8")
+    m3u = D._write_m3u8(pl, tmp_path / "set.m3u8", absolute=True)
     csv_path = D.write_csv(pl, tmp_path / "set.csv")
     rep = D.write_report(entries, pl, tmp_path / "set_report.txt")
 
@@ -307,7 +307,7 @@ def test_end_to_end_writes_playlist(tmp_path):
         entries.append(D.Entry(path=p, artist="T", title=name, bpm=bpm,
                                bpm_confidence=0.9, camelot=key, key_margin=0.2))
     pl = D.order_harmonic(entries)
-    out = D.export_m3u8(entries, tmp_path / "set.m3u8")
+    out = D._write_m3u8(pl, tmp_path / "set.m3u8", absolute=True)
     assert out.read_text(encoding="utf-8").startswith("#EXTM3U")
 
 

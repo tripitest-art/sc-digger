@@ -19,10 +19,10 @@ from sc_digger.dj_export import (
     Entry,
     TRANSITION_COST,
     _segment_entries,
+    _write_m3u8,
     build_dj_set,
     camelot_relation,
     export_csv,
-    export_m3u8,
     main,
     write_report,
     order_harmonic,
@@ -249,7 +249,8 @@ def test_export_m3u8_writes_segments_and_keys(tmp_path):
     entries = [_entry(f"t{i}", 155.0, ["5A", "6A"][i % 2]) for i in range(2)]
     for e in entries:
         e.path = tmp_path / e.path.name
-    out = export_m3u8(entries, tmp_path / "set.m3u8", title="Mein Set")
+    pl = order_harmonic(list(entries))
+    out = _write_m3u8(pl, tmp_path / "set.m3u8", title="Mein Set", absolute=True)
     assert out.exists()
     text = out.read_text(encoding="utf-8")
     assert text.startswith("#EXTM3U")
@@ -262,7 +263,8 @@ def test_export_m3u8_writes_segments_and_keys(tmp_path):
 def test_export_m3u8_marks_segment_boundaries(tmp_path):
     entries = ([_entry(f"s{i}", 150.0 + i, "5A") for i in range(2)]
                + [_entry(f"f{i}", 170.0 + i, "5A") for i in range(2)])
-    out = export_m3u8(entries, tmp_path / "set.m3u8")
+    pl = order_harmonic(list(entries))
+    out = _write_m3u8(pl, tmp_path / "set.m3u8", absolute=True)
     text = out.read_text(encoding="utf-8")
     assert "# Segment 1" in text and "# Segment 2" in text
 

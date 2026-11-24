@@ -410,12 +410,6 @@ def _write_m3u8(pl: Playlist, out: Path, *, title: str | None = None,
     return out
 
 
-def export_m3u8(entries: list[Entry], path: Path, title: str = "DJ Set") -> Path:
-    """Schreibt eine M3U8-Playlist mit Segmentmarken (absolute Pfade)."""
-    pl = order_harmonic(list(entries))
-    return _write_m3u8(pl, path, title=title, absolute=True)
-
-
 def export_csv(entries: list[Entry], path: Path) -> Path:
     """Schreibt alle Track-Einträge als CSV (Komma-getrennt, wieder einlesbar)."""
     with path.open("w", newline="", encoding="utf-8") as fh:
