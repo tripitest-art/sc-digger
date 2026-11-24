@@ -1668,11 +1668,6 @@ class TrackDB:
             for key, vals in acc.items()
         }
 
-    def get_artist_reputation(self, artist: str) -> ArtistReputation:
-        """Reputation für einen einzelnen Künstler; leere Reputation, wenn unbekannt."""
-        key = str(artist).strip().lower() if artist is not None else ""
-        return self.get_artist_reputations().get(key, ArtistReputation(artist=key))
-
     # ------------------------------------------------------------ Engagement-Snapshots
 
     def record_track_snapshot(

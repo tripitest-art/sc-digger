@@ -41,9 +41,6 @@ def test_db_normalizes_spaces_and_special_characters(tmp_path):
         assert rep.downloads == 1
         assert rep.likes == 1
 
-        # Lookup über beliebige Schreibweise trifft denselben Eintrag
-        assert db.get_artist_reputation("  O.B.I.  ") == rep
-        assert db.get_artist_reputation("o.b.i.") == rep
 
 
 def test_db_ignores_none_and_blank_artists(tmp_path):
@@ -53,11 +50,6 @@ def test_db_ignores_none_and_blank_artists(tmp_path):
         assert db.get_artist_reputations() == {}
 
 
-def test_get_artist_reputation_unknown_and_none(tmp_path):
-    with TrackDB(tmp_path / "tracks.sqlite") as db:
-        assert db.get_artist_reputation("Niemand") == ArtistReputation(artist="niemand")
-        assert db.get_artist_reputation(None) == ArtistReputation(artist="")
-        assert db.get_artist_reputation("") == ArtistReputation(artist="")
 
 
 def test_score_tracks_with_missing_db_is_unchanged(tmp_path):

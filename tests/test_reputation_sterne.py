@@ -68,7 +68,7 @@ def test_stars_prevent_penalty_from_store_feedback(tmp_path: Path):
             db.upsert_store_item(sc_id=100 + i, title=f"Track {i}", artist="store_artist", purchase_url="http://x")
             db.set_sc_feedback(100 + i, "dislike")
 
-        rep = db.get_artist_reputation("store_artist")
+        rep = db.get_artist_reputations()["store_artist"]
         assert rep.stars == 2
         assert rep.dislikes == 5
         assert rep.likes == 0
@@ -84,7 +84,7 @@ def test_stars_prevent_penalty_from_store_feedback(tmp_path: Path):
 def test_unknown_artist_has_zero_stars(tmp_path: Path):
     """Unbekannter Künstler liefert eine leere Reputation mit stars=0."""
     with TrackDB(tmp_path / "tracks.sqlite") as db:
-        rep = db.get_artist_reputation("unbekannt")
+        rep = db.get_artist_reputations().get("unbekannt", ArtistReputation(artist="unbekannt"))
         assert rep.stars == 0
         assert rep.likes == 0
         assert rep.dislikes == 0
