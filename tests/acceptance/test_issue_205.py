@@ -214,7 +214,7 @@ def test_run_audit_mit_check_adopted_meldet_uebernommene_tracks(tmp_path, monkey
     assert "Übernommen" in out or "ÜBERNOMMENE TRACKS" in out
 
 
-def test_track_db_migration_und_get_adopted_tracks(tmp_path):
+def test_track_db_migration_und_adopted_at(tmp_path):
     db_file = tmp_path / "test_migration.sqlite"
     with TrackDB(db_file) as db:
         r = db.upsert_track(TrackRecord(
@@ -226,7 +226,7 @@ def test_track_db_migration_und_get_adopted_tracks(tmp_path):
         ))
         assert r.adopted_at == "2026-10-12 10:00:00"
 
-        adopted_list = db.get_adopted_tracks()
-        assert len(adopted_list) == 1
-        assert adopted_list[0].path == "/music/inbox/track1.mp3"
-        assert adopted_list[0].adopted_at == "2026-10-12 10:00:00"
+        loaded = db.get_track_by_id(r.id)
+        assert loaded is not None
+        assert loaded.path == "/music/inbox/track1.mp3"
+        assert loaded.adopted_at == "2026-10-12 10:00:00"

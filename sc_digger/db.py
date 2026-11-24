@@ -1250,14 +1250,6 @@ class TrackDB:
                     self.db.commit()
         return True
 
-    def get_adopted_tracks(self) -> list[TrackRecord]:
-        """Gibt alle Tracks mit adopted_at IS NOT NULL zurück, sortiert nach adopted_at DESC, id ASC."""
-        rows = self.db.execute(
-            "SELECT * FROM tracks WHERE adopted_at IS NOT NULL "
-            "ORDER BY adopted_at DESC, id ASC"
-        ).fetchall()
-        return [TrackRecord.from_row(r) for r in rows]
-
     def set_sc_feedback(self, sc_id: int, value: str, url: str | None = None) -> None:
         """Upsert je SoundCloud-ID, letzte Wahl gewinnt, updated_at = jetzt.
         url=None überschreibt eine vorhandene url nicht. value nicht in FEEDBACK_VALUES -> ValueError."""
