@@ -22,7 +22,11 @@ def _track(db: TrackDB, path: Path, *, create: bool = True, status=TrackStatus.I
 
 
 def _queued_ids(db: TrackDB) -> list[int]:
-    return sorted(j.track_id for j in db.get_pending_jobs(JobType.EMBEDDING))
+    rows = db.db.execute(
+        "SELECT track_id FROM jobs WHERE status = 'pending' AND job_type = ? ORDER BY track_id ASC",
+        (JobType.EMBEDDING.value,),
+    ).fetchall()
+    return [r[0] for r in rows]
 
 
 def _fixture(tmp_path: Path, db: TrackDB) -> dict[str, int]:

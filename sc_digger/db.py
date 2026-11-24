@@ -1919,27 +1919,6 @@ class TrackDB:
         ).fetchone()
         return JobRecord.from_row(row) if row else None
 
-    def get_pending_jobs(
-        self, job_type: JobType | str | None = None, limit: int = 10
-    ) -> list[JobRecord]:
-        """Liest anstehende Jobs (read-only, für Monitoring/Übersichten)."""
-        conds = ["status = 'pending'"]
-        params: list[Any] = []
-        if job_type:
-            val = job_type.value if isinstance(job_type, Enum) else str(job_type)
-            conds.append("job_type = ?")
-            params.append(val)
-
-        query = f"""
-            SELECT * FROM jobs
-            WHERE {' AND '.join(conds)}
-            ORDER BY id ASC
-            LIMIT ?;
-        """
-        params.append(limit)
-        rows = self.db.execute(query, params).fetchall()
-        return [JobRecord.from_row(r) for r in rows]
-
     def claim_next_job(self, job_type: JobType | str | None = None) -> JobRecord | None:
         """Übernimmt atomar den nächsten Job und setzt ihn auf 'running'.
 
