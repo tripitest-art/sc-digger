@@ -7,13 +7,17 @@ Sie ist rein rechnerisch, ohne Audio-Bibliotheken und damit im Test ohne GPU pr�
 """
 from __future__ import annotations
 
+import copy
 import logging
 import math
 import tempfile
 from contextlib import contextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Iterator
+from typing import TYPE_CHECKING, Any, Callable, Iterator, Sequence
 
+# Unter anderem Namen importiert: ``stems`` ist in make_allin1_infer/select_cue_engine
+# schon der Schalter-Parameter.
+from . import stems as stem_analysis
 from .embeddings import Embedder
 from .structure import analyze_structure, find_first_kick
 
@@ -37,6 +41,12 @@ _DROP_LABELS = ("drop", "chorus")
 _BREAKDOWN_LABELS = ("breakdown", "bridge")
 
 CUE_ENGINES = ("allin1", "local")
+
+# Wie weit der Breakdown-Cue von all-in-one und der Beginn der Kick-Pause im Bass-Stem
+# auseinander liegen dürfen, damit die Pause als derselbe Breakdown gilt. 16 s sind bei
+# 150 BPM zehn Takte: all-in-one setzt Abschnittsgrenzen oft ein paar Takte neben die
+# eigentliche Kick-Pause, ein weiter entfernter Breakdown ist aber ein anderer.
+BREAKDOWN_MATCH_TOL_S = 16.0
 
 # all-in-one (Modell harmonix-all) kennt Pop-Abschnitte; für Schranz fallen Strophe, Refrain,
 # Instrumental und Solo alle in "drop", weil dort nur der Wechsel Intro/Drop/Break zählt.
@@ -226,11 +236,87 @@ def _allin1_segments(raw_segments: Any) -> list[dict[str, Any]]:
     return merged
 
 
+def _unchecked(cues: dict[str, Any]) -> dict[str, Any]:
+    """Kopie von ``cues`` mit der Kennzeichnung „nicht per Stem geprüft“."""
+    out = copy.deepcopy(cues)
+    out["stem_checked"] = False
+    out["drop_offset_s"] = 0.0
+    return out
+
+
+def refine_cues_with_stems(
+    cues: dict[str, Any],
+    bass_path: Path,
+    drums_path: Path,
+    *,
+    downbeats: Sequence[float] | None = None,
+    bpm: float | None = None,
+) -> dict[str, Any]:
+    """Korrigiert ein Cue-Ergebnis (Form von extract_cues_from_segments) mit den Demucs-Stems.
+
+    Gibt ein neues Dict zurück, ``cues`` bleibt unverändert. Immer gesetzt: ``stem_checked``
+    und ``drop_offset_s``. all-in-one setzt den Drop oft auf den Abschnittswechsel, obwohl der
+    Subbass erst Takte später einsetzt (Fake-Drop); der Bass-Stem zeigt den echten Einsatz.
+    Die Breakdown-Art lässt sich nur mit dem Drum-Stem sicher bestimmen, deshalb kommt sie
+    von hier. Wirft nie: Ein Fehler der Stem-Auswertung darf den Cue-Job nicht kippen, die
+    Cues von all-in-one sind dann immer noch brauchbar.
+    """
+    try:
+        analysis = stem_analysis.analyze_stems(
+            bass_path, drums_path, downbeats=downbeats, bpm=bpm
+        )
+        # Ohne ersten Kick war der Stem unlesbar oder stumm; dann gibt es nichts zu prüfen.
+        if analysis.first_kick_s is None:
+            return _unchecked(cues)
+
+        out = copy.deepcopy(cues)
+        drop_offset_s = 0.0
+        drop_s = out.get("drop_s")
+        if drop_s is not None:
+            drop = stem_analysis.find_subbass_drop(
+                bass_path, drop_s, downbeats=downbeats, bpm=bpm
+            )
+            # Nur ein echter Versatz verschiebt den Drop; ein bestätigter Drop behält den
+            # gemeldeten Wert exakt, damit keine Rundung der Hüllkurve hineinrutscht.
+            if drop is not None and drop.is_fake_drop_corrected:
+                out["drop_s"] = drop.start_s
+                drop_offset_s = drop.offset_s
+
+        breakdown_s = out.get("breakdown_s")
+        if breakdown_s is not None and analysis.breakdowns:
+            nearest = min(analysis.breakdowns, key=lambda b: abs(b.start_s - breakdown_s))
+            if abs(nearest.start_s - breakdown_s) <= BREAKDOWN_MATCH_TOL_S:
+                out["breakdown_kind"] = nearest.kind
+
+        if out.get("cues"):
+            out["cues"] = _build_cues(
+                out.get("first_kick_s"), out.get("drop_s"), out.get("drop2_s"), breakdown_s
+            )
+        out["stem_checked"] = True
+        out["drop_offset_s"] = drop_offset_s
+        return out
+    except Exception as exc:  # noqa: BLE001 – Stem-Auswertung darf den Job nie kippen
+        log.warning("Stem-Auswertung fehlgeschlagen: %s", exc)
+        return _unchecked(cues)
+
+
+def _find_stem(demix_dir: Path, name: str) -> Path | None:
+    """Erste Stem-Datei ``name`` unter ``demix_dir``.
+
+    Die Ablage hängt vom Demucs-Modell ab (``<demix_dir>/htdemucs/<track>/bass.wav``), darum
+    rekursiv und sortiert, damit das Ergebnis reproduzierbar ist.
+    """
+    if not demix_dir.is_dir():
+        return None
+    return next(iter(sorted(demix_dir.rglob(name))), None)
+
+
 def make_allin1_infer(
     *,
     analyze_fn: Callable[..., Any] | None = None,
     model: str = "harmonix-all",
     device: str = "cuda",
+    stems: bool = False,
 ) -> Callable[[Path], dict[str, Any]]:
     """Cue-Inferenz mit all-in-one (``beat_this``-Beats plus Abschnittserkennung).
 
@@ -238,6 +324,11 @@ def make_allin1_infer(
     Tests haben weder ``torch`` noch das Paket. Fehlt es, gibt es ``CueEngineUnavailable``.
     Fehler der Analyse selbst werden durchgereicht, es gibt keinen stillen Rückfall auf
     ``librosa``: Der Job soll sichtbar scheitern (Goldene Regel 7), nicht schlechte Cues liefern.
+
+    Mit ``stems=True`` behält all-in-one die Demucs-Stems, die es ohnehin berechnet, in einem
+    temporären Ordner; ``refine_cues_with_stems`` korrigiert damit Drop und Breakdown-Art. Der
+    Ordner verschwindet nach jedem Aufruf, auch wenn die Analyse wirft: Stems sind groß, und
+    die Workstation soll keine Kopien der Tracks ansammeln.
     """
     if analyze_fn is None:
         try:
@@ -249,17 +340,8 @@ def make_allin1_infer(
             ) from exc
         analyze_fn = allin1_infer.analyze
 
-    def infer(path: Path) -> dict[str, Any]:
-        audio_path = Path(path)
-        # Ein Pfad (keine Liste) liefert ein einzelnes Ergebnis; eine Liste nehmen wir
-        # trotzdem an, falls eine andere Version sie zurückgibt.
-        result = analyze_fn(
-            paths=audio_path,
-            model=model,
-            device=device,
-            keep_byproducts=False,
-            multiprocess=False,  # im Runner keine Kindprozesse
-        )
+    def to_cues(result: Any, audio_path: Path) -> tuple[dict[str, Any], Any]:
+        """Cue-Ergebnis und das einzelne all-in-one-Ergebnis (für die Downbeats)."""
         if isinstance(result, (list, tuple)):
             result = result[0] if result else None
         raw_segments = getattr(result, "segments", None)
@@ -285,21 +367,67 @@ def make_allin1_infer(
         bpm = _finite(getattr(result, "bpm", None))
         cues["engine"] = "allin1"
         cues["bpm"] = bpm if bpm is not None and bpm > 0 else None
-        return cues
+        return cues, result
 
-    return infer
+    def infer(path: Path) -> dict[str, Any]:
+        audio_path = Path(path)
+        # Ein Pfad (keine Liste) liefert ein einzelnes Ergebnis; eine Liste nehmen wir
+        # trotzdem an, falls eine andere Version sie zurückgibt.
+        result = analyze_fn(
+            paths=audio_path,
+            model=model,
+            device=device,
+            keep_byproducts=False,
+            multiprocess=False,  # im Runner keine Kindprozesse
+        )
+        return to_cues(result, audio_path)[0]
+
+    def infer_with_stems(path: Path) -> dict[str, Any]:
+        audio_path = Path(path)
+        with tempfile.TemporaryDirectory(prefix="sc-digger-stems-") as tmp:
+            demix_dir = Path(tmp) / "demix"
+            result = analyze_fn(
+                paths=audio_path,
+                model=model,
+                device=device,
+                keep_byproducts=True,
+                multiprocess=False,  # im Runner keine Kindprozesse
+                demix_dir=demix_dir,
+                # Ohne spec_dir legt all-in-one ./spec im Arbeitsverzeichnis an und lässt es liegen.
+                spec_dir=Path(tmp) / "spec",
+            )
+            cues, single = to_cues(result, audio_path)
+            bass = _find_stem(demix_dir, "bass.wav")
+            drums = _find_stem(demix_dir, "drums.wav")
+            if bass is None or drums is None:
+                log.warning("Stems fehlen nach all-in-one für %s", audio_path.name)
+                return _unchecked(cues)
+            raw_downbeats = getattr(single, "downbeats", None)
+            downbeats = (
+                None if raw_downbeats is None
+                else [d for d in (_finite(x) for x in raw_downbeats) if d is not None]
+            )
+            return refine_cues_with_stems(
+                cues, bass, drums, downbeats=downbeats, bpm=cues["bpm"]
+            )
+
+    return infer_with_stems if stems else infer
 
 
-def select_cue_engine(name: str) -> tuple[Callable[[Path], dict[str, Any]], str]:
+def select_cue_engine(
+    name: str, *, stems: bool = False
+) -> tuple[Callable[[Path], dict[str, Any]], str]:
     """Wählt die Cue-Inferenz: ``local`` (librosa) oder ``allin1`` (GPU).
 
     Gibt die Funktion und den Engine-Namen zurück. ``allin1`` wirft
     ``CueEngineUnavailable``, wenn das Paket fehlt; der Aufrufer entscheidet über den Rückfall.
+    ``stems`` gilt nur für ``allin1``; die lokale Analyse trennt keine Stems und ignoriert ihn.
     """
     if name == "local":
         return infer_cues_from_audio, "local"
     if name == "allin1":
-        return make_allin1_infer(), "allin1"
+        # Globaler Name, zur Laufzeit im Modul nachgeschlagen: Tests können ihn ersetzen.
+        return make_allin1_infer(stems=stems), "allin1"
     raise ValueError(f"Unbekannte cue-engine {name!r}, erlaubt: {', '.join(CUE_ENGINES)}")
 
 

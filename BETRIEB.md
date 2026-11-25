@@ -179,7 +179,13 @@ dauernd laufen, deshalb weckt der Server sie einmal am Tag, wenn Jobs offen sind
 `allin1_infer` in der Umgebung, steht im Journal eine WARNING mit „allin1“ und der Runner nutzt
 die lokale `librosa`-Analyse (`--cue-engine local` wählt sie ausdrücklich, ohne Warnung). Die
 Engine steht im Ergebnis (`engine`); schlägt die Analyse selbst fehl, scheitert der Job, es gibt
-keinen stillen Rückfall. Alte Cues in der Datenbank bleiben unverändert.
+keinen stillen Rückfall. Alte Cues in der Datenbank bleiben unverändert. Mit `--stems`
+(standardmäßig aus) behält all-in-one die Demucs-Stems für die Dauer eines Jobs in einem
+temporären Ordner, der danach immer gelöscht wird, verschiebt damit Fake-Drops auf den
+Subbass-Einsatz und bestimmt die Breakdown-Art (`silence`/`groove`); das Ergebnis trägt
+`stem_checked` und `drop_offset_s`. Eingeschaltet wird der Schalter durch Anhängen von
+`--stems` an `ExecStart` in `sc-digger-gpu-worker.service` auf der Workstation, erst nach
+einem erfolgreichen Probelauf mit `python -m sc_digger.worker --api-url … --once --stems -v`.
 
 **Schutz im Idle-Skript:** `/usr/local/bin/ollama-idle-shutdown.sh` darf den PC nicht abschalten,
 solange der Runner arbeitet. Dafür steht im Skript (als root, vor der Abschaltung) diese Zeile.
