@@ -51,7 +51,7 @@ JOBS: tuple[Job, ...] = (
         uhrzeit="06:30",
         cron="30 6 * * *",
         kennung="sc_digger.backup run",
-        mode=None,
+        mode="backup",
         beschreibung="Sicherung der SQLite-Datenbanken",
     ),
     Job(

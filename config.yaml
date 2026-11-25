@@ -209,8 +209,10 @@ state:
 
 backup:
   # Zielverzeichnis für tägliche SQLite-Sicherungen (gesehene Tracks, History und Override-Datei).
-  # Leer ("") = automatische Sicherung deaktiviert.
-  target_dir: ""
+  # Standard: /data/backup (im Daten-Volume, schützt vor kaputten Dateien). Für Schutz gegen
+  # Plattenausfall den NAS-Ordner auf dem Host unter data/backup einbinden (BETRIEB.md).
+  # Leer ("") = automatische Sicherung deaktiviert (wird als Fehler gemeldet).
+  target_dir: "/data/backup"
   # Anzahl der aufzubewahrenden täglichen Stände
   keep_daily: 7
   # Anzahl der aufzubewahrenden wöchentlichen Stände

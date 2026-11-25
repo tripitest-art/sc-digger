@@ -292,18 +292,28 @@ Prüfen: `docker compose exec sc-digger python -m sc_digger.schema --local /data
 
 Die SQLite-Datenbanken (`seen.sqlite`, `tracks.sqlite`) und die lokale Override-Datei (`config.local.yaml`) werden täglich um 06:30 Uhr über die SQLite Backup-API gesichert, geprüft und rotiert (`sc_digger.backup`).
 
-### Ziel einbinden
+### Ziel
 
-Das Sicherungsziel (z. B. ein externes Backup-Verzeichnis, NFS- oder SMB-Share) wird als Volume in den Container eingebunden (z. B. `/backup`). In der lokalen Override-Datei (`/data/config.local.yaml`) wird der Pfad konfiguriert:
+Ab Werk sichert sc-digger nach `/data/backup/<Datum>/` (`backup.target_dir: "/data/backup"`), also in das vorhandene Daten-Volume `./data`. Das schützt vor kaputten Dateien, nicht vor einem Plattenausfall. Anpassen lässt sich das Ziel in der lokalen Override-Datei (`/data/config.local.yaml`):
 
 ```yaml
 backup:
-  target_dir: "/backup"
+  target_dir: "/data/backup"
   keep_daily: 7
   keep_weekly: 4
 ```
 
-Ohne gesetztes `backup.target_dir` (Standard `""`) bleibt die automatische Sicherung inaktiv.
+Jeder Lauf steht in der Tabelle `runs` (Modus `backup`); die Tagesablauf-Karte zeigt das Ergebnis. Ist `backup.target_dir` leer oder schlägt die Sicherung wiederholt fehl, kommt einmal ein Telegram-Alarm (`alert_after_bad_runs`), bei der nächsten erfolgreichen Sicherung eine Entwarnung.
+
+### Ziel auf dem NAS
+
+Für Schutz gegen Plattenausfall wird der NAS-Ordner auf dem Host unter `data/backup` eingebunden. `docker-compose.yml` bleibt unverändert, weil `./data` schon ein Volume ist. Schritte auf dem Proxmox-Host (Platzhalter in spitzen Klammern):
+
+1. Ordner auf der NAS-Ablage anlegen, z. B. `<nas>/backups/sc-digger`. Eigentümer ist root des unprivilegierten Containers (UID-Mapping, meist 100000).
+2. Als Mountpoint in den sc-digger-Container einbinden, Ziel `<projektordner>/data/backup`: `pct set <ct> -mpN <quelle>,mp=<ziel>`.
+3. Container neu starten, `docker compose exec sc-digger python -m sc_digger.backup run` ausführen und prüfen, dass der Tagesordner auf dem NAS erscheint.
+
+Ohne diesen Schritt sichert sc-digger in das lokale `data/backup`.
 
 ### Prüfen
 
@@ -314,7 +324,7 @@ docker compose exec sc-digger python -m sc_digger.backup run
 ```
 
 Erfolg und Struktur prüfen:
-- Tagesordner unter dem Sicherungsverzeichnis: `ls -la /backup/$(date +%F)`
+- Tagesordner unter dem Sicherungsverzeichnis: `ls -la /data/backup/$(date +%F)`
 - Enthält `seen.sqlite`, `tracks.sqlite` und `config.local.yaml`.
 - Logausgabe prüfen (keine Fehler, Exit-Code 0).
 
@@ -327,8 +337,8 @@ Erfolg und Struktur prüfen:
 docker compose stop sc-digger
 
 # 2. Datenbank aus dem gewünschten Tagesordner wiederherstellen (geprüft und mit Sicherung des alten Stands nach .vor-restore)
-docker compose run --rm sc-digger python -m sc_digger.backup restore /backup/2026-11-05/tracks.sqlite /data/tracks.sqlite --force
-docker compose run --rm sc-digger python -m sc_digger.backup restore /backup/2026-11-05/seen.sqlite /data/seen.sqlite --force
+docker compose run --rm sc-digger python -m sc_digger.backup restore /data/backup/2026-11-05/tracks.sqlite /data/tracks.sqlite --force
+docker compose run --rm sc-digger python -m sc_digger.backup restore /data/backup/2026-11-05/seen.sqlite /data/seen.sqlite --force
 
 # 3. Container wieder starten
 docker compose start sc-digger

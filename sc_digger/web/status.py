@@ -53,6 +53,7 @@ ALERT_LABELS: dict[str, str] = {
     "api_schema": "SoundCloud-API-Felder",
     "rekordbox_import": "Rekordbox-Rückkanal",
     "availability_watch": "Verfügbarkeits-Wächter",
+    "backup": "Sicherung",
 }
 
 
