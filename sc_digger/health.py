@@ -69,15 +69,17 @@ class Health:
         self.db.commit()
 
     # ------------------------------------------------------------ Bewertung
-    def evaluate(self, mode: str, threshold: int) -> str | None:
+    def evaluate(self, mode: str, threshold: int, *, zero_is_bad: bool = True) -> str | None:
         """Gibt eine Alarm- oder Entwarnungsnachricht zurück, oder None.
 
         Pro Ausfall wird nur einmal alarmiert und einmal entwarnt.
+        zero_is_bad=False: nur ok=0 gilt als schlecht. Für Cron-Jobs wie Sicherung oder Scout ist
+        „0 gefunden“ normal und kein Ausfall.
         """
         runs = self._last_runs(mode, max(threshold, 1))
         if not runs:
             return None
-        bad = [(not ok) or found == 0 for _, ok, found, _ in runs]
+        bad = [(not ok) or (zero_is_bad and found == 0) for _, ok, found, _ in runs]
         active = self._alert_active(mode)
 
         if not active and len(runs) >= threshold and all(bad):
@@ -99,6 +101,10 @@ class Health:
                 if "SOUNDCLOUD_AUTH_TOKEN" in last_error:
                     lines.append("SoundCloud-Login abgelaufen "
                                  "→ neuen Token mit <code>./set-secret.sh</code> setzen.")
+                if "backup.target_dir" in last_error:
+                    lines.append("Die Sicherung hat kein Ziel "
+                                 "→ <code>backup.target_dir</code> setzen, siehe BETRIEB.md "
+                                 "(Abschnitt Sicherung und Wiederherstellung).")
                 if "Speicher knapp" in last_error or "Inbox nicht prüfbar" in last_error:
                     lines.append(
                         "Downloads sind pausiert, bis wieder genug Platz frei ist "
@@ -113,6 +119,21 @@ class Health:
             self._set_alert(mode, False)
             return (f"✅ <b>sc-digger: {mode} läuft wieder</b>\n"
                     f"Letzter Lauf: {runs[0][2]} Rohtreffer.")
+        return None
+
+
+def record_job(db_path: str | Path, mode: str, *, ok: bool, found: int = 0,
+               error: str | None = None, threshold: int = 2) -> str | None:
+    """Protokolliert den Lauf eines Cron-Jobs in runs und liefert Alarm- bzw. Entwarnungstext oder None.
+
+    Wirft nie: Ein Fehler im Protokoll darf den eigentlichen Job nicht zusätzlich zu Fall bringen.
+    """
+    try:
+        with Health(db_path) as health:
+            health.record(mode, ok=ok, found=found, error=error)
+            return health.evaluate(mode, threshold, zero_is_bad=False)
+    except Exception as exc:  # noqa: BLE001 - bewusst breit, siehe Docstring
+        log.warning("Lauf %s konnte nicht protokolliert werden: %s", mode, redact(str(exc)))
         return None
 
 

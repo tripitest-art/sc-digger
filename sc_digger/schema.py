@@ -221,7 +221,9 @@ FIELDS: tuple[Field, ...] = (
        "Pfad zur JSON-Datei mit Zeit und Ergebnis des letzten Workstation-Starts.", editable=False),
     # --- backup ---
     _f("backup.target_dir", "str", "Backup-Zielverzeichnis",
-       "Zielverzeichnis für tägliche SQLite-Sicherungen (seen.sqlite, tracks.sqlite, config.local.yaml); leer = Sicherung deaktiviert.",
+       "Zielverzeichnis für tägliche SQLite-Sicherungen (seen.sqlite, tracks.sqlite, config.local.yaml); "
+       "Standard /data/backup. Für ein NAS den Ordner auf dem Host unter data/backup einbinden (BETRIEB.md); "
+       "leer = nicht eingerichtet, wird als Fehler gemeldet.",
        editable=False),
     _f("backup.keep_daily", "int", "Tägliche Sicherungen",
        "Anzahl der aufzubewahrenden täglichen Stände (Standard 7).", min=0),

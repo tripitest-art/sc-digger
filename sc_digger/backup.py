@@ -23,6 +23,9 @@ from .redact import install_redacting_logging
 
 log = logging.getLogger(__name__)
 
+# Schlüssel in der runs-Tabelle (Tagesablauf-Karte, Health-Alarm)
+BACKUP_MODE = "backup"
+
 
 class BackupError(RuntimeError):
     """Fehler bei der Sicherung oder Wiederherstellung einer SQLite-Datenbank."""
@@ -306,6 +309,44 @@ def run_backup(cfg: Config, *, today: date, notify: Callable[[str], None] | None
         return 1
 
 
+def run_backup_logged(cfg: Config, *, today: date,
+                      notify: Callable[[str], None] | None = None) -> int:
+    """Führt run_backup aus und protokolliert das Ergebnis in runs (Regel 7: nicht still scheitern).
+
+    Ohne Eintrag zeigte die Tagesablauf-Karte „noch kein Lauf“ und der Health-Alarm sah
+    eine nicht eingerichtete oder kaputte Sicherung nie. Rückgabewert wie run_backup.
+    """
+    from .health import record_job
+
+    rc = run_backup(cfg, today=today, notify=notify)
+    state_cfg = (cfg.raw.get("state") or {}) if isinstance(cfg.raw, dict) else {}
+    db_path = state_cfg.get("db_path")
+    if not db_path:
+        return rc
+
+    if rc == 0:
+        ok, found, error = True, 1, None
+    elif rc == 2:
+        ok, found, error = False, 0, "Sicherung nicht eingerichtet (backup.target_dir leer)"
+    elif rc == 1:
+        ok, found, error = False, 0, "Sicherung fehlgeschlagen (Details im Log)"
+    else:
+        ok, found, error = False, 0, f"Sicherung beendet mit Code {rc}"
+
+    health_cfg = (cfg.raw.get("health") or {}) if isinstance(cfg.raw, dict) else {}
+    try:
+        threshold = int(health_cfg.get("alert_after_bad_runs", 2))
+    except (TypeError, ValueError):
+        threshold = 2
+    text = record_job(db_path, BACKUP_MODE, ok=ok, found=found, error=error, threshold=threshold)
+    if text and notify is not None:
+        try:
+            notify(text)
+        except Exception as exc:  # noqa: BLE001 - Meldung darf den Lauf nicht kippen
+            log.warning("Alarm zur Sicherung nicht gesendet: %s", exc)
+    return rc
+
+
 def _make_telegram_notifier(cfg: Config) -> Callable[[str], None] | None:
     """Erstellt eine Notifier-Funktion für Telegram über output.telegram_call."""
     token = cfg.telegram_token
@@ -363,7 +404,7 @@ def main(argv: list[str] | None = None) -> int:
             log.error("Konfiguration konnte nicht geladen werden: %s", exc)
             return 1
         notifier = _make_telegram_notifier(cfg)
-        return run_backup(cfg, today=date.today(), notify=notifier)
+        return run_backup_logged(cfg, today=date.today(), notify=notifier)
 
     if args.subcommand == "restore":
         try:
