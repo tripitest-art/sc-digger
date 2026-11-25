@@ -274,6 +274,9 @@ FIELDS: tuple[Field, ...] = (
     _f("gpu_wake.wake_url", "str", "Wake-Proxy-URL",
        "Optionale URL des Wake-Proxys; wird von der Umgebungsvariable SC_DIGGER_WAKE_URL übersteuert.",
        editable=False),
+    _f("gpu_wake.stale_alert_days", "int", "Alarm nach Tagen Stillstand",
+       "Wartet ein offener Job der KI-Workstation so viele Tage unbearbeitet, kommt ein Telegram-Alarm "
+       "(Standard 3). Geprüft wird im täglichen API-Kanarienvogel.", min=1, max=60),
     # --- rekordbox ---
     _f("rekordbox.xml_enabled", "bool", "XML-Export aktiv",
        "Rekordbox-XML mit Playlists pro Kalenderwoche automatisch in die Inbox schreiben."),

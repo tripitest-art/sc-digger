@@ -150,6 +150,12 @@ Am 25.11.2026 fehlte der Weck-Timer seit seiner Einführung, und die Job-Queue s
   Zeile der Tabelle). Am 25.11.2026 fehlte so die 06:30-Sicherung.
 - Knopf „Workstation-Lauf starten“ meldet „kein Wake-Proxy konfiguriert“: `SC_DIGGER_WAKE_URL`
   fehlt in der `.env` des Containers. `gpu-wake.env` allein reicht nicht, die liest nur der Timer.
+- Telegram-Alarm „workstation“ bzw. Alarmliste „KI-Workstation“: Ein offener Job wartet seit
+  mindestens `gpu_wake.stale_alert_days` (Standard 3) Tagen. Geprüft wird täglich im Kanarienvogel
+  (07:15). Prüfen: `systemctl list-timers sc-digger-gpu-wake.timer` auf dem Server und
+  `systemctl status sc-digger-gpu-worker` auf der Workstation (Zeilen der Tabelle oben). Sind
+  Worker und Timer in Ordnung, arbeitet die Workstation einen Jobtyp nicht ab (z. B. Embeddings
+  ohne Modell). Die Entwarnung kommt, sobald kein offener Job mehr so lange wartet.
 
 ## GPU-Worker: Workstation täglich wecken (Cue-Jobs)
 

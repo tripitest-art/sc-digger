@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -15,6 +16,7 @@ import requests
 from .health import Health
 from .models import Config
 from .output import send_telegram
+from .queue_watch import run_queue_watch
 from .redact import install_redacting_logging
 from .soundcloud import SoundCloudClient, SoundCloudError
 
@@ -150,6 +152,17 @@ def main(argv: list[str] | None = None) -> int:
     tag = canary_cfg.get("tag") or (tags[0] if tags else "")
     track_url = canary_cfg.get("track_url") or None
     db_path = (cfg.raw.get("state") or {}).get("db_path") or "data/seen.sqlite"
+
+    # Stillstand der KI-Workstation vor der SoundCloud-Abfrage melden, damit er auch bei
+    # SoundCloud-Ausfall nicht untergeht. Fehler darin beeinflussen den Exit-Code nie.
+    try:
+        def _notify(text: str) -> None:
+            if not args.no_telegram:
+                send_telegram(cfg, [text])
+
+        run_queue_watch(cfg, now=datetime.now(timezone.utc), notify=_notify)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("Workstation-Prüfung fehlgeschlagen: %s", exc)
 
     try:
         sc = SoundCloudClient()

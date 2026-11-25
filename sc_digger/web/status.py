@@ -58,6 +58,7 @@ ALERT_LABELS: dict[str, str] = {
     "taste": "Taste-Score",
     "scout": "Store-Scout",
     "kaufliste": "Kaufliste",
+    "workstation": "KI-Workstation",
 }
 
 

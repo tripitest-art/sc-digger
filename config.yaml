@@ -272,6 +272,9 @@ gpu_wake:
   cooldown_s: 300
   # Wake-Proxy-URL (optional; bleibt im Repo leer, wird von SC_DIGGER_WAKE_URL übersteuert)
   wake_url: ""
+  # Alarm (Telegram, Alarmliste), wenn ein offener Job so viele Tage unbearbeitet wartet
+  # (Prüfung im täglichen API-Kanarienvogel, Issue #709)
+  stale_alert_days: 3
 
 rekordbox:
   # Rekordbox-XML-Export: schreibt eine XML mit Playlists pro Woche in die Inbox
