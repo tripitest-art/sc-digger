@@ -348,6 +348,9 @@
       <div class="stat-box" title="Aus der Inbox per Audio-Fingerprint in die Sammlung übernommene Tracks">
         <div class="val ok">{{ overview.adopted_count }}</div>
         <div class="lbl">übernommen</div>
+        {% if overview.adopted_count == 0 %}
+        <div class="meta meta-sm" data-hint="adopted">Noch nichts erkannt: Der Abgleich läuft täglich um 06:45, von Hand im <a href="/audit">Sammlungs-Audit</a>.</div>
+        {% endif %}
       </div>
       <div class="stat-box" title="Neue Downloads in der Inbox">
         <div class="val">{{ overview.inbox_count }}</div>
@@ -553,6 +556,11 @@
         {% endif %}
       </div>
       <div class="meta">{{ item.text }}</div>
+      {% if item.state != "ok" and item.settings_href and editor_available %}
+      <a href="{{ item.settings_href }}" class="meta meta-sm" data-ops-link="{{ item.key }}">Einstellen →</a>
+      {% elif item.state != "ok" and item.key == "backup" %}
+      <span class="meta meta-sm" data-ops-link="backup">Einrichtung: BETRIEB.md, Abschnitt „Sicherung und Wiederherstellung“</span>
+      {% endif %}
     </div>
     {% endfor %}
   </div>
