@@ -101,6 +101,7 @@ Fehlende optionale Schlüssel fallen auf die Defaults im Code zurück.
 | `watch.max_age_days` | Maximales Alter von 👍-Kandidaten in Tagen (1..730, Standard 180) | `180` |
 | `scout.bandcamp.feeds` | URLs für Bandcamp-RSS-Feeds von Labels und Artists | `[]` |
 | `scout.beatport.charts` | URLs für Beatport-Charts | `[]` |
+| `web.public_url` | Öffentliche Adresse des Dashboards (`http://`/`https://`); gesetzt führen Digest-Titel in Telegram auf die Track-Detailseite, und `/heute` nennt volle Links. Nur in der lokalen Override-Datei oder im Konfigeditor setzen | leer |
 | `web.timezone` | Zeitzone, in der das Web-Dashboard Zeiten anzeigt (IANA-Name; gespeichert wird weiter UTC, `/api/*` ebenso) | `Europe/Berlin` |
 | `web.stream_preview` | Hörproben im Web-Dashboard: 30-s-Schnipsel aus dem SoundCloud-Stream, erst beim Abspielen erzeugt (`GET /api/preview/sc/<sc_id>`); getrennt vom Bot-Schalter `preview.stream_enabled` | `false` |
 | `web.preview_cache_mb` | Obergrenze des Hörproben-Zwischenspeichers `preview_cache` neben der State-DB in MB (0..10000); die ältesten Schnipsel werden zuerst gelöscht | `500` |

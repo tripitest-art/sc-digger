@@ -344,6 +344,8 @@ FIELDS: tuple[Field, ...] = (
     _f("scout.beatport.charts", "list", "Beatport-Charts",
        "Chart-URLs von Beatport (z. B. https://www.beatport.com/genre/hard-techno/2/top-100) als Kauflisten-Quelle."),
     # --- web ---
+    _f("web.public_url", "str", "Öffentliche Dashboard-Adresse",
+       "Adresse, unter der das Dashboard erreichbar ist (http:// oder https://). Ist sie gesetzt, führen Digest-Titel in Telegram auf die Track-Detailseite und /heute nennt volle Links; leer = wie bisher."),
     _f("web.timezone", "str", "Zeitzone",
        "Zeitzone (IANA-Name, z. B. Europe/Berlin), in der das Web-Dashboard Zeiten anzeigt; gespeichert wird weiter UTC."),
     _f("web.stream_preview", "bool", "Hörproben im Dashboard",

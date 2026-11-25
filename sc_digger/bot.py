@@ -1374,7 +1374,7 @@ def heute_reply(cfg: Config, text: str) -> str:
         zeilen = ["📋 Heute zu tun"]
         for item in items:
             label = HEUTE_SINGULAR.get(item.key, item.label) if item.count == 1 else item.label
-            zeilen.append(f"• {item.count} {label} → {item.href}")
+            zeilen.append(f"• {item.count} {label} → {output.dashboard_url(cfg, item.href) or item.href}")
         if not items:
             zeilen.append("• nichts offen — gute Arbeit.")
         return "\n".join(zeilen)
