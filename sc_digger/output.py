@@ -679,13 +679,21 @@ def build_export_txt(tracks: list[Track], folder_name: str = "sc-digger") -> str
 
 
 def send_telegram_document(cfg: Config, filename: str, content: str, chat_id: str | None = None) -> None:
-    """Schickt die Export-Datei als herunterladbaren Anhang im Chat."""
+    """Schickt die Export-Datei als herunterladbaren Anhang im Chat.
+
+    Fehlen Token oder Chat, wird nur gewarnt und nichts gesendet; scheitert Telegram, wirft
+    telegram_call wie bisher. Bei Erfolg schreibt die Funktion eine INFO-Zeile mit Dateiname,
+    Byte-Größe und message_id, damit der Versand im Betriebslog belegbar ist.
+    """
     token, chat = cfg.telegram_token, chat_id or cfg.telegram_chat_id
     if not token or not chat:
         log.warning("TELEGRAM_BOT_TOKEN/CHAT_ID fehlen – Export-Datei wird nicht verschickt")
         return
-    telegram_call(token, "sendDocument", timeout=30, data={"chat_id": chat},
-                  files={"document": (filename, content.encode("utf-8"), "text/plain")})
+    daten = content.encode("utf-8")
+    antwort = telegram_call(token, "sendDocument", timeout=30, data={"chat_id": chat},
+                            files={"document": (filename, daten, "text/plain")})
+    message_id = (antwort.get("result") or {}).get("message_id")
+    log.info("Export-Anhang gesendet: %s (%d Bytes, message_id=%s)", filename, len(daten), message_id)
 
 
 def send_telegram_photo(
