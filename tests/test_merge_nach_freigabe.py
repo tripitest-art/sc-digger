@@ -225,6 +225,9 @@ class _FakeGitHub:
     def pull_body(self, number):
         return "Closes #99\n"
 
+    def issue_body(self, number):
+        return ""
+
     def issue_offen(self, number):
         return number not in getattr(self, "geschlossen", [])
 
@@ -552,3 +555,98 @@ def test_main_meldet_exit_0_wenn_das_schliessen_scheitert(monkeypatch, tmp_path)
         sys.stdout.close()
         sys.stdout = sys.__stdout__
     assert "nicht geschlossen" in (tmp_path / "out.txt").read_text(encoding="utf-8")
+
+
+# ---------------- Merge-Modus „manuell“ (Issue #751) ----------------
+# PR #748 (Issue #742, „manuell“) wurde direkt nach der Freigabe gemergt. Das Gate liest
+# deshalb den Merge-Modus der verknüpften Issues selbst nach, statt sich auf den Reviewer zu
+# verlassen.
+def _issue_text(modus_kopf="### Merge-Modus", modus="manuell durch Stephan"):
+    return (f"### Ziel\n\nEtwas.\n\n{modus_kopf}\n\n{modus}\n\n"
+            "### Kontext\n\nDanach.\n")
+
+
+def test_merge_modus_kopf_nur_in_genau_der_formular_schreibweise():
+    # Kleingeschriebene Überschrift ist nicht die des Formulars und zählt nicht.
+    assert m.merge_modus_aus_issue_text(_issue_text(modus_kopf="### merge-modus")) is None
+    assert m.merge_modus_aus_issue_text(_issue_text(modus_kopf="## Merge-Modus")) is None
+
+
+def test_merge_modus_wert_unabhaengig_von_gross_klein():
+    assert m.merge_modus_aus_issue_text(_issue_text(modus="Manuell durch Stephan")) == "manuell"
+    assert m.merge_modus_aus_issue_text(_issue_text(modus="AUTOMATISCH nach Review")) == "automatisch"
+
+
+def test_merge_modus_mit_windows_zeilenenden_und_am_textende():
+    assert m.merge_modus_aus_issue_text(_issue_text().replace("\n", "\r\n")) == "manuell"
+    assert m.merge_modus_aus_issue_text("### Ziel\n\nx\n\n### Merge-Modus\n\n  manuell  ") == "manuell"
+
+
+def test_merge_modus_anderer_text_und_kein_string():
+    assert m.merge_modus_aus_issue_text(_issue_text(modus="vielleicht manuell")) is None
+    assert m.merge_modus_aus_issue_text(_issue_text(modus="")) is None
+    assert m.merge_modus_aus_issue_text(123) is None
+
+
+def test_decide_nennt_jedes_manuelle_issue_einzeln():
+    d = _decide(manuelle_issues=[742, 749])
+    assert d.merge is False
+    assert "Issue #742 verlangt Merge-Modus „manuell“: Stephan mergt selbst." in d.reasons
+    assert "Issue #749 verlangt Merge-Modus „manuell“: Stephan mergt selbst." in d.reasons
+
+
+def test_manuelle_issues_ignoriert_den_selbstbezug():
+    class Gh:
+        abgefragt = []
+
+        def pull_body(self, number):
+            return "Closes #12, #7"
+
+        def issue_body(self, number):
+            self.abgefragt.append(number)
+            return _issue_text()
+
+    gh = Gh()
+    assert m.manuelle_issues(gh, 12) == [7]
+    assert gh.abgefragt == [7]
+
+
+def test_main_mergt_nicht_wenn_ein_issue_manuell_verlangt(monkeypatch, tmp_path, capsys):
+    class Manuell(_FakeGitHub):
+        instances = []
+
+        def issue_body(self, number):
+            return _issue_text()
+
+    assert _main(monkeypatch, tmp_path, gh_cls=Manuell) == 1
+    assert Manuell.instances[-1].calls == []
+    assert "Issue #99 verlangt Merge-Modus „manuell“" in capsys.readouterr().out
+
+
+def test_main_mergt_nicht_wenn_das_issue_nicht_lesbar_ist(monkeypatch, tmp_path, capsys):
+    # fail-closed: Wer den Merge-Modus nicht kennt, darf nicht annehmen, er sei „automatisch“.
+    class Unlesbar(_FakeGitHub):
+        instances = []
+
+        def issue_body(self, number):
+            raise m.MergeAbgelehnt("GET /issues/99 -> HTTP 502: Bad Gateway")
+
+    assert _main(monkeypatch, tmp_path, gh_cls=Unlesbar) == 1
+    assert Unlesbar.instances[-1].calls == []
+    out = capsys.readouterr().out
+    assert "Nicht gemergt" in out
+    assert "HTTP 502" in out
+
+
+def test_github_issue_body_liest_den_text(monkeypatch):
+    gh = m.GitHub("o/r", "tok")
+    aufrufe = []
+
+    def fake_call(method, path, payload=None):
+        aufrufe.append((method, path))
+        return {"body": None} if path.endswith("/2") else {"body": "Text"}
+
+    monkeypatch.setattr(gh, "_call", fake_call)
+    assert gh.issue_body(1) == "Text"
+    assert gh.issue_body(2) == ""
+    assert aufrufe == [("GET", "/issues/1"), ("GET", "/issues/2")]
