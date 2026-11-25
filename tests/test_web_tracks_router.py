@@ -152,6 +152,7 @@ def test_create_app_behaelt_alle_routen_und_reihenfolge(tmp_path: Path):
         ("GET", "/api/preview/sc/{sc_id}"),
         # MixesDB-Seite (Issue #651), zuletzt in register_routes registriert.
         ("GET", "/mixesdb"),
+        ("GET", "/hilfe"),
         ("GET", "/mix"),
         ("POST", "/api/set-builder"),
         ("GET", "/api/set-builder/m3u8"),

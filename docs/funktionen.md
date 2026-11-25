@@ -420,6 +420,10 @@ Der Code dazu steht in `sc_digger/analysis.py` (BPM/Key), die harmonisch sortier
 `tests/test_dj_workflow.py`. Das frühere Auswertungswerkzeug samt Prüfbericht ist entfernt und
 nur noch über die Git-Historie erreichbar.
 
+## Hilfe-Seite
+
+Die Seite `/hilfe` (Link „Hilfe“ in der Kopfzeile jeder Seite, neben „Glossar“) zeigt den Weg eines Tracks in sieben Stationen (Entdecken, Bewerten, Laden, Prüfen, Inbox, Rekordbox, Sammlung), jede mit einem Satz und einem Link auf ihre Seite, dazu „Dein Tag in 3 Schritten“. Die Texte stehen als reine Daten in `sc_digger/web/hilfe.py` und nutzen nur Begriffe aus dem Glossar.
+
 ## Glossar
 
 Die Seite `/glossar` im Dashboard (Link „Glossar“ in der Kopfzeile) erklärt alle Begriffe mit ihren verworfenen Alternativen und zeigt die Legende der Status-Plaketten. Sie rendert direkt aus `sc_digger/web/glossary.py` (`GLOSSAR`, `STATUS_BADGES`); `docs/glossar.md` bleibt per Test gleich.

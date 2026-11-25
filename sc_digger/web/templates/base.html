@@ -1040,6 +1040,7 @@
     <a href="{{ g.href }}" class="nav-tab{% if nav.active_group and nav.active_group.key == g.key %} active{% endif %}" data-nav-group="{{ g.key }}">{{ g.label }}</a>
     {% endfor %}
   </nav>
+  <a href="/hilfe" class="glossar-link" title="So funktioniert sc-digger">Hilfe</a>
   <a href="/glossar" class="glossar-link" title="Begriffe und Status-Plaketten">Glossar</a>
   {% if config_enabled() or editor_available or save_action or config_action %}
   <a href="/config" class="gear-link {% block nav_config %}{% endblock %}" title="Konfiguration" aria-label="Konfiguration">{{ icon("settings", 18) }}</a>
