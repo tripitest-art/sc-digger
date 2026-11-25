@@ -119,3 +119,29 @@ def test_digest_seite_enthaelt_link_auf_durchhoeren(tmp_path, monkeypatch):
     assert resp.status_code == 200
     assert 'href="/digest/durchhoeren"' in resp.text
     assert "Durchhören" in resp.text
+
+
+def test_durchhoeren_json_maskiert_script_ende(tmp_path, monkeypatch):
+    # Ein Titel mit "</script>" darf das JSON-Element nicht vorzeitig schließen.
+    client = _client(tmp_path, monkeypatch, [_eintrag(5, title="</script><b>x")])
+    html = client.get("/digest/durchhoeren", auth=AUTH).text
+    assert html.count("</script><b>") == 0
+
+
+def test_durchhoeren_hoerprobe_aus_zeigt_hinweis_ohne_editor(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        web_app, "query_digest",
+        lambda *a, **k: types.SimpleNamespace(items=[_eintrag(9)], total=1),
+    )
+    cfg = Config.load(ROOT / "config.yaml")
+    cfg.raw["state"] = {"db_path": str(tmp_path / "s.sqlite"), "track_db_path": str(tmp_path / "t.sqlite")}
+    cfg.raw["web"]["stream_preview"] = False
+    html = TestClient(web_app.create_app(cfg, password=PASSWORD)).get("/digest/durchhoeren", auth=AUTH).text
+    assert 'data-hint="preview-aus"' in html and "web.stream_preview" in html
+    assert 'id="durchhoeren-audio"' not in html
+
+
+def test_durchhoeren_standard_hat_player_und_kein_dauer_feld(tmp_path, monkeypatch):
+    html = _client(tmp_path, monkeypatch, [_eintrag(3)]).get("/digest/durchhoeren", auth=AUTH).text
+    assert 'id="durchhoeren-audio"' in html and "/api/preview/sc/3" in html
+    assert "data-duration" not in html and "Leertaste" in html
