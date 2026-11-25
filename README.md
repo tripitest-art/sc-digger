@@ -59,7 +59,7 @@
 | Web | Freie Tags im Track-Explorer setzen und filtern | vorhanden | [Freie Tags](docs/funktionen.md#freie-tags) |
 | Web | Harmonic Mix Finder, Set-Builder (M3U8/Rekordbox-XML), URL-Scanner | vorhanden | [Web-Dashboard](docs/funktionen.md#web-dashboard) |
 | Web | Upload & Intake, Duplikat- und Inbox-Cleanup | vorhanden | [Web-Dashboard](docs/funktionen.md#web-dashboard) |
-| Web | Wartung per Knopf auf der Statusseite: Scout, Verfügbarkeits-Wächter, Taste-Training, Backfills (Energie, Artist, Embeddings), Requeue und Sicherung | vorhanden | [Web-Dashboard](docs/funktionen.md#web-dashboard) |
+| Web | Wartung per Knopf auf der Statusseite: Scout, Verfügbarkeits-Wächter, Taste-Training, Backfills (Energie, Artist, Artist aus Dateinamen, Embeddings), Requeue und Sicherung | vorhanden | [Web-Dashboard](docs/funktionen.md#web-dashboard) |
 | Web | Sammlungs-Audit als Seite `/audit`: Status, Optionen, Wartungs-Knopf und letzter Bericht | vorhanden | [Sammlungs-Audit](docs/funktionen.md#sammlungs-audit) |
 | Web | Glossar als Seite `/glossar`: alle Begriffe und Status-Plaketten, gerendert aus `sc_digger/web/glossary.py` | vorhanden | [Glossar](docs/funktionen.md#glossar) |
 | Web | Kuratoren-Übersicht: welche Artists die Sammlung tragen, mit Rating-Anteil und Ø BPM; Kandidaten-Block mit Startknopf für das Kuratoren-Mining (Profile, die 👍-Tracks liken) | vorhanden | [Kuratoren](docs/funktionen.md#kuratoren) |

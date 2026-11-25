@@ -12,6 +12,7 @@ from __future__ import annotations
 import html
 import logging
 import os
+import re
 import tempfile
 import time
 import xml.etree.ElementTree as ET
@@ -154,6 +155,26 @@ def read_existing_tags(path: Path) -> dict[str, Any]:
             except Exception:
                 pass
 
+        elif ext == ".wav":
+            # WAV trägt Tags (falls überhaupt) als ID3-Chunk; fehlt er, bleibt alles None.
+            from mutagen.wave import WAVE
+            try:
+                wtags = WAVE(str(path)).tags
+                if wtags:
+                    if "TBPM" in wtags and wtags["TBPM"].text:
+                        try:
+                            meta["bpm"] = float(str(wtags["TBPM"].text[0]).strip())
+                        except ValueError:
+                            pass
+                    if "TKEY" in wtags and wtags["TKEY"].text:
+                        meta["key"] = str(wtags["TKEY"].text[0]).strip()
+                    if "TPE1" in wtags and wtags["TPE1"].text:
+                        meta["artist"] = str(wtags["TPE1"].text[0]).strip()
+                    if "TIT2" in wtags and wtags["TIT2"].text:
+                        meta["title"] = str(wtags["TIT2"].text[0]).strip()
+            except Exception:
+                pass
+
         elif ext == ".m4a":
             from mutagen.mp4 import MP4
             tags = MP4(str(path))
@@ -171,6 +192,41 @@ def read_existing_tags(path: Path) -> dict[str, Any]:
         log.debug("Tags konnten für %s nicht gelesen werden: %s", path.name, e)
 
     return meta
+
+
+_SC_ID_SUFFIX_RE = re.compile(r"\s*\[\d+\]\s*$")
+# Tracknummer nur mit führender 0 ("01 ", "007 ") oder mit Punkt ("1. "), damit Artists wie
+# "808 State" nicht angeschnitten werden.
+_TRACKNO_RE = re.compile(r"^(?:0\d{1,2}\.?|\d{1,3}\.)\s*(?:[-_]\s*)?")
+
+
+def names_from_filename(stem: str) -> tuple[str | None, str | None]:
+    """(artist, title) aus einem Dateinamen ohne Endung; wirft nie.
+
+    Die Sammlung liegt überwiegend als WAV ohne Tags vor, der Artist steht aber fast immer
+    im Namen ("Artist - Titel"). Getrennt wird am ersten " - ", damit Titel mit Bindestrich
+    ganz bleiben."""
+    try:
+        rest = _SC_ID_SUFFIX_RE.sub("", stem or "")
+        rest = _TRACKNO_RE.sub("", rest.strip()).strip()
+        if " - " in rest:
+            artist, title = rest.split(" - ", 1)
+            return (artist.strip() or None, title.strip() or None)
+        return (None, rest or None)
+    except Exception:
+        return (None, None)
+
+
+def names_for_file(path: Path) -> tuple[str | None, str | None]:
+    """Artist und Titel: Tags zuerst, je Feld Rückfall auf den Dateinamen. Liest nur, nie Exception."""
+    try:
+        tags = read_existing_tags(path)
+    except Exception:
+        tags = {}
+    f_artist, f_title = names_from_filename(path.stem)
+    artist = (tags.get("artist") or "").strip() or f_artist
+    title = (tags.get("title") or "").strip() or f_title
+    return (artist, title)
 
 
 # ================================================================= Einzeldatei-Audit
@@ -248,6 +304,10 @@ def audit_file(
     existing_tags = read_existing_tags(path)
     bpm = existing_tags.get("bpm")
     key_name = existing_tags.get("key")
+    # Fehlende Tags aus dem Dateinamen ergänzen (nur für die DB; Datei bleibt unberührt).
+    fn_artist, fn_title = names_from_filename(path.stem)
+    name_artist = (existing_tags.get("artist") or "").strip() or fn_artist
+    name_title = (existing_tags.get("title") or "").strip() or fn_title
     key_camelot: str | None = None
     if key_name and _CAMELOT_RE.match(key_name.strip().upper()):
         key_camelot = key_name.strip().upper()
@@ -322,8 +382,8 @@ def audit_file(
         lufs=report.get("integrated_lufs"),
         true_peak_dbfs=report.get("true_peak_dbfs"),
         loudness_range_lu=report.get("loudness_range_lu"),
-        artist=existing_tags.get("artist"),
-        title=existing_tags.get("title"),
+        artist=name_artist,
+        title=name_title,
         status=TrackStatus.ARCHIVE,
         breakdown_ratio=breakdown_ratio,
         duration=report.get("duration"),

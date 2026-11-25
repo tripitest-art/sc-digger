@@ -145,6 +145,15 @@ def default_runners(cfg: Config) -> dict[str, Callable[[], str]]:
             res = backfill_energy(db, dry_run=False)
         return f"Energie: {res.get('set', 0)} gesetzt, {res.get('skipped', 0)} übersprungen"[:MESSAGE_MAX]
 
+    def backfill_names_runner() -> str:
+        from ..backfill import backfill_names
+        from ..db import TrackDB
+
+        with TrackDB(cfg["state"]["track_db_path"]) as db:
+            res = backfill_names(db)
+        return (f"Artist/Titel: {res.get('set', 0)} ergänzt, "
+                f"{res.get('skipped', 0)} ohne Artist im Namen")[:MESSAGE_MAX]
+
     def backfill_artist_runner() -> str:
         from ..backfill_artist import backfill_artists
         from ..db import TrackDB
@@ -236,6 +245,7 @@ def default_runners(cfg: Config) -> dict[str, Callable[[], str]]:
         "taste": taste,
         "backfill-energy": backfill_energy_runner,
         "backfill-artist": backfill_artist_runner,
+        "backfill-names": backfill_names_runner,
         "backfill-embeddings": backfill_embeddings_runner,
         "requeue": requeue_runner,
         "backup": backup_runner,
@@ -252,6 +262,7 @@ def action_labels() -> dict[str, str]:
         "taste": "Taste-Score trainieren",
         "backfill-energy": "Energie nachberechnen",
         "backfill-artist": "Künstler nachpflegen",
+        "backfill-names": "Artist aus Dateinamen ergänzen",
         "backfill-embeddings": "Audio-Embeddings einreihen",
         "requeue": "Hängende Jobs zurücksetzen",
         "backup": "Sicherung erstellen",
