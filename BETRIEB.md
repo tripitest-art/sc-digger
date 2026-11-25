@@ -13,7 +13,11 @@ statt in `AGENTS.md`, weil Antigravity Regeldateien bei 12.000 Zeichen abschneid
   Schreibende Läufe warten aufeinander (Lauf-Sperre `/data/pipeline.lock`, höchstens `state.lock_wait_s` = 1800 s).
   Exit-Code 75 heißt: Sperre blieb belegt, Lauf übersprungen. Wer sie hält: `docker compose exec sc-digger cat /data/pipeline.lock`.
 - **Zugangsdaten** in `/root/sc-digger/.env`, nur über `./set-secret.sh NAME` setzen:
-  `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `SOUNDCLOUD_AUTH_TOKEN`.
+  `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `SOUNDCLOUD_AUTH_TOKEN`, außerdem `SC_DIGGER_WAKE_URL`
+  für den Dashboard-Knopf „Workstation-Lauf starten“ (siehe „GPU-Worker“).
+- **Dienste außerhalb des Containers** (systemd auf dem Server und auf der Workstation) richtet
+  `update.sh` nicht ein. Fehlen sie, merkt man es nur an Symptomen; siehe „Prüfliste: Dienste
+  außerhalb des Containers“.
 - **Logs:** `docker compose logs --tail 50` · **Health:** Tabelle `runs` in `/data/seen.sqlite`.
 - **Health-Status ablesen:**
   - `docker compose ps` zeigt den Status in der Health-Spalte (`healthy` oder `unhealthy`).
@@ -116,6 +120,37 @@ systemctl disable --now sc-digger-deploy.timer    # Auto-Deploy wieder aus
 Der Timer ist durch `flock /run/sc-digger-deploy.lock` gegen Überholung geschützt; ein
 laufender Deploy wird nicht von einem zweiten überholt.
 
+## Prüfliste: Dienste außerhalb des Containers
+
+Diese Teile laufen nicht im Container und werden weder von `update.sh` noch vom Auto-Deploy
+angelegt. Nach dem Neuaufsetzen eines Rechners oder wenn ein Symptom unten auftritt, alle prüfen.
+Am 25.11.2026 fehlte der Weck-Timer seit seiner Einführung, und die Job-Queue stand vier Wochen.
+
+| Teil | Wo | Prüfen | Einrichten |
+|---|---|---|---|
+| Cron-Jobs im Container | Server | `docker compose exec sc-digger crontab -l`: je Job aus `sc_digger/schedule.py` genau eine Zeile (u. a. `sc_digger.backup run`, `audit --check-adopted`, `sc_digger.main taste`, `sc_digger.canary`, `sc_digger.main scout`, `sc_digger.watch`, Kaufliste) | `entrypoint.sh` hängt sie beim Containerstart an: `docker compose up -d --force-recreate` |
+| `sc-digger-deploy.timer` | Server | `systemctl list-timers sc-digger-deploy.timer` | Abschnitt „Auto-Deploy“ |
+| `sc-digger-gpu-wake.timer` mit `/root/sc-digger/gpu-wake.env` | Server | `systemctl list-timers sc-digger-gpu-wake.timer`, `ls -l /root/sc-digger/gpu-wake.env` | „GPU-Worker“, Einrichtung auf dem Server |
+| `SC_DIGGER_WAKE_URL` in `/root/sc-digger/.env` | Server | `grep -c '^SC_DIGGER_WAKE_URL=' /root/sc-digger/.env` (zeigt 1) | „GPU-Worker“, Einrichtung auf dem Server |
+| `sc-digger-gpu-worker.service` mit `/etc/sc-digger-gpu-worker.env` | Workstation | `systemctl is-enabled sc-digger-gpu-worker` | „GPU-Worker“, Einrichtung auf der Workstation |
+| Klon der Workstation auf aktuellem Stand | Workstation | `git -C /home/stephanv/sc-digger log -1 --oneline` gegen `main` | „GPU-Worker“, Workstation aktuell halten |
+| Schutz im Idle-Skript | Workstation | `grep -n sc-digger-gpu-worker /usr/local/bin/ollama-idle-shutdown.sh` | „GPU-Worker“, Schutz im Idle-Skript |
+
+**Symptome und was dahinter steckt**
+
+- Statusseite zeigt „Version … · deployt <altes Datum>“, obwohl seitdem PRs gemergt wurden: Der
+  Auto-Deploy läuft nicht (Timer fehlt oder scheitert, `journalctl -u sc-digger-deploy.service`).
+  Bis dahin von Hand `./update.sh`.
+- Karte „⚡ KI-Workstation & Job-Queue“ zeigt Jobs als „Anstehend“, das „Letzte Lebenszeichen“
+  ist aber Tage alt: Weck-Timer fehlt (`journalctl -u sc-digger-gpu-wake` ohne Einträge) oder der
+  Runner auf der Workstation startet nicht. Der Wake-Proxy zeigt unter `/proxy/status`, ob und wann
+  er zuletzt geweckt hat (`wakes_total`, `last_wake_by`).
+- Tagesablauf auf der Statusseite zeigt für einen Job dauerhaft „noch kein Lauf“ bzw. die
+  Betriebskarte nie eine Sicherung: Die Zeile fehlt in der Crontab des Containers (siehe erste
+  Zeile der Tabelle). Am 25.11.2026 fehlte so die 06:30-Sicherung.
+- Knopf „Workstation-Lauf starten“ meldet „kein Wake-Proxy konfiguriert“: `SC_DIGGER_WAKE_URL`
+  fehlt in der `.env` des Containers. `gpu-wake.env` allein reicht nicht, die liest nur der Timer.
+
 ## GPU-Worker: Workstation täglich wecken (Cue-Jobs)
 
 Die Cue-Jobs (First Kick, Drop, Breakdown) rechnet die Workstation `nobara-pc`. Sie soll nicht
@@ -139,9 +174,10 @@ die lokale `librosa`-Analyse (`--cue-engine local` wählt sie ausdrücklich, ohn
 Engine steht im Ergebnis (`engine`); schlägt die Analyse selbst fehl, scheitert der Job, es gibt
 keinen stillen Rückfall. Alte Cues in der Datenbank bleiben unverändert.
 
-**Lücke im Idle-Skript:** `/usr/local/bin/ollama-idle-shutdown.sh` prüft nicht, ob der Runner
-arbeitet, und könnte den PC mitten in einem Job abschalten. Stephan trägt (als root, vor der
-Abschaltung) diese Zeile ein:
+**Schutz im Idle-Skript:** `/usr/local/bin/ollama-idle-shutdown.sh` darf den PC nicht abschalten,
+solange der Runner arbeitet. Dafür steht im Skript (als root, vor der Abschaltung) diese Zeile.
+Ob sie da ist, zeigt `grep -n sc-digger-gpu-worker /usr/local/bin/ollama-idle-shutdown.sh`; fehlt
+sie, eintragen:
 
 ```bash
 systemctl is-active --quiet sc-digger-gpu-worker && exit 0
@@ -166,6 +202,22 @@ systemctl daemon-reload
 systemctl enable --now sc-digger-gpu-wake.timer
 ```
 
+Der Knopf „Workstation-Lauf starten“ im Dashboard läuft im Container und sieht `gpu-wake.env`
+nicht. Dieselbe Adresse gehört deshalb zusätzlich in die `.env`; danach den Container neu
+erstellen, damit er die Variable lädt:
+
+```bash
+cd /root/sc-digger && ./set-secret.sh SC_DIGGER_WAKE_URL
+docker compose up -d
+```
+
+Gleich danach einmal von Hand wecken und das Ergebnis ansehen; erwartet ist
+„<n> offene Cue-Job(s), wecke die Workstation“ ohne Fehlerzeile:
+
+```bash
+systemctl start sc-digger-gpu-wake.service; journalctl -u sc-digger-gpu-wake -n 20 --no-pager
+```
+
 **Einrichtung auf der Workstation (einmalig)**
 
 Voraussetzung: ein Klon von sc-digger unter `/home/stephanv/sc-digger` und das venv
@@ -187,6 +239,28 @@ sudo systemctl enable sc-digger-gpu-worker.service
 Nur `enable`, nicht `--now`: der Runner startet beim nächsten Hochfahren. Die Datei ist für
 root lesbar; der Dienst liest sie als root über `EnvironmentFile=` und reicht die Werte an
 den Prozess von `stephanv` weiter.
+
+**Workstation aktuell halten**
+
+Der Runner rechnet mit dem Code aus dem Klon `/home/stephanv/sc-digger`. Der aktualisiert sich
+nicht selbst, weder durch `update.sh` noch durch den Auto-Deploy auf dem Server. Nach einem Merge,
+der `sc_digger/worker.py`, `sc_digger/cue_infer.py`, `sc_digger/structure.py`,
+`sc_digger/analysis.py` oder `deploy/workstation/` ändert, auf der Workstation nachziehen:
+
+```bash
+sudo systemctl stop ollama-idle-shutdown.timer      # PC während des Updates wach halten
+git -C /home/stephanv/sc-digger pull
+git -C /home/stephanv/sc-digger log -1 --oneline    # muss dem Stand von main entsprechen
+sudo cp /home/stephanv/sc-digger/deploy/workstation/sc-digger-gpu-worker.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl start ollama-idle-shutdown.timer
+```
+
+Das venv `allin1_env` dabei nicht neu aufsetzen; neue Abhängigkeiten nennt der jeweilige PR.
+Kleine Versionsabstände sind bekannt und harmlos, solange nur der lokale Rückfall betroffen ist
+(Stand 25.11.2026: `librosa` 1.0.0 statt `>=1.0.1`; ein Upgrade zöge `allin1`/`torch` mit).
+Beispiel, warum das zählt: Ein Klon auf dem Stand vom 29.10.2026 kannte die all-in-one-Analyse
+(#426) noch nicht und rechnete Cues mit der lokalen Analyse, obwohl `allin1_env` vorhanden war.
 
 **Prüfen**
 
