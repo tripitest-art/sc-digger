@@ -127,6 +127,7 @@ Am 25.11.2026 fehlte der Weck-Timer seit seiner Einführung, und die Job-Queue s
 
 | Teil | Wo | Prüfen | Einrichten |
 |---|---|---|---|
+| Cron-Jobs im Container | Server | `docker compose exec sc-digger crontab -l`: je Job aus `sc_digger/schedule.py` genau eine Zeile (u. a. `sc_digger.backup run`, `audit --check-adopted`, `sc_digger.main taste`, `sc_digger.canary`, `sc_digger.main scout`, `sc_digger.watch`, Kaufliste) | `entrypoint.sh` hängt sie beim Containerstart an: `docker compose up -d --force-recreate` |
 | `sc-digger-deploy.timer` | Server | `systemctl list-timers sc-digger-deploy.timer` | Abschnitt „Auto-Deploy“ |
 | `sc-digger-gpu-wake.timer` mit `/root/sc-digger/gpu-wake.env` | Server | `systemctl list-timers sc-digger-gpu-wake.timer`, `ls -l /root/sc-digger/gpu-wake.env` | „GPU-Worker“, Einrichtung auf dem Server |
 | `SC_DIGGER_WAKE_URL` in `/root/sc-digger/.env` | Server | `grep -c '^SC_DIGGER_WAKE_URL=' /root/sc-digger/.env` (zeigt 1) | „GPU-Worker“, Einrichtung auf dem Server |
@@ -143,6 +144,9 @@ Am 25.11.2026 fehlte der Weck-Timer seit seiner Einführung, und die Job-Queue s
   ist aber Tage alt: Weck-Timer fehlt (`journalctl -u sc-digger-gpu-wake` ohne Einträge) oder der
   Runner auf der Workstation startet nicht. Der Wake-Proxy zeigt unter `/proxy/status`, ob und wann
   er zuletzt geweckt hat (`wakes_total`, `last_wake_by`).
+- Tagesablauf auf der Statusseite zeigt für einen Job dauerhaft „noch kein Lauf“ bzw. die
+  Betriebskarte nie eine Sicherung: Die Zeile fehlt in der Crontab des Containers (siehe erste
+  Zeile der Tabelle). Am 25.11.2026 fehlte so die 06:30-Sicherung.
 - Knopf „Workstation-Lauf starten“ meldet „kein Wake-Proxy konfiguriert“: `SC_DIGGER_WAKE_URL`
   fehlt in der `.env` des Containers. `gpu-wake.env` allein reicht nicht, die liest nur der Timer.
 
@@ -252,6 +256,8 @@ sudo systemctl start ollama-idle-shutdown.timer
 ```
 
 Das venv `allin1_env` dabei nicht neu aufsetzen; neue Abhängigkeiten nennt der jeweilige PR.
+Kleine Versionsabstände sind bekannt und harmlos, solange nur der lokale Rückfall betroffen ist
+(Stand 25.11.2026: `librosa` 1.0.0 statt `>=1.0.1`; ein Upgrade zöge `allin1`/`torch` mit).
 Beispiel, warum das zählt: Ein Klon auf dem Stand vom 29.10.2026 kannte die all-in-one-Analyse
 (#426) noch nicht und rechnete Cues mit der lokalen Analyse, obwohl `allin1_env` vorhanden war.
 
