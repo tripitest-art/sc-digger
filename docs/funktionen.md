@@ -216,7 +216,7 @@ python scripts/mixesdb_set.py --seite "..." --nur-fehlen
 - **Bandcamp-Feeds (`bandcamp.py`):** Fragt konfigurierte RSS-Feeds von Labels und Artists (`scout.bandcamp.feeds`) ab.
 - **Beatport-Charts (`beatport.py`):** Fragt Top-100- und Genre-Charts (`scout.beatport.charts`) ab.
 
-Gefundene Tracks werden gegen die lokale Sammlung abgeglichen, Duplikate übersprungen und neue Tracks in der Tabelle `store_items` hinterlegt. Der CLI-Befehl `python -m sc_digger.main scout` stößt den Abruf manuell an. Offene Kauflinks sind im Web-Dashboard unter `/kaufliste` sowie im Telegram-Bot mit `/kaufliste` einsehbar. Gates und Käufe lassen sich als erledigt markieren (`POST /api/item-done`, Spalte `done_at`); erledigt bleibt erledigt, bis der Track neu gefunden wird.
+Gefundene Tracks werden gegen die lokale Sammlung abgeglichen, Duplikate übersprungen und neue Tracks in der Tabelle `store_items` hinterlegt. Der CLI-Befehl `python -m sc_digger.main scout` stößt den Abruf manuell an. Ohne eingetragene Feeds oder Charts startet der Wartungslauf nicht und meldet „keine Quellen eingetragen“. Offene Kauflinks sind im Web-Dashboard unter `/kaufliste` sowie im Telegram-Bot mit `/kaufliste` einsehbar. Gates und Käufe lassen sich als erledigt markieren (`POST /api/item-done`, Spalte `done_at`); erledigt bleibt erledigt, bis der Track neu gefunden wird.
 
 ## Telegram-Bot
 

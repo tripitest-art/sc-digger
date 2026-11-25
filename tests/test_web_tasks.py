@@ -127,7 +127,7 @@ def test_runner_backfill_energy(tmp_path: Path, monkeypatch):
     msg = runners["backfill-energy"]()
     assert aufgerufen["dry_run"] is False
     assert aufgerufen["db_path"] == cfg["state"]["track_db_path"]
-    assert msg == "Energie: 12 gesetzt, 3 übersprungen"
+    assert msg == "Energie: 12 gesetzt, 3 schon vorhanden, 0 fehlgeschlagen"
 
 
 def test_runner_backfill_bpm(tmp_path: Path, monkeypatch):
@@ -185,7 +185,8 @@ def test_runner_backfill_embeddings(tmp_path: Path, monkeypatch):
     msg = runners["backfill-embeddings"]()
     assert aufgerufen["dry_run"] is False
     assert aufgerufen["db_path"] == cfg["state"]["track_db_path"]
-    assert msg == "Embeddings: 7 eingereiht, 4 bereits aktiv"
+    assert msg == ("Embeddings: 7 eingereiht, 4 bereits aktiv, 0 Datei(en) fehlen "
+                   "(0 bewertete Tracks ohne Embedding)")
 
 
 def test_runner_requeue(tmp_path: Path, monkeypatch):
@@ -248,3 +249,46 @@ def test_runner_backfill_names(tmp_path: Path, monkeypatch):
     msg = default_runners(cfg)["backfill-names"]()
     assert aufgerufen["dry_run"] is False
     assert msg == "Artist/Titel: 4 ergänzt, 1 ohne Artist im Namen"
+
+
+def _mit_scout(cfg: Config, *, feeds=None, charts=None) -> Config:
+    raw = dict(cfg.raw)
+    raw["scout"] = {
+        "bandcamp": {"feeds": list(feeds or [])},
+        "beatport": {"charts": list(charts or [])},
+    }
+    return Config(raw=raw)
+
+
+def test_runner_scout_nur_charts(tmp_path: Path, monkeypatch):
+    from sc_digger.db import TrackDB
+
+    cfg = _mit_scout(_cfg(tmp_path), charts=["https://www.beatport.com/chart/x"])
+    aufgerufen = {}
+
+    def fake_scout(c, **kw):
+        aufgerufen["cfg"] = c
+        with TrackDB(c["state"]["track_db_path"]) as db:
+            db.upsert_store_item(
+                sc_id=7, title="Titel 7", artist="Artist",
+                purchase_url="https://example.bandcamp.com/track/7",
+            )
+        return 1
+
+    monkeypatch.setattr("sc_digger.main.run_scout", fake_scout)
+    msg = default_runners(cfg)["scout"]()
+    assert aufgerufen["cfg"] is cfg
+    assert msg == "Scout fertig: 1 neu, 0 schon bekannt (0 Feed(s), 1 Chart(s))"
+
+
+def test_runner_embeddings_dict_rueckgabe(tmp_path: Path, monkeypatch):
+    cfg = _cfg(tmp_path)
+    monkeypatch.setattr(
+        "sc_digger.embeddings.backfill_embedding_jobs",
+        lambda db, *, dry_run=False: {
+            "queued": 3, "already_queued": 2, "missing_file": 1, "candidates": 6,
+        },
+    )
+    msg = default_runners(cfg)["backfill-embeddings"]()
+    assert msg == ("Embeddings: 3 eingereiht, 2 bereits aktiv, 1 Datei(en) fehlen "
+                   "(6 bewertete Tracks ohne Embedding)")
