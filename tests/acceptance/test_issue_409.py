@@ -94,8 +94,8 @@ def test_wake_workstation_reports_failure_for_server_errors_and_network_errors()
     assert wake_workstation(WAKE_URL, post=Post(error=requests.Timeout("zu langsam"))) is False
 
 
-def test_run_wake_does_not_wake_when_no_cue_job_is_open(tmp_path):
-    db = _queue(tmp_path, cues=2, embeddings=2, claimed=2)
+def test_run_wake_does_not_wake_when_no_job_is_open(tmp_path):
+    db = _queue(tmp_path, cues=2, claimed=2)
     post, notes = Post(), Notes()
     assert run_wake(db, WAKE_URL, post=post, notify=notes) == 0
     assert post.calls == []
@@ -246,7 +246,7 @@ def test_workstation_unit_runs_only_cue_jobs_and_ends_with_the_queue():
     unit = _read("deploy/workstation/sc-digger-gpu-worker.service")
     exec_line = next(l for l in unit.splitlines() if l.startswith("ExecStart="))
     assert "-m sc_digger.worker" in exec_line
-    assert "--job-type cues" in exec_line  # Embedding-Jobs hat dieser Runner nicht
+    assert "--job-type" not in exec_line  # Cue- und Embedding-Jobs; ohne MAEST beschränkt sich der Worker selbst auf cues
     assert "--idle-exit" in exec_line
     assert "EnvironmentFile=" in unit
     assert "WantedBy=multi-user.target" in unit

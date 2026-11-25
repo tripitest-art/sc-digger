@@ -1,7 +1,7 @@
 """Logik für den manuellen Start eines KI-Workstation-Laufs aus dem Web-Dashboard (Issue #628).
 
 Zustandsdatei lesen/schreiben, Sperrzeit (Cooldown) überwachen und den Wake-Proxy anfragen,
-wenn Cue-Jobs in der Job-Queue warten. Die Wake-Adresse steht nie im Repo und erscheint nie
+wenn Cue- oder Embedding-Jobs in der Job-Queue warten. Die Wake-Adresse steht nie im Repo und erscheint nie
 in Antworten, Logmeldungen oder Fehlern.
 """
 from __future__ import annotations
@@ -27,7 +27,7 @@ DEFAULT_COOLDOWN_S = 300
 class WorkstationRun:
     started_at: str | None      # ISO-8601 UTC des letzten Starts, None = nie gestartet
     status: str                 # "unbekannt" | "gestartet" | "keine-jobs" | "fehler"
-    pending: int | None         # gezählte offene Cue-Jobs beim letzten Klick
+    pending: int | None         # gezählte offene Jobs (Cues, Embeddings) beim letzten Klick
     error: str | None           # Klartext, redigiert; None ohne Fehler
 
     def to_dict(self) -> dict[str, Any]:
@@ -142,9 +142,9 @@ def start_run(cfg: Config, *, post: Callable[..., Any] | None = None,
     if _is_cooling_down(state, cooldown_s, now_utc):
         return 409, {"error": "lauf aktiv", "started_at": state.started_at}
 
-    # 3. Job-Queue prüfen: sind keine offenen Cue-Jobs da, bleibt die Workstation aus.
+    # 3. Job-Queue prüfen: sind keine offenen Jobs (Cues, Embeddings) da, bleibt die Workstation aus.
     track_db_path = cfg["state"]["track_db_path"]
-    pending = count_pending_jobs(track_db_path)
+    pending = count_pending_jobs(track_db_path, None)
     if pending == 0:
         new_state = WorkstationRun(started_at=None, status="keine-jobs", pending=0, error=None)
         _write_state(cfg, new_state)

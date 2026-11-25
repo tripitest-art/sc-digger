@@ -205,3 +205,27 @@ def test_idle_exit_zero_ends_after_first_empty_poll():
         handler_map={},
     ) == 0
     assert clock.now == 20.0
+
+
+def test_count_pending_jobs_none_zaehlt_nur_wecktypen(tmp_path):
+    from sc_digger.db import JobType
+
+    path = _queue(tmp_path, cues=1)
+    with TrackDB(path) as db:
+        for i, typ in enumerate((JobType.EMBEDDING, JobType.FINGERPRINT)):
+            t = db.upsert_track(
+                TrackRecord(path=f"/inbox/x{i}.wav", mtime=1.0, size=1, status=TrackStatus.INBOX)
+            )
+            db.enqueue_job(t.id, typ, payload={})
+    assert count_pending_jobs(path) == 1
+    assert count_pending_jobs(path, "fingerprint") == 1
+    assert count_pending_jobs(path, None) == 2
+
+
+def test_run_wake_fehlermeldung_nennt_jobs_ohne_url(tmp_path):
+    path = _queue(tmp_path, cues=2)
+    notes = []
+    code = run_wake(path, WAKE_URL, post=lambda url, **kw: Resp(503), notify=notes.append)
+    assert code == 1
+    assert notes == ["⚠️ Workstation konnte nicht geweckt werden, 2 Job(s) bleiben offen."]
+    assert "wake.invalid" not in notes[0]
