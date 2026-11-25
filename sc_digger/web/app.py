@@ -123,6 +123,7 @@ from .database import (
 )
 from .intake import MAX_UPLOAD_BYTES, process_uploaded_audio
 from .ops import collect_ops
+from . import stream_preview
 from .routes import register as register_routes
 from .routes.tracks import FILTER_LABELS, active_filter_chips, match_url
 from .smartlist_page import collect_smartlists, smartlist_m3u8, tracks_for_smartlist
@@ -1071,45 +1072,45 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
 
     @app.get("/digest/durchhoeren", response_class=HTMLResponse)
     def digest_durchhoeren(request: Request):
+        cfg = app.state.cfg
         result = query_digest(
-            app.state.cfg["state"]["db_path"],
-            app.state.cfg["state"]["track_db_path"],
-            inbox_dir=(app.state.cfg.raw.get("download") or {}).get("inbox_dir"),
+            cfg["state"]["db_path"],
+            cfg["state"]["track_db_path"],
+            inbox_dir=(cfg.raw.get("download") or {}).get("inbox_dir"),
+            status_filter="open",
+            feedback="none",
             limit=MAX_LIMIT,
         )
-        open_items = []
-        for it in result.items:
-            fb = it.get("feedback") if isinstance(it, dict) else getattr(it, "feedback", None)
-            if fb:
-                continue
-            open_items.append(it)
 
+        def _feld(it, name, default=None):
+            # Einträge sind je nach Quelle dict oder Objekt.
+            return it.get(name, default) if isinstance(it, dict) else getattr(it, name, default)
+
+        preview_on = stream_preview.preview_enabled(cfg)
         items_data = []
-        for it in open_items:
-            sc_id = it.get("sc_id") if isinstance(it, dict) else getattr(it, "sc_id", None)
-            artist = it.get("artist") if isinstance(it, dict) else getattr(it, "artist", None)
-            title = it.get("title") if isinstance(it, dict) else getattr(it, "title", "")
-            dauer = (
-                (it.get("duration") if isinstance(it, dict) else getattr(it, "duration", None))
-                or (it.get("dauer") if isinstance(it, dict) else getattr(it, "dauer", None))
-                or ""
-            )
+        for it in result.items:
+            if _feld(it, "feedback"):
+                continue
+            sc_id = _feld(it, "sc_id")
+            url = _feld(it, "url")
+            if not (isinstance(url, str) and url.lower().startswith(("http://", "https://"))):
+                url = None
             items_data.append({
                 "sc_id": sc_id,
-                "artist": artist,
-                "title": title,
-                "duration": dauer,
-                "feedback_url": "/api/feedback",
-                "bewertungs_ziel": "/api/feedback",
+                "artist": _feld(it, "artist"),
+                "title": _feld(it, "title", ""),
+                "url": url,
+                "preview_url": f"/api/preview/sc/{sc_id}" if preview_on else None,
             })
 
-        items_json = json.dumps(items_data)
         template = _env.get_template("durchhoeren.html")
         content = template.render(
-            items=open_items,
+            items=items_data,
             items_data=items_data,
-            items_json=items_json,
-            total=len(open_items),
+            items_json=json.dumps(items_data).replace("</", "<\\/"),
+            total=len(items_data),
+            preview_on=preview_on,
+            editor_available=editor_available,
         )
         return HTMLResponse(content)
 

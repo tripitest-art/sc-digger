@@ -45,7 +45,7 @@ def _patch(monkeypatch, fake):
 
 def test_standard_aus_und_in_config():
     cfg = Config.load(ROOT / "config.yaml")
-    assert cfg.raw["web"]["stream_preview"] is False
+    assert cfg.raw["web"]["stream_preview"] is True
     assert cfg.raw["web"]["preview_cache_mb"] == 500
     pfade = {f.path: f.kind for f in FIELDS}
     assert pfade["web.stream_preview"] == "bool"

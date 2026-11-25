@@ -18,6 +18,19 @@
     </div>
   </div>
 
+  {% if preview_on %}
+  <div style="text-align: center; margin-bottom: 1rem;">
+    <audio id="durchhoeren-audio" preload="auto" controls style="width: 100%; max-width: 480px;"></audio>
+    <audio id="durchhoeren-preload" preload="auto" style="display: none;"></audio>
+  </div>
+  {% else %}
+  <p class="meta" data-hint="preview-aus" style="text-align: center; margin-bottom: 1rem;">
+    Hörproben sind aus.
+    {% if editor_available %}Einschalten unter <a href="/config/web-dashboard">Einstellungen &rarr; Web-Dashboard</a>.
+    {% else %}Einschalten über den Schlüssel <code>web.stream_preview</code> in der Konfiguration.{% endif %}
+  </p>
+  {% endif %}
+
   <div id="durchhoeren-cards">
     {% for item in items %}
     <div class="durchhoeren-card"
@@ -25,8 +38,6 @@
          data-sc-id="{{ item.sc_id }}"
          data-artist="{{ item.artist or '' }}"
          data-title="{{ item.title }}"
-         data-duration="{{ item.duration or '—' }}"
-         data-feedback-target="/api/feedback"
          data-index="{{ loop.index0 }}"
          {% if not loop.first %}style="display: none;"{% endif %}>
       <div style="background-color: var(--bg-card-subtle); border: 1px solid var(--border); border-radius: 8px; padding: 2rem; margin-bottom: 1.5rem; text-align: center;">
@@ -36,13 +47,11 @@
         <h2 style="margin: 0.5rem 0 1rem; font-size: 2rem; font-weight: 700; word-break: break-word;">
           {{ item.title }}
         </h2>
-        <div class="meta" style="display: flex; gap: 1rem; justify-content: center; align-items: center; font-size: 0.9rem; margin-top: 1rem;">
-          <span>Dauer: {{ item.duration or "—" }}</span>
-          {% if item.download_kind %}
-          <span class="badge">{{ item.download_kind|upper }}</span>
-          {% endif %}
-          <span style="font-size: 0.78rem;">Bewertungs-Ziel: <code>/api/feedback</code></span>
+        {% if item.url %}
+        <div class="meta" style="margin-top: 1rem; font-size: 0.9rem;">
+          <a href="{{ item.url }}" target="_blank" rel="noopener">Auf SoundCloud öffnen</a>
         </div>
+        {% endif %}
       </div>
 
       <div class="durchhoeren-actions" data-feedback-cell data-sc-id="{{ item.sc_id }}" style="display: flex; justify-content: center; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem;">
@@ -75,7 +84,7 @@
   </div>
 
   <div class="meta" style="margin-top: 2rem; border-top: 1px solid var(--border-subtle); padding-top: 0.75rem; text-align: center; font-size: 0.8rem;">
-    Tastatursteuerung: <code>1</code> Like &middot; <code>2</code> Dislike &middot; <code>3</code> Später &middot; <code>&darr;</code> / <code>j</code> Weiter &middot; <code>&uarr;</code> / <code>k</code> Zurück &middot; <code>Enter</code> Details
+    Tastatursteuerung: <code>1</code> Like &middot; <code>2</code> Dislike &middot; <code>3</code> Später &middot; <code>&darr;</code> / <code>j</code> Weiter &middot; <code>&uarr;</code> / <code>k</code> Zurück &middot; <code>Leertaste</code> Abspielen/Pause &middot; <code>Enter</code> Details
   </div>
   {% else %}
   <div class="empty-state" style="text-align: center; padding: 3rem 1rem;">
@@ -104,8 +113,46 @@
     const finishedBox = document.getElementById('durchhoeren-finished');
     const progressEl = document.getElementById('fortschritt');
 
+    const audio = document.getElementById('durchhoeren-audio');
+    const preloadAudio = document.getElementById('durchhoeren-preload');
+    let interacted = false;
+    // Browser erlauben Autoplay erst nach einer Nutzeraktion.
+    ['keydown', 'click'].forEach(function(ev) {
+      document.addEventListener(ev, function() { interacted = true; }, { once: true });
+    });
+
+    function loadAudio() {
+      if (!audio) return;
+      const cur = items[currentIdx];
+      if (!cur || !cur.preview_url) {
+        audio.pause();
+        return;
+      }
+      audio.src = cur.preview_url;
+      if (interacted) {
+        const p = audio.play();
+        if (p && p.catch) p.catch(function() {});
+      }
+      const next = items[currentIdx + 1];
+      if (preloadAudio && next && next.preview_url) {
+        preloadAudio.src = next.preview_url;
+        preloadAudio.load();
+      }
+    }
+
+    function togglePlay() {
+      if (!audio) return;
+      if (audio.paused) {
+        const p = audio.play();
+        if (p && p.catch) p.catch(function() {});
+      } else {
+        audio.pause();
+      }
+    }
+
     function showIndex(newIdx) {
       if (newIdx >= total) {
+        if (audio) audio.pause();
         cards.forEach(c => c.style.display = 'none');
         if (finishedBox) finishedBox.style.display = 'block';
         if (progressEl) progressEl.textContent = total + ' von ' + total;
@@ -119,25 +166,34 @@
       });
       if (finishedBox) finishedBox.style.display = 'none';
       if (progressEl) progressEl.textContent = (currentIdx + 1) + ' von ' + total;
+      loadAudio();
     }
 
     async function rateCurrent(val) {
       if (currentIdx >= total) return;
       const cur = items[currentIdx];
       try {
-        fetch('/api/feedback', {
+        const res = await fetch('/api/feedback', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'same-origin',
           body: JSON.stringify({ sc_id: cur.sc_id, value: val })
         });
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok || !body.ok) {
+          if (typeof showToast === 'function') {
+            showToast('Speichern fehlgeschlagen (' + res.status + ')', 'err');
+          }
+          return;
+        }
         if (typeof showToast === 'function') {
           showToast('Bewertung gespeichert', 'ok');
         }
       } catch (err) {
         if (typeof showToast === 'function') {
-          showToast('Speichern fehlgeschlagen', 'err');
+          showToast('Speichern fehlgeschlagen (Netzwerk)', 'err');
         }
+        return;
       }
       showIndex(currentIdx + 1);
     }
@@ -182,11 +238,16 @@
       } else if (e.key === '3') {
         e.preventDefault();
         rateCurrent('later');
+      } else if (e.key === ' ') {
+        e.preventDefault();
+        togglePlay();
       } else if (e.key === 'Enter') {
         e.preventDefault();
         openDetail();
       }
     });
+
+    loadAudio();
   })();
 </script>
 {% endblock %}

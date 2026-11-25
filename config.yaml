@@ -389,8 +389,8 @@ web:
   # Öffentliche Adresse des Dashboards (z. B. https://dash.example), damit Telegram-Digest-Titel und /heute
   # ins Dashboard verlinken. Leer = Titel führen auf SoundCloud. Nur in der lokalen Override-Datei setzen, nie im Repo.
   public_url: ""
-  # Hörproben (Befund 8): 30-s-Schnipsel aus dem SoundCloud-Stream, erst beim Abspielen erzeugt und
-  # unter <State-Ordner>/preview_cache abgelegt. Eigener Schalter, getrennt vom Bot (preview.stream_enabled).
+  # Hörproben (Befund 8, ab Werk an seit #732): 30-s-Schnipsel aus dem SoundCloud-Stream, erst beim Abspielen
+  # erzeugt und unter <State-Ordner>/preview_cache abgelegt. Eigener Schalter, getrennt vom Bot (preview.stream_enabled).
   # preview_cache_mb: Obergrenze des Zwischenspeichers, die ältesten Schnipsel werden zuerst gelöscht.
-  stream_preview: false
+  stream_preview: true
   preview_cache_mb: 500
