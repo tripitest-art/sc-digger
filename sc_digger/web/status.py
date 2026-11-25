@@ -54,6 +54,10 @@ ALERT_LABELS: dict[str, str] = {
     "rekordbox_import": "Rekordbox-Rückkanal",
     "availability_watch": "Verfügbarkeits-Wächter",
     "backup": "Sicherung",
+    "audit": "Übernommen-Abgleich",
+    "taste": "Taste-Score",
+    "scout": "Store-Scout",
+    "kaufliste": "Kaufliste",
 }
 
 

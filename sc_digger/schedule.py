@@ -59,7 +59,7 @@ JOBS: tuple[Job, ...] = (
         uhrzeit="06:45",
         cron="45 6 * * *",
         kennung="audit --check-adopted",
-        mode=None,
+        mode="audit",
         beschreibung="Übernommen-Abgleich der Sammlung",
     ),
     Job(
@@ -67,7 +67,7 @@ JOBS: tuple[Job, ...] = (
         uhrzeit="07:05",
         cron="5 7 * * *",
         kennung="sc_digger.main taste",
-        mode=None,
+        mode="taste",
         beschreibung="Taste-Score trainieren",
     ),
     Job(
@@ -91,7 +91,7 @@ JOBS: tuple[Job, ...] = (
         uhrzeit="18:00",
         cron="0 18 * * *",
         kennung="sc_digger.main scout",
-        mode=None,
+        mode="scout",
         beschreibung="Store-Scout für Bandcamp und Beatport",
     ),
     Job(
@@ -106,8 +106,8 @@ JOBS: tuple[Job, ...] = (
         name="kaufliste",
         uhrzeit="20:00",
         cron="0 20 * * 0",
-        kennung="send_kaufliste",
-        mode=None,
+        kennung="sc_digger.main kaufliste",
+        mode="kaufliste",
         beschreibung="Wöchentlicher Kaufliste-Versand",
     ),
 )

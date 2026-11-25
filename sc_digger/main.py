@@ -40,7 +40,7 @@ from .cues import write_breakdown_tag, write_drop_tag, write_first_kick_tag
 from .db import TrackDB
 from .diskguard import check_disk
 from .embeddings import backfill_embedding_jobs, enqueue_embedding_job
-from .health import Health
+from .health import Health, record_job
 from .intake import AUDIO_EXTS, find_ready_files, track_from_file
 from .models import Config, DownloadKind, Track
 from .organize import organize, write_tags
@@ -615,6 +615,33 @@ def _notify_health(cfg: Config, message: str | None, no_telegram: bool) -> None:
         send_telegram(cfg, [message])
     except Exception as e:  # Alarm darf den ursprünglichen Fehler nicht überdecken
         log.error("Health-Alarm konnte nicht gesendet werden: %s", e)
+
+
+# Cron-Jobs ohne eigenen Health-Lauf: ohne Protokoll in runs blieb unsichtbar, ob sie laufen oder scheitern
+LOGGED_MODES = ("audit", "taste", "scout", "kaufliste")
+
+
+def run_logged(cfg: Config, mode: str, fn: Callable[[], object], *,
+               no_telegram: bool = False) -> object:
+    """Führt fn() aus und protokolliert den Lauf mit health.record_job (Goldene Regel 7).
+
+    Ohne state.db_path (z. B. leere Testkonfiguration) läuft nur fn(), ohne Protokoll.
+    """
+    raw = cfg.raw if isinstance(cfg.raw, dict) else {}
+    db_path = (raw.get("state") or {}).get("db_path")
+    if not db_path:
+        return fn()
+    threshold = (raw.get("health") or {}).get("alert_after_bad_runs", 2)
+    try:
+        result = fn()
+    except Exception as e:
+        _notify_health(cfg, record_job(db_path, mode, ok=False, found=0,
+                                       error=f"{type(e).__name__}: {e}", threshold=threshold),
+                       no_telegram)
+        raise
+    found = result if isinstance(result, int) and not isinstance(result, bool) else 1
+    _notify_health(cfg, record_job(db_path, mode, ok=True, found=found, threshold=threshold), no_telegram)
+    return result
 
 
 REKORDBOX_NUR_NAMENSTREFFER = (
@@ -1385,6 +1412,9 @@ def cli() -> None:
     sub.add_parser("taste", parents=[common],
                    help="Taste-Score trainieren und für Tracks mit Embedding speichern")
 
+    sub.add_parser("kaufliste", parents=[common],
+                   help="Kaufliste per Telegram senden (wöchentlicher Cron-Job)")
+
     rq = sub.add_parser("requeue", parents=[common],
                         help="Hängende Jobs der Job-Warteschlange (running, Worker abgestürzt) auf pending zurücksetzen")
     rq.add_argument("--timeout-minutes", type=int,
@@ -1393,6 +1423,13 @@ def cli() -> None:
     a = ap.parse_args()
     install_redacting_logging(logging.DEBUG if a.verbose else logging.INFO)
     cfg = Config.load(a.config)
+    def logged(mode: str, fn: Callable[[], object]) -> None:
+        # Probelauf wie bisher ohne Protokoll; echte Läufe landen in runs (Issue #707)
+        if a.dry_run:
+            fn()
+        else:
+            run_logged(cfg, mode, fn, no_telegram=a.no_telegram)
+
     def dispatch() -> None:
         if a.mode == "playlist":
             run_playlist(cfg, a.url, a.likes, a.dry_run, a.no_telegram)
@@ -1401,7 +1438,7 @@ def cli() -> None:
         elif a.mode == "check":
             run_link(cfg, a.url, dry_run=a.dry_run, no_telegram=a.no_telegram)
         elif a.mode == "audit":
-            run_audit(
+            logged("audit", lambda: run_audit(
                 cfg,
                 path=a.path,
                 report_path=a.report,
@@ -1412,7 +1449,7 @@ def cli() -> None:
                 check_adopted=a.check_adopted,
                 analyze_structure=a.analyze_structure,
                 write_tags=a.write_tags,
-            )
+            ))
         elif a.mode == "rekordbox":
             write_rekordbox_xml(cfg)
         elif a.mode == "intake":
@@ -1429,7 +1466,7 @@ def cli() -> None:
             run_stats(cfg, days=a.days, chart_path=a.chart, send=a.send,
                       dry_run=a.dry_run, no_telegram=a.no_telegram)
         elif a.mode == "scout":
-            run_scout(cfg, dry_run=a.dry_run)
+            logged("scout", lambda: run_scout(cfg, dry_run=a.dry_run))
         elif a.mode == "cleanup-inbox":
             run_cleanup_inbox(cfg, move=a.move, inbox_path=a.inbox,
                               dry_run=a.dry_run, no_telegram=a.no_telegram)
@@ -1438,7 +1475,10 @@ def cli() -> None:
         elif a.mode == "energy-backfill":
             run_energy_backfill(cfg, dry_run=a.dry_run, limit=a.limit, force=a.force)
         elif a.mode == "taste":
-            run_taste_cmd(cfg, dry_run=a.dry_run)
+            logged("taste", lambda: run_taste_cmd(cfg, dry_run=a.dry_run))
+        elif a.mode == "kaufliste":
+            from . import output as _output
+            logged("kaufliste", lambda: _output.send_kaufliste(cfg, dry_run=a.dry_run))
         elif a.mode == "requeue":
             run_requeue_cmd(cfg, timeout_minutes=a.timeout_minutes)
         else:
