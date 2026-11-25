@@ -13,6 +13,10 @@ blockiert, es gibt keinen Weg, an dieser Liste vorbei zu mergen):
 3. Die neueste Review des Bots auf dem **aktuellen** Head-SHA lautet `APPROVED`.
 4. Keine offene Änderungsanforderung (`CHANGES_REQUESTED`) auf dem Head-SHA.
 5. Alle Checks sind abgeschlossen und erfolgreich, darunter `acceptance-guard`.
+6. Kein verknüpftes Issue (`Closes/Fixes/Resolves #N` im PR-Text) verlangt im Abschnitt
+   `### Merge-Modus` „manuell“. Solche PRs mergt Stephan selbst (Anlass: PR #748 zu Issue
+   #742 wurde trotz „manuell“ automatisch gemergt). Kann ein Issue nicht gelesen werden,
+   wird ebenfalls nicht gemergt.
 
 Der Merge geht mit `sha` an die Merge-API: Hat sich der Head zwischen Prüfung und Merge
 verschoben, lehnt GitHub ab, statt einen ungeprüften Stand zu mergen. Der PR-Code wird nie
@@ -82,6 +86,55 @@ def issues_aus_pr_text(body: str | None, eigene_nummer: int | None = None) -> li
     return gesehen
 
 
+# Die Überschrift, die das Issue-Formular „Aufgabe für einen Agenten“ rendert. Bewusst genau
+# diese Schreibweise: Das Formular erzeugt sie so, und eine lockere Suche würde Prosa wie
+# „### merge-modus?“ in einem Kommentar-Zitat mitlesen.
+_MERGE_MODUS_KOPF = "### Merge-Modus"
+
+
+def merge_modus_aus_issue_text(body: str | None) -> str | None:
+    """Merge-Modus aus dem Issue-Formular: "manuell", "automatisch" oder None.
+
+    Gelesen wird nur der Abschnitt unter der Überschrift "### Merge-Modus" (genau diese
+    Schreibweise, Zeilenanfang) bis zur nächsten "### "-Überschrift oder zum Textende.
+    Der getrimmte Abschnittstext entscheidet, Groß-/Kleinschreibung egal:
+    beginnt mit "manuell" -> "manuell", beginnt mit "automatisch" -> "automatisch".
+    Kein Abschnitt, leer, "_No response_" oder anderer Text -> None. Wirft nie.
+
+    Nur der eigene Abschnitt zählt, weil „manuell“ auch im Kontext eines Issues stehen kann,
+    ohne den Merge-Modus zu meinen.
+    """
+    if not isinstance(body, str):
+        return None
+    abschnitt: list[str] | None = None
+    for zeile in body.replace("\r\n", "\n").replace("\r", "\n").split("\n"):
+        if abschnitt is None:
+            if zeile.rstrip() == _MERGE_MODUS_KOPF:
+                abschnitt = []
+            continue
+        if zeile.startswith("### "):
+            break
+        abschnitt.append(zeile)
+    if abschnitt is None:
+        return None
+    text = "\n".join(abschnitt).strip().lower()
+    if text.startswith("manuell"):
+        return "manuell"
+    if text.startswith("automatisch"):
+        return "automatisch"
+    return None
+
+
+def manuelle_issues(gh, number: int) -> list[int]:
+    """Nummern der verknüpften Issues (issues_aus_pr_text(gh.pull_body(number),
+    eigene_nummer=number), gleiche Reihenfolge), deren Merge-Modus "manuell" ist.
+    Fragt jedes verknüpfte Issue genau einmal per gh.issue_body(n) ab, sonst nichts.
+    Fehler von gh (MergeAbgelehnt) werden NICHT abgefangen: main() wertet sie wie jeden
+    API-Fehler als "nicht mergen"."""
+    return [nummer for nummer in issues_aus_pr_text(gh.pull_body(number), eigene_nummer=number)
+            if merge_modus_aus_issue_text(gh.issue_body(nummer)) == "manuell"]
+
+
 def _instant(ts: str) -> datetime:
     return datetime.fromisoformat(ts.replace("Z", "+00:00"))
 
@@ -140,13 +193,16 @@ def juengste_checks(checks: dict) -> dict:
 
 
 def decide(pr: dict, reviews: list[dict], checks: dict, label_actor: str | None,
-           trusted: set[str], bot: str) -> Decision:
+           trusted: set[str], bot: str,
+           manuelle_issues: list[int] | None = None) -> Decision:
     """Reine Logik, damit sie ohne GitHub testbar ist.
 
     pr: pull_request aus dem Event (number, draft, mergeable, head.sha, head.ref)
     reviews: Einträge aus GET /pulls/{n}/reviews
     checks: {"state": …, "runs": [{"name", "status", "conclusion"}, …]}
     label_actor: Login, der `review-freigabe` zuletzt gesetzt hat
+    manuelle_issues: verknüpfte Issues mit Merge-Modus „manuell“ (aus `manuelle_issues()`);
+        jedes ist ein eigener Ablehnungsgrund. None oder [] ändert nichts.
     """
     checks = juengste_checks(checks)
     reasons: list[str] = []
@@ -194,6 +250,9 @@ def decide(pr: dict, reviews: list[dict], checks: dict, label_actor: str | None,
         reasons.append(f"Check `{REQUIRED_CHECK}` fehlt.")
     elif not any(r.get("conclusion") == "success" for r in guard):
         reasons.append(f"Check `{REQUIRED_CHECK}` ist nicht erfolgreich.")
+
+    for n in manuelle_issues or []:
+        reasons.append(f"Issue #{n} verlangt Merge-Modus „manuell“: Stephan mergt selbst.")
 
     return Decision(not reasons, reasons)
 
@@ -269,6 +328,10 @@ class GitHub:
     def pull_body(self, number: int) -> str:
         """PR-Text; leer, wenn GitHub keinen liefert (dann wird nichts geschlossen)."""
         return (self._call("GET", f"/pulls/{number}") or {}).get("body") or ""
+
+    def issue_body(self, number: int) -> str:
+        """Text des Issues (GET /issues/{number}); leer, wenn GitHub keinen liefert."""
+        return (self._call("GET", f"/issues/{number}") or {}).get("body") or ""
 
     def issue_offen(self, number: int) -> bool:
         return (self._call("GET", f"/issues/{number}") or {}).get("state") == "open"
@@ -399,7 +462,8 @@ def main() -> int:
         head = (zustand.get("head") or {}).get("sha")
         checks = warte_auf_checks(gh, head)
         decision = decide(zustand, gh.reviews(number), checks,
-                          gh.label_actor(number, MERGE_LABEL), trusted_actors(), bot)
+                          gh.label_actor(number, MERGE_LABEL), trusted_actors(), bot,
+                          manuelle_issues=manuelle_issues(gh, number))
         if decision.merge and head:
             gh.merge(number, head)
             merged = True
