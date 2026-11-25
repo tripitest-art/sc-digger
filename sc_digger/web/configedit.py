@@ -236,6 +236,73 @@ def _prune_backups(path: Path, keep: int) -> None:
         old.unlink()
 
 
+def _backup_files(path: Path) -> list[Path]:
+    """Vorhandene Sicherungen der Datei als Pfade, neueste zuerst.
+
+    Die Pfade stammen ausschließlich aus dem Verzeichnis-Abgleich und nie aus einem
+    übergebenen Namen: ein Name aus einer Anfrage kann so keinen Pfad außerhalb der
+    Sicherungen adressieren (Path Traversal, CodeQL `py/path-injection`).
+    """
+    parent = path.parent
+    if not parent.exists():
+        return []
+    prefix = path.name + ".bak-"
+    treffer = [
+        item for item in parent.iterdir()
+        if item.is_file() and item.name.startswith(prefix)
+    ]
+    treffer.sort(key=lambda item: item.name, reverse=True)
+    return treffer
+
+
+def list_backups(path: str | Path, *, limit: int = 20) -> list[dict[str, object]]:
+    """Listet vorhandene Sicherungen der Datei, neueste zuerst.
+
+    Liefert [{"name": str, "mtime": float, "size": int}, ...] bis zu `limit` Einträgen.
+    Gibt es keine Sicherungen oder existiert das Elternverzeichnis nicht, leere Liste.
+    """
+    entries: list[dict[str, object]] = []
+    for item in _backup_files(Path(path))[:limit]:
+        stat = item.stat()
+        entries.append({
+            "name": item.name,
+            "mtime": stat.st_mtime,
+            "size": stat.st_size,
+        })
+    return entries
+
+
+def restore_backup(path: str | Path, name: str) -> Path | None:
+    """Stellt den Inhalt einer Sicherung wieder her.
+
+    None, wenn name keine vorhandene Sicherung dieser Datei ist (kein Präfix-Trick,
+    kein Pfad daneben).
+    Sonst: vorher save_local(path, aktueller Inhalt) als neue Sicherung, dann Inhalt der
+    Sicherung nach path; Rückgabe ist der Pfad der neu angelegten Sicherung der Vorfassung.
+    """
+    p = Path(path)
+    # Der übergebene Name dient nur dem Vergleich mit den vorhandenen Dateien; gelesen wird
+    # der Pfad aus dem Verzeichnis-Abgleich.
+    backup_file = next((item for item in _backup_files(p) if item.name == name), None)
+    if backup_file is None:
+        return None
+
+    # Aktuellen Inhalt laden, um vor dem Überschreiben eine neue Sicherung über save_local anzulegen
+    current_data: dict[str, Any] = {}
+    if p.exists():
+        loaded = yaml.safe_load(p.read_text(encoding="utf-8"))
+        if isinstance(loaded, Mapping):
+            current_data = dict(loaded)
+
+    new_backup = save_local(p, current_data)
+
+    # Inhalt der gewählten Sicherung atomar nach path schreiben
+    content = backup_file.read_text(encoding="utf-8")
+    _write_atomically(p, content)
+
+    return new_backup
+
+
 def save_local(path: Path, local: Mapping[str, Any], *, keep_backups: int = 10,
                now: datetime | None = None) -> Path | None:
     """Schreibt local als YAML atomar nach path, mit Kopfkommentar und Backup der Vorfassung.
