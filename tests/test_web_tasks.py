@@ -127,7 +127,7 @@ def test_runner_backfill_energy(tmp_path: Path, monkeypatch):
     msg = runners["backfill-energy"]()
     assert aufgerufen["dry_run"] is False
     assert aufgerufen["db_path"] == cfg["state"]["track_db_path"]
-    assert msg == "Energie: 12 gesetzt, 3 übersprungen"
+    assert msg == "Energie: 12 gesetzt, 3 schon vorhanden, 0 fehlgeschlagen"
 
 
 def test_runner_backfill_bpm(tmp_path: Path, monkeypatch):
@@ -185,8 +185,77 @@ def test_runner_backfill_embeddings(tmp_path: Path, monkeypatch):
     msg = runners["backfill-embeddings"]()
     assert aufgerufen["dry_run"] is False
     assert aufgerufen["db_path"] == cfg["state"]["track_db_path"]
-    assert msg == "Embeddings: 7 eingereiht, 4 bereits aktiv"
+    assert msg == "Embeddings: 7 eingereiht, 4 bereits aktiv, 0 Datei(en) fehlen (0 bewertete Tracks ohne Embedding)"
 
+
+
+def test_runner_backfill_embeddings_mit_dict(tmp_path: Path, monkeypatch):
+    # Manche Aufrufer liefern ein Dict statt BackfillSummary; der Runner nimmt beides an.
+    cfg = _cfg(tmp_path)
+    monkeypatch.setattr(
+        "sc_digger.embeddings.backfill_embedding_jobs",
+        lambda db, *, dry_run=False: {"queued": 3, "already_queued": 1, "missing_file": 4,
+                                      "candidates": 8},
+    )
+    msg = default_runners(cfg)["backfill-embeddings"]()
+    assert msg == ("Embeddings: 3 eingereiht, 1 bereits aktiv, 4 Datei(en) fehlen "
+                   "(8 bewertete Tracks ohne Embedding)")
+
+
+def test_runner_backfill_embeddings_dict_unvollstaendig(tmp_path: Path, monkeypatch):
+    cfg = _cfg(tmp_path)
+    monkeypatch.setattr(
+        "sc_digger.embeddings.backfill_embedding_jobs",
+        lambda db, *, dry_run=False: {"queued": 2},
+    )
+    msg = default_runners(cfg)["backfill-embeddings"]()
+    assert msg == ("Embeddings: 2 eingereiht, 0 bereits aktiv, 0 Datei(en) fehlen "
+                   "(0 bewertete Tracks ohne Embedding)")
+
+
+def test_runner_backfill_energy_fehlende_schluessel(tmp_path: Path, monkeypatch):
+    cfg = _cfg(tmp_path)
+    monkeypatch.setattr("sc_digger.backfill.backfill_energy",
+                        lambda db, *, dry_run=False: {"set": 4})
+    msg = default_runners(cfg)["backfill-energy"]()
+    assert msg == "Energie: 4 gesetzt, 0 schon vorhanden, 0 fehlgeschlagen"
+
+
+def _cfg_scout(tmp_path: Path, *, feeds, charts) -> Config:
+    cfg = _cfg(tmp_path)
+    cfg.raw["scout"] = {"bandcamp": {"feeds": feeds}, "beatport": {"charts": charts}}
+    return cfg
+
+
+def test_runner_scout_nur_charts(tmp_path: Path, monkeypatch):
+    from sc_digger.db import TrackDB
+
+    cfg = _cfg_scout(tmp_path, feeds=None,
+                     charts=["https://www.beatport.com/genre/hard-techno/2/top-100"])
+    aufgerufen = {}
+
+    def fake_scout(c, **kw):
+        aufgerufen["ja"] = True
+        with TrackDB(c["state"]["track_db_path"]) as db:
+            for sc_id in (10, 11):
+                db.upsert_store_item(sc_id=sc_id, title=f"T{sc_id}", artist="A",
+                                     purchase_url=f"https://www.beatport.com/track/x/{sc_id}")
+        return 2
+
+    monkeypatch.setattr("sc_digger.main.run_scout", fake_scout)
+    msg = default_runners(cfg)["scout"]()
+    assert aufgerufen["ja"] is True
+    assert msg == "Scout fertig: 2 neu, 0 schon bekannt (0 Feed(s), 1 Chart(s))"
+
+
+def test_runner_scout_quellen_none_laeuft_nicht(tmp_path: Path, monkeypatch):
+    def darf_nicht(c, **kw):
+        raise AssertionError("run_scout darf ohne Quellen nicht laufen")
+
+    monkeypatch.setattr("sc_digger.main.run_scout", darf_nicht)
+    cfg = _cfg_scout(tmp_path, feeds=None, charts=None)
+    msg = default_runners(cfg)["scout"]()
+    assert msg.startswith("Scout: keine Quellen eingetragen")
 
 def test_runner_requeue(tmp_path: Path, monkeypatch):
     cfg = _cfg(tmp_path)
