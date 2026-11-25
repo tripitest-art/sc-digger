@@ -142,6 +142,7 @@ class BackfillSummary:
     queued: int = 0           # neu eingereiht (dry_run: würden eingereiht)
     already_queued: int = 0   # offener oder laufender Embedding-Job vorhanden
     missing_file: int = 0     # Datei auf dem Server fehlt
+    sc_id_filled: int = 0     # aus dem Dateinamen nachgetragene sc_id (dry_run: würden)
 
 
 def backfill_embedding_jobs(
@@ -158,7 +159,13 @@ def backfill_embedding_jobs(
     bewertete Tracks, sonst alle (bewertete zuerst, je Gruppe nach Track-ID). Fehlende Dateien
     und schon aktive Jobs werden gezählt, nicht eingereiht. `limit` begrenzt die neu
     eingereihten Jobs; danach wird nichts mehr gezählt.
+
+    Als erster Schritt trägt `TrackDB.fill_sc_ids_from_paths` fehlende `sc_id` aus dem
+    Dateinamen nach; im Probelauf wird dabei nichts geschrieben.
     """
+    # Issue #749: erst die IDs nachtragen, dann Kandidaten suchen. Sonst gälten bewertete
+    # Inbox-Tracks ohne sc_id als unbewertet und würden erst im nächsten Lauf eingereiht.
+    sc_id_filled = db.fill_sc_ids_from_paths(dry_run=dry_run)
     where = "NOT EXISTS (SELECT 1 FROM track_embeddings e WHERE e.track_id = t.id)"
     if labeled_only:
         where += f" AND {_LABELED_SQL}"
@@ -166,7 +173,7 @@ def backfill_embedding_jobs(
         f"SELECT t.id FROM tracks t WHERE {where} ORDER BY {_LABELED_SQL} DESC, t.id ASC"
     ).fetchall()]
 
-    summary = BackfillSummary(candidates=len(ids))
+    summary = BackfillSummary(candidates=len(ids), sc_id_filled=sc_id_filled)
     for track_id in ids:
         if limit is not None and summary.queued >= limit:
             break

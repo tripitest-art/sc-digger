@@ -887,6 +887,39 @@ class TrackDB:
         self.db.commit()
         return TrackRecord.from_row(row)
 
+    def fill_sc_ids_from_paths(self, *, dry_run: bool = False) -> int:
+        """Trägt tracks.sc_id aus dem Dateinamen-Präfix "[<Ziffern>]" nach.
+
+        Betrachtet nur Zeilen des eigenen Profils mit sc_id IS NULL. Zählt nur der
+        Dateiname (Path(path).name, Muster r"^\\[(\\d+)\\]"), keine Ordnernamen. Eine
+        vorhandene sc_id wird nie überschrieben. dry_run=True schreibt nichts und liefert die
+        Zahl, die nachgetragen würde. Rückgabe: Anzahl nachgetragener (bzw. nachzutragender)
+        Zeilen. Setzt updated_at der geänderten Zeilen. Schreibt nur in die DB, nie in Dateien.
+        """
+        # Issue #749: Vor dem Fix speicherte finish_file keine sc_id. Bewertungen in
+        # sc_feedback hängen aber an der SoundCloud-ID, ohne sie erreichten 👍/👎 weder
+        # Embedding-Backfill noch Taste-Training. Der Download legt die ID als "[<id>]"
+        # vorne in den Dateinamen; nur dort, nicht in Ordnernamen, ist sie verlässlich.
+        rows = self.db.execute(
+            "SELECT id, path FROM tracks WHERE sc_id IS NULL AND profile_id = ?",
+            (self.profile_id,),
+        ).fetchall()
+        updates: list[tuple[int, int]] = []
+        for row in rows:
+            m = re.match(r"^\[(\d+)\]", Path(row["path"] or "").name)
+            if m:
+                updates.append((int(m.group(1)), row["id"]))
+        if updates and not dry_run:
+            # "sc_id IS NULL" auch im UPDATE, damit eine inzwischen gesetzte ID nie
+            # überschrieben wird.
+            self.db.executemany(
+                "UPDATE tracks SET sc_id = ?, updated_at = CURRENT_TIMESTAMP "
+                "WHERE id = ? AND sc_id IS NULL",
+                updates,
+            )
+            self.db.commit()
+        return len(updates)
+
     def get_track_by_path(self, path: str | Path) -> TrackRecord | None:
         """Sucht einen Track des eigenen Profils anhand seines normalisierten Dateipfads."""
         p_str = _normalize_path(path)

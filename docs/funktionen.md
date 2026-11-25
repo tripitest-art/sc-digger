@@ -265,7 +265,9 @@ nächtlichen Lauf zu warten; Fehler dabei werden nur protokolliert. Der Score di
 nur der Anzeige und beeinflusst die tägliche Auswahl nicht — er steht aber schon beim
 Eintreffen des Embeddings im Dashboard bereit, statt erst am nächsten Morgen. SoundCloud-
 Kandidaten haben ohne Download kein Embedding. `--dry-run` zeigt die Zahl der bewertbaren
-Tracks, ohne Modell oder Scores zu schreiben.
+Tracks, ohne Modell oder Scores zu schreiben. Damit die Digest-Bewertungen geladene Tracks
+erreichen, speichert die Inbox jeden Download mit seiner SoundCloud-ID (`tracks.sc_id`); ältere
+Zeilen ohne ID bekommen sie beim Embedding-Backfill aus dem Dateinamen-Präfix `[<id>]` (#749).
 
 ## Verfügbarkeits-Wächter
 

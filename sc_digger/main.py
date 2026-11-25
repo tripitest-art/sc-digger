@@ -327,6 +327,7 @@ def finish_file(t: Track, path: Path, inbox: Path, cfg: Config) -> Path | None:
                 key_confidence=key_confidence,
                 key_margin=key_margin,
                 source_url=t.url,
+                sc_id=t.id if t.id and t.id > 0 else None,
                 status=TrackStatus.INBOX,
                 format=q_rep.get("ext") or (path.suffix[1:].lower() if path.suffix else None),
                 bitrate_kbps=q_rep.get("bitrate_kbps"),
