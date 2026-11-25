@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_components.html" import status_badge %}
 
 {% block title %}Duplikat-Kandidaten – sc-digger{% endblock %}
 {% block nav_duplicates %}active{% endblock %}
@@ -74,7 +75,7 @@
         <thead>
           <tr>
             <th>Status</th>
-            <th>Künstler</th>
+            <th>Artist</th>
             <th>Titel</th>
             <th>Format</th>
             <th>Bitrate</th>
@@ -87,14 +88,8 @@
           {% for track in group.tracks %}
           <tr>
             <td>
-              {% if track.status == 'inbox' %}
-                <span class="badge badge-ok">inbox</span>
-              {% elif track.status == 'archive' %}
-                <span class="badge badge-purple">archive</span>
-              {% elif track.status == 'rejected' %}
-                <span class="badge badge-err">rejected</span>
-              {% elif track.status %}
-                <span class="badge">{{ track.status }}</span>
+              {% if track.status %}
+                {{ status_badge(track.status) }}
               {% else %}
                 <span class="meta">-</span>
               {% endif %}

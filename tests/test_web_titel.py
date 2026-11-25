@@ -38,7 +38,7 @@ def _extract_title(html: str) -> str:
         ("/kaufliste", "Kaufliste – sc-digger"),
         ("/rejected", "Quarantäne – sc-digger"),
         ("/duplicates", "Duplikat-Kandidaten – sc-digger"),
-        ("/intake", "Upload &amp; Intake – sc-digger"),
+        ("/intake", "Upload – sc-digger"),
     ],
 )
 def test_standard_seiten_titel_format_und_inhalt(tmp_path, pfad, erwarteter_titel):

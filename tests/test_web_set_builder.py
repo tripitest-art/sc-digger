@@ -417,4 +417,4 @@ def test_mix_xml_knopf_bleibt_nach_export_nur_mit_set_frei():
 
 def test_mix_finder_karte_gibt_es_genau_einmal():
     assert MIX_TEMPLATE.count('id="mix-finder"') == 1
-    assert MIX_TEMPLATE.count("🧭 Harmonic Mix Finder") == 1
+    assert MIX_TEMPLATE.count("🧭 Passende Tracks") == 1

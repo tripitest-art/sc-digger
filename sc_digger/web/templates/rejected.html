@@ -43,7 +43,7 @@
     <div>
       <h1 style="margin: 0;">⚠️ Quarantäne</h1>
       <p class="meta" style="margin: 0.25rem 0 0;">
-        Abgelehnte Downloads aus der Qualitätsprüfung &middot;
+        Downloads in Quarantäne nach der Qualitätsprüfung &middot;
         <strong>{{ total }}</strong> Treffer
         {% if total_pages > 1 %}&middot; Seite {{ page }} von {{ total_pages }}{% endif %}
       </p>
@@ -85,7 +85,7 @@
 
 <div class="card">
   <div class="card-header">
-    <h2 class="card-title" style="margin: 0;">Abgewiesene Tracks</h2>
+    <h2 class="card-title" style="margin: 0;">Tracks in Quarantäne</h2>
   </div>
   <div class="table-scroll">
   <table>
@@ -94,7 +94,7 @@
         <th>SoundCloud-ID</th>
         <th>Titel &amp; Uploader</th>
         <th>Ablehnungsgrund</th>
-        <th>Abgelehnt am</th>
+        <th>In Quarantäne seit</th>
         <th>Aktion</th>
       </tr>
     </thead>
@@ -136,7 +136,7 @@
       {% else %}
       <tr>
         <td colspan="5">
-          {{ empty_state("Keine abgewiesenen Tracks für diese Filtereinstellungen.", "/rejected") }}
+          {{ empty_state("Keine Tracks in Quarantäne für diese Filtereinstellungen.", "/rejected") }}
         </td>
       </tr>
       {% endfor %}
@@ -147,7 +147,7 @@
   {% if total > 0 %}
   <div class="pager">
     <div class="meta">
-      Seite {{ page }} von {{ total_pages }} ({{ total }} abgewiesene Tracks gesamt)
+      Seite {{ page }} von {{ total_pages }} ({{ total }} Tracks in Quarantäne gesamt)
     </div>
     <div class="pager-buttons">
       <a href="{{ prev_url or '#' }}" class="btn-page {% if not prev_url %}disabled{% endif %}">

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Upload &amp; Intake – sc-digger{% endblock %}
+{% block title %}Upload – sc-digger{% endblock %}
 {% block nav_intake %}active{% endblock %}
 
 {% block meta %}
@@ -141,7 +141,7 @@
   <div id="results-area" style="margin-top: 1.5rem; {% if not results %}display: none;{% endif %}">
     <div id="results-summary" class="results-summary {% if ok %}ok{% elif summary and summary.ok > 0 %}warn{% else %}err{% endif %}">
       {% if summary %}
-      {{ summary.ok }} erfolgreich, {{ summary.rejected }} abgelehnt, {{ summary.error }} Fehler
+      {{ summary.ok }} erfolgreich, {{ summary.rejected }} in Quarantäne, {{ summary.error }} Fehler
       {% endif %}
     </div>
     <ul id="results-list" class="result-list">
@@ -252,7 +252,7 @@
         const summary = data.summary || { ok: 0, rejected: 0, error: 0 };
         const isAllOk = data.ok;
         resultsSummary.className = 'results-summary ' + (isAllOk ? 'ok' : (summary.ok > 0 ? 'warn' : 'err'));
-        resultsSummary.textContent = summary.ok + ' erfolgreich, ' + summary.rejected + ' abgelehnt, ' + summary.error + ' Fehler';
+        resultsSummary.textContent = summary.ok + ' erfolgreich, ' + summary.rejected + ' in Quarantäne, ' + summary.error + ' Fehler';
 
         const results = data.results || [];
         for (const r of results) {

@@ -32,7 +32,7 @@ def test_empty_state_macro_rendering():
     [
         ("/tracks", "Keine Treffer für diese Filter."),
         ("/digest", "Keine Vorschläge für diese Filtereinstellungen gefunden."),
-        ("/rejected", "Keine abgewiesenen Tracks für diese Filtereinstellungen."),
+        ("/rejected", "Keine Tracks in Quarantäne für diese Filtereinstellungen."),
         ("/kaufliste", "Keine Store-Tracks für diese Filtereinstellungen gefunden."),
     ],
 )

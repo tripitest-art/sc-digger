@@ -204,7 +204,7 @@ def test_rejected_seite_leer(tmp_path: Path):
     client = client_for(tmp_path)
     response = client.get("/rejected", auth=AUTH)
     assert response.status_code == 200
-    assert "Keine abgewiesenen Tracks für diese Filtereinstellungen." in response.text
+    assert "Keine Tracks in Quarantäne für diese Filtereinstellungen." in response.text
     # Ohne Treffer keine Aktionsknöpfe und keine Paginierung.
     assert 'data-track-id="' not in response.text
     assert 'onclick="retryTrack(this)"' not in response.text
