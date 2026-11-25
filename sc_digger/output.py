@@ -7,7 +7,7 @@ import re
 import shutil
 import sqlite3
 import subprocess
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -316,19 +316,18 @@ def finalize_quality(t: Track, path: Path, inbox: Path, cfg: Config) -> Path | N
 
 # ---------------------------------------------------------------- Telegram-Chat (HTML, kompakt)
 _BUCKET_LABEL = {
-    DownloadKind.NATIVE: "✅ Direkt geladen / ladbar",
-    DownloadKind.HYPEDDIT: "🚪 Gate – manuell durchklicken",
-    DownloadKind.DROPLOUD: "🚪 Gate – manuell durchklicken",
-    DownloadKind.TONEDEN: "🚪 Gate – manuell durchklicken",
-    DownloadKind.ARTIST_UNION: "🚪 Gate – manuell durchklicken",
-    DownloadKind.STORE: "🛒 Store / Cloud-Link",
-    DownloadKind.CLOUD: "🛒 Store / Cloud-Link",
-    DownloadKind.WETRANSFER: "🛒 Store / Cloud-Link",
-    DownloadKind.MEGA: "🛒 Store / Cloud-Link",
-    DownloadKind.NONE: "🎧 Nur Stream",
+    DownloadKind.NATIVE: "✅ Direkt",
+    DownloadKind.HYPEDDIT: "🚪 Gate",
+    DownloadKind.DROPLOUD: "🚪 Gate",
+    DownloadKind.TONEDEN: "🚪 Gate",
+    DownloadKind.ARTIST_UNION: "🚪 Gate",
+    DownloadKind.STORE: "🛒 Store",
+    DownloadKind.CLOUD: "🛒 Store",
+    DownloadKind.WETRANSFER: "🛒 Store",
+    DownloadKind.MEGA: "🛒 Store",
+    DownloadKind.NONE: "🎧 Stream",
 }
-_ORDER = ["✅ Direkt geladen / ladbar", "🚪 Gate – manuell durchklicken",
-          "🛒 Store / Cloud-Link", "🎧 Nur Stream"]
+_ORDER = ["✅ Direkt", "🚪 Gate", "🛒 Store", "🎧 Stream"]
 
 # Gate-Anbieter, deren Link nur gemeldet (nie automatisch durchlaufen) wird (Regel 6).
 _GATE_KINDS = (
@@ -363,42 +362,83 @@ def track_detail_url(cfg: Config | None, sc_id: int | None) -> str | None:
     return dashboard_url(cfg, f"/track/sc/{sc_id}")
 
 
+def _de_plays(n: int) -> str:
+    """Reichweite kurz: ab 10.000 als "48,2k" (eine Nachkommastelle, Komma), darunter die
+    nackte Zahl (8210). 0 -> "0". Wirft nicht."""
+    if n >= 10000:
+        return f"{n / 1000:.1f}".replace(".", ",") + "k"
+    return str(n)
+
+
+def _de_percent(anteil: float) -> str:
+    """Anteil in Prozent, eine Nachkommastelle, Komma: 0.0392 -> "3,9 %", 0.0 -> "0,0 %"."""
+    return f"{anteil * 100:.1f}".replace(".", ",") + " %"
+
+
+def digest_head(tracks: list[Track], header: str | None = None) -> str:
+    """Digest-Kopf, zwei Zeilen, kein Umbruch am Ende.
+    Zeile 1: "<b>{header}</b>"; ohne header "<b>sc-digger – {len(tracks)} neue Treffer</b>".
+    Zeile 2: je Gruppe aus _BUCKET_LABEL mit mindestens einem Track "{n} {Symbol}", in der
+    Reihenfolge von _ORDER, getrennt durch " · "; das Symbol ist das erste Wort des
+    Gruppenlabels ("1 ✅ · 1 🚪 · 1 🛒").
+    Ohne Tracks nur Zeile 1 (kein abschließender Umbruch)."""
+    titel = _esc(header) if header else f"sc-digger – {len(tracks)} neue Treffer"
+    zeilen = [f"<b>{titel}</b>"]
+    zaehler = Counter(_BUCKET_LABEL[t.download_kind] for t in tracks)
+    verteilung = [f"{zaehler[label]} {label.split()[0]}" for label in _ORDER if zaehler[label]]
+    if verteilung:
+        zeilen.append(" · ".join(verteilung))
+    return "\n".join(zeilen)
+
+
 def _fmt_track(t: Track, *, detail_url: str | None = None) -> str:
-    prefix = "⭐ " if t.reference_hit else ""
-    line = (
-        f'{prefix}<a href="{html.escape(detail_url or t.url)}">{_esc(t.artist)} – {_esc(t.title)}</a>\n'
-        f"  ▶ {t.plays:,} · ♥ {t.likes:,} ({t.like_ratio * 100:.1f} %) · 🔁 {t.reposts:,}"
-    )
+    """Ein Track als Block, ohne Umbruch am Ende.
+    Zeile 1: Titellink. Zeile 2: eine eingerückte Datenzeile (Musikdaten, Set, Stern,
+    Reichweite). Ab Zeile 3: Hinweise, je eingerückt."""
+    line = f'<a href="{html.escape(detail_url or t.url)}">{_esc(t.artist)} – {_esc(t.title)}</a>'
+
+    felder: list[str] = []
     if t.bpm:
-        line += f" · {t.bpm:.0f} BPM"
+        bpm = f"{t.bpm:.0f} BPM"
         if t.text_bpm:
-            line += f" ⚠️ Uploader: {t.text_bpm:.0f}"
+            bpm += f" ⚠️ Uploader: {t.text_bpm:.0f}"
+        felder.append(bpm)
     if t.key_camelot:
-        line += f" · 🔑 {t.key_camelot}"
-    if t.set_minutes:
-        line += f" · 🎛️ Set, {t.set_minutes} min"
-    if t.exploration_tag:
-        line += f"\n  🔍 via #{_esc(t.exploration_tag)}"
+        felder.append(t.key_camelot)
     if t.quality_report:
         q = t.quality_report
         mark = "✅" if q["ok"] else "⚠️"
-        line += f"\n  {mark} {q['ext'].upper()} {q['bitrate_kbps']} kbps – {_esc(q['reason'])}"
-        if q.get("clipped"):
-            line += (f"\n  🧱 Brickwall/Clipping (LRA: {q.get('loudness_range_lu')} LU, "
-                     f"Peak: {q.get('true_peak_dbfs')} dBFS)")
+        felder.append(f"{mark} {q['ext'].upper()} {q['bitrate_kbps']}")
+    if t.set_minutes:
+        felder.append(f"🎛️ Set, {t.set_minutes} min")
+    if t.reference_hit:
+        felder.append("⭐")
+    felder.append(f"▶ {_de_plays(t.plays)}")
+    felder.append(f"♥ {_de_percent(t.like_ratio)}")
+    line += "\n    " + " · ".join(felder)
+
+    hinweise: list[str] = []
+    if t.exploration_tag:
+        hinweise.append(f"🔍 via #{_esc(t.exploration_tag)}")
+    if t.quality_report and t.quality_report.get("clipped"):
+        q = t.quality_report
+        hinweise.append(f"🧱 Brickwall/Clipping (LRA: {q.get('loudness_range_lu')} LU, "
+                        f"Peak: {q.get('true_peak_dbfs')} dBFS)")
     elif t.download_kind == DownloadKind.NATIVE:
-        line += f'\n  ⬇️ <a href="{html.escape(t.url)}">Original manuell laden</a>'
+        hinweise.append(f'⬇️ <a href="{html.escape(t.url)}">Original manuell laden</a>')
     if t.download_link and t.download_kind not in (DownloadKind.NATIVE, DownloadKind.NONE):
         if t.download_kind == DownloadKind.WETRANSFER:
-            line += f'\n  ⏳ <a href="{html.escape(t.download_link)}">WeTransfer (läuft ab)</a>'
+            hinweise.append(f'⏳ <a href="{html.escape(t.download_link)}">WeTransfer (läuft ab)</a>')
         elif t.download_kind == DownloadKind.MEGA:
-            line += f'\n  🔒 <a href="{html.escape(t.download_link)}">Mega (manuell)</a>'
+            hinweise.append(f'🔒 <a href="{html.escape(t.download_link)}">Mega (manuell)</a>')
         else:
-            line += f'\n  🔗 <a href="{html.escape(t.download_link)}">{t.download_kind.value}</a>'
+            hinweise.append(f'🔗 <a href="{html.escape(t.download_link)}">{t.download_kind.value}</a>')
     if t.download_error:
-        line += f"\n  ⚠️ {_esc(t.download_error)}"
+        hinweise.append(f"⚠️ {_esc(t.download_error)}")
     if t.duplicate_of:
-        line += f"\n  ♻️ Schon in der Sammlung: {_esc(Path(t.duplicate_of).name)}"
+        hinweise.append(f"♻️ Schon in der Sammlung: {_esc(Path(t.duplicate_of).name)}")
+    for h in hinweise:
+        line += "\n    " + h
     return line
 
 
@@ -489,14 +529,14 @@ def build_digest_messages(
         groups[_BUCKET_LABEL[t.download_kind]].append(t)
 
     messages: list[DigestMessage] = []
-    cur = f"<b>{_esc(header or f'sc-digger – {len(tracks)} neue Treffer')}</b>\n"
+    cur = digest_head(tracks, header) + "\n\n"
     cur_items: list[tuple[int, int]] = []
     n = 1
 
     for title in _ORDER:
         if title not in groups:
             continue
-        group_head = f"\n<b>{title}</b>\n"
+        group_head = f"<b>{title}</b>\n"
         if (len(cur) + len(group_head) > 3900 or (numbered and len(cur_items) >= 10)) and cur.strip():
             messages.append(DigestMessage(text=cur, items=cur_items))
             cur = ""

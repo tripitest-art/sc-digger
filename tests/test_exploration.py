@@ -124,12 +124,12 @@ def test_collect_sources_abort_on_exploration_skips_followed():
     assert not any(c[0] == "user_uploads" for c in sc.calls)
 
 
-def test_fmt_track_badge_before_quality_lines():
+def test_fmt_track_badge_steht_unter_der_datenzeile():
     t = mk(1, title="Acid Track")
     t.exploration_tag = "acid techno"
     t.quality_report = {"ok": True, "ext": "wav", "bitrate_kbps": 1411, "reason": "lossless"}
     out = _fmt_track(t)
-    assert out.index("🔍 via #acid techno") < out.index("WAV")
+    assert out.index("WAV") < out.index("🔍 via #acid techno")
 
 
 def test_fmt_track_no_badge_without_exploration_tag():
