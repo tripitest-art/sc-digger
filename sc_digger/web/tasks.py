@@ -110,13 +110,36 @@ def default_runners(cfg: Config) -> dict[str, Callable[[], str]]:
     """Enthält zusätzlich: "backfill-energy", "backfill-artist", "backfill-bpm", "backfill-embeddings",
     "requeue", "backup". Jeder Runner: TrackDB über cfg["state"]["track_db_path"] öffnen und
     schließen, Aufruf mit dry_run=False, Rückgabe einer deutschen Zeile mit den Zahlen aus dem
-    Ergebnis (z. B. "Energie: 12 gesetzt, 3 übersprungen"), maximal 300 Zeichen."""
+    Ergebnis (z. B. "Energie: 12 gesetzt, 3 schon vorhanden, 0 fehlgeschlagen"), maximal 300 Zeichen."""
 
     def scout() -> str:
+        from ..db import TrackDB
         from ..main import run_scout
 
-        n = run_scout(cfg)
-        return f"Scout fertig: {n} neue Kaufempfehlung(en)"
+        # Ohne Quellen liefe der Scout ins Leere und meldete eine 0, die wie "nichts Neues"
+        # aussieht (Regel 7). Deshalb vorher prüfen und klar sagen, was fehlt.
+        scout_cfg = cfg.raw.get("scout") or {}
+        feeds = list((scout_cfg.get("bandcamp") or {}).get("feeds") or [])
+        charts = list((scout_cfg.get("beatport") or {}).get("charts") or [])
+        if not feeds and not charts:
+            return "Scout: keine Quellen eingetragen (Konfig → Scout: Bandcamp-Feeds, Beatport-Charts)"
+
+        # run_scout zählt alle geschriebenen Einträge, auch schon bekannte. Der Unterschied
+        # zwischen neu und bekannt ergibt sich nur aus der Anzahl vor und nach dem Lauf.
+        # Die DB wird vor run_scout wieder geschlossen, weil der Lauf sie selbst öffnet.
+        track_db_path = cfg["state"]["track_db_path"]
+        with TrackDB(track_db_path) as db:
+            vorher = len(db.get_store_items())
+        geschrieben = run_scout(cfg)
+        with TrackDB(track_db_path) as db:
+            nachher = len(db.get_store_items())
+        neu = max(nachher - vorher, 0)
+        bekannt = max(geschrieben - neu, 0)
+        msg = (f"Scout fertig: {neu} neu, {bekannt} schon bekannt "
+               f"({len(feeds)} Feed(s), {len(charts)} Chart(s))")
+        if geschrieben == 0:
+            msg += " – Quellen lieferten keine Tracks"
+        return msg[:MESSAGE_MAX]
 
     def watch() -> str:
         from ..watch import run_watch
@@ -143,7 +166,10 @@ def default_runners(cfg: Config) -> dict[str, Callable[[], str]]:
 
         with TrackDB(cfg["state"]["track_db_path"]) as db:
             res = backfill_energy(db, dry_run=False)
-        return f"Energie: {res.get('set', 0)} gesetzt, {res.get('skipped', 0)} übersprungen"[:MESSAGE_MAX]
+        # "skipped" heißt in backfill_energy "hatte schon eine Stufe"; Fehlschläge gehören
+        # mit in die Meldung, sonst scheitern sie still.
+        return (f"Energie: {res.get('set', 0)} gesetzt, {res.get('skipped', 0)} schon vorhanden, "
+                f"{res.get('failed', 0)} fehlgeschlagen")[:MESSAGE_MAX]
 
     def backfill_names_runner() -> str:
         from ..backfill import backfill_names
@@ -206,14 +232,16 @@ def default_runners(cfg: Config) -> dict[str, Callable[[], str]]:
 
         with TrackDB(cfg["state"]["track_db_path"]) as db:
             summary = backfill_embedding_jobs(db, dry_run=False)
-        queued = getattr(summary, "queued", None)
-        if queued is None and isinstance(summary, dict):
-            queued = summary.get("queued", 0)
-            already = summary.get("already_queued", 0)
-        else:
-            queued = getattr(summary, "queued", 0)
-            already = getattr(summary, "already_queued", 0)
-        return f"Embeddings: {queued} eingereiht, {already} bereits aktiv"[:MESSAGE_MAX]
+        # Fehlende Dateien und Kandidaten mit ausgeben: Nur so ist eine 0 als "alles erledigt"
+        # von "Dateien fehlen" zu unterscheiden. Ergebnis als Objekt oder Dict, fehlend = 0.
+        def wert(name: str) -> int:
+            if isinstance(summary, dict):
+                return summary.get(name, 0) or 0
+            return getattr(summary, name, 0) or 0
+
+        return (f"Embeddings: {wert('queued')} eingereiht, {wert('already_queued')} bereits aktiv, "
+                f"{wert('missing_file')} Datei(en) fehlen "
+                f"({wert('candidates')} bewertete Tracks ohne Embedding)")[:MESSAGE_MAX]
 
     def requeue_runner() -> str:
         from ..db import TrackDB
