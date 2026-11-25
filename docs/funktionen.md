@@ -21,7 +21,7 @@ Der Standardmodus heißt `discover` und läuft im Container täglich um 07:30 pe
    - `loudness.normalize_inbox_file()` gleicht den Pegel an, sofern `loudness.normalize_inbox` aktiv.
    - `analyze_track` und `resolve_bpm` bestimmen BPM (mit Oktav-Korrektur) und Camelot-Key.
    - `organize.write_tags` schreibt Tags, `organize.organize` verschiebt die Datei nach `inbox/<BPM-Bucket>/<Camelot-Key>/`.
-8. **Ausliefern** (`deliver`): Telegram-Digest gruppiert nach Download-Weg, mit Feedback-Buttons, plus Export-Datei als Anhang. Store-Tracks werden per `upsert_store_item` eingetragen.
+8. **Ausliefern** (`deliver`): Telegram-Digest mit festem Aufbau – Kopf mit Verteilung, pro Track eine Datenzeile in fester Reihenfolge (BPM, Key, Qualität, Set, Referenz-Stern, Reichweite), darunter die Hinweise; gruppiert nach Download-Weg, mit Feedback-Buttons, plus Export-Datei als Anhang. Store-Tracks werden per `upsert_store_item` eingetragen.
 9. **State fortschreiben**: Nach dem Versand wird zuerst die Exploration-Statistik aktualisiert, dann werden die gelieferten Tracks in `seen` markiert (`state.mark_one`).
 10. **Rekordbox-XML** neu schreiben (`write_rekordbox_xml`).
 11. **Sonntags-Digest**: Ist der Tag ein Sonntag und `digest.sunday_summary` aktiv, sendet `stats.send_weekly_digest` die Wochenstatistik.
