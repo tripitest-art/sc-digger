@@ -156,7 +156,7 @@ def test_wetransfer_and_mega_digest_and_export():
 
     assert "⏳ <a href=\"https://we.tl/t-12345\">WeTransfer (läuft ab)</a>" in full_text
     assert "🔒 <a href=\"https://mega.co.nz/file/ABC\">Mega (manuell)</a>" in full_text
-    assert "🛒 Store / Cloud-Link" in full_text
+    assert "<b>🛒 Store</b>" in full_text
 
     # Export-Datei darf nicht abstürzen und muss Links enthalten
     export_txt = out.build_export_txt([t_we, t_mega])
