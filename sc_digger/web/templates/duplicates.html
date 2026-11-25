@@ -44,6 +44,8 @@
       <p class="meta" style="margin: 0.25rem 0 0;">
         Erkannte Audio-Duplikate per Chromaprint-Fingerprint &middot;
         <strong>{{ total_groups }}</strong> {% if total_groups == 1 %}Gruppe{% else %}Gruppen{% endif %}
+        {% if computed_at %}<span class="meta meta-sm" data-duplicates-stand>· Stand: {{ computed_at | localtime }}</span>{% endif %}
+        {% if stale %}<span class="meta meta-sm" data-duplicates-stale>· Wird gerade neu berechnet, Seite in einer Minute neu laden.</span>{% endif %}
       </p>
     </div>
     <div style="display: flex; gap: 0.6rem;">
