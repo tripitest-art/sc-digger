@@ -11,6 +11,8 @@ import subprocess
 import sys
 from typing import TYPE_CHECKING
 
+import numpy as np
+
 if TYPE_CHECKING:
     from sc_digger.db import TrackDB, TrackRecord
 
@@ -18,6 +20,9 @@ log = logging.getLogger(__name__)
 
 MAX_BER = 0.15              # maximale Bitfehlerrate für „gleiche Aufnahme“
 MAX_DURATION_DIFF_S = 3.0   # maximale Dauer-Differenz in Sekunden
+
+# Bits je Byte-Wert (0..255); zählt die gesetzten Bits eines XOR-Arrays per Tabellenzugriff
+_POPCOUNT8 = np.array([bin(i).count("1") for i in range(256)], dtype=np.uint16)
 
 
 @dataclass(frozen=True)
@@ -91,10 +96,12 @@ def bit_error_rate(
     a ab Index max(off, 0) gegen b ab Index max(-off, 0) über die gemeinsame Länge m;
     nur Versätze mit m >= min_overlap zählen; Fehlerrate = Summe popcount(x ^ y) / (32 * m).
     Rückgabe: Minimum über alle Versätze; gibt es keinen gültigen Versatz: 1.0.
-    Werte vorher mit & 0xFFFFFFFF normalisieren. Reines Python (int.bit_count()), kein numpy nötig.
+    Werte vorher mit & 0xFFFFFFFF normalisieren (Eingaben können negativ sein). Mit numpy: XOR je Versatz auf
+    uint32-Arrays, Bits per 256er-Popcount-Tabelle über die uint8-Sicht gezählt (gleiche Ergebnisse wie die
+    frühere reine Python-Fassung, aber um ein Vielfaches schneller).
     """
-    a_norm = [v & 0xFFFFFFFF for v in a]
-    b_norm = [v & 0xFFFFFFFF for v in b]
+    a_norm = (np.asarray(a, dtype=np.int64) & 0xFFFFFFFF).astype(np.uint32)
+    b_norm = (np.asarray(b, dtype=np.int64) & 0xFFFFFFFF).astype(np.uint32)
     len_a = len(a_norm)
     len_b = len(b_norm)
 
@@ -105,9 +112,8 @@ def bit_error_rate(
         m = min(len_a - start_a, len_b - start_b)
         if m < min_overlap:
             continue
-        slice_a = a_norm[start_a : start_a + m]
-        slice_b = b_norm[start_b : start_b + m]
-        diff_bits = sum((x ^ y).bit_count() for x, y in zip(slice_a, slice_b))
+        x = np.bitwise_xor(a_norm[start_a : start_a + m], b_norm[start_b : start_b + m])
+        diff_bits = int(_POPCOUNT8[x.view(np.uint8)].sum())
         ber = diff_bits / (32 * m)
         if ber < min_ber:
             min_ber = ber

@@ -125,7 +125,9 @@ def test_api_and_page_empty_state(tmp_path: Path):
     # API bei 0 Gruppen
     resp = client.get("/api/duplicates", auth=AUTH)
     assert resp.status_code == 200
-    assert resp.json() == {"ok": True, "total_groups": 0, "groups": []}
+    data = resp.json()
+    assert {k: data[k] for k in ("ok", "total_groups", "groups")} == {"ok": True, "total_groups": 0, "groups": []}
+    assert data["stale"] is False
 
     # HTML bei 0 Gruppen
     html_resp = client.get("/duplicates", auth=AUTH)

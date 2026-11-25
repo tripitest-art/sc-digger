@@ -27,6 +27,7 @@ from ..common import (
     _require_json_content_type,
     _same_origin,
 )
+from ..duplicates_cache import DuplicateResult, cache_path_for, cached_duplicate_groups
 from ..database import (
     DEFAULT_LIMIT,
     MAX_LIMIT,
@@ -345,23 +346,35 @@ def tracks_page(request: Request):
 
 
 # Duplikat-Kandidaten-Ansicht (Issue #468): Gruppen gleicher Aufnahmen per Chromaprint-Fingerprint.
+def _duplicate_result(request: Request) -> DuplicateResult:
+    """Gruppen aus dem Zwischenspeicher neben der State-DB (Issue #734); rechnet nur bei Bedarf neu."""
+    state = request.app.state.cfg["state"]
+    return cached_duplicate_groups(state["track_db_path"], cache_path_for(state["db_path"]))
+
+
 @router.get("/api/duplicates")
 def api_duplicates(request: Request) -> JSONResponse:
-    """Gibt `{"ok": True, "total_groups": len(groups), "groups": groups}` zurück (HTTP Basic Auth, rein lesend)."""
-    track_db_path = request.app.state.cfg["state"]["track_db_path"]
-    groups = query_duplicate_groups(track_db_path)
-    return JSONResponse({"ok": True, "total_groups": len(groups), "groups": groups})
+    """Gibt `{"ok": True, "total_groups", "groups", "computed_at", "stale"}` zurück (HTTP Basic Auth, rein lesend)."""
+    res = _duplicate_result(request)
+    return JSONResponse({
+        "ok": True,
+        "total_groups": len(res.groups),
+        "groups": res.groups,
+        "computed_at": res.computed_at,
+        "stale": res.stale,
+    })
 
 
 @router.get("/duplicates", response_class=HTMLResponse)
 def duplicates_page(request: Request) -> HTMLResponse:
-    """Rendert `duplicates.html` mit `groups` und `total_groups = len(groups)` (HTTP Basic Auth, rein lesend)."""
-    track_db_path = request.app.state.cfg["state"]["track_db_path"]
-    groups = query_duplicate_groups(track_db_path)
+    """Rendert `duplicates.html` mit `groups`, `total_groups`, `computed_at` und `stale` (HTTP Basic Auth, rein lesend)."""
+    res = _duplicate_result(request)
     return _render(
         "duplicates.html",
-        groups=groups,
-        total_groups=len(groups),
+        groups=res.groups,
+        total_groups=len(res.groups),
+        computed_at=res.computed_at,
+        stale=res.stale,
     )
 
 
