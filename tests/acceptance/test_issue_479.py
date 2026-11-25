@@ -9,7 +9,6 @@ from sc_digger.models import Config
 from sc_digger.taste import (
     TasteModel,
     TasteRun,
-    build_training_set,
     load_taste_model,
     run_taste,
     training_data,
@@ -71,7 +70,6 @@ def test_training_data_nutzt_alle_bewertungsquellen(tmp_path):
         assert labels == [1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0], "Reihenfolge nach Track-ID, Konflikt zählt positiv"
         assert samples[3][0] == pytest.approx([2.2, 0.2]), "sc_feedback 'like' über sc_id"
         assert samples[4][0] == pytest.approx([1.8, 0.0]), "Archivzeile mit derselben sc_id ist übernommen"
-        assert build_training_set(db) == samples
         assert ids["later"] and [0.0, 5.0] not in [v for v, _ in samples]
 
 

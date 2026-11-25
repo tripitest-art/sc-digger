@@ -106,16 +106,6 @@ def test_mark_adopted_tracks_ignoriert_inbox_ohne_fingerprint(tmp_path):
         assert mark_adopted_tracks(db, now="2026-01-01 00:00:00") == []
 
 
-def test_get_adopted_tracks_sortierung_desc_dann_id(tmp_path):
-    with TrackDB(tmp_path / "t.sqlite") as db:
-        r1 = _inbox(db, "/inbox/a.wav", FP)
-        r2 = _inbox(db, "/inbox/b.wav", FP_OTHER)
-        db.mark_adopted(r1.id, "2026-01-01 00:00:00")
-        db.mark_adopted(r2.id, "2026-02-01 00:00:00")
-        got = db.get_adopted_tracks()
-        assert [r.path for r in got] == ["/inbox/b.wav", "/inbox/a.wav"]
-
-
 def test_now_als_datetime_wird_formatiert(tmp_path):
     from datetime import datetime
 

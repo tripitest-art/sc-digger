@@ -96,8 +96,6 @@ def test_db_aggregates_artist_reputation(tmp_path):
         assert s_rep.likes == 2      # c in tracks + 123 in store_items
         assert s_rep.dislikes == 0
 
-        single = db.get_artist_reputation("Svetec")
-        assert single == s_rep
 
         bad_rep = rep_map["bad artist"]
         assert bad_rep.dislikes == 2

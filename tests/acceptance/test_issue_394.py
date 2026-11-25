@@ -88,31 +88,32 @@ def test_auto_queue_true_reiht_genau_einen_embedding_job_ein(tmp_path: Path, mon
     with TrackDB(track_db) as db:
         rec = db.get_track_by_path(out_path)
         assert rec is not None
-        jobs = db.get_pending_jobs(JobType.EMBEDDING)
-        assert len(jobs) == 1
-        assert jobs[0].status == JobStatus.PENDING
-        assert jobs[0].track_id == rec.id
-        assert jobs[0].payload["track_id"] == rec.id
-        assert jobs[0].payload["path"] == str(out_path)
-        assert jobs[0].payload["format"] == "wav"
+        job = db.claim_next_job(JobType.EMBEDDING)
+        assert job is not None
+        assert job.status == JobStatus.RUNNING.value
+        assert job.track_id == rec.id
+        assert job.payload["track_id"] == rec.id
+        assert job.payload["path"] == str(out_path)
+        assert job.payload["format"] == "wav"
+        assert db.claim_next_job(JobType.EMBEDDING) is None
 
 
 def test_auto_queue_false_reiht_keinen_embedding_job_ein(tmp_path: Path, monkeypatch):
     track_db, out_path = _run_finish_file(tmp_path, monkeypatch, {"auto_queue": False})
 
     with TrackDB(track_db) as db:
-        assert db.get_pending_jobs(JobType.EMBEDDING) == []
+        assert db.claim_next_job(JobType.EMBEDDING) is None
         assert db.get_track_by_path(out_path) is not None
-        assert len(db.get_pending_jobs(JobType.CUES)) == 1
+        assert db.claim_next_job(JobType.CUES) is not None
 
 
 def test_fehlender_schluessel_reiht_keinen_embedding_job_ein(tmp_path: Path, monkeypatch):
     track_db, out_path = _run_finish_file(tmp_path, monkeypatch, None)
 
     with TrackDB(track_db) as db:
-        assert db.get_pending_jobs(JobType.EMBEDDING) == []
+        assert db.claim_next_job(JobType.EMBEDDING) is None
         assert db.get_track_by_path(out_path) is not None
-        assert len(db.get_pending_jobs(JobType.CUES)) == 1
+        assert db.claim_next_job(JobType.CUES) is not None
 
 
 def test_vorhandenes_embedding_erzeugt_keinen_neuen_job(tmp_path: Path, monkeypatch):
@@ -128,4 +129,4 @@ def test_vorhandenes_embedding_erzeugt_keinen_neuen_job(tmp_path: Path, monkeypa
         rec = db.get_track_by_path(out_path)
         assert rec is not None
         assert db.get_embedding(rec.id) is not None
-        assert db.get_pending_jobs(JobType.EMBEDDING) == []
+        assert db.claim_next_job(JobType.EMBEDDING) is None

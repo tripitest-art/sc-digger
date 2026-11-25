@@ -6,8 +6,8 @@ from sc_digger.db import TrackDB, TrackRecord
 from sc_digger.taste import (
     MIN_SAMPLES_PER_CLASS,
     TasteModel,
-    build_training_set,
     train_taste_model,
+    training_data,
 )
 
 POS = [[1.0, 1.1], [0.9, 1.0], [1.2, 0.8], [1.1, 1.2], [0.8, 0.9], [1.0, 0.7]]
@@ -79,7 +79,7 @@ def test_build_training_set(tmp_path: Path):
         add("plain", [0.5, 0.5])
         add("no_embedding", None, feedback="like")
         add("other_model", [9.0, 9.0], feedback="like", model="zzz")
-        data = build_training_set(db)
+        _, data = training_data(db)
         assert [label for _, label in data] == [1, 1, 1, 0, 1]
         assert data[0][0] == pytest.approx([1.0, 0.0])
         assert like < rated < adopted < dislike

@@ -1250,14 +1250,6 @@ class TrackDB:
                     self.db.commit()
         return True
 
-    def get_adopted_tracks(self) -> list[TrackRecord]:
-        """Gibt alle Tracks mit adopted_at IS NOT NULL zurück, sortiert nach adopted_at DESC, id ASC."""
-        rows = self.db.execute(
-            "SELECT * FROM tracks WHERE adopted_at IS NOT NULL "
-            "ORDER BY adopted_at DESC, id ASC"
-        ).fetchall()
-        return [TrackRecord.from_row(r) for r in rows]
-
     def set_sc_feedback(self, sc_id: int, value: str, url: str | None = None) -> None:
         """Upsert je SoundCloud-ID, letzte Wahl gewinnt, updated_at = jetzt.
         url=None überschreibt eine vorhandene url nicht. value nicht in FEEDBACK_VALUES -> ValueError."""
@@ -1676,11 +1668,6 @@ class TrackDB:
             for key, vals in acc.items()
         }
 
-    def get_artist_reputation(self, artist: str) -> ArtistReputation:
-        """Reputation für einen einzelnen Künstler; leere Reputation, wenn unbekannt."""
-        key = str(artist).strip().lower() if artist is not None else ""
-        return self.get_artist_reputations().get(key, ArtistReputation(artist=key))
-
     # ------------------------------------------------------------ Engagement-Snapshots
 
     def record_track_snapshot(
@@ -1720,38 +1707,6 @@ class TrackDB:
                 (sc_id, artist, title, plays, likes, reposts, comments, recorded_at, tags_json),
             )
         self.db.commit()
-
-    def record_track_snapshots(
-        self,
-        tracks: Sequence[Any],
-        recorded_at: str | None = None,
-    ) -> int:
-        """Speichert Snapshots für eine Liste von Track-Objekten.
-
-        Liefert die Anzahl der gespeicherten Datensätze. Ignoriert Tracks ohne sc_id / id.
-        """
-        stored = 0
-        for t in tracks:
-            sc_id = getattr(t, "sc_id", None)
-            if sc_id is None:
-                sc_id = getattr(t, "id", None)
-            if sc_id is None:
-                continue
-            artist = getattr(t, "artist", None) or ""
-            title = getattr(t, "title", None)
-            self.record_track_snapshot(
-                sc_id=int(sc_id),
-                artist=str(artist),
-                title=title,
-                plays=int(getattr(t, "plays", 0) or 0),
-                likes=int(getattr(t, "likes", 0) or 0),
-                reposts=int(getattr(t, "reposts", 0) or 0),
-                comments=int(getattr(t, "comments", 0) or 0),
-                recorded_at=recorded_at,
-                tags=list(getattr(t, "tags", None) or []),
-            )
-            stored += 1
-        return stored
 
     def record_track_snapshots_daily(
         self,
@@ -1918,27 +1873,6 @@ class TrackDB:
             (track_id, jt),
         ).fetchone()
         return JobRecord.from_row(row) if row else None
-
-    def get_pending_jobs(
-        self, job_type: JobType | str | None = None, limit: int = 10
-    ) -> list[JobRecord]:
-        """Liest anstehende Jobs (read-only, für Monitoring/Übersichten)."""
-        conds = ["status = 'pending'"]
-        params: list[Any] = []
-        if job_type:
-            val = job_type.value if isinstance(job_type, Enum) else str(job_type)
-            conds.append("job_type = ?")
-            params.append(val)
-
-        query = f"""
-            SELECT * FROM jobs
-            WHERE {' AND '.join(conds)}
-            ORDER BY id ASC
-            LIMIT ?;
-        """
-        params.append(limit)
-        rows = self.db.execute(query, params).fetchall()
-        return [JobRecord.from_row(r) for r in rows]
 
     def claim_next_job(self, job_type: JobType | str | None = None) -> JobRecord | None:
         """Übernimmt atomar den nächsten Job und setzt ihn auf 'running'.

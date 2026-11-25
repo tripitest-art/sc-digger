@@ -72,7 +72,7 @@ def test_enqueue_cue_job_ohne_track_id_gibt_none(tmp_path: Path):
     """Ein Track ohne ID (noch nicht persistiert) kann keinen Job bekommen."""
     with TrackDB(tmp_path / "tracks.sqlite") as db:
         assert enqueue_cue_job(db, TrackRecord(path="inbox/neu.mp3", mtime=1.0, size=1)) is None
-        assert db.get_pending_jobs(JobType.CUES) == []
+        assert db.claim_next_job(JobType.CUES) is None
 
 
 def test_apply_cue_result_lehnt_ungueltiges_ergebnis_ab(tmp_path: Path):
@@ -186,12 +186,13 @@ def test_finish_file_reiht_cue_job_ein(tmp_path: Path, monkeypatch):
     track_db, out_path = _run_finish_file(tmp_path, monkeypatch, {"auto_queue": True})
 
     with TrackDB(track_db) as db:
-        jobs = db.get_pending_jobs(JobType.CUES)
-        assert len(jobs) == 1
-        assert jobs[0].payload["path"] == str(out_path)
+        job = db.claim_next_job(JobType.CUES)
+        assert job is not None
+        assert job.payload["path"] == str(out_path)
         rec = db.get_track_by_path(out_path)
         assert rec is not None
-        assert jobs[0].track_id == rec.id
+        assert job.track_id == rec.id
+        assert db.claim_next_job(JobType.CUES) is None
 
 
 def test_finish_file_ohne_auto_queue_reiht_keinen_job_ein(tmp_path: Path, monkeypatch):
@@ -199,5 +200,5 @@ def test_finish_file_ohne_auto_queue_reiht_keinen_job_ein(tmp_path: Path, monkey
     track_db, out_path = _run_finish_file(tmp_path, monkeypatch, {"auto_queue": False})
 
     with TrackDB(track_db) as db:
-        assert db.get_pending_jobs(JobType.CUES) == []
+        assert db.claim_next_job(JobType.CUES) is None
         assert db.get_track_by_path(out_path) is not None

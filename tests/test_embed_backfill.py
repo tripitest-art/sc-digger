@@ -20,7 +20,7 @@ def test_later_allein_zaehlt_nicht_als_bewertet(tmp_path: Path):
         _track(db, tmp_path / "a.wav", feedback="later", sc_id=5)
         db.set_sc_feedback(5, "later")
         assert backfill_embedding_jobs(db) == BackfillSummary()
-        assert db.get_pending_jobs(JobType.EMBEDDING) == []
+        assert db.claim_next_job(JobType.EMBEDDING) is None
 
 
 def test_laufender_job_zaehlt_als_already_queued(tmp_path: Path):

@@ -30,7 +30,7 @@ def test_record_track_snapshots_skips_objects_without_id(tmp_path):
     with TrackDB(tmp_path / "t.sqlite") as db:
         no_id = SimpleNamespace(artist="Ohne", title="x", likes=5, plays=5, reposts=0, comments=0)
         with_id = SimpleNamespace(id=42, artist="Mit", title="y", likes=7, plays=70, reposts=1, comments=2)
-        assert db.record_track_snapshots([no_id, with_id]) == 1
+        assert db.record_track_snapshots_daily([no_id, with_id]) == 1
         rows = db.db.execute("SELECT sc_id, plays, reposts, comments FROM track_snapshots").fetchall()
         assert len(rows) == 1
         assert rows[0]["sc_id"] == 42
@@ -41,7 +41,7 @@ def test_record_track_snapshots_skips_objects_without_id(tmp_path):
 def test_record_track_snapshots_prefers_sc_id_attribute(tmp_path):
     with TrackDB(tmp_path / "t.sqlite") as db:
         obj = SimpleNamespace(sc_id=7, id=99, artist="A", title="t", likes=1, plays=1)
-        assert db.record_track_snapshots([obj]) == 1
+        assert db.record_track_snapshots_daily([obj]) == 1
         assert db.db.execute("SELECT sc_id FROM track_snapshots").fetchone()[0] == 7
 
 

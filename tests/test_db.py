@@ -311,10 +311,10 @@ def test_jobs_queue_and_cascade(db: TrackDB):
     assert job.status == JobStatus.PENDING.value
     assert job.payload == {"model": "clap", "duration": 30}
 
-    # Ausstehende Jobs abfragen
-    pending = db.get_pending_jobs(job_type=JobType.EMBEDDING)
-    assert len(pending) == 1
-    assert pending[0].id == job.id
+    # Ausstehende Jobs abfragen (per claim_next_job)
+    claimed = db.claim_next_job(job_type=JobType.EMBEDDING)
+    assert claimed is not None
+    assert claimed.id == job.id
 
     # Job updaten
     db.update_job(
@@ -328,7 +328,7 @@ def test_jobs_queue_and_cascade(db: TrackDB):
     assert updated.result == {"vector_dim": 512, "embedding_id": "vec_01"}
 
     # Keine weiteren pending Jobs
-    assert len(db.get_pending_jobs(job_type=JobType.EMBEDDING)) == 0
+    assert db.claim_next_job(job_type=JobType.EMBEDDING) is None
 
     # Foreign Key Cascade: Wird der Track gelöscht, wird auch der Job gelöscht
     db.db.execute("DELETE FROM tracks WHERE id = ?", (track.id,))

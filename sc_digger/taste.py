@@ -255,11 +255,6 @@ def training_data(db: TrackDB) -> tuple[str | None, list[tuple[list[float], int]
     return dominant_model, samples
 
 
-def build_training_set(db: TrackDB) -> list[tuple[list[float], int]]:
-    """Trainingsbeispiele aus :func:`training_data` (alle Bewertungsquellen)."""
-    return training_data(db)[1]
-
-
 def save_taste_model(db: TrackDB, model: TasteModel, embedding_model: str, *,
                      n_pos: int, n_neg: int, trained_at: str) -> None:
     """Ersetzt die Modellzeile des Profils (``db.profile_id``) samt Metadaten und JSON."""

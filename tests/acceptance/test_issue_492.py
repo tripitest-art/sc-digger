@@ -82,4 +82,3 @@ def test_db_aggregates_stars(tmp_path):
         assert rep.dislikes == 0
         # c ohne Rating und d mit rb_rating = 0 bleiben normale Downloads
         assert rep.downloads == 2
-        assert db.get_artist_reputation("Svetec") == rep
