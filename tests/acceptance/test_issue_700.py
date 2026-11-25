@@ -1,4 +1,4 @@
-"""Akzeptanztests: Verlauf der Konfigänderungen mit Rückgängig (Issue #697)."""
+"""Akzeptanztests: Verlauf der Konfigänderungen mit Rückgängig (Issue #700)."""
 from datetime import datetime
 from pathlib import Path
 
