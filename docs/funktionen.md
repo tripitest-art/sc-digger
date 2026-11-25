@@ -359,7 +359,7 @@ schaltet die Sperre ab. Hinter einem Proxy (z. B. Caddy) sähe der Server sonst 
 dieselbe Adresse: `SC_DIGGER_WEB_TRUST_PROXY=1` zählt stattdessen die letzte Station aus
 `X-Forwarded-For`. Nur setzen, wenn der Webserver ausschließlich über den Proxy erreichbar ist,
 sonst kann ein Client den Header selbst setzen.
-Die Taste `/` öffnet auf jeder Seite eine Schnellsuche über alle Seiten der Navigation (bei aktivem Konfigeditor auch die Konfiguration) und liefert ab zwei Zeichen direkte Treffer aus der Track-Datenbank (Gruppe „Tracks", verlinkt auf die Detailseite oder Explorer-Suche); Freitext führt zusätzlich zur Suche in `/tracks` und `/digest`, `↑`/`↓` wählen, `Enter` öffnet, `Esc` schließt.
+Die Taste `/` öffnet auf jeder Seite eine Schnellsuche über alle Seiten der Navigation (bei aktivem Konfigeditor auch die Konfiguration) und liefert ab zwei Zeichen direkte Treffer aus der Track-Datenbank (Gruppe „Tracks", verlinkt auf die Detailseite oder Explorer-Suche); Freitext führt zusätzlich zur Suche in `/tracks` und `/digest`, `↑`/`↓` wählen, `Enter` öffnet, `Esc` schließt. Passende Aktionen (Rekordbox-XML neu schreiben, Workstation-Lauf starten und alle Wartungsaktionen der Statusseite) erscheinen als Treffer der Gruppe „Aktion“; `Enter` oder Klick fragt „… wirklich starten?“ und startet sie per POST wie der Knopf auf der Seite, das Ergebnis steht in der Hinweiszeile. Ein eingefügter SoundCloud-Link liefert als ersten Treffer „Link im URL-Scanner prüfen“: `/mix?url=<Link>#scan` trägt den Link ein und prüft sofort.
 
 ## Kuratoren
 

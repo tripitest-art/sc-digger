@@ -69,6 +69,32 @@ def quick_search_entries(include_config: bool = False) -> tuple[QuickEntry, ...]
 
 
 @dataclass(frozen=True)
+class QuickAction:
+    """Aktion der Schnellsuche (Issue #721): POST an denselben Endpunkt wie der Knopf auf der Seite."""
+    label: str
+    endpoint: str
+    group: str = "Aktion"
+
+
+# Gilt ohne Groß/Klein (JS-Flag "i"); base.html reicht das Muster an das Skript durch,
+# damit Python und Browser dieselbe Erkennung nutzen.
+SC_LINK_PATTERN = r"^https?://(?:www\.|m\.|on\.)?soundcloud\.com/\S+"
+
+
+def quick_actions() -> tuple[QuickAction, ...]:
+    """Rekordbox-XML, Workstation-Lauf und alle Wartungsaktionen der Statusseite."""
+    # Import hier, damit navigation (früh geladen) nicht von tasks abhängt.
+    from .tasks import action_labels
+
+    actions = [
+        QuickAction("Rekordbox-XML neu schreiben", "/api/rekordbox/sync"),
+        QuickAction("Workstation-Lauf starten", "/api/gpu-wake"),
+    ]
+    actions += [QuickAction(label, f"/api/maintenance/{action}") for action, label in action_labels().items()]
+    return tuple(actions)
+
+
+@dataclass(frozen=True)
 class NavState:
     groups: tuple[NavGroup, ...]
     active_group: NavGroup | None
@@ -112,6 +138,8 @@ def register(app) -> None:
 
     _env.globals["nav_state"] = nav_state
     _env.globals["quick_search_entries"] = quick_search_entries
+    _env.globals["quick_actions"] = quick_actions
+    _env.globals["sc_link_pattern"] = SC_LINK_PATTERN
 
     @app.middleware("http")
     async def remember_nav_path(request, call_next):
