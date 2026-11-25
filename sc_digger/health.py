@@ -105,6 +105,12 @@ class Health:
                     lines.append("Die Sicherung hat kein Ziel "
                                  "→ <code>backup.target_dir</code> setzen, siehe BETRIEB.md "
                                  "(Abschnitt Sicherung und Wiederherstellung).")
+                if "Workstation" in last_error:
+                    lines.append(
+                        "Die Job-Queue wird nicht abgearbeitet → Timer <code>sc-digger-gpu-wake</code> "
+                        "und Worker auf der Workstation prüfen (BETRIEB.md, Prüfliste: "
+                        "Dienste außerhalb des Containers)."
+                    )
                 if "Speicher knapp" in last_error or "Inbox nicht prüfbar" in last_error:
                     lines.append(
                         "Downloads sind pausiert, bis wieder genug Platz frei ist "
