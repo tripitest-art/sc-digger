@@ -107,7 +107,7 @@ def start_task(action: str, runner: Callable[[], str], *, state_path: str | Path
 
 
 def default_runners(cfg: Config) -> dict[str, Callable[[], str]]:
-    """Enthält zusätzlich: "backfill-energy", "backfill-artist", "backfill-embeddings",
+    """Enthält zusätzlich: "backfill-energy", "backfill-artist", "backfill-bpm", "backfill-embeddings",
     "requeue", "backup". Jeder Runner: TrackDB über cfg["state"]["track_db_path"] öffnen und
     schließen, Aufruf mit dry_run=False, Rückgabe einer deutschen Zeile mit den Zahlen aus dem
     Ergebnis (z. B. "Energie: 12 gesetzt, 3 übersprungen"), maximal 300 Zeichen."""
@@ -153,6 +153,19 @@ def default_runners(cfg: Config) -> dict[str, Callable[[], str]]:
             res = backfill_names(db)
         return (f"Artist/Titel: {res.get('set', 0)} ergänzt, "
                 f"{res.get('skipped', 0)} ohne Artist im Namen")[:MESSAGE_MAX]
+
+    def backfill_bpm_runner() -> str:
+        from ..backfill import backfill_bpm
+        from ..db import TrackDB
+
+        search = cfg.raw.get("search", {}) or {}
+        bpm_min = search.get("bpm_min", 140.0)
+        bpm_max = search.get("bpm_max", 170.0)
+        snap_to = (float(bpm_min), float(bpm_max)) if bpm_min and bpm_max else None
+        with TrackDB(cfg["state"]["track_db_path"]) as db:
+            res = backfill_bpm(db, dry_run=False, snap_to=snap_to)
+        return (f"BPM: {res.get('set', 0)} korrigiert, {res.get('unchanged', 0)} bestätigt, "
+                f"{res.get('failed', 0)} fehlgeschlagen")[:MESSAGE_MAX]
 
     def backfill_artist_runner() -> str:
         from ..backfill_artist import backfill_artists
@@ -246,6 +259,7 @@ def default_runners(cfg: Config) -> dict[str, Callable[[], str]]:
         "backfill-energy": backfill_energy_runner,
         "backfill-artist": backfill_artist_runner,
         "backfill-names": backfill_names_runner,
+        "backfill-bpm": backfill_bpm_runner,
         "backfill-embeddings": backfill_embeddings_runner,
         "requeue": requeue_runner,
         "backup": backup_runner,
@@ -263,6 +277,7 @@ def action_labels() -> dict[str, str]:
         "backfill-energy": "Energie nachberechnen",
         "backfill-artist": "Künstler nachpflegen",
         "backfill-names": "Artist aus Dateinamen ergänzen",
+        "backfill-bpm": "Alte BPM-Werte neu messen",
         "backfill-embeddings": "Audio-Embeddings einreihen",
         "requeue": "Hängende Jobs zurücksetzen",
         "backup": "Sicherung erstellen",

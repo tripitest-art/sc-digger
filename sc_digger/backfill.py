@@ -10,7 +10,7 @@ import logging
 from collections.abc import Callable
 from pathlib import Path
 
-from .analysis import compute_energy_features
+from .analysis import analyze_track, compute_energy_features
 from .db import TrackDB
 from .style import calculate_energy
 
@@ -69,6 +69,48 @@ def backfill_energy(
             log.warning("Energie-Backfill: %s übersprungen: %s", Path(rec.path).name, e)
         if progress and (i % PROGRESS_EVERY == 0):
             progress(i, gesamt)
+    return res
+
+
+def backfill_bpm(
+    db: TrackDB,
+    *,
+    dry_run: bool = False,
+    limit: int | None = None,
+    snap_to: tuple[float, float] | None = (140.0, 170.0),
+) -> dict[str, int]:
+    """Misst Altwerte der BPM neu (Issue #703).
+
+    Altwerte (`bpm_source = 'audio'`, keine Konfidenz) stammen aus der Raster-Erkennung vor
+    #287 (161,5/152,0). Fehlende Datei, Analysefehler oder kein BPM zählen als `failed`; die
+    Zeile bleibt dann unverändert. Auch bestätigte Werte bekommen die Konfidenz, damit sie nicht
+    erneut als Altwert gelten. Liest Audio nur, schreibt nur in die Track-DB (Regel 4).
+    Rückgabe: seen, set, would_set, unchanged, failed."""
+    offen = db.tracks_with_legacy_bpm(limit)
+    res = {"seen": len(offen), "set": 0, "would_set": 0, "unchanged": 0, "failed": 0}
+    for rec in offen:
+        p = Path(rec.path)
+        try:
+            if not p.is_file():
+                raise FileNotFoundError(p.name)
+            analyse = analyze_track(p, want_key=False, snap_to=snap_to)
+            neu = analyse.get("bpm")
+            if not neu:
+                raise ValueError("kein BPM erkannt")
+            neu = float(neu)
+            konfidenz = float(analyse.get("bpm_confidence") or 0.0)
+        except Exception as e:  # ein defekter Track bricht den Lauf nicht ab
+            res["failed"] += 1
+            log.warning("BPM-Backfill: %s übersprungen: %s", p.name, e)
+            continue
+        if dry_run:
+            res["would_set"] += 1
+            continue
+        db.set_bpm(rec.id, neu, konfidenz)
+        if abs(neu - float(rec.bpm)) < 0.05:
+            res["unchanged"] += 1
+        else:
+            res["set"] += 1
     return res
 
 

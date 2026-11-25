@@ -1019,6 +1019,29 @@ class TrackDB:
             params = (max(0, int(limit)),)
         return [TrackRecord.from_row(r) for r in self.db.execute(sql, params).fetchall()]
 
+    def tracks_with_legacy_bpm(self, limit: int | None = None) -> list[TrackRecord]:
+        """Tracks mit Audio-BPM ohne Konfidenz, nach id sortiert (Issue #703).
+
+        Das sind die Werte der alten librosa-Analyse vor #287 (Raster 161,5/152,0);
+        neue Messungen speichern immer eine Konfidenz."""
+        sql = ("SELECT * FROM tracks WHERE bpm IS NOT NULL AND bpm_source = 'audio' "
+               "AND bpm_confidence IS NULL ORDER BY id")
+        params: tuple = ()
+        if limit is not None:
+            sql += " LIMIT ?"
+            params = (max(0, int(limit)),)
+        return [TrackRecord.from_row(r) for r in self.db.execute(sql, params).fetchall()]
+
+    def set_bpm(self, track_id: int, bpm: float, confidence: float) -> bool:
+        """Setzt bpm, bpm_confidence und bpm_source = 'audio'. True, wenn die Zeile existiert."""
+        cur = self.db.execute(
+            "UPDATE tracks SET bpm = ?, bpm_confidence = ?, bpm_source = 'audio', "
+            "updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (float(bpm), float(confidence), track_id),
+        )
+        self.db.commit()
+        return cur.rowcount > 0
+
     def tracks_without_artist(self, limit: int | None = None) -> list[TrackRecord]:
         """Tracks ohne Artist (`artist IS NULL` oder leer), nach id sortiert (Namens-Backfill, Issue #702)."""
         sql = "SELECT * FROM tracks WHERE artist IS NULL OR TRIM(artist) = '' ORDER BY id"
