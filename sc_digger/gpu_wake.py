@@ -1,7 +1,7 @@
-"""Workstation täglich wecken, wenn Cue-Jobs offen sind (Issue #409, Teil 3 von #227).
+"""Workstation täglich wecken, wenn Cue- oder Embedding-Jobs offen sind (Issue #409, Teil 3 von #227).
 
 Läuft als Oneshot im Container (``deploy/sc-digger-gpu-wake.service``, Timer nach dem
-Tageslauf). Gibt es offene Cue-Jobs in der Job-Queue, schickt es eine Anfrage an den
+Tageslauf). Gibt es offene Cue- oder Embedding-Jobs in der Job-Queue, schickt es eine Anfrage an den
 Wake-Proxy vor der Workstation; der Proxy weckt den PC und blockiert, bis er antwortet. Der
 Runner dort (``sc-digger-gpu-worker.service``) arbeitet die Queue ab und beendet sich bei
 Leerlauf, das Herunterfahren übernimmt das Idle-Skript der Workstation.
@@ -28,9 +28,12 @@ log = logging.getLogger("sc_digger.gpu_wake")
 # Der Proxy blockiert beim Kaltstart bis der PC antwortet (35 bis 50 s); großzügig bemessen.
 WAKE_TIMEOUT_S = 150.0
 
+# Job-Typen, für die sich das Wecken lohnt; andere Typen (caption, fingerprint, ...) zählen nicht.
+WAKE_JOB_TYPES = ("cues", "embedding")
 
-def count_pending_jobs(db_path: str | Path, job_type: str = "cues") -> int:
-    """Zählt offene (``pending``) Jobs dieses Typs.
+
+def count_pending_jobs(db_path: str | Path, job_type: str | None = "cues") -> int:
+    """Zählt offene (``pending``) Jobs dieses Typs; ``None`` summiert über ``WAKE_JOB_TYPES``.
 
     Öffnet die DB nur lesend (``mode=ro``), damit ein falscher Pfad nie eine leere Datei
     anlegt. Fehlende Datei oder SQLite-Fehler ergeben 0; der Pfad steht nicht im Log.
@@ -42,10 +45,17 @@ def count_pending_jobs(db_path: str | Path, job_type: str = "cues") -> int:
     try:
         conn = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
         try:
-            row = conn.execute(
-                "SELECT COUNT(*) FROM jobs WHERE status = 'pending' AND job_type = ?",
-                (job_type,),
-            ).fetchone()
+            if job_type is None:
+                marks = ", ".join("?" for _ in WAKE_JOB_TYPES)
+                row = conn.execute(
+                    f"SELECT COUNT(*) FROM jobs WHERE status = 'pending' AND job_type IN ({marks})",
+                    WAKE_JOB_TYPES,
+                ).fetchone()
+            else:
+                row = conn.execute(
+                    "SELECT COUNT(*) FROM jobs WHERE status = 'pending' AND job_type = ?",
+                    (job_type,),
+                ).fetchone()
         finally:
             conn.close()
     except sqlite3.Error as exc:
@@ -75,16 +85,16 @@ def wake_workstation(wake_url: str, *, post: Callable[..., Any] | None = None,
 
 def run_wake(db_path: str | Path, wake_url: str, *, post: Callable[..., Any] | None = None,
              notify: Callable[[str], None] | None = None) -> int:
-    """Weckt die Workstation, wenn Cue-Jobs offen sind. Rückgabe: Exit-Code (0 oder 1)."""
-    pending = count_pending_jobs(db_path)
+    """Weckt die Workstation, wenn Cue- oder Embedding-Jobs offen sind. Rückgabe: Exit-Code (0 oder 1)."""
+    pending = count_pending_jobs(db_path, None)
     if pending == 0:
-        log.info("Keine offenen Cue-Jobs, Workstation bleibt aus")
+        log.info("Keine offenen Jobs für die Workstation, sie bleibt aus")
         return 0
-    log.info("%d offene Cue-Job(s), wecke die Workstation", pending)
+    log.info("%d offene Job(s) für die Workstation (Cues, Embeddings), wecke sie", pending)
     if wake_workstation(wake_url, post=post):
         return 0
     if notify is not None:
-        notify(f"⚠️ Workstation konnte nicht geweckt werden, {pending} Cue-Job(s) bleiben offen.")
+        notify(f"⚠️ Workstation konnte nicht geweckt werden, {pending} Job(s) bleiben offen.")
     return 1
 
 
@@ -109,7 +119,7 @@ def _telegram_notifier() -> Callable[[str], None] | None:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="python -m sc_digger.gpu_wake",
-        description="Weckt die GPU-Workstation, wenn Cue-Jobs offen sind.",
+        description="Weckt die GPU-Workstation, wenn Cue- oder Embedding-Jobs offen sind.",
     )
     parser.add_argument("--config", default="config.yaml", help="Konfigurationsdatei")
     parser.add_argument(
