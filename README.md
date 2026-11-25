@@ -61,6 +61,7 @@
 | Web | Upload & Intake, Duplikat- und Inbox-Cleanup | vorhanden | [Web-Dashboard](docs/funktionen.md#web-dashboard) |
 | Web | Wartung per Knopf auf der Statusseite: Scout, Verfügbarkeits-Wächter, Taste-Training, Backfills (Energie, Artist, Embeddings), Requeue und Sicherung | vorhanden | [Web-Dashboard](docs/funktionen.md#web-dashboard) |
 | Web | Sammlungs-Audit als Seite `/audit`: Status, Optionen, Wartungs-Knopf und letzter Bericht | vorhanden | [Sammlungs-Audit](docs/funktionen.md#sammlungs-audit) |
+| Web | Hilfe-Seite `/hilfe` „So funktioniert sc-digger“: der Weg eines Tracks in sieben Stationen und „Dein Tag in 3 Schritten“ | vorhanden | [Hilfe-Seite](docs/funktionen.md#hilfe-seite) |
 | Web | Glossar als Seite `/glossar`: alle Begriffe und Status-Plaketten, gerendert aus `sc_digger/web/glossary.py` | vorhanden | [Glossar](docs/funktionen.md#glossar) |
 | Web | Kuratoren-Übersicht: welche Artists die Sammlung tragen, mit Rating-Anteil und Ø BPM; Kandidaten-Block mit Startknopf für das Kuratoren-Mining (Profile, die 👍-Tracks liken) | vorhanden | [Kuratoren](docs/funktionen.md#kuratoren) |
 | Web | Konfigurationsverlauf mit Wiederherstellen früherer Stände der Override-Datei (`/config/verlauf`) | vorhanden | [Web-Dashboard](docs/funktionen.md#web-dashboard) |

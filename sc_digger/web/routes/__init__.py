@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from .. import navigation, timefmt
-from . import mixesdb, preview, track_detail, tracks
+from . import hilfe, mixesdb, preview, track_detail, tracks
 
 BEREICHE = ("status", "tracks", "mix", "digest", "intake", "config")
 
@@ -19,3 +19,5 @@ def register(app) -> None:
     # MixesDB-Abgleich (Set-Tracklisten aus dem Szene-Wiki, rein lesend) — zuletzt, damit
     # keine bestehende Route ihre Position verliert.
     mixesdb.register(app)
+    # Hilfe-Seite (Issue #711) ganz zuletzt, damit keine Route ihre Position verliert.
+    hilfe.register(app)

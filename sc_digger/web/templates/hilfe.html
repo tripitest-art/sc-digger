@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+
+{% block title %}Hilfe – sc-digger{% endblock %}
+
+{% block content %}
+<div class="card" id="hilfe">
+  <h1>So funktioniert sc-digger</h1>
+  <p class="meta">Der Weg eines Tracks von SoundCloud bis in deine Sammlung. Begriffe erklärt das <a href="/glossar">Glossar</a>.</p>
+  <ol>
+    {% for s in stationen %}
+    <li data-station="{{ s.key }}">
+      <strong>{{ s.titel }}</strong>
+      <p>{{ s.text }} <a href="{{ s.href }}">{{ s.ziel }}</a></p>
+    </li>
+    {% endfor %}
+  </ol>
+</div>
+
+<div class="card" id="hilfe-tag">
+  <h2>Dein Tag in 3 Schritten</h2>
+  <ol>
+    {% for text, href, ziel in schritte %}
+    <li data-schritt="{{ loop.index }}">{{ text }} <a href="{{ href }}">{{ ziel }}</a></li>
+    {% endfor %}
+  </ol>
+</div>
+{% endblock %}
