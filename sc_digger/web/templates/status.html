@@ -254,7 +254,7 @@
   <div class="card">
     <div class="card-header">
       <h2 class="card-title">📥 Inbox</h2>
-      <span class="badge badge-ok">DJ Ready &middot; −8.5 LUFS</span>
+      <span class="badge badge-ok">bereit für Rekordbox &middot; −8.5 LUFS</span>
     </div>
     <p class="mt-0 mb-035 fw-500">{{ snap.inbox_total }} Track(s) mit Status inbox.</p>
     <p class="meta mt-0 mb-4">
@@ -334,7 +334,7 @@
       <a href="/tracks" class="fs-80 fw-500">Track-Explorer &rarr;</a>
     </div>
     <p class="meta mt-0 mb-3">
-      Master-Archiv in <code>/music/Schranz</code> (schreibgeschützt) &amp; Inbox durchsuchen.
+      Sammlung in <code>/music/Schranz</code> (schreibgeschützt) &amp; Inbox durchsuchen.
     </p>
     <div class="stat-grid grid-2col">
       <div class="stat-box" title="Alle in der lokalen Track-DB indexierten Musikdateien">
@@ -383,7 +383,7 @@
     </div>
     <ul class="stat-kv-list">
       <li class="stat-kv-row">
-        <span class="meta">Erfolgreiche Runs</span>
+        <span class="meta">Erfolgreiche Läufe</span>
         <span class="mono"><strong>{{ snap.stats.runs_ok }}</strong> / {{ snap.stats.runs_total }}</span>
       </li>
       <li class="stat-kv-row">
@@ -403,7 +403,7 @@
         </span>
       </li>
       <li class="stat-kv-row">
-        <span class="meta">Abgelehnte Fakes / Clipped</span>
+        <span class="meta">In Quarantäne (Fakes, Clipping)</span>
         <span class="mono warn"><strong>{{ snap.stats.tracks_rejected }}</strong>
           {% set change = change_badge(snap.stats.prev_tracks_rejected, snap.stats.tracks_rejected) %}
           {% set badge_class = {"up": "change-up", "down": "change-down", "flat": "change-flat", "none": "change-none"}[change.direction] %}
@@ -427,10 +427,10 @@
     <!-- Text-Fallback für String-Matching bestehender Tests -->
     <div class="d-none">
       <ul>
-        <li>erfolgreiche Runs: {{ snap.stats.runs_ok }}/{{ snap.stats.runs_total }}</li>
+        <li>erfolgreiche Läufe: {{ snap.stats.runs_ok }}/{{ snap.stats.runs_total }}</li>
         <li>gescannte Tracks: {{ snap.stats.tracks_scanned }}</li>
         <li>neue Inbox-Downloads: {{ snap.stats.tracks_inbox }}</li>
-        <li>abgelehnte Fakes: {{ snap.stats.tracks_rejected }}</li>
+        <li>in Quarantäne: {{ snap.stats.tracks_rejected }}</li>
         <li>Likes: {{ snap.stats.likes }} &middot; Dislikes: {{ snap.stats.dislikes }} &middot; Later: {{ snap.stats.later }}</li>
       </ul>
     </div>

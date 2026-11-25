@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon %}
-{% from "_components.html" import empty_state %}
+{% from "_components.html" import empty_state, status_badge %}
 
 {% block title %}Tracks – sc-digger{% endblock %}
 {% block nav_tracks %}active{% endblock %}
@@ -283,20 +283,20 @@
       <div class="fw-600 text-main mb-035">Track-Status in der Datenbank:</div>
       <div class="legend-grid">
         <div class="legend-item">
-          <span class="badge badge-info">inbox</span>
+          {{ status_badge("inbox") }}
           <div><strong>Neue Inbox-Tracks:</strong> Geprüfte und getaggte Dateien in <code>/music/inbox</code>, bereit für den Rekordbox-Import.</div>
         </div>
         <div class="legend-item">
-          <span class="badge badge-ok">archive</span>
-          <div><strong>Master-Sammlung:</strong> Fest archivierte Tracks in <code>/music/Schranz</code> (schreibgeschützt, Pfade unveränderlich).</div>
+          {{ status_badge("archive") }}
+          <div><strong>Sammlung:</strong> Fest abgelegte Tracks in <code>/music/Schranz</code> (schreibgeschützt, Pfade unveränderlich).</div>
         </div>
         <div class="legend-item">
-          <span class="badge badge-ok">adopted</span>
+          {{ status_badge("adopted") }}
           <div><strong>Übernommen:</strong> Per Audio-Fingerprint erkannt als aus der Inbox in die Sammlung übernommen (stärkstes Qualitätssignal).</div>
         </div>
         <div class="legend-item">
-          <span class="badge badge-err">rejected</span>
-          <div><strong>Aussortiert:</strong> Abgelehnte Fakes (Spektrums-Cutoff), Brickwall-Master oder Duplikate.</div>
+          {{ status_badge("rejected") }}
+          <div><strong>Quarantäne:</strong> Fakes (Spektrums-Cutoff), Brickwall-Master oder Duplikate.</div>
         </div>
       </div>
     </div>
@@ -335,7 +335,7 @@
           <option value="" {% if not filters.status %}selected{% endif %}>alle</option>
           <option value="archive" {% if filters.status == "archive" %}selected{% endif %}>Sammlung</option>
           <option value="inbox" {% if filters.status == "inbox" %}selected{% endif %}>Inbox</option>
-          <option value="rejected" {% if filters.status == "rejected" %}selected{% endif %}>Abgelehnt</option>
+          <option value="rejected" {% if filters.status == "rejected" %}selected{% endif %}>Quarantäne</option>
         </select>
       </div>
       <div class="filter-field">
@@ -528,12 +528,8 @@
           {% endif %}
         </td>
         <td data-label="Status" data-column="status">
-          {% if track.status == "archive" %}
-          <span class="badge badge-info">Sammlung</span>
-          {% elif track.status == "inbox" %}
-          <span class="badge badge-ok">Inbox</span>
-          {% elif track.status == "rejected" %}
-          <span class="badge badge-err">Abgelehnt</span>
+          {% if track.status in ("archive", "inbox", "rejected") %}
+          {{ status_badge(track.status) }}
           {% else %}
           <span class="badge badge-muted">{{ track.status or "?" }}</span>
           {% endif %}

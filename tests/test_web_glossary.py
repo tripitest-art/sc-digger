@@ -21,3 +21,27 @@ def test_glossar_vermeidet_eigene_begriffe_nicht():
         for wort in nicht:
             if wort in begriffe:
                 assert (begriff, wort) == ("Inbox", "Eingang"), (begriff, wort)
+
+
+def test_forbidden_words_ordnet_alt_zu_neu():
+    from sc_digger.web.glossary import forbidden_words
+
+    w = forbidden_words()
+    assert w["Run"] == "Lauf"
+    assert w["abgelehnt"] == "Quarantäne"
+    assert "Eingang" not in w
+
+
+def test_find_forbidden_endungen_und_grenzen():
+    from sc_digger.web.glossary import find_forbidden
+
+    assert find_forbidden("<p>Abgewiesene Tracks, Künstlern, Runs</p>") == ["Abgewiesene", "Künstlern", "Runs"]
+    assert find_forbidden("<p>Runde und Archivierung</p>") == []
+    assert find_forbidden("<p>Eingang und Upload-Ordner</p>") == []
+
+
+def test_find_forbidden_wirft_nie():
+    from sc_digger.web.glossary import find_forbidden
+
+    assert find_forbidden("") == []
+    assert find_forbidden(None) == []  # type: ignore[arg-type]

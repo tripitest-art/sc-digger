@@ -4,8 +4,8 @@ Ein Wort je Sache, gleich in Dashboard, Bot und Doku. Die Plaketten im Dashboard
 Wörter (`sc_digger/web/glossary.py`).
 
 - **Sammlung**: Die bestehende Musiksammlung unter /music/Schranz; wird nie verändert. Nicht: Archiv.
-- **Inbox**: Neu geladene, geprüfte Tracks, sortiert nach BPM und Key. Nicht: Eingang.
-- **Eingang**: Ordner _eingang für manuell geladene Dateien (Upload, Gates). Nicht: Intake.
+- **Inbox**: Neu geladene, geprüfte Tracks, sortiert nach BPM und Key.
+- **Upload-Ordner**: Ordner _eingang für manuell geladene Dateien (Upload, Gates). Nicht: Intake.
 - **Quarantäne**: Abgewiesene Downloads (Fake, Clipping, defekt) unter _rejected. Nicht: abgelehnt, abgewiesen, aussortiert.
 - **Duplikat**: Gleiche Aufnahme in Sammlung und Inbox, erkannt per Fingerprint.
 - **Dublette**: Mehrere Dateien derselben SoundCloud-ID in der Inbox.
