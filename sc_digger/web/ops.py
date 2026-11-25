@@ -17,6 +17,15 @@ class OpsItem:
     state: str    # "ok", "warn" oder "off"
     text: str
 
+    @property
+    def settings_href(self) -> str | None:
+        """Abschnitt des Konfigeditors zum Punkt; die Sicherung hat keinen (target_dir ist dort nicht änderbar)."""
+        return OPS_SETTINGS_HREF.get(self.key)
+
+
+# Nach der Klasse definiert: settings_href liest sie erst zur Laufzeit.
+OPS_SETTINGS_HREF: dict[str, str] = {"disk": "/config/health-alarm", "canary": "/config/api-kanarienvogel"}
+
 
 def _cfg_get(cfg: Any, section: str, default: Any = None) -> Any:
     if hasattr(cfg, "raw") and isinstance(cfg.raw, dict):

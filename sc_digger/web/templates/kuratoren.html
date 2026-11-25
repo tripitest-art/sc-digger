@@ -119,7 +119,11 @@
 {% if not entries %}
 <div class="card" style="margin-top: 1rem; text-align: center; padding: 2.5rem 1rem;">
   <p class="meta" style="margin: 0; font-size: 0.95rem;">
-    Keine Kuratoren mit mindestens {{ min_tracks }} Tracks in der Sammlung gefunden.
+    Keine Artists mit mindestens {{ min_tracks }} Tracks in der Sammlung gefunden.
+  </p>
+  <p class="meta" data-hint="kuratoren-leer" style="margin: 0.75rem 0 0;">
+    Häufigster Grund: Es fehlen Artist-Namen. Ergänze sie auf der Startseite in der Wartung über
+    <a href="/#maintenance-card">„Artist aus Dateinamen ergänzen“</a>.
   </p>
 </div>
 {% else %}
