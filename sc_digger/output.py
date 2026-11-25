@@ -684,8 +684,11 @@ def send_telegram_document(cfg: Config, filename: str, content: str, chat_id: st
     if not token or not chat:
         log.warning("TELEGRAM_BOT_TOKEN/CHAT_ID fehlen – Export-Datei wird nicht verschickt")
         return
-    telegram_call(token, "sendDocument", timeout=30, data={"chat_id": chat},
-                  files={"document": (filename, content.encode("utf-8"), "text/plain")})
+    daten = content.encode("utf-8")
+    antwort = telegram_call(token, "sendDocument", timeout=30, data={"chat_id": chat},
+                            files={"document": (filename, daten, "text/plain")})
+    message_id = (antwort.get("result") or {}).get("message_id")
+    log.info("Export-Anhang gesendet: %s (%d Bytes, message_id=%s)", filename, len(daten), message_id)
 
 
 def send_telegram_photo(
