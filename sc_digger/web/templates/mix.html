@@ -293,7 +293,7 @@
   <div id="sb-result" class="table-scroll"></div>
 </div>
 
-<div class="card">
+<div class="card" id="scan">
   <div class="card-header">
     <h2 class="card-title" style="margin: 0;">🔗 SoundCloud-Link prüfen</h2>
     <span class="badge badge-muted">Read-Only Scanner</span>
@@ -387,7 +387,7 @@
   const STATUS_BADGES = {
     'in Sammlung': ['badge-ok', 'in Sammlung'],
     'in Inbox': ['badge-info', 'in Inbox'],
-    'abgelehnt': ['badge-err', 'abgelehnt'],
+    'abgelehnt': ['badge-err', 'Quarantäne'],
     'gesehen': ['badge-muted', 'gesehen'],
     'neu': ['badge-info', 'neu'],
   };
@@ -752,6 +752,12 @@
     }
     const input = document.getElementById('url-input');
     if (!input) { return; }
+    // Schnellsuche (Issue #721): /mix?url=<Link>#scan trägt den Link ein und prüft sofort.
+    const given = new URLSearchParams(window.location.search).get('url');
+    if (given && /^https?:\/\//i.test(given)) {
+      input.value = given;
+      checkUrl();
+    }
     input.addEventListener('keydown', (event) => {
       if (event.key === 'Enter') {
         event.preventDefault();

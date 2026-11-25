@@ -1074,6 +1074,8 @@
 {# Ohne Editor steht /config nirgends (gleiche Bedingung wie das Zahnrad, test_issue_172). #}
 {% set quick_entries = quick_search_entries(config_enabled() or editor_available or save_action or config_action) %}
 <script type="application/json" id="quick-search-data">[{% for q in quick_entries %}{"label": {{ q.label|tojson }}, "href": {{ q.href|tojson }}, "group": {{ q.group|tojson }}}{% if not loop.last %}, {% endif %}{% endfor %}]</script>
+<script type="application/json" id="quick-search-actions">[{% for a in quick_actions() %}{"label": {{ a.label|tojson }}, "endpoint": {{ a.endpoint|tojson }}, "group": {{ a.group|tojson }}}{% if not loop.last %}, {% endif %}{% endfor %}]</script>
+<script type="application/json" id="quick-search-sc-pattern">{{ sc_link_pattern|tojson }}</script>
 <script>
   function showToast(message, kind) {
     kind = kind || "ok";
@@ -1131,6 +1133,11 @@
     if (!box || !input || !list || !dataEl) { return; }
     var pages = [];
     try { pages = JSON.parse(dataEl.textContent) || []; } catch (err) { pages = []; }
+    var actions = [];
+    try { actions = JSON.parse(document.getElementById('quick-search-actions').textContent) || []; } catch (err) { actions = []; }
+    var scPattern = null;
+    try { scPattern = new RegExp(JSON.parse(document.getElementById('quick-search-sc-pattern').textContent), 'i'); } catch (err) { scPattern = null; }
+    var hintEl = box.querySelector('.quick-search-hint');
     var hits = [];
     var trackHits = [];
     var selected = 0;
@@ -1144,7 +1151,8 @@
         li.setAttribute('role', 'option');
         li.setAttribute('aria-selected', i === selected ? 'true' : 'false');
         var a = document.createElement('a');
-        a.href = hit.href;
+        a.href = hit.href || '#';
+        if (hit.endpoint) { a.setAttribute('data-index', String(i)); }
         var name = document.createElement('span');
         name.textContent = hit.label;
         var group = document.createElement('span');
@@ -1162,6 +1170,16 @@
         return !needle || p.label.toLowerCase().indexOf(needle) !== -1 || p.group.toLowerCase().indexOf(needle) !== -1;
       });
       var res = filtered.slice();
+      if (text && scPattern && scPattern.test(text)) {
+        res.unshift({ label: 'Link im URL-Scanner prüfen', href: '/mix?url=' + encodeURIComponent(text) + '#scan', group: 'Link' });
+      }
+      if (needle) {
+        actions.forEach(function(a) {
+          if (a.label.toLowerCase().indexOf(needle) !== -1) {
+            res.push({ label: a.label, endpoint: a.endpoint, group: a.group });
+          }
+        });
+      }
       if (trackHits && trackHits.length) {
         res = res.concat(trackHits);
       }
@@ -1173,6 +1191,20 @@
         ]);
       }
       return res;
+    }
+
+    // Aktionen starten erst nach Rückfrage; das Ergebnis steht in der Hinweiszeile, der Dialog bleibt offen.
+    function activate(hit) {
+      if (!hit) { return; }
+      if (!hit.endpoint) { window.location.href = hit.href; return; }
+      if (!window.confirm(hit.label + ' wirklich starten?')) { return; }
+      fetch(hit.endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+        .then(function(res) {
+          if (hintEl) { hintEl.textContent = (res.ok ? 'Gestartet: ' : 'Fehler (' + res.status + '): ') + hit.label; }
+        })
+        .catch(function() {
+          if (hintEl) { hintEl.textContent = 'Fehler (Netzwerk): ' + hit.label; }
+        });
     }
 
     function update() {
@@ -1237,10 +1269,16 @@
         render();
       } else if (e.key === 'Enter') {
         e.preventDefault();
-        if (hits[selected]) { window.location.href = hits[selected].href; }
+        activate(hits[selected]);
       }
     });
-    list.addEventListener('click', function() {
+    list.addEventListener('click', function(e) {
+      var link = e.target && e.target.closest ? e.target.closest('a[data-index]') : null;
+      if (link) {
+        e.preventDefault();
+        activate(hits[parseInt(link.getAttribute('data-index'), 10)]);
+        return;
+      }
       clearTimeout(debounceTimer);
       reqSeq++;
       box.hidden = true;
