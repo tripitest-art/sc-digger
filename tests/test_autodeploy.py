@@ -56,6 +56,47 @@ def deploy(tmp_path, **kw):
     return res, fake, msgs
 
 
+# ---------------------------------------------------------------- _remote_head
+
+VOLL = "1111111111111111111111111111111111111111"
+
+
+def test_remote_head_leere_antwort_ist_none():
+    def run(args):
+        return subprocess.CompletedProcess(list(args), 0, "", "")
+
+    assert ad._remote_head(run) is None
+
+
+def test_remote_head_rueckgabecode_fehler_ist_none():
+    def run(args):
+        return subprocess.CompletedProcess(list(args), 128, f"{VOLL}\trefs/heads/main\n", "")
+
+    assert ad._remote_head(run) is None
+
+
+def test_remote_head_kuerzt_ueber_rev_parse_short():
+    calls = []
+
+    def run(args):
+        calls.append(list(args))
+        if args[:2] == ["git", "ls-remote"]:
+            return subprocess.CompletedProcess(list(args), 0, f"{VOLL}\trefs/heads/main\n", "")
+        return subprocess.CompletedProcess(list(args), 0, "1111111\n", "")
+
+    assert ad._remote_head(run) == "1111111"
+    assert ["git", "rev-parse", "--short", VOLL] in calls
+
+
+def test_remote_head_nimmt_erste_sieben_wenn_kuerzung_leer_bleibt():
+    def run(args):
+        if args[:2] == ["git", "ls-remote"]:
+            return subprocess.CompletedProcess(list(args), 0, f"{VOLL}\trefs/heads/main\n", "")
+        return subprocess.CompletedProcess(list(args), 0, "", "")
+
+    assert ad._remote_head(run) == VOLL[:7]
+
+
 # ---------------------------------------------------------------- Ablauf
 
 def test_update_wird_nicht_mit_safe_directory_fehler_behandelt(tmp_path):

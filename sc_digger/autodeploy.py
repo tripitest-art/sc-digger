@@ -130,6 +130,33 @@ def _health_ok(run, health_tries: int, health_sleep: float, sleep) -> bool:
     return False
 
 
+def _remote_head(run) -> str | None:
+    """Kurz-Hash von ``origin/main`` direkt vom Server, ohne lokalen Ref.
+
+    Ruft ``run(["git", "ls-remote", "origin", "refs/heads/main"])``. Bei Rückgabecode != 0 oder
+    leerem stdout: None. Sonst den ersten Hash aus der Ausgabe (Feld vor dem Tab) nehmen und mit
+    ``run(["git", "rev-parse", "--short", <voller Hash>])`` kürzen; ist dessen stdout leer, die
+    ersten sieben Zeichen des vollen Hashes. Wirft nicht.
+    """
+    try:
+        res = run(["git", "ls-remote", "origin", "refs/heads/main"])
+    except Exception:
+        return None
+    if res.returncode != 0:
+        return None
+    text = (res.stdout or "").strip()
+    if not text:
+        return None
+    voll = text.split("\t", 1)[0].strip()
+    if not voll:
+        return None
+    try:
+        kurz = run(["git", "rev-parse", "--short", voll]).stdout.strip()
+    except Exception:
+        kurz = ""
+    return kurz or voll[:7]
+
+
 def deploy_once(
     repo: Path, run, notify: Callable[[str], None], *, sleep=time.sleep,
     health_tries: int = 10, health_sleep: float = 15,
@@ -163,8 +190,9 @@ def deploy_once(
     if fetch.returncode != 0:
         return DeployResult("fehler", None, None, "git fetch fehlgeschlagen")
 
-    # 3. Ziel-Stand bestimmen.
-    new = run(["git", "rev-parse", "--short", "origin/main"]).stdout.strip()
+    # 3. Ziel-Stand bestimmen. Direkt vom Server, damit ein veralteter lokaler Ref keinen
+    #    Deploy mehr verhindert; nur bei Fehler oder leerer Antwort als Rückfallebene.
+    new = _remote_head(run) or run(["git", "rev-parse", "--short", "origin/main"]).stdout.strip()
     if state.get("bad") and state["bad"] == new:
         return DeployResult("uebersprungen", None, new,
                             "dieser Stand ist als fehlerhaft gemerkt, kein erneuter Versuch")
