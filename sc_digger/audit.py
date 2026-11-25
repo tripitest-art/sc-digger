@@ -312,6 +312,7 @@ def audit_file(
     if key_name and _CAMELOT_RE.match(key_name.strip().upper()):
         key_camelot = key_name.strip().upper()
     bpm_source = "tag" if bpm is not None else None
+    bpm_confidence: float | None = None  # nur gesetzt, wenn der BPM aus der Audio-Analyse stammt (Issue #703)
 
     # Zielfenster für Oktav-Korrektur aus Config (search.bpm_min/max)
     search_cfg = cfg.raw.get("search", {}) if hasattr(cfg, "raw") and isinstance(cfg.raw, dict) else {}
@@ -330,6 +331,7 @@ def audit_file(
             if (bpm is None or unplausible_bpm) and analysis.get("bpm"):
                 bpm = float(analysis["bpm"])
                 bpm_source = "audio"
+                bpm_confidence = float(analysis.get("bpm_confidence") or 0.0)
             if key_name is None:
                 key_name = analysis.get("key_name")
                 key_camelot = analysis.get("key_camelot")
@@ -377,6 +379,7 @@ def audit_file(
         quality_details=report,
         bpm=bpm,
         bpm_source=bpm_source,
+        bpm_confidence=bpm_confidence,
         key_camelot=key_camelot,
         key_name=key_name,
         lufs=report.get("integrated_lufs"),

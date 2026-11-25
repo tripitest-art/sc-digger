@@ -103,6 +103,7 @@ def test_standard_aktionen_und_labels(tmp_path: Path):
         "backfill-energy",
         "backfill-artist",
         "backfill-names",
+        "backfill-bpm",
         "backfill-embeddings",
         "requeue",
         "backup",
@@ -127,6 +128,22 @@ def test_runner_backfill_energy(tmp_path: Path, monkeypatch):
     assert aufgerufen["dry_run"] is False
     assert aufgerufen["db_path"] == cfg["state"]["track_db_path"]
     assert msg == "Energie: 12 gesetzt, 3 übersprungen"
+
+
+def test_runner_backfill_bpm(tmp_path: Path, monkeypatch):
+    cfg = _cfg(tmp_path)
+    aufgerufen = {}
+
+    def fake_backfill(db, *, dry_run=False, limit=None, snap_to=None):
+        aufgerufen["dry_run"] = dry_run
+        aufgerufen["snap_to"] = snap_to
+        return {"set": 5, "unchanged": 2, "failed": 1}
+
+    monkeypatch.setattr("sc_digger.backfill.backfill_bpm", fake_backfill)
+    msg = default_runners(cfg)["backfill-bpm"]()
+    assert aufgerufen["dry_run"] is False
+    assert aufgerufen["snap_to"] == (140.0, 170.0)
+    assert msg == "BPM: 5 korrigiert, 2 bestätigt, 1 fehlgeschlagen"
 
 
 def test_runner_backfill_artist(tmp_path: Path, monkeypatch):
