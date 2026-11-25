@@ -64,6 +64,14 @@ nächsten Lauf. Der laufende Telegram-Bot liest die Datei erst nach einem Neusta
 
 <form method="post" action="{{ save_action }}">
   <input type="hidden" name="{{ section_field }}" value="{{ section.slug }}">
+
+  <div class="config-search" style="margin: 0.75rem 0 1rem; display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+    <label for="config-suche" style="margin: 0; font-size: 0.85rem; font-weight: 600;">Feld suchen</label>
+    <input type="search" id="config-suche" placeholder="Feld suchen (Bezeichnung, Erklärung, Pfad)" style="flex: 1; max-width: 480px; min-width: 240px;">
+  </div>
+
+  <p id="config-keine-treffer" hidden style="margin: 1rem 0; color: var(--text-dim);">Kein Feld passt zur Suche.</p>
+
   <div class="card" id="sec-{{ section.slug }}">
     <div class="card-header" style="flex-direction: column; align-items: flex-start; gap: 0.25rem;">
       <h2 style="margin: 0;">{{ section.title }}</h2>
@@ -79,7 +87,7 @@ nächsten Lauf. Der laufende Telegram-Bot liest die Datei erst nach einem Neusta
     </div>
     {% endif %}
     {% for field in section.fields %}
-    <div class="field" data-important="{{ 'true' if field.important else 'false' }}" data-local="{{ 'true' if field.path in local_paths else 'false' }}" {% if field.path in local_paths %}style="background: rgba(59, 130, 246, 0.04); padding: 0.85rem; border-radius: 6px; border: 1px solid rgba(59, 130, 246, 0.2); margin: 0.75rem 0;"{% endif %}>
+    <div class="field" data-important="{{ 'true' if field.important else 'false' }}" data-local="{{ 'true' if field.path in local_paths else 'false' }}" data-suchtext="{{ field.label|lower }} {{ field.help|lower }} {{ field.path|lower }}" {% if field.path in local_paths %}style="background: rgba(59, 130, 246, 0.04); padding: 0.85rem; border-radius: 6px; border: 1px solid rgba(59, 130, 246, 0.2); margin: 0.75rem 0;"{% endif %}>
       <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.25rem;">
         <label for="f-{{ field.path }}" style="margin-bottom: 0;">{{ field.label }}</label>
         {% if field.path in local_paths %}
@@ -114,7 +122,7 @@ nächsten Lauf. Der laufende Telegram-Bot liest die Datei erst nach einem Neusta
     {% endfor %}
   </div>
 
-  <div class="card" style="position: sticky; bottom: 1rem; z-index: 10; box-shadow: 0 4px 20px rgba(0,0,0,0.5);">
+  <div class="card" id="config-save-bar" style="position: sticky; bottom: 1rem; z-index: 10; box-shadow: 0 4px 20px rgba(0,0,0,0.5);">
     <div style="display: flex; justify-content: flex-end; gap: 0.75rem;">
       <button type="submit" formaction="{{ preview_action }}" formmethod="post">Vorschau</button>
       <button type="submit">Speichern</button>
@@ -122,30 +130,100 @@ nächsten Lauf. Der laufende Telegram-Bot liest die Datei erst nach einem Neusta
   </div>
 </form>
 <script>
-  // Ansicht „Wichtig/Alle“: versteckt nur per Skript, ohne Skript bleibt alles sichtbar.
+  // Ansicht „Wichtig/Alle“ und Suche: versteckt nur per Skript, ohne Skript bleibt alles sichtbar.
   // Versteckte Felder werden weiter mitgeschickt, das Speichern ändert sich nicht.
   (function () {
     const toggle = document.querySelector('.config-view-toggle');
-    if (!toggle) { return; }
+    const searchInput = document.getElementById('config-suche');
+    const noHits = document.getElementById('config-keine-treffer');
     const storageKey = 'sc-digger.config.view';
-    function apply(view) {
-      document.querySelectorAll('.field[data-important]').forEach((el) => {
-        const hide = view === 'important' && el.dataset.important === 'false' && el.dataset.local === 'false';
-        if (hide) { el.setAttribute('hidden', ''); } else { el.removeAttribute('hidden'); }
+
+    let currentView = 'important';
+    try { currentView = localStorage.getItem(storageKey) || 'important'; } catch (e) { /* ohne Speicher */ }
+    if (currentView !== 'all') { currentView = 'important'; }
+
+    function apply() {
+      const rawQuery = searchInput ? searchInput.value : '';
+      const words = rawQuery.trim().toLowerCase().split(/\s+/).filter(Boolean);
+      const isSearching = words.length > 0;
+
+      // 1. Felder filtern
+      document.querySelectorAll('.field[data-suchtext]').forEach((el) => {
+        const hideByView = toggle && currentView === 'important' && el.dataset.important === 'false' && el.dataset.local === 'false';
+        let matchesSearch = true;
+        if (isSearching) {
+          const text = (el.dataset.suchtext || '').toLowerCase();
+          matchesSearch = words.every((word) => text.includes(word));
+        }
+        if (hideByView || !matchesSearch) {
+          el.setAttribute('hidden', '');
+        } else {
+          el.removeAttribute('hidden');
+        }
       });
-      toggle.querySelectorAll('button[data-view]').forEach((b) => {
-        b.setAttribute('aria-pressed', b.dataset.view === view ? 'true' : 'false');
+
+      // 2. Buttons aktualisieren (falls Toggle vorhanden)
+      if (toggle) {
+        toggle.querySelectorAll('button[data-view]').forEach((b) => {
+          b.setAttribute('aria-pressed', b.dataset.view === currentView ? 'true' : 'false');
+        });
+      }
+
+      // 3. Leere Abschnitte ausblenden
+      const sectionCards = document.querySelectorAll('.card[id^="sec-"]');
+      let anyVisible = false;
+      sectionCards.forEach((sec) => {
+        const visibleFields = sec.querySelectorAll('.field:not([hidden])').length;
+        if (isSearching && visibleFields === 0) {
+          sec.setAttribute('hidden', '');
+        } else {
+          sec.removeAttribute('hidden');
+        }
+        if (visibleFields > 0) {
+          anyVisible = true;
+        }
+      });
+
+      // 4. Leerzustand („Kein Feld passt zur Suche“)
+      if (noHits) {
+        if (isSearching && !anyVisible) {
+          noHits.removeAttribute('hidden');
+        } else {
+          noHits.setAttribute('hidden', '');
+        }
+      }
+
+      // 5. Speicher-Leiste ausblenden wenn bei Suche nichts sichtbar
+      const saveBar = document.getElementById('config-save-bar');
+      if (saveBar) {
+        if (isSearching && !anyVisible) {
+          saveBar.setAttribute('hidden', '');
+        } else {
+          saveBar.removeAttribute('hidden');
+        }
+      }
+    }
+
+    apply();
+
+    if (toggle) {
+      toggle.addEventListener('click', (e) => {
+        const btn = e.target.closest('button[data-view]');
+        if (!btn) { return; }
+        currentView = btn.dataset.view;
+        try { localStorage.setItem(storageKey, currentView); } catch (e2) { /* ohne Speicher */ }
+        apply();
       });
     }
-    let view = 'important';
-    try { view = localStorage.getItem(storageKey) || 'important'; } catch (e) { /* ohne Speicher */ }
-    apply(view === 'all' ? 'all' : 'important');
-    toggle.addEventListener('click', (e) => {
-      const btn = e.target.closest('button[data-view]');
-      if (!btn) { return; }
-      apply(btn.dataset.view);
-      try { localStorage.setItem(storageKey, btn.dataset.view); } catch (e2) { /* ohne Speicher */ }
-    });
+
+    if (searchInput) {
+      searchInput.addEventListener('input', () => {
+        apply();
+      });
+      searchInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); }
+      });
+    }
   })();
 </script>
 {% endblock %}
