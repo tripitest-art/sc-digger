@@ -982,6 +982,7 @@ def query_digest(
     descending: bool = False,
     limit: int = 50,
     offset: int = 0,
+    since: str | None = None,
 ) -> DigestSearchResult:
     """Liest chronologisch (neueste zuerst) aus seen.sqlite (seen-Tabelle) und joint
     Informationen aus track_db (tracks, sc_feedback, store_items, gate_items).
@@ -994,6 +995,8 @@ def query_digest(
     ebenfalls berücksichtigt.
     Fehlt eine DB-Datei oder Tabelle, wirft die Funktion nicht, sondern liefert leere/partielle Ergebnisse.
     Nur lesend; limit wird auf max. 200 begrenzt.
+    ``since`` (UTC "YYYY-MM-DD HH:MM:SS", Issue #710): nur seen-Zeilen mit reported_at > since;
+    die Startseite zählt so, was seit dem letzten Besuch neu ist.
     """
     state_path = Path(state_db_path)
     if not state_path.is_file():
@@ -1151,8 +1154,10 @@ def query_digest(
             seen_cols = {col["name"] for col in sdb.execute("PRAGMA table_info(seen)").fetchall()}
             has_artist = "artist" in seen_cols
             select_cols = "id, url, title, reported_at, artist" if has_artist else "id, url, title, reported_at"
+            # since als Parameter, nie im SQL-Text: der Wert kommt aus einem Cookie.
+            where, args = ("WHERE reported_at > ? ", [since]) if since else ("", [])
             rows = sdb.execute(
-                f"SELECT {select_cols} FROM seen ORDER BY reported_at DESC, id DESC"
+                f"SELECT {select_cols} FROM seen {where}ORDER BY reported_at DESC, id DESC", args
             ).fetchall()
     except sqlite3.Error:
         return DigestSearchResult()
