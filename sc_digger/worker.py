@@ -323,6 +323,11 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Engine für cues-Jobs: allin1 (GPU, all-in-one mit beat_this), local (librosa, "
         "Rückfall); fehlt allin1, nutzt der Worker local; Standard: allin1",
     )
+    parser.add_argument(
+        "--stems",
+        action="store_true",
+        help="Demucs-Stems im allin1-Cue-Job auswerten (Fake-Drop, Breakdown-Art); Standard: aus",
+    )
     parser.add_argument("--poll-interval", type=float, default=5.0, help="Pause bei leerer Queue")
     parser.add_argument(
         "--once",
@@ -366,11 +371,14 @@ def main(argv: list[str] | None = None) -> int:
     # Ohne all-in-one (z. B. Umgebung ohne allin1_infer) soll der Runner trotzdem Cue-Jobs
     # abarbeiten; die lokale Analyse ist schlechter, aber besser als liegen gebliebene Jobs.
     try:
-        infer_fn, cue_engine = select_cue_engine(args.cue_engine)
+        infer_fn, cue_engine = select_cue_engine(args.cue_engine, stems=args.stems)
     except CueEngineUnavailable as exc:
         log.warning("Cue-Engine allin1 nicht verfügbar, nutze die lokale Analyse: %s", exc)
         infer_fn, cue_engine = select_cue_engine("local")
     log.info("Cue-Engine: %s", cue_engine)
+    # Nur all-in-one liefert Stems; beim Rückfall auf local bleibt die Auswertung aus,
+    # auch wenn --stems gesetzt ist. Das Log zeigt, was wirklich läuft.
+    log.info("Stem-Auswertung: %s", "an" if args.stems and cue_engine == "allin1" else "aus")
 
     selection = None
     try:
