@@ -27,7 +27,7 @@ import xml.etree.ElementTree as ET
 from contextlib import closing
 from contextvars import ContextVar
 from dataclasses import asdict, dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Mapping
 from urllib.parse import urlencode
@@ -129,7 +129,7 @@ from .smartlist_page import collect_smartlists, smartlist_m3u8, tracks_for_smart
 from .statistik import collect_statistics
 from .status import _read_active_alerts, change_badge, collect_status
 from .tasks import action_labels, default_runners, read_task_state, start_task
-from .today import collect_today
+from .today import VISIT_COOKIE, collect_today, next_visit_state
 from .workstation import read_state, start_run
 
 # Ob der Konfigeditor in der aktuellen Anfrage verfuegbar ist (die Umgebung _env ist modulweit,
@@ -517,7 +517,10 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
         }
         overview = get_collection_overview(app.state.cfg["state"]["track_db_path"])
         ops = collect_ops(app.state.cfg, usage=app.state.disk_usage)
-        today = collect_today(app.state.cfg)
+        # Cookie lesen: since = Beginn des vorherigen Besuchs (None beim ersten Besuch).
+        since, visit_value = next_visit_state(
+            request.cookies.get(VISIT_COOKIE), datetime.now(timezone.utc).replace(tzinfo=None))
+        today = collect_today(app.state.cfg, since=since)
 
         state_db = (app.state.cfg.raw.get("state") or {}).get("health_db_path") or _state_db_path(app.state.cfg)
         tagesablauf = []
@@ -549,10 +552,13 @@ def create_app(cfg: Config, *, password: str | None, allow_anonymous: bool = Fal
             tagesablauf = [{"job": job, "last_run": None} for job in JOBS]
 
         template = _env.get_template("status.html")
-        return HTMLResponse(template.render(
+        response = HTMLResponse(template.render(
             snap=snap, overview=overview, editor_available=editor_available, ops=ops, today=today,
             maintenance=maintenance, tagesablauf=tagesablauf, tagesablauf_error=tagesablauf_error,
         ))
+        response.set_cookie(VISIT_COOKIE, visit_value, max_age=400 * 86400, httponly=True,
+                            samesite="lax", path="/")
+        return response
 
     @app.get("/api/status")
     def api_status(request: Request):

@@ -147,7 +147,7 @@
   {% if today %}
   <ul class="today-list">
     {% for item in today %}
-    <li><a href="{{ item.href }}" class="btn-page" data-today="{{ item.key }}">{{ item.label }}</a></li>
+    <li><a href="{{ item.href }}" class="btn-page" data-today="{{ item.key }}">{{ item.label }}</a>{% if item.new > 0 %} <span class="meta meta-sm" data-today-new="{{ item.key }}">&middot; {{ item.new }} neu seit deinem letzten Besuch</span>{% endif %}</li>
     {% endfor %}
   </ul>
   {% else %}
