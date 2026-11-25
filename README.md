@@ -110,6 +110,7 @@ Alle Modi verstehen `--config <datei>` (Standard `config.yaml`), `--dry-run`, `-
 | Modus | Was er tut |
 |---|---|
 | `discover` | Standardmodus: durchsucht die konfigurierten Quellen und führt die Pipeline oben aus. |
+| `kaufliste` | Sendet die offene Kaufliste per Telegram (sonntags 20:00 per Cron). Wie `audit`, `taste` und `scout` wird der Lauf ohne `--dry-run` in `runs` protokolliert. |
 | `playlist <url>` | Prüft eine Playlist oder mit `--likes` die Likes eines Profils gegen die Sammlung. |
 | `similar <url>` | Related Tracks eines Track-Links; `--radio` nutzt die Track-Station, `--filter` BPM-Fenster und Scoring, `--limit` begrenzt die Treffer (Standard 50). |
 | `check <url>` | Verhält sich wie der Telegram-Bot: Playlist-Links liefern alle Tracks, Track-Links die Station dazu. |

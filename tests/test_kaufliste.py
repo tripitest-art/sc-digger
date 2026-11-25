@@ -144,8 +144,8 @@ def test_entrypoint_has_cron_entry():
     """entrypoint.sh enthält den wöchentlichen Cron-Eintrag für Sonntag 20:00 und hängt ihn nur einmal an."""
     content = (ROOT / "entrypoint.sh").read_text(encoding="utf-8")
     assert "0 20 * * 0" in content
-    assert "send_kaufliste(Config.load('config.yaml'))" in content
-    assert "! grep -q \"send_kaufliste\"" in content
+    assert "python -m sc_digger.main kaufliste" in content
+    assert '! grep -q "sc_digger.main kaufliste"' in content
 
 
 # --- Tests für Review-Punkte M1 - M5 ---
@@ -198,20 +198,22 @@ def test_build_digest_messages_default_cfg_upserts_store_track(tmp_path, monkeyp
 
 
 def test_entrypoint_cron_command_executes(tmp_path, monkeypatch):
-    """M2: Der in entrypoint.sh definierte Python-Befehl ist syntaktisch korrekt und ausführbar."""
-    cfg = _cfg(tmp_path)
+    """Der Cron-Befehl aus entrypoint.sh ist der CLI-Modus kaufliste und sendet über send_kaufliste."""
+    import sys
+    from sc_digger import main as main_mod
+
     content = (ROOT / "entrypoint.sh").read_text(encoding="utf-8")
-    m = re.search(r'python -c [\\"\']+(.+?)[\\"\']+(?: >>|\s)', content)
-    assert m, "Python-Befehl in entrypoint.sh nicht gefunden"
-    py_cmd = m.group(1).replace(r'\"', '"')
+    assert "python -m sc_digger.main kaufliste" in content
 
-    monkeypatch.setattr(Config, "load", lambda path="config.yaml": cfg)
+    # Erst bauen (_cfg nutzt selbst Config.load), dann Config.load umbiegen
+    cfg = _cfg(tmp_path)
+    cfg.raw["state"]["db_path"] = str(tmp_path / "seen.sqlite")
+    monkeypatch.setattr(Config, "load", classmethod(lambda cls, *a, **k: cfg))
     called = []
-    monkeypatch.setattr(out, "telegram_call", lambda *a, **k: called.append(k))
-
-    # Befehl ausführen
-    exec(py_cmd, {"__name__": "__main__"})
-    assert len(called) == 1
+    monkeypatch.setattr(out, "send_kaufliste", lambda c, dry_run=False, chat_id=None: called.append(dry_run))
+    monkeypatch.setattr(sys, "argv", ["sc_digger.main", "kaufliste", "--no-telegram"])
+    main_mod.cli()
+    assert called == [False]
 
 
 def test_send_kaufliste_html_escaped(tmp_path):

@@ -6,7 +6,8 @@ from sc_digger.schedule import JOBS, Job, ScheduledJob, describe_cron, jobs_by_t
 ROOT = Path(__file__).resolve().parents[1]
 
 # Bekannte Modi, die in der runs-Tabelle protokolliert werden können
-BEKANNTE_MODI = {"discover", "api_schema", "availability_watch", "sc_login", "disk", "rekordbox_import", "backup"}
+BEKANNTE_MODI = {"discover", "api_schema", "availability_watch", "sc_login", "disk", "rekordbox_import", "backup",
+                 "audit", "taste", "scout", "kaufliste"}
 
 
 def test_schluessel_sind_eindeutig():
