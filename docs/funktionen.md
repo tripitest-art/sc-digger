@@ -239,6 +239,8 @@ Der Bot läuft dauerhaft (Hauptprozess des Containers) und antwortet nur im Chat
 
 Zum Digest gehören Inline-Buttons pro Track (Like, Dislike, Später). Die Wahl landet in `sc_feedback` in `tracks.sqlite` und wird von `/mix` und `/curator_mining` ausgewertet. Die Kaufliste kommt zusätzlich sonntags um 20:00 (`0 20 * * 0`, aus `entrypoint.sh`).
 
+Ist `web.public_url` gesetzt, führt der Titel jedes Digest-Tracks auf die Track-Detailseite des Dashboards (`<public_url>/track/sc/<sc_id>`, dort stehen SoundCloud-Link, Lebenslauf und Aktionen), und `/heute` nennt volle, antippbare Links. Leer bleibt alles wie bisher (`output.dashboard_url`, `output.track_detail_url`).
+
 ## Statistik und Trend-Radar
 
 `stats.py` berechnet die Wochenstatistik für den Digest und `/stats`, inklusive Vergleich zur

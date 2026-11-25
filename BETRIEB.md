@@ -344,6 +344,17 @@ docker compose run --rm sc-digger python -m sc_digger.backup restore /data/backu
 docker compose start sc-digger
 ```
 
+## Dashboard-Adresse für Telegram-Links
+
+Damit die Titel im Telegram-Digest auf die Track-Detailseite führen und `/heute` antippbare Links nennt, setzt man `web.public_url` in der lokalen Override-Datei auf dem Server (`/data/config.local.yaml`) oder im Konfigeditor (Abschnitt Web). Die Adresse (z. B. die Tailscale-Adresse des Servers) gehört nie ins Repository:
+
+```yaml
+web:
+  public_url: "https://dash.example"
+```
+
+Leer bleibt alles wie bisher: Titel führen auf SoundCloud, `/heute` nennt relative Pfade.
+
 ## Entwicklungs-Ablauf ansehen
 
 Das Hilfsskript `scripts/ablauf.py` wertet offene Issues und Pull Requests direkt über die GitHub-CLI (`gh`) oder lokale JSON-Dateien aus und liefert eine Übersicht nach Status (`idee`, `bereit`, `blockiert`, `in-arbeit`, `fertig`) sowie über hängende Fälle.

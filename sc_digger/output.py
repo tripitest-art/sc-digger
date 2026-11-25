@@ -343,10 +343,30 @@ def _esc(s: str) -> str:
     return html.escape(s, quote=False)
 
 
-def _fmt_track(t: Track) -> str:
+def dashboard_url(cfg: Config | None, path: str) -> str | None:
+    """Volle Dashboard-Adresse für einen Pfad aus `web.public_url`; None, wenn sie fehlt oder ungültig ist."""
+    try:
+        if cfg is None:
+            return None
+        basis = str((cfg.raw.get("web") or {}).get("public_url") or "").strip().rstrip("/")
+        if not basis.startswith(("http://", "https://")):
+            return None
+        return basis + (path if path.startswith("/") else "/" + path)
+    except Exception:
+        return None
+
+
+def track_detail_url(cfg: Config | None, sc_id: int | None) -> str | None:
+    """Adresse der Track-Detailseite im Dashboard; ohne sc_id oder Adresse None."""
+    if not sc_id:
+        return None
+    return dashboard_url(cfg, f"/track/sc/{sc_id}")
+
+
+def _fmt_track(t: Track, *, detail_url: str | None = None) -> str:
     prefix = "⭐ " if t.reference_hit else ""
     line = (
-        f'{prefix}<a href="{html.escape(t.url)}">{_esc(t.artist)} – {_esc(t.title)}</a>\n'
+        f'{prefix}<a href="{html.escape(detail_url or t.url)}">{_esc(t.artist)} – {_esc(t.title)}</a>\n'
         f"  ▶ {t.plays:,} · ♥ {t.likes:,} ({t.like_ratio * 100:.1f} %) · 🔁 {t.reposts:,}"
     )
     if t.bpm:
@@ -484,7 +504,7 @@ def build_digest_messages(
         cur += group_head
         for t in groups[title]:
             prefix = f"<b>{n}.</b> " if numbered else ""
-            entry = prefix + _fmt_track(t) + "\n\n"
+            entry = prefix + _fmt_track(t, detail_url=track_detail_url(cfg, t.id)) + "\n\n"
             if (len(cur) + len(entry) > 3900) or (numbered and len(cur_items) >= 10):
                 if cur.strip():
                     messages.append(DigestMessage(text=cur, items=cur_items))
