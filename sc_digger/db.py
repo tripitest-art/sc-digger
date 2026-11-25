@@ -1019,6 +1019,28 @@ class TrackDB:
             params = (max(0, int(limit)),)
         return [TrackRecord.from_row(r) for r in self.db.execute(sql, params).fetchall()]
 
+    def tracks_without_artist(self, limit: int | None = None) -> list[TrackRecord]:
+        """Tracks ohne Artist (`artist IS NULL` oder leer), nach id sortiert (Namens-Backfill, Issue #702)."""
+        sql = "SELECT * FROM tracks WHERE artist IS NULL OR TRIM(artist) = '' ORDER BY id"
+        params: tuple = ()
+        if limit is not None:
+            sql += " LIMIT ?"
+            params = (max(0, int(limit)),)
+        return [TrackRecord.from_row(r) for r in self.db.execute(sql, params).fetchall()]
+
+    def set_names(self, track_id: int, artist: str | None, title: str | None) -> bool:
+        """Setzt artist/title nur, wenn das Feld leer ist und der neue Wert nicht None;
+        Vorhandenes wird nie überschrieben. True, wenn die Zeile existiert."""
+        cur = self.db.execute(
+            "UPDATE tracks SET "
+            "artist = CASE WHEN ?1 IS NOT NULL AND (artist IS NULL OR TRIM(artist) = '') THEN ?1 ELSE artist END, "
+            "title = CASE WHEN ?2 IS NOT NULL AND (title IS NULL OR TRIM(title) = '') THEN ?2 ELSE title END "
+            "WHERE id = ?3",
+            (artist, title, track_id),
+        )
+        self.db.commit()
+        return cur.rowcount > 0
+
     def tracks_without_centroid(self, limit: int | None = None) -> list[TrackRecord]:
         """Tracks ohne Centroid (`spectral_centroid_hz IS NULL`), nach id sortiert (Backfill, Issue #552)."""
         sql = "SELECT * FROM tracks WHERE spectral_centroid_hz IS NULL ORDER BY id"

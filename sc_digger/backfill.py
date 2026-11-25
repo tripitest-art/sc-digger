@@ -70,3 +70,24 @@ def backfill_energy(
         if progress and (i % PROGRESS_EVERY == 0):
             progress(i, gesamt)
     return res
+
+
+def backfill_names(db: TrackDB, *, dry_run: bool = False, limit: int | None = None) -> dict[str, int]:
+    """Ergänzt fehlende Artists (und Titel) aus Tags oder Dateinamen (Issue #702).
+
+    Schreibt nur in die Track-DB, nie in Dateien (Goldene Regel 4). Ohne ermittelbaren
+    Artist wird übersprungen. Rückgabe: seen, set, would_set, skipped."""
+    from .audit import names_for_file
+
+    offen = db.tracks_without_artist(limit)
+    res = {"seen": len(offen), "set": 0, "would_set": 0, "skipped": 0}
+    for rec in offen:
+        artist, title = names_for_file(Path(rec.path))
+        if not artist:
+            res["skipped"] += 1
+            continue
+        if dry_run:
+            res["would_set"] += 1
+        elif db.set_names(rec.id, artist, title):
+            res["set"] += 1
+    return res

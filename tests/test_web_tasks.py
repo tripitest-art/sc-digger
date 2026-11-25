@@ -102,6 +102,7 @@ def test_standard_aktionen_und_labels(tmp_path: Path):
         "taste",
         "backfill-energy",
         "backfill-artist",
+        "backfill-names",
         "backfill-embeddings",
         "requeue",
         "backup",
@@ -216,3 +217,17 @@ def test_api_409_bei_laufender_aktion_und_fremder_origin(tmp_path: Path):
         assert client.get("/api/maintenance", auth=AUTH).json()["scout"]["state"] == "running"
         assert "Wartung" in client.get("/", auth=AUTH).text
         freigeben.set()
+
+
+def test_runner_backfill_names(tmp_path: Path, monkeypatch):
+    cfg = _cfg(tmp_path)
+    aufgerufen = {}
+
+    def fake_names(db, *, dry_run=False, limit=None):
+        aufgerufen["dry_run"] = dry_run
+        return {"seen": 5, "set": 4, "would_set": 0, "skipped": 1}
+
+    monkeypatch.setattr("sc_digger.backfill.backfill_names", fake_names)
+    msg = default_runners(cfg)["backfill-names"]()
+    assert aufgerufen["dry_run"] is False
+    assert msg == "Artist/Titel: 4 ergänzt, 1 ohne Artist im Namen"
