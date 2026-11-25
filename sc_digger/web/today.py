@@ -15,11 +15,12 @@ logger = logging.getLogger(__name__)
 UNRATED_HREF = "/digest?status=open&feedback=none"
 GATES_HREF = "/digest?download_kind=gate&status=open"
 WATCH_HREF = "/kaufliste#watch"
+LATER_HREF = "/digest?status=open&feedback=later"
 
 
 @dataclass(frozen=True)
 class TodayItem:
-    key: str     # "unrated" | "gates" | "watch"
+    key: str     # "unrated" | "gates" | "watch" | "later"
     count: int   # > 0
     label: str   # siehe unten
     href: str    # UNRATED_HREF | GATES_HREF | WATCH_HREF
@@ -92,7 +93,7 @@ def _count_watch(track_db_path: str | Path | None, since: str | None = None) -> 
 
 
 def collect_today(cfg: Config, *, since: str | None = None) -> list[TodayItem]:
-    """Offene Aufgaben in fester Reihenfolge unrated, gates, watch; nur Einträge mit count > 0.
+    """Offene Aufgaben in fester Reihenfolge unrated, gates, watch, later; nur Einträge mit count > 0.
 
     - unrated: query_digest(cfg["state"]["db_path"], cfg["state"]["track_db_path"],
       inbox_dir=cfg.raw["download"]["inbox_dir"] (falls vorhanden), status_filter="open",
@@ -100,6 +101,7 @@ def collect_today(cfg: Config, *, since: str | None = None) -> list[TodayItem]:
     - gates: dasselbe mit status_filter="open", download_kind="gate"
     - watch: Zeilen in availability_watch (track_db) mit available_at NOT NULL und != '',
       deren sc_id in keiner Zeile von tracks steht
+    - later: dasselbe mit feedback="later" (mit ⏳ gemerkt), Beschriftung "<n> für später gemerkt"
     - Beschriftung: "1 Vorschlag unbewertet" / "<n> Vorschläge unbewertet",
       "1 offenes Gate" / "<n> offene Gates", "1 Track neu verfügbar" / "<n> Tracks neu verfügbar"
     - since (Issue #710): je Eintrag zusätzlich new = Zahl davon, die seit since neu ist
@@ -183,5 +185,23 @@ def collect_today(cfg: Config, *, since: str | None = None) -> list[TodayItem]:
                                    new=neu_watch))
     except Exception as exc:
         logger.warning("Heute-Liste: Quelle %s nicht lesbar (%s)", "watch", type(exc).__name__)
+
+    # 4. later
+    try:
+        state_db = cfg["state"]["db_path"]
+        track_db = cfg["state"]["track_db_path"]
+        later_count = query_digest(
+            state_db,
+            track_db,
+            inbox_dir=inbox_dir,
+            status_filter="open",
+            feedback="later",
+            limit=1,
+        ).total
+        if later_count > 0:
+            items.append(TodayItem(key="later", count=later_count, label=f"{later_count} für später gemerkt",
+                                   href=LATER_HREF, new=neu_im_digest(feedback="later")))
+    except Exception as exc:
+        logger.warning("Heute-Liste: Quelle %s nicht lesbar (%s)", "later", type(exc).__name__)
 
     return items

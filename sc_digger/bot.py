@@ -1362,6 +1362,7 @@ HEUTE_SINGULAR = {
     "unrated": "unbewerteter Vorschlag",
     "gates": "offenes Gate",
     "watch": "neu verfügbar",
+    "later": "für später gemerkt",
 }
 
 
