@@ -68,6 +68,17 @@
     color: var(--text-muted);
     font-size: 0.85rem;
   }
+  /* Datei direkt auf der Track-Detailseite ablegen (#708) */
+  .track-actions .action-upload {
+    align-items: center;
+  }
+  .track-upload {
+    font-size: 0.85rem;
+  }
+  .track-intake-fallback {
+    margin: 0.8rem 0 0;
+    font-size: 0.85rem;
+  }
 </style>
 {% endblock %}
 
@@ -114,6 +125,13 @@
   <div class="card-header">
     <h2 class="card-title">Aktionen</h2>
   </div>
+  {% set gate_step = (life.steps | selectattr("key", "equalto", "gate") | list | first) if life.steps else None %}
+  {% set gate_url = safe_link(gate_step.detail) if gate_step and gate_step.detail else None %}
+  {% if gate_url %}
+  <div class="action-row" aria-label="Gate">
+    <a class="feedback-btn" id="track-gate-open" href="{{ gate_url }}" target="_blank" rel="noopener">Gate öffnen ↗</a>
+  </div>
+  {% endif %}
   <div class="action-row" aria-label="Bewertung">
     <button type="button" class="feedback-btn" id="track-rate-like" data-feedback="like">👍 gefällt</button>
     <button type="button" class="feedback-btn" id="track-rate-dislike" data-feedback="dislike">👎 passt nicht</button>
@@ -129,18 +147,26 @@
     <button type="button" class="feedback-btn" id="track-retry" data-track-id="{{ life.track_id }}">Erneut prüfen</button>
   </div>
   {% endif %}
+  <div class="action-row action-upload" aria-label="Datei ablegen">
+    <input type="file" class="track-upload" id="track-upload" data-sc-id="{{ life.sc_id }}" accept="audio/*">
+    <button type="button" id="track-upload-send">Datei ablegen</button>
+  </div>
   <p class="action-status" id="track-action-status" role="status" aria-live="polite"></p>
 </section>
-<p><a href="/intake">Gate-Datei hochladen</a></p>
 <script>
 (function () {
   var scId = {{ life.sc_id | tojson }};
   var buttons = Array.prototype.slice.call(document.querySelectorAll("#track-actions button"));
+  var uploadInput = document.getElementById("track-upload");
+  var uploadSend = document.getElementById("track-upload-send");
   var status = document.getElementById("track-action-status");
 
   // Alle Knöpfe sperren, solange ein Request läuft: ein Doppelklick darf nicht zweimal schreiben.
   function sperren(an) {
     buttons.forEach(function (b) { if (an) { b.setAttribute("disabled", ""); } else { b.removeAttribute("disabled"); } });
+    if (uploadInput) {
+      if (an) { uploadInput.setAttribute("disabled", ""); } else { uploadInput.removeAttribute("disabled"); }
+    }
   }
 
   function senden(url, payload) {
@@ -179,6 +205,40 @@
       }
     });
   });
+
+  if (uploadSend && uploadInput) {
+    uploadSend.addEventListener("click", function () {
+      if (buttons.some(function (b) { return b.disabled; })) { return; }
+      if (!uploadInput.files || !uploadInput.files.length) {
+        status.textContent = "Bitte zuerst eine Audiodatei auswählen";
+        return;
+      }
+      sperren(true);
+      status.textContent = "speichere …";
+      var form = new FormData();
+      form.append("files", uploadInput.files[0]);
+      form.append("sc_id", String(scId));
+      fetch("/api/upload-intake", {
+        method: "POST",
+        credentials: "same-origin",
+        body: form
+      }).then(function (r) {
+        return r.json().catch(function () { return {}; });
+      }).then(function (data) {
+        if (data && data.ok === true) {
+          status.textContent = "hochgeladen";
+          location.reload();
+          return;
+        }
+        var first = (data && data.results && data.results[0]) || {};
+        status.textContent = (data && data.error) || first.message || "Upload fehlgeschlagen";
+        sperren(false);
+      }).catch(function () {
+        status.textContent = "Server nicht erreichbar";
+        sperren(false);
+      });
+    });
+  }
 })();
 </script>
 {% else %}
