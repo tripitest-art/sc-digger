@@ -64,6 +64,7 @@ ALERT_LABELS: dict[str, str] = {
     "similar": "Ähnliche Tracks",
     "intake": "Eingangsordner",
     "nachbearbeitung": "Nachbearbeitung",
+    "rekordbox_xml": "Rekordbox-XML",
 }
 
 

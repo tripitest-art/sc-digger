@@ -147,5 +147,5 @@ def test_real_discover_path_shares_db_with_state(tmp_path, monkeypatch, capsys):
     m.run_discover(cfg, dry_run=False, no_telegram=True)
     import sqlite3
     db = sqlite3.connect(tmp_path / "state.sqlite")
-    assert db.execute("SELECT found, ok FROM runs").fetchall() == [(40, 1)]   # dedupe über 4 Tags
+    assert db.execute("SELECT found, ok FROM runs WHERE mode='discover'").fetchall() == [(40, 1)]   # dedupe über 4 Tags
     assert db.execute("SELECT COUNT(*) FROM seen").fetchone()[0] > 0

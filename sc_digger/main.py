@@ -704,6 +704,37 @@ def run_logged(cfg: Config, mode: str, fn: Callable[[], object], *,
     return result
 
 
+REKORDBOX_XML_MODE = "rekordbox_xml"
+REKORDBOX_XML_FEHLER = "Rekordbox-XML konnte nicht geschrieben werden (Details im Log)"
+
+
+def write_rekordbox_xml_logged(cfg: Config, *, no_telegram: bool) -> Path | None:
+    """Schreibt die Rekordbox-XML und protokolliert den Versuch als Lauf rekordbox_xml.
+
+    write_rekordbox_xml liefert bei jedem Fehler nur None und ein log.warning; ohne Lauf in
+    runs veraltete die XML still (Goldene Regel 7, Issue #763). Ausgeschaltete XML ist kein
+    Lauf, sonst stünde dort dauerhaft ein Fehlschlag. Ohne state.db_path kein Protokoll.
+    Gibt die Rückgabe von write_rekordbox_xml unverändert zurück. Wirft nie.
+    """
+    # Über den Modulnamen aufrufen, damit Tests write_rekordbox_xml ersetzen können
+    path = write_rekordbox_xml(cfg)
+    try:
+        raw = cfg.raw if isinstance(cfg.raw, dict) else {}
+        if not bool((raw.get("rekordbox") or {}).get("xml_enabled")):
+            return path
+        db_path = (raw.get("state") or {}).get("db_path")
+        if not db_path:
+            return path
+        threshold = (raw.get("health") or {}).get("alert_after_bad_runs", 2)
+        ok = path is not None
+        text = record_job(db_path, REKORDBOX_XML_MODE, ok=ok, found=1 if ok else 0,
+                          error=None if ok else REKORDBOX_XML_FEHLER, threshold=threshold)
+        _notify_health(cfg, text, no_telegram)
+    except Exception:  # Protokoll darf den Lauf nicht zu Fall bringen
+        log.exception("Rekordbox-XML: Lauf konnte nicht protokolliert werden")
+    return path
+
+
 REKORDBOX_NUR_NAMENSTREFFER = (
     "Nur Dateinamen-Treffer, kein Pfad-Treffer – rekordbox.path_map prüfen"
 )
@@ -1042,7 +1073,7 @@ def _discover(cfg: Config, dry_run: bool, no_telegram: bool) -> int:
             # sie nach einer fehlerhaften Qualitätsprüfung dauerhaft stumm verloren.
             record_outcomes(state, fresh)
     if not dry_run:
-        write_rekordbox_xml(cfg)
+        write_rekordbox_xml_logged(cfg, no_telegram=no_telegram)
         run_rekordbox_import(cfg, no_telegram)
     # Sonntags-Digest hängt nur am täglichen Lauf, Standard aus. Ein Fehler hier darf
     # die Discovery nicht als gescheitert erscheinen lassen.
@@ -1224,7 +1255,7 @@ def run_intake_cli(cfg: Config, *, dry_run: bool, no_telegram: bool) -> int:
         else:
             send_telegram(cfg, text)
     if not dry_run:
-        write_rekordbox_xml(cfg)
+        write_rekordbox_xml_logged(cfg, no_telegram=no_telegram)
     return len(lines)
 
 
@@ -1596,7 +1627,7 @@ def cli() -> None:
                 write_tags=a.write_tags,
             ))
         elif a.mode == "rekordbox":
-            write_rekordbox_xml(cfg)
+            write_rekordbox_xml_logged(cfg, no_telegram=a.no_telegram)
         elif a.mode == "intake":
             logged("intake", lambda: run_intake_cli(cfg, dry_run=a.dry_run,
                                                     no_telegram=a.no_telegram))
