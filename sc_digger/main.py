@@ -24,6 +24,7 @@ import re
 import shutil
 import sys
 import time
+from collections import Counter
 from contextlib import ExitStack
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -170,6 +171,53 @@ def process(tracks: list[Track], cfg: Config, *, dry_run: bool,
     return fresh, dupes
 
 
+NACHBEARBEITUNG_MODE = "nachbearbeitung"
+
+
+def _problem(t: Track, schritt: str) -> None:
+    """Merkt einen fehlgeschlagenen Schritt einmal, in Reihenfolge des Auftretens."""
+    if schritt not in t.problems:
+        t.problems.append(schritt)
+
+
+def _nachbearbeitung_fehler(t: Track, schritt: str, exc: BaseException) -> None:
+    """Hängt `schritt` an t.problems (wenn noch nicht enthalten) und schreibt eine Warnung ins Log.
+
+    Vorher landeten diese Fehler nur in t.notes, die außer _rejection_reason niemand liest:
+    der Track lag halb verarbeitet in der Inbox, ohne dass Log oder Digest es zeigten (Regel 7).
+    t.notes bleibt Sache der Aufrufer (bestehende Notiz-Texte unverändert).
+    """
+    _problem(t, schritt)
+    log.warning("Nachbearbeitung %s fehlgeschlagen für %s – %s: %s",
+                schritt, t.title, type(exc).__name__, exc)
+
+
+def record_nachbearbeitung(cfg: Config, tracks: list[Track], *, no_telegram: bool) -> None:
+    """Protokolliert die Nachbearbeitung eines Laufs als Lauf mode="nachbearbeitung".
+
+    Nur geladene und geprüfte Tracks (quality_report gesetzt) zählen; ohne sie wird nichts
+    geschrieben, damit ein Lauf ohne Downloads weder alarmiert noch entwarnt. Schlecht ist ein
+    Lauf, sobald ein geladener Track ein Problem hat. Wirft nie.
+    """
+    raw = cfg.raw if isinstance(cfg.raw, dict) else {}
+    db_path = (raw.get("state") or {}).get("db_path")
+    if not db_path:
+        return
+    verarbeitet = [t for t in tracks if t.quality_report is not None]
+    if not verarbeitet:
+        return
+    betroffen = [t for t in verarbeitet if t.problems]
+    error: str | None = None
+    if betroffen:
+        zaehler = Counter(s for t in betroffen for s in t.problems)
+        schritte = ", ".join(f"{s} {zaehler[s]}" for s in sorted(zaehler))
+        error = f"{len(betroffen)} von {len(verarbeitet)} Tracks: {schritte}"
+    threshold = (raw.get("health") or {}).get("alert_after_bad_runs", 2)
+    text = record_job(db_path, NACHBEARBEITUNG_MODE, ok=not betroffen, found=len(betroffen),
+                      error=error, threshold=threshold)
+    _notify_health(cfg, text, no_telegram)
+
+
 def finish_file(t: Track, path: Path, inbox: Path, cfg: Config) -> Path | None:
     """Der bisherige Teil von process() NACH dem Download, unverändert herausgelöst:
     finalize_quality -> analyze_track/resolve_bpm -> write_tags -> organize.
@@ -194,6 +242,8 @@ def finish_file(t: Track, path: Path, inbox: Path, cfg: Config) -> Path | None:
             t.notes.append("WAV verlustfrei nach FLAC konvertiert")
         else:
             t.notes.append("WAV→FLAC fehlgeschlagen, WAV bleibt")
+            _problem(t, "WAV→FLAC")
+            log.warning("Nachbearbeitung WAV→FLAC fehlgeschlagen für %s", t.title)
 
     # Audio-Analyse: BPM + Key aus dem Audiomaterial erkennen
     audio_bpm: float | None = None
@@ -240,6 +290,7 @@ def finish_file(t: Track, path: Path, inbox: Path, cfg: Config) -> Path | None:
                 )
         except Exception as e:
             t.notes.append(f"Audio-Analyse fehlgeschlagen: {e}")
+            _nachbearbeitung_fehler(t, "Audio-Analyse", e)
 
     # Analyse-Konfidenzen für die Track-DB (None, wenn Analyse nicht lief oder fehlschlug)
     bpm_confidence: float | None = analysis.get("bpm_confidence") if org.get("detect_bpm", True) and 'analysis' in dir() and 'analysis' in locals() else None  # type: ignore
@@ -266,6 +317,7 @@ def finish_file(t: Track, path: Path, inbox: Path, cfg: Config) -> Path | None:
             )
         except Exception as e:
             t.notes.append(f"Tagging fehlgeschlagen: {e}")
+            _nachbearbeitung_fehler(t, "Tagging", e)
 
     # Strukturanalyse & Cue-Tags
     if org.get("write_tags", True):
@@ -291,6 +343,7 @@ def finish_file(t: Track, path: Path, inbox: Path, cfg: Config) -> Path | None:
                 write_breakdown_tag(path, breakdown_s)
         except Exception as e:
             t.notes.append(f"Strukturanalyse fehlgeschlagen: {e}")
+            _nachbearbeitung_fehler(t, "Strukturanalyse", e)
 
     # Auto-Organize: nach BPM/Key-Ordner verschieben
     if org.get("enabled", True):
@@ -299,6 +352,7 @@ def finish_file(t: Track, path: Path, inbox: Path, cfg: Config) -> Path | None:
                             bucket_size=org.get("bpm_bucket_size", 5))
         except Exception as e:
             t.notes.append(f"Organize fehlgeschlagen: {e}")
+            _nachbearbeitung_fehler(t, "Organize", e)
 
     # Track in TrackDB mit status=inbox persistieren (Issue #259)
     track_db_path = (cfg.raw.get("state") or {}).get("track_db_path")
@@ -349,6 +403,7 @@ def finish_file(t: Track, path: Path, inbox: Path, cfg: Config) -> Path | None:
                     enqueue_embedding_job(db, stored)
         except Exception as e:
             log.warning("Persistieren in TrackDB fehlgeschlagen: %s", e)
+            _problem(t, "Track-DB")
 
     return path
 
@@ -362,6 +417,7 @@ def run_intake(cfg: Config, *, dry_run: bool = False) -> list[str]:
       - Endung nicht in AUDIO_EXTS -> nach <intake>/_unbekannt/ verschieben
       - sonst t = track_from_file(p); res = finish_file(t, p, inbox, cfg)
           res gesetzt          -> "✅ <Artist> – <Titel> · <BPM> BPM · <Camelot>"
+                                  (mit t.problems: " · ⚠️ Nachbearbeitung: <Schritte>" angehängt)
           Datei liegt noch da  -> (Prüfung selbst scheiterte) nach <intake>/_fehler/ verschieben
           t.duplicate_of       -> Zeile "♻️ <Dateiname>: schon in der Sammlung"
           sonst                -> Zeile "❌ <Dateiname>: <quality_report["reason"]>"
@@ -428,7 +484,10 @@ def run_intake(cfg: Config, *, dry_run: bool = False) -> list[str]:
             bpm_str = f"{t.bpm:.0f}" if t.bpm else "?"
             key_str = t.key_camelot or "?"
             display_name = f"{t.artist} – {t.title}" if t.artist else t.title
-            lines.append(f"✅ {display_name} · {bpm_str} BPM · {key_str}")
+            line = f"✅ {display_name} · {bpm_str} BPM · {key_str}"
+            if t.problems:
+                line += f" · ⚠️ Nachbearbeitung: {', '.join(t.problems)}"
+            lines.append(line)
         elif p.exists():
             err_dir = intake_dir / "_fehler"
             err_dir.mkdir(parents=True, exist_ok=True)
@@ -959,6 +1018,8 @@ def _discover(cfg: Config, dry_run: bool, no_telegram: bool) -> int:
     with State(cfg["state"]["db_path"]) as state:
         tracks = [t for t in tracks if not state.is_seen(t.id)]
         fresh, dupes = process(tracks, cfg, dry_run=dry_run)
+        if not dry_run:
+            record_nachbearbeitung(cfg, fresh, no_telegram=no_telegram)
         log.info("Neu: %d (Duplikate in Sammlung: %d)", len(fresh), len(dupes))
 
         footer_parts = list(retry_lines) + list(intake_lines)

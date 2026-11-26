@@ -435,6 +435,9 @@ def _fmt_track(t: Track, *, detail_url: str | None = None) -> str:
             hinweise.append(f'🔗 <a href="{html.escape(t.download_link)}">{t.download_kind.value}</a>')
     if t.download_error:
         hinweise.append(f"⚠️ {_esc(t.download_error)}")
+    if t.problems:
+        # Halb verarbeitete Tracks (Issue #761): ohne diese Zeile sah niemand die Notiz
+        hinweise.append(f"⚠️ Nachbearbeitung fehlgeschlagen: {_esc(', '.join(t.problems))}")
     if t.duplicate_of:
         hinweise.append(f"♻️ Schon in der Sammlung: {_esc(Path(t.duplicate_of).name)}")
     for h in hinweise:

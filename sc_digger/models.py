@@ -57,6 +57,9 @@ class Track:
     key_camelot: str | None = None
     key_name: str | None = None
     notes: list[str] = field(default_factory=list)
+    # Fehlgeschlagene Nachbearbeitungsschritte (Issue #761): nur Schritt-Namen, nie Ausnahmetexte,
+    # weil sie im Digest stehen und Pfade oder Tokens enthalten könnten
+    problems: list[str] = field(default_factory=list)
     set_minutes: int | None = None   # gesetzt von pipeline.mark_sets
     reference_hit: bool = False  # von einem reference_accounts-Profil gerepostet/geliked
     velocity: float = 0.0  # Likes pro Stunde seit Upload, gefüllt in score_tracks()

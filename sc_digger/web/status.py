@@ -63,6 +63,7 @@ ALERT_LABELS: dict[str, str] = {
     "playlist": "Playlist-Prüfung",
     "similar": "Ähnliche Tracks",
     "intake": "Eingangsordner",
+    "nachbearbeitung": "Nachbearbeitung",
 }
 
 
