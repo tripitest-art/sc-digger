@@ -59,6 +59,7 @@ ALERT_LABELS: dict[str, str] = {
     "scout": "Store-Scout",
     "kaufliste": "Kaufliste",
     "workstation": "KI-Workstation",
+    "check": "On-Demand-Check",
 }
 
 

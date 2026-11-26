@@ -143,5 +143,25 @@ def record_job(db_path: str | Path, mode: str, *, ok: bool, found: int = 0,
         return None
 
 
+def record_link_check(db_path: str | Path, *, source: str, fresh: int, dupes: int,
+                      error: str | None = None, threshold: int = 3) -> str | None:
+    """Protokolliert einen On-Demand-Check als Lauf mode="check" und liefert Alarm- oder
+    Entwarnungstext zurück, sonst None.
+
+    Ohne diese Zeile tauchte ein per Telegram geprüfter Link weder unter „Letzte Läufe“ noch im
+    Health-Alarm auf. Eine Quelle ohne neue Tracks ist kein Ausfall (zero_is_bad=False), erst
+    threshold Fehler in Folge alarmieren. Quelle und Dubletten landen nur im Log, weil runs
+    dafür keine Spalten hat. Wirft nie, wie record_job.
+    """
+    log.info("On-Demand-Check: %s (%d neu, %d vorhanden)", source, fresh, dupes)
+    try:
+        with Health(db_path) as health:
+            health.record("check", ok=error is None, found=fresh, error=error)
+            return health.evaluate("check", threshold, zero_is_bad=False)
+    except Exception as exc:  # noqa: BLE001 - Protokoll darf den Check nicht zu Fall bringen
+        log.warning("Lauf check konnte nicht protokolliert werden: %s", redact(str(exc)))
+        return None
+
+
 def _esc(s: str) -> str:
     return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")

@@ -40,7 +40,7 @@ from .cues import write_breakdown_tag, write_drop_tag, write_first_kick_tag
 from .db import TrackDB
 from .diskguard import check_disk
 from .embeddings import backfill_embedding_jobs, enqueue_embedding_job
-from .health import Health, record_job
+from .health import Health, record_job, record_link_check
 from .intake import AUDIO_EXTS, find_ready_files, track_from_file
 from .models import Config, DownloadKind, Track
 from .organize import organize, write_tags
@@ -1068,30 +1068,45 @@ def run_link(cfg: Config, url: str, *, dry_run: bool = False, no_telegram: bool 
     Kein Perzentil-Filter (selbst gewählte Quelle: volle Liste), aber Score-Sortierung.
     Tracks werden als gesehen markiert, damit sie nicht nochmal im täglichen Digest landen.
     Gibt (Quellenbeschreibung, neu, vorhanden) zurück.
-    """
-    sc = sc or SoundCloudClient()
-    kind = sc.resolve_kind(url)
-    if kind == "playlist":
-        label, tracks = sc.playlist_tracks(url, limit=200)
-        source = f"Playlist: {label}"
-    elif kind == "track":
-        label, tracks = sc.track_station(url, limit=50)
-        source = f"Station zu: {label}"
-    else:
-        raise SoundCloudError("Das ist weder ein Track- noch ein Playlist-Link.")
 
-    tracks = dedupe(tracks)
-    for t in tracks:
-        t.bpm = estimate_bpm(t)
-    tracks = score_tracks(tracks, cfg, apply_filter=False)
-    snapshot_tracks(cfg, tracks, dry_run=dry_run)
-    fresh, dupes = process(tracks, cfg, dry_run=dry_run)
-    deliver(f"{source}\n{len(fresh)} Tracks ({len(dupes)} schon in deiner Sammlung)",
-            fresh, dupes, cfg, dry_run=dry_run, no_telegram=no_telegram, show_all=True,
-            export_name=source, chat_id=chat_id)
+    Jeder echte Check (kein Probelauf) wird als Lauf "check" in runs protokolliert, damit er im
+    Dashboard erscheint und wiederholte Fehlschläge den Health-Alarm auslösen (Issue #755).
+    """
+    db_path = cfg["state"]["db_path"]
+    source = url  # Rückfallwert, falls der Link schon beim Auflösen scheitert
+    try:
+        sc = sc or SoundCloudClient()
+        kind = sc.resolve_kind(url)
+        if kind == "playlist":
+            label, tracks = sc.playlist_tracks(url, limit=200)
+            source = f"Playlist: {label}"
+        elif kind == "track":
+            label, tracks = sc.track_station(url, limit=50)
+            source = f"Station zu: {label}"
+        else:
+            raise SoundCloudError("Das ist weder ein Track- noch ein Playlist-Link.")
+
+        tracks = dedupe(tracks)
+        for t in tracks:
+            t.bpm = estimate_bpm(t)
+        tracks = score_tracks(tracks, cfg, apply_filter=False)
+        snapshot_tracks(cfg, tracks, dry_run=dry_run)
+        fresh, dupes = process(tracks, cfg, dry_run=dry_run)
+        deliver(f"{source}\n{len(fresh)} Tracks ({len(dupes)} schon in deiner Sammlung)",
+                fresh, dupes, cfg, dry_run=dry_run, no_telegram=no_telegram, show_all=True,
+                export_name=source, chat_id=chat_id)
+        if not dry_run:
+            with State(db_path) as state:
+                state.mark(tracks)
+    except Exception as exc:
+        if not dry_run:
+            text = record_link_check(db_path, source=source, fresh=0, dupes=0,
+                                     error=f"{type(exc).__name__}: {exc}")
+            _notify_health(cfg, text, no_telegram)
+        raise
     if not dry_run:
-        with State(cfg["state"]["db_path"]) as state:
-            state.mark(tracks)
+        text = record_link_check(db_path, source=source, fresh=len(fresh), dupes=len(dupes))
+        _notify_health(cfg, text, no_telegram)
     return source, len(fresh), len(dupes)
 
 
