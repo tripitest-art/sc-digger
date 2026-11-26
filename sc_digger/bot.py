@@ -30,6 +30,7 @@ import yaml
 from .curator import MAX_CANDIDATES, candidates_file, candidates_from_counts, write_candidates
 from .db import TrackDB
 from .harmonic import compatible_keys, find_mix_candidates, format_mix_list
+from .heartbeat import STATUS_AUS, STATUS_FEHLER, HeartbeatThread
 from .main import run_link
 from .models import Config
 from .output import TelegramError, parse_feedback_callback, telegram_call, telegram_download
@@ -1280,7 +1281,13 @@ def _idle_forever(reason: str) -> None:
 
 def listen(cfg: Config) -> None:
     token, chat_id = cfg.telegram_token, cfg.telegram_chat_id
+    # Lebenszeichen für den Container-Healthcheck; der Thread läuft auch während _idle_forever
+    # weiter, so sieht der Healthcheck den Status (aus/fehler) statt eines stummen Prozesses.
+    db_path = (cfg.raw.get("state") or {}).get("db_path")
+    heartbeat = HeartbeatThread(Path(db_path).parent if db_path else None, "bot")
+    heartbeat.start()
     if not token or not chat_id:
+        heartbeat.set_status(STATUS_AUS, "TELEGRAM_BOT_TOKEN/CHAT_ID fehlen")
         _idle_forever("TELEGRAM_BOT_TOKEN/CHAT_ID fehlen")
 
     if not str(chat_id).lstrip("-").isdigit():
@@ -1298,6 +1305,7 @@ def listen(cfg: Config) -> None:
             break
         except TelegramError as e:
             if "Telegram 401" in str(e):
+                heartbeat.set_status(STATUS_FEHLER, "Telegram lehnt den Bot-Token ab (401)")
                 _idle_forever("Telegram lehnt den Bot-Token ab (401)")
             log.warning("Telegram nicht erreichbar (%s), neuer Versuch in 30 s", e)
             time.sleep(30)

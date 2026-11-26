@@ -8,6 +8,7 @@ from pathlib import Path
 
 import uvicorn
 
+from ..heartbeat import HeartbeatThread
 from ..models import Config
 from .app import FailureTracker, create_app
 
@@ -44,6 +45,10 @@ def main(argv: list[str] | None = None) -> int:
                          local_path=Path(local_env), **options)
     else:
         app = create_app(cfg, password=password, **options)
+    # Lebenszeichen für den Container-Healthcheck: entrypoint.sh startet das Dashboard im
+    # Hintergrund, ein gestorbener Prozess fiele sonst niemandem auf.
+    db_path = (cfg.raw.get("state") or {}).get("db_path")
+    HeartbeatThread(Path(db_path).parent if db_path else None, "web").start()
     uvicorn.run(app, host=args.host, port=args.port)
     return 0
 

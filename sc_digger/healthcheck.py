@@ -2,11 +2,13 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
+from sc_digger.heartbeat import STATUS_AUS, STATUS_FEHLER, read_heartbeat
 from sc_digger.models import Config
 from sc_digger.output import TelegramError, telegram_call
 
@@ -14,7 +16,7 @@ from sc_digger.output import TelegramError, telegram_call
 @dataclass
 class CheckResult:
     """Ergebnis einer einzelnen Prüfung."""
-    name: str  # "cron" | "letzter_lauf" | "state_db" | "track_db"
+    name: str  # "cron" | "letzter_lauf" | "state_db" | "track_db" | "bot" | "web"
     ok: bool
     detail: str  # kurze Begründung auf Deutsch, ohne Zugangsdaten
 
@@ -151,6 +153,50 @@ def run_checks(cfg: Config, *, proc_root: Path = Path("/proc"),
     return results
 
 
+def check_heartbeat(state_dir: str | Path | None, name: str, max_age_s: float, *,
+                    expected: bool = True, now: datetime | None = None) -> CheckResult:
+    """Prüft das Lebenszeichen eines langlebigen Prozesses (heartbeat.py).
+
+    Kein Lebenszeichen gilt als ok, damit der erste Start nach einem Update keinen Fehlalarm
+    auslöst. Ein Status "fehler" schlägt vor dem Alter durch, weil er den Grund nennt.
+    """
+    if not expected:
+        return CheckResult(name=name, ok=True, detail="nicht eingeschaltet")
+    lz = read_heartbeat(state_dir, name)
+    if lz is None:
+        return CheckResult(name=name, ok=True, detail="noch kein Lebenszeichen")
+    if lz.status == STATUS_FEHLER:
+        return CheckResult(name=name, ok=False, detail=lz.detail or "meldet einen Fehler")
+    if now is None:
+        now = datetime.now(timezone.utc)
+    age_s = (now - lz.ts).total_seconds()
+    if age_s > max_age_s:
+        minutes = max(1, int(age_s // 60))
+        return CheckResult(name=name, ok=False,
+                           detail=f"letztes Lebenszeichen vor {minutes} Minuten")
+    if lz.status == STATUS_AUS:
+        return CheckResult(name=name, ok=True, detail=f"aus: {lz.detail}" if lz.detail else "aus")
+    return CheckResult(name=name, ok=True, detail="ok")
+
+
+def run_heartbeat_checks(cfg: Config, *, now: datetime | None = None,
+                         web_expected: bool | None = None) -> list[CheckResult]:
+    """Lebenszeichen von Bot und Web-Dashboard, in dieser Reihenfolge. Das Dashboard läuft nur
+    mit SC_DIGGER_WEB_PASSWORD (entrypoint.sh), deshalb wird es nur dann erwartet."""
+    raw = cfg.raw if hasattr(cfg, "raw") else cfg
+    state_db_path = (raw.get("state") or {}).get("db_path")
+    if not state_db_path:
+        return []
+    state_dir = Path(state_db_path).parent
+    max_age_s = float((raw.get("health") or {}).get("max_seconds_since_heartbeat", 300))
+    if web_expected is None:
+        web_expected = bool(os.environ.get("SC_DIGGER_WEB_PASSWORD"))
+    return [
+        check_heartbeat(state_dir, "bot", max_age_s, now=now),
+        check_heartbeat(state_dir, "web", max_age_s, expected=web_expected, now=now),
+    ]
+
+
 def alert_message(state_file: Path, results: list[CheckResult]) -> str | None:
     """Alarm-Zustand in einer JSON-Datei (nicht in der SQLite-DB, die könnte ja kaputt sein).
     Wechsel gesund -> krank: Alarmtext mit einer Zeile je fehlgeschlagener Prüfung
@@ -192,7 +238,7 @@ def alert_message(state_file: Path, results: list[CheckResult]) -> str | None:
 
 
 def main(argv: list[str] | None = None, *, proc_root: Path = Path("/proc")) -> int:
-    """--config (Standard config.yaml). Führt run_checks aus, druckt eine Zeile je Prüfung,
+    """--config (Standard config.yaml). Führt run_checks und run_heartbeat_checks aus, druckt eine Zeile je Prüfung,
     state_file = Path(cfg["state"]["db_path"]).parent / "container_health.json".
     Gibt es eine Meldung und sind TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID gesetzt: senden über
     telegram_call(token, "sendMessage", ...) (Name im Modul importiert, damit Tests es ersetzen
@@ -212,7 +258,7 @@ def main(argv: list[str] | None = None, *, proc_root: Path = Path("/proc")) -> i
         print(f"Konfigurationsdatei nicht lesbar: {e}")
         return 1
 
-    results = run_checks(cfg, proc_root=proc_root)
+    results = run_checks(cfg, proc_root=proc_root) + run_heartbeat_checks(cfg)
 
     for result in results:
         status = "ok" if result.ok else "FEHLER"
