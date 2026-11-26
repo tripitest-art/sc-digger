@@ -1,8 +1,8 @@
-"""Workstation täglich wecken, wenn Cue- oder Embedding-Jobs offen sind (Issue #409, Teil 3 von #227).
+"""Workstation tagsüber wecken, wenn Cue- oder Embedding-Jobs offen sind (Issue #409, Teil 3 von #227).
 
-Läuft als Oneshot im Container (``deploy/sc-digger-gpu-wake.service``, Timer nach dem
-Tageslauf). Gibt es offene Cue- oder Embedding-Jobs in der Job-Queue, schickt es eine Anfrage an den
-Wake-Proxy vor der Workstation; der Proxy weckt den PC und blockiert, bis er antwortet. Der
+Läuft als Oneshot im Container (``deploy/sc-digger-gpu-wake.service``, Timer tagsüber
+stündlich, mit Cooldown gegen doppeltes Wecken). Gibt es offene Cue- oder Embedding-Jobs in der
+Job-Queue, schickt es eine Anfrage an den Wake-Proxy vor der Workstation; der Proxy weckt den PC und blockiert, bis er antwortet. Der
 Runner dort (``sc-digger-gpu-worker.service``) arbeitet die Queue ab und beendet sich bei
 Leerlauf, das Herunterfahren übernimmt das Idle-Skript der Workstation.
 
@@ -12,10 +12,12 @@ in Log oder Meldung.
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import os
 import sqlite3
 import sys
+import time
 from pathlib import Path
 from typing import Any, Callable
 
@@ -30,6 +32,11 @@ WAKE_TIMEOUT_S = 150.0
 
 # Job-Typen, für die sich das Wecken lohnt; andere Typen (caption, fingerprint, ...) zählen nicht.
 WAKE_JOB_TYPES = ("cues", "embedding")
+
+# Der Timer läuft tagsüber stündlich (Issue #757). Der Cooldown verhindert, dass ein weiterer
+# Lauf die Workstation erneut anstößt, während sie noch hochfährt oder arbeitet, und dass ein
+# Dauerfehler bei jedem Lauf eine Telegram-Meldung erzeugt.
+COOLDOWN_S = 1800.0
 
 
 def count_pending_jobs(db_path: str | Path, job_type: str | None = "cues") -> int:
@@ -83,15 +90,64 @@ def wake_workstation(wake_url: str, *, post: Callable[..., Any] | None = None,
     return True
 
 
+def _read_last_attempt(state_path: Path) -> float | None:
+    """Zeitpunkt des letzten Weckversuchs; fehlende oder defekte Datei ergibt None (nie werfen)."""
+    try:
+        data = json.loads(state_path.read_text(encoding="utf-8"))
+        value = data["last_attempt"]
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise TypeError("last_attempt ist keine Zahl")
+        return float(value)
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError, TypeError, KeyError) as exc:
+        # Defekte Datei darf das Wecken nicht blockieren, sonst stünde die Queue still.
+        log.warning("Weck-Zustand nicht lesbar (%s), wecke ohne Cooldown", type(exc).__name__)
+        return None
+
+
+def _write_last_attempt(state_path: Path, when: float) -> None:
+    """Schreibt den Zeitpunkt atomar; Schreibfehler nur als Warnung, der Weckversuch läuft weiter."""
+    tmp = state_path.with_name(state_path.name + ".tmp")
+    try:
+        tmp.write_text(json.dumps({"last_attempt": when}), encoding="utf-8")
+        os.replace(tmp, state_path)
+    except OSError as exc:
+        log.warning("Weck-Zustand nicht geschrieben (%s)", type(exc).__name__)
+
+
 def run_wake(db_path: str | Path, wake_url: str, *, post: Callable[..., Any] | None = None,
-             notify: Callable[[str], None] | None = None) -> int:
-    """Weckt die Workstation, wenn Cue- oder Embedding-Jobs offen sind. Rückgabe: Exit-Code (0 oder 1)."""
+             notify: Callable[[str], None] | None = None,
+             state_path: str | Path | None = None,
+             now: Callable[[], float] = time.time,
+             cooldown_s: float = COOLDOWN_S) -> int:
+    """Weckt die Workstation, wenn Cue- oder Embedding-Jobs offen sind. Rückgabe: Exit-Code.
+
+    Ohne ``state_path`` wird bei jedem Aufruf geweckt (kein Cooldown, keine Datei). Mit
+    ``state_path`` steht dort ``{"last_attempt": <epoch>}``; liegt der letzte Versuch weniger
+    als ``cooldown_s`` zurück, wird nicht geweckt (Exit 0, kein Alarm). Der Zeitstempel wird
+    nach Erfolg und nach Fehlversuch geschrieben, damit ein Dauerfehler nur einmal je
+    Cooldown meldet. Eine unlesbare Zustandsdatei gilt als „kein Versuch“.
+    """
     pending = count_pending_jobs(db_path, None)
     if pending == 0:
         log.info("Keine offenen Jobs für die Workstation, sie bleibt aus")
         return 0
+    state = Path(state_path) if state_path is not None else None
+    current = now()
+    if state is not None:
+        last = _read_last_attempt(state)
+        if last is not None and 0 <= current - last < cooldown_s:
+            log.info(
+                "%d offene Job(s), letzter Weckversuch vor %d s, Cooldown %d s: nicht erneut wecken",
+                pending, int(current - last), int(cooldown_s),
+            )
+            return 0
     log.info("%d offene Job(s) für die Workstation (Cues, Embeddings), wecke sie", pending)
-    if wake_workstation(wake_url, post=post):
+    woke = wake_workstation(wake_url, post=post)
+    if state is not None:
+        _write_last_attempt(state, current)
+    if woke:
         return 0
     if notify is not None:
         notify(f"⚠️ Workstation konnte nicht geweckt werden, {pending} Job(s) bleiben offen.")
@@ -140,8 +196,11 @@ def main(argv: list[str] | None = None) -> int:
     from .models import Config
 
     cfg = Config.load(args.config)
+    track_db = Path(cfg["state"]["track_db_path"])
+    # Zustandsdatei neben der Track-DB: eine Migration für einen Zeitstempel wäre zu viel.
     return run_wake(
-        cfg["state"]["track_db_path"], args.wake_url, notify=_telegram_notifier()
+        track_db, args.wake_url, notify=_telegram_notifier(),
+        state_path=track_db.with_name("gpu_wake_state.json"),
     )
 
 

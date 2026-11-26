@@ -1,8 +1,8 @@
 [Unit]
-Description=sc-digger Workstation täglich nach dem 07:30-Lauf wecken
+Description=sc-digger Workstation tagsüber stündlich wecken (07:30 bis 23:30, Cooldown in gpu_wake)
 
 [Timer]
-OnCalendar=*-*-* 08:30:00
+OnCalendar=*-*-* 07..23:30:00
 
 [Install]
 WantedBy=timers.target
