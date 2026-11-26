@@ -130,7 +130,7 @@ Am 25.11.2026 fehlte der Weck-Timer seit seiner Einführung, und die Job-Queue s
 |---|---|---|---|
 | Cron-Jobs im Container | Server | `docker compose exec sc-digger crontab -l`: je Job aus `sc_digger/schedule.py` genau eine Zeile (u. a. `sc_digger.backup run`, `audit --check-adopted`, `sc_digger.main taste`, `sc_digger.canary`, `sc_digger.main scout`, `sc_digger.watch`, Kaufliste) | `entrypoint.sh` hängt sie beim Containerstart an: `docker compose up -d --force-recreate` |
 | `sc-digger-deploy.timer` | Server | `systemctl list-timers sc-digger-deploy.timer` | Abschnitt „Auto-Deploy“ |
-| `sc-digger-gpu-wake.timer` mit `/root/sc-digger/gpu-wake.env` | Server | `systemctl list-timers sc-digger-gpu-wake.timer`, `ls -l /root/sc-digger/gpu-wake.env` | „GPU-Worker“, Einrichtung auf dem Server |
+| `sc-digger-gpu-wake.timer` mit `/root/sc-digger/gpu-wake.env` | Server | `systemctl list-timers sc-digger-gpu-wake.timer` (nächster Lauf zur vollen Stunde +30 min zwischen 07:30 und 23:30), `ls -l /root/sc-digger/gpu-wake.env` | „GPU-Worker“, Einrichtung auf dem Server |
 | `SC_DIGGER_WAKE_URL` in `/root/sc-digger/.env` | Server | `grep -c '^SC_DIGGER_WAKE_URL=' /root/sc-digger/.env` (zeigt 1) | „GPU-Worker“, Einrichtung auf dem Server |
 | `sc-digger-gpu-worker.service` mit `/etc/sc-digger-gpu-worker.env` | Workstation | `systemctl is-enabled sc-digger-gpu-worker` | „GPU-Worker“, Einrichtung auf der Workstation |
 | `transformers` in `allin1_env` (für Embedding-Jobs) | Workstation | `/home/stephanv/allin1_env/bin/python -c "import torch, transformers"` (ohne Fehler); sonst „Embedding-Jobs abgeschaltet“ im Journal | „GPU-Worker“, Einrichtung auf der Workstation |
@@ -158,18 +158,30 @@ Am 25.11.2026 fehlte der Weck-Timer seit seiner Einführung, und die Job-Queue s
   Worker und Timer in Ordnung, arbeitet die Workstation einen Jobtyp nicht ab (z. B. Embeddings
   ohne Modell). Die Entwarnung kommt, sobald kein offener Job mehr so lange wartet.
 
-## GPU-Worker: Workstation täglich wecken (Cue- und Embedding-Jobs)
+## GPU-Worker: Workstation tagsüber wecken (Cue- und Embedding-Jobs)
 
 Die Cue-Jobs (First Kick, Drop, Breakdown) und die Embedding-Jobs (MAEST, Grundlage von Taste-Score und Ähnlichkeitssuche) rechnet die Workstation `nobara-pc`. Sie soll nicht
-dauernd laufen, deshalb weckt der Server sie einmal am Tag, wenn Jobs offen sind.
+dauernd laufen, deshalb weckt der Server sie tagsüber stündlich, aber nur wenn Jobs offen sind.
 
 **Ablauf**
 
-1. Der Tageslauf (07:30) reiht Cue-Jobs für neue Inbox-Tracks ein.
-2. Um 08:30 startet `sc-digger-gpu-wake.timer` den Dienst `sc-digger-gpu-wake`. Der zählt die
-   offenen Cue- und Embedding-Jobs (`python -m sc_digger.gpu_wake`, im Container; andere Job-Typen zählen nicht). Sind es 0, passiert nichts.
-   Sonst schickt er eine Anfrage an den Wake-Proxy; der weckt den PC und antwortet, sobald er
-   da ist (Kaltstart 35 bis 50 s). Schlägt das fehl, kommt eine Telegram-Meldung, Exit 1.
+1. Der Tageslauf (07:30), der Digest und Aktionen im Laufe des Tages (Retry, Upload,
+   Taste-Lauf) reihen Cue- und Embedding-Jobs ein.
+2. Stündlich von 07:30 bis 23:30 (`OnCalendar=*-*-* 07..23:30:00`) startet
+   `sc-digger-gpu-wake.timer` den Dienst `sc-digger-gpu-wake`. Der zählt die offenen Cue- und
+   Embedding-Jobs (`python -m sc_digger.gpu_wake`, im Container; andere Job-Typen zählen nicht).
+   Sind es 0, passiert nichts. Sonst schickt er eine Anfrage an den Wake-Proxy; der weckt den PC
+   und antwortet, sobald er da ist (Kaltstart 35 bis 50 s). Schlägt das fehl, kommt eine
+   Telegram-Meldung, Exit 1.
+   **Cooldown:** Den Zeitpunkt des letzten Weckversuchs merkt sich `gpu_wake` in
+   `gpu_wake_state.json` neben der Track-DB (`{"last_attempt": <epoch>}`). Liegt er weniger als
+   30 Minuten (`COOLDOWN_S` = 1800 s) zurück, weckt der Lauf nicht erneut (Exit 0, nur
+   Log-Zeile). Der Zeitpunkt zählt auch nach einem Fehlversuch, so kommt bei einem Dauerfehler
+   höchstens eine Telegram-Meldung je Cooldown. Eine defekte Datei gilt als „kein Versuch“.
+   Auch `systemctl start sc-digger-gpu-wake.service` von Hand beachtet den Cooldown; wer
+   sofort erneut wecken will, löscht `gpu_wake_state.json`.
+   **Nachtpause:** Zwischen 23:30 und 07:30 weckt der Timer nicht (die Workstation steht im
+   Wohnbereich); Jobs aus dieser Zeit holt der 07:30-Lauf.
 3. Auf der Workstation startet `sc-digger-gpu-worker` beim Hochfahren, holt Cue- und Embedding-Jobs per
    HTTP vom Dashboard (ohne `--job-type`) und beendet sich nach 300 s ohne Job (`--idle-exit 300`).
 4. Das vorhandene `ollama-idle-shutdown` fährt den PC danach herunter.
@@ -297,7 +309,7 @@ journalctl -u sc-digger-gpu-worker -n 50                 # Workstation: abgearbe
 
 **Von Hand starten**
 
-Statt auf den täglichen Timer (08:30) zu warten oder `systemctl start sc-digger-gpu-wake.service` auf dem Server auszuführen, kann der Weckruf auch direkt aus dem Web-Dashboard gestartet werden: In der Karte „⚡ KI-Workstation & Job-Queue" stößt der Knopf „Workstation-Lauf starten" dieselbe Logik an. Gibt es keine offenen Cue- oder Embedding-Jobs, bleibt die Workstation aus. Die Sperrzeit von 300 Sekunden (`gpu_wake.cooldown_s`) schützt vor Mehrfachklicks während des Kaltstarts.
+Statt auf den nächsten Timer-Lauf (stündlich, xx:30) zu warten oder `systemctl start sc-digger-gpu-wake.service` auf dem Server auszuführen, kann der Weckruf auch direkt aus dem Web-Dashboard gestartet werden: In der Karte „⚡ KI-Workstation & Job-Queue" stößt der Knopf „Workstation-Lauf starten" dieselbe Logik an. Gibt es keine offenen Cue- oder Embedding-Jobs, bleibt die Workstation aus. Die Sperrzeit von 300 Sekunden (`gpu_wake.cooldown_s`) schützt vor Mehrfachklicks während des Kaltstarts.
 
 ## Inbox auf den Laptop syncen (Syncthing)
 
