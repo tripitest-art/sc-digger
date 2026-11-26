@@ -29,7 +29,7 @@ from contextlib import ExitStack
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Iterable
 from zoneinfo import ZoneInfo
 
 from .analysis import analyze_track, resolve_bpm
@@ -1348,7 +1348,40 @@ def run_requeue_cmd(cfg: Config, *, timeout_minutes: int | None = None) -> str:
     return text
 
 
-def run_scout(cfg: Config, *, dry_run: bool = False) -> int:
+class ScoutQuellenFehler(RuntimeError):
+    """Mindestens eine Scout-Quelle ist ausgefallen."""
+
+
+class ScoutErgebnis(int):
+    """Rückgabe von run_scout: verhält sich wie die bisherige Anzahl geschriebener Store-Items
+    (int), trägt zusätzlich die Namen der Quellen, die scheiterten, in `fehler`.
+
+    Ein int-Untertyp, weil Aufrufer (Web-Knopf, ersetzte run_scout in Tests) weiter mit der
+    Zahl rechnen; den Ausfall wertet nur pruefe_scout_ergebnis beim CLI-Lauf aus.
+    """
+    fehler: list[str]
+
+    def __new__(cls, geschrieben: int, fehler: Iterable[str] = ()) -> "ScoutErgebnis":
+        obj = super().__new__(cls, geschrieben)
+        obj.fehler = list(fehler)
+        return obj
+
+
+def pruefe_scout_ergebnis(ergebnis: int) -> int:
+    """Gibt int(ergebnis) zurück; wirft ScoutQuellenFehler, wenn Quellen ausgefallen sind.
+
+    run_scout selbst kehrt bei einem Quellenausfall normal zurück (der Rest wird geschrieben).
+    Damit run_logged den Lauf trotzdem als Fehlschlag protokolliert und der Health-Alarm
+    greift (Goldene Regel 7), prüft der Aufrufer das Ergebnis hier. Ein einfaches int hat
+    kein Attribut `fehler` und gilt als sauber.
+    """
+    fehler = list(getattr(ergebnis, "fehler", None) or [])
+    if fehler:
+        raise ScoutQuellenFehler("Scout-Quellen fehlgeschlagen: " + ", ".join(fehler))
+    return int(ergebnis)
+
+
+def run_scout(cfg: Config, *, dry_run: bool = False) -> ScoutErgebnis:
     """Führt Bandcamp- und Beatport-Scout aus.
 
     Liest Tracks über fetch_bandcamp_feeds und fetch_beatport_charts, markiert
@@ -1369,7 +1402,8 @@ def run_scout(cfg: Config, *, dry_run: bool = False) -> int:
         dry_run: Wenn True, nur Anzeigen was geschrieben würde, keine DB-Änderung
 
     Returns:
-        Anzahl der geschriebenen Store-Items (bei dry_run: 0).
+        ScoutErgebnis: Anzahl der geschriebenen Store-Items (bei dry_run: 0), in `fehler`
+        die Namen der ausgefallenen Quellen in Reihenfolge des Scheiterns (bei dry_run leer).
     """
     scout_cfg = cfg.raw.get("scout", {}) or {}
     feed_urls = list((scout_cfg.get("bandcamp", {}) or {}).get("feeds", []) or [])
@@ -1379,6 +1413,7 @@ def run_scout(cfg: Config, *, dry_run: bool = False) -> int:
     # Eine Fehlermeldung wird – außer bei dry_run – an Telegram gemeldet; ein
     # Sendefehler (TelegramError) bricht run_scout nicht ab, wird aber geloggt.
     tracks: list[Track] = []
+    fehler: list[str] = []
     for name, fn, urls in (
         ("Bandcamp", fetch_bandcamp_feeds, feed_urls),
         ("Beatport", fetch_beatport_charts, chart_urls),
@@ -1387,6 +1422,7 @@ def run_scout(cfg: Config, *, dry_run: bool = False) -> int:
             tracks.extend(fn(urls))
         except Exception as exc:  # noqa: BLE001 – ein Scout darf den anderen nicht stoppen
             log.warning("%s-Scout fehlgeschlagen: %s", name, exc)
+            fehler.append(name)
             if not dry_run:
                 try:
                     send_scout_error(cfg, name, str(exc))
@@ -1408,7 +1444,8 @@ def run_scout(cfg: Config, *, dry_run: bool = False) -> int:
             log.info("[dry-run] Store-Item: %s – %s (%s)", t.artist, t.title, t.purchase_url)
         log.info("Scout: %d Duplikate übersprungen, %d Store-Items (dry-run, nicht geschrieben)",
                  len(duplicates), len(fresh))
-        return 0
+        # Der Probelauf meldet keine Ausfälle: er schreibt keinen Lauf und darf nicht scheitern.
+        return ScoutErgebnis(0)
 
     written = 0
     new_items: list[dict[str, Any]] = []
@@ -1439,7 +1476,7 @@ def run_scout(cfg: Config, *, dry_run: bool = False) -> int:
             send_scout_digest(cfg, new_items, max_items=5)
         except TelegramError as terr:
             log.warning("Telegram-Digest nach dem Scout fehlgeschlagen: %s", terr)
-    return written
+    return ScoutErgebnis(written, fehler)
 
 
 # ------------------------------------------------------------------ CLI
@@ -1567,7 +1604,7 @@ def cli() -> None:
             run_stats(cfg, days=a.days, chart_path=a.chart, send=a.send,
                       dry_run=a.dry_run, no_telegram=a.no_telegram)
         elif a.mode == "scout":
-            logged("scout", lambda: run_scout(cfg, dry_run=a.dry_run))
+            logged("scout", lambda: pruefe_scout_ergebnis(run_scout(cfg, dry_run=a.dry_run)))
         elif a.mode == "cleanup-inbox":
             run_cleanup_inbox(cfg, move=a.move, inbox_path=a.inbox,
                               dry_run=a.dry_run, no_telegram=a.no_telegram)
