@@ -60,6 +60,9 @@ ALERT_LABELS: dict[str, str] = {
     "kaufliste": "Kaufliste",
     "workstation": "KI-Workstation",
     "check": "On-Demand-Check",
+    "playlist": "Playlist-Prüfung",
+    "similar": "Ähnliche Tracks",
+    "intake": "Eingangsordner",
 }
 
 

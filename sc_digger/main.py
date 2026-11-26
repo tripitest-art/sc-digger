@@ -1006,7 +1006,8 @@ def run_locked(cfg: Config, mode: str, fn: Callable[[], None], *, no_telegram: b
     Die Sperre liegt neben der State-DB (Verzeichnis von state.db_path); gewartet wird höchstens
     state.lock_wait_s Sekunden (Standard 1800) in 5-s-Schritten. Ein discover, der nicht laufen
     durfte, zählt im Health-Protokoll als gescheiterter Lauf, damit der Ausfall sichtbar wird
-    (Regel 7). Lässt sich die Sperre gar nicht anlegen (kein state.db_path, /data nicht
+    (Regel 7). Für alle anderen Modi landet der übersprungene Lauf per record_job in runs
+    (Issue #758): sonst zeigte die Statusseite weiter den alten Erfolg. Lässt sich die Sperre gar nicht anlegen (kein state.db_path, /data nicht
     beschreibbar, z. B. bei Tests mit der echten config.yaml), läuft fn mit Warnung ohne Sperre.
     """
     if mode in LOCK_FREE_MODES:
@@ -1033,21 +1034,26 @@ def run_locked(cfg: Config, mode: str, fn: Callable[[], None], *, no_telegram: b
             fn()
     except RunLockBusy as e:
         log.error("Lauf übersprungen (%s): %s", mode, e)
+        threshold = cfg.raw.get("health", {}).get("alert_after_bad_runs", 2)
         if mode == "discover":
-            threshold = cfg.raw.get("health", {}).get("alert_after_bad_runs", 2)
             with Health(cfg["state"]["db_path"]) as health:
                 health.record("discover", ok=False, found=0, error=str(e))
                 _notify_health(cfg, health.evaluate("discover", threshold), no_telegram)
+        else:
+            text = record_job(cfg["state"]["db_path"], mode, ok=False, found=0, error=str(e),
+                              threshold=threshold)
+            _notify_health(cfg, text, no_telegram)
         return False
     return True
 
 
 # ------------------------------------------------------------------ Modus: playlist
-def run_playlist(cfg: Config, url: str, likes: bool, dry_run: bool, no_telegram: bool) -> None:
+def run_playlist(cfg: Config, url: str, likes: bool, dry_run: bool, no_telegram: bool) -> int:
     """Playlist prüfen: KEIN Genre-/Score-Filter, nur Sammlungsabgleich + Download-Weg.
 
     Die Playlist wurde bewusst gewählt, deshalb wird nichts aussortiert.
     Kein State-Check: eine Playlist darf man beliebig oft prüfen.
+    Rückgabe: len(fresh), die Zahl der Tracks, die in der Sammlung fehlen (für runs.found).
     """
     sc = SoundCloudClient()
     title, tracks = sc.likes_of_user(url) if likes else sc.playlist_tracks(url)
@@ -1058,6 +1064,7 @@ def run_playlist(cfg: Config, url: str, likes: bool, dry_run: bool, no_telegram:
     deliver(f"Playlist „{title}“: {len(fresh)} fehlen, {len(dupes)} vorhanden",
             fresh, dupes, cfg, dry_run=dry_run, no_telegram=no_telegram, show_all=True,
             export_name=f"Playlist: {title}")
+    return len(fresh)
 
 
 # ------------------------------------------------------------------ Modus: check (Link, auch vom Bot)
@@ -1112,11 +1119,12 @@ def run_link(cfg: Config, url: str, *, dry_run: bool = False, no_telegram: bool 
 
 # ------------------------------------------------------------------ Modus: similar
 def run_similar(cfg: Config, url: str, use_station: bool, apply_filter: bool,
-                limit: int, dry_run: bool, no_telegram: bool) -> None:
+                limit: int, dry_run: bool, no_telegram: bool) -> int:
     """Empfehlungen des SoundCloud-Algorithmus zu einem Track.
 
     Standard: ungefiltert (du willst sehen, was der Algorithmus vorschlägt).
     Mit --filter laufen die Treffer zusätzlich durch BPM-Fenster + Scoring.
+    Rückgabe: len(fresh) (für runs.found).
     """
     sc = SoundCloudClient()
     seed = sc.resolve_track(url)
@@ -1135,6 +1143,28 @@ def run_similar(cfg: Config, url: str, use_station: bool, apply_filter: bool,
     deliver(f"{kind} zu „{seed.artist} – {seed.title}“: {len(fresh)} neu",
             fresh, dupes, cfg, dry_run=dry_run, no_telegram=no_telegram,
             export_name=f"{kind}: {seed.artist} - {seed.title}")
+    return len(fresh)
+
+
+# ------------------------------------------------------------------ Modus: intake (CLI)
+def run_intake_cli(cfg: Config, *, dry_run: bool, no_telegram: bool) -> int:
+    """Eingangsordner verarbeiten wie der CLI-Modus intake und die Zahl der Meldezeilen liefern.
+
+    Eigene Funktion, damit cli() den Lauf über run_logged in runs protokollieren kann
+    (Issue #758). Meldet die Zeilen per Telegram (bei dry_run/no_telegram per print) und
+    schreibt danach das Rekordbox-XML, wenn kein Probelauf. Rückgabe: len(lines); 0, wenn
+    der Eingangsordner leer oder abgeschaltet ist.
+    """
+    lines = run_intake(cfg, dry_run=dry_run)
+    if lines:
+        text = "\n".join(lines)
+        if dry_run or no_telegram:
+            print(text)
+        else:
+            send_telegram(cfg, text)
+    if not dry_run:
+        write_rekordbox_xml(cfg)
+    return len(lines)
 
 
 # ------------------------------------------------------------------ Modus: stats
@@ -1448,9 +1478,10 @@ def cli() -> None:
 
     def dispatch() -> None:
         if a.mode == "playlist":
-            run_playlist(cfg, a.url, a.likes, a.dry_run, a.no_telegram)
+            logged("playlist", lambda: run_playlist(cfg, a.url, a.likes, a.dry_run, a.no_telegram))
         elif a.mode == "similar":
-            run_similar(cfg, a.url, a.radio, a.filter, a.limit, a.dry_run, a.no_telegram)
+            logged("similar", lambda: run_similar(cfg, a.url, a.radio, a.filter, a.limit,
+                                                  a.dry_run, a.no_telegram))
         elif a.mode == "check":
             run_link(cfg, a.url, dry_run=a.dry_run, no_telegram=a.no_telegram)
         elif a.mode == "audit":
@@ -1469,15 +1500,8 @@ def cli() -> None:
         elif a.mode == "rekordbox":
             write_rekordbox_xml(cfg)
         elif a.mode == "intake":
-            lines = run_intake(cfg, dry_run=a.dry_run)
-            if lines:
-                text = "\n".join(lines)
-                if a.dry_run or a.no_telegram:
-                    print(text)
-                else:
-                    send_telegram(cfg, text)
-            if not a.dry_run:
-                write_rekordbox_xml(cfg)
+            logged("intake", lambda: run_intake_cli(cfg, dry_run=a.dry_run,
+                                                    no_telegram=a.no_telegram))
         elif a.mode == "stats":
             run_stats(cfg, days=a.days, chart_path=a.chart, send=a.send,
                       dry_run=a.dry_run, no_telegram=a.no_telegram)
