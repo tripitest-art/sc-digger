@@ -22,6 +22,7 @@ statt in `AGENTS.md`, weil Antigravity Regeldateien bei 12.000 Zeichen abschneid
 - **Health-Status ablesen:**
   - `docker compose ps` zeigt den Status in der Health-Spalte (`healthy` oder `unhealthy`).
   - Detaillierte Meldung der Prüfungen: `docker compose exec sc-digger python -m sc_digger.healthcheck`
+  - Bot und Web-Dashboard legen ihr Lebenszeichen als `heartbeat-bot.json` und `heartbeat-web.json` neben die State-DB (`/data`); Status `fehler` heißt, der Prozess läuft, ist aber untätig, obwohl er arbeiten sollte (z. B. Telegram lehnt den Bot-Token ab, dann kann auch kein Alarm per Telegram kommen – nur `unhealthy`).
   - Bei Problemen oder Entwarnung wird automatisch eine Textmeldung an Telegram gesendet (falls Tokens gesetzt sind).
 - **Worker-Sandbox** (eigener Container für Coding-Agenten, nicht der sc-digger-Server):
   Einrichtung und Betrieb stehen in einem separaten, privaten Repository.
