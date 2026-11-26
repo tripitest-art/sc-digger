@@ -143,4 +143,9 @@ def test_run_geschuetzt_belegt_wirft_runtime_error(tmp_path: Path):
             run_geschuetzt(cfg, "taste", fn)
 
     assert not aufgerufen
-    assert _runs(tmp_path, "taste") == []
+    # Seit #758 protokolliert run_locked einen wegen belegter Sperre übersprungenen Lauf
+    # für jeden Modus außer discover als fehlgeschlagenen Lauf; ein zweiter Eintrag
+    # (aus run_logged) darf nicht entstehen, weil fn gar nicht läuft.
+    (ok, found, error), = _runs(tmp_path, "taste")
+    assert (ok, found) == (0, 0)
+    assert "Lauf-Sperre belegt" in error
