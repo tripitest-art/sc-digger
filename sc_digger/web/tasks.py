@@ -106,6 +106,40 @@ def start_task(action: str, runner: Callable[[], str], *, state_path: str | Path
     return True
 
 
+PROTOKOLLIERTE_AKTIONEN = frozenset({"scout", "taste", "audit"})
+OHNE_SPERRE = frozenset({"watch"})
+
+
+def run_geschuetzt(cfg: Config, action: str, fn: Callable[[], str]) -> str:
+    """Führt einen Wartungs-Runner unter der Lauf-Sperre aus und gibt seine Rückgabe zurück.
+
+    Ablauf: main.run_locked(cfg, action, ...) mit no_telegram=False. Liefert run_locked False
+    (Sperre belegt, Wartezeit state.lock_wait_s), wird fn nicht aufgerufen und
+    RuntimeError("Lauf-Sperre belegt") geworfen; start_task macht daraus den Zustand "error".
+    Für Aktionen in PROTOKOLLIERTE_AKTIONEN läuft fn zusätzlich über main.run_logged(cfg, action, fn,
+    no_telegram=False): Erfolg -> runs(mode=action, ok=1, found=1), Ausnahme -> runs(ok=0) und
+    die Ausnahme geht unverändert weiter. Alle anderen Aktionen laufen nur unter der Sperre.
+    Ohne state.db_path (leere Testkonfiguration) laufen fn und run_locked ohne Sperre und Protokoll
+    (Verhalten von run_locked und run_logged, nicht neu bauen).
+    """
+    from ..main import run_locked, run_logged
+
+    result: str | None = None
+
+    def _ausfuehren() -> None:
+        nonlocal result
+        if action in PROTOKOLLIERTE_AKTIONEN:
+            res = run_logged(cfg, action, fn, no_telegram=False)
+            result = str(res)
+        else:
+            result = fn()
+
+    ok = run_locked(cfg, action, _ausfuehren, no_telegram=False)
+    if not ok:
+        raise RuntimeError("Lauf-Sperre belegt")
+    return "" if result is None else result
+
+
 def default_runners(cfg: Config) -> dict[str, Callable[[], str]]:
     """Enthält zusätzlich: "backfill-energy", "backfill-artist", "backfill-bpm", "backfill-embeddings",
     "requeue", "backup". Jeder Runner: TrackDB über cfg["state"]["track_db_path"] öffnen und
@@ -251,12 +285,12 @@ def default_runners(cfg: Config) -> dict[str, Callable[[], str]]:
             return run_requeue_cmd(cfg)[:MESSAGE_MAX]
 
     def backup_runner() -> str:
-        from ..backup import run_backup
+        from ..backup import run_backup_logged
         from ..db import TrackDB
 
         with TrackDB(cfg["state"]["track_db_path"]):
             today = datetime.now(timezone.utc).date()
-            code = run_backup(cfg, today=today)
+            code = run_backup_logged(cfg, today=today)
         if code != 0:
             raise RuntimeError(f"Sicherung fehlgeschlagen (Code {code})")
         return f"Sicherung erfolgreich erstellt ({today.isoformat()})"[:MESSAGE_MAX]
@@ -280,7 +314,7 @@ def default_runners(cfg: Config) -> dict[str, Callable[[], str]]:
         count = len(read_candidates(candidates_file(cfg.raw))["candidates"])
         return f"Kuratoren-Mining fertig: {count} Kandidat(en)"
 
-    return {
+    runners: dict[str, Callable[[], str]] = {
         "scout": scout,
         "watch": watch,
         "taste": taste,
@@ -294,6 +328,13 @@ def default_runners(cfg: Config) -> dict[str, Callable[[], str]]:
         "audit": audit,
         "curator-mining": curator_mining,
     }
+
+    def _wrap(key: str, runner: Callable[[], str]) -> Callable[[], str]:
+        if key in OHNE_SPERRE:
+            return runner
+        return lambda: run_geschuetzt(cfg, key, runner)
+
+    return {key: _wrap(key, runner) for key, runner in runners.items()}
 
 
 def action_labels() -> dict[str, str]:
