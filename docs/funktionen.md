@@ -237,6 +237,8 @@ Der Bot läuft dauerhaft (Hauptprozess des Containers) und antwortet nur im Chat
 | `/similar <SoundCloud-Link | Track-ID>` | Top-5 klanglich ähnliche Aufnahmen aus der Sammlung, derzeit per Chromaprint-Fingerprint; die Embedding-Suche ist gebaut, bekommt aber noch keine Daten (seit #280, #378) |
 | `/cleanup_inbox` | Dubletten in der Inbox auflisten (nur lesend) |
 
+Wie beim täglichen Lauf landen bei einem Link-Check (Bot oder CLI `check`) abgelehnte Downloads mit Grund in der Quarantäne (`/rejected`, freigeben mit `/retry <id>`), nur die übrigen Tracks werden als gesehen markiert (seit #769).
+
 Zum Digest gehören Inline-Buttons pro Track (Like, Dislike, Später). Die Wahl landet in `sc_feedback` in `tracks.sqlite` und wird von `/mix` und `/curator_mining` ausgewertet. Die Kaufliste kommt zusätzlich sonntags um 20:00 (`0 20 * * 0`, aus `entrypoint.sh`) über den CLI-Modus `python -m sc_digger.main kaufliste`. Die Cron-Läufe `audit`, `taste`, `scout` und `kaufliste` werden in `runs` protokolliert (`main.run_logged`); wiederholte Fehler lösen einen Health-Alarm aus.
 
 Ist `web.public_url` gesetzt, führt der Titel jedes Digest-Tracks auf die Track-Detailseite des Dashboards (`<public_url>/track/sc/<sc_id>`, dort stehen SoundCloud-Link, Lebenslauf und Aktionen), und `/heute` nennt volle, antippbare Links. Leer bleibt alles wie bisher (`output.dashboard_url`, `output.track_detail_url`).

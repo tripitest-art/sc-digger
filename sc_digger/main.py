@@ -1165,7 +1165,9 @@ def run_link(cfg: Config, url: str, *, dry_run: bool = False, no_telegram: bool 
     """On-Demand-Check eines beliebigen Links: Playlist -> alle Tracks, Track -> Station.
 
     Kein Perzentil-Filter (selbst gewählte Quelle: volle Liste), aber Score-Sortierung.
-    Tracks werden als gesehen markiert, damit sie nicht nochmal im täglichen Digest landen.
+    Saubere Tracks werden als gesehen markiert, damit sie nicht nochmal im täglichen Digest
+    landen; abgelehnte Downloads gehen wie im täglichen Lauf mit Grund in die Quarantäne
+    (`record_outcomes`), damit `/rejected` sie zeigt und ein Falsch-Positiv nicht verloren ist.
     Gibt (Quellenbeschreibung, neu, vorhanden) zurück.
 
     Jeder echte Check (kein Probelauf) wird als Lauf "check" in runs protokolliert, damit er im
@@ -1196,7 +1198,7 @@ def run_link(cfg: Config, url: str, *, dry_run: bool = False, no_telegram: bool 
                 export_name=source, chat_id=chat_id)
         if not dry_run:
             with State(db_path) as state:
-                state.mark(tracks)
+                record_outcomes(state, tracks)
     except Exception as exc:
         if not dry_run:
             text = record_link_check(db_path, source=source, fresh=0, dupes=0,
